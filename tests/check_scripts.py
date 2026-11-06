@@ -24,6 +24,7 @@ SUSPECT = [
     (re.compile(r'(?i)(api[_-]?key|secret|password)\s*[:=]\s*[\'"][^\'"]{6,}'), 'secret'),
     (re.compile(r'(?i)bearer\s+[a-z0-9._-]{20,}'), 'token'),
 ]
+LOADER_GM = {'GM_getValue', 'GM_setValue', 'GM_deleteValue', 'GM_registerMenuCommand'}
 FAILS = []
 
 
@@ -72,6 +73,10 @@ for name in sorted(stable | beta):
             check(tag + ' VERSION constant matches', const.group(1) == ver[0], const.group(1))
         r = subprocess.run(['node', '--check', str(p)], capture_output=True, text=True)
         check(tag + ' syntax', r.returncode == 0, r.stderr.strip()[:300])
+        body = text[len(head):]
+        used = set(re.findall(r'\b(GM_\w+|GM\.\w+|unsafeWindow)\b', body)) - LOADER_GM
+        grants = set(meta(head, 'grant')) - LOADER_GM - {'none'}
+        check(tag + ' uses only what the loader provides', not used and not grants, sorted(used | grants))
         hits = [label for rx, label in SUSPECT if rx.search(text)]
         check(tag + ' no secrets or identifiers', not hits, hits)
     if len(texts) == 2:
@@ -79,6 +84,28 @@ for name in sorted(stable | beta):
         diff = [(x, y) for x, y in zip(a, b) if x != y]
         bad = [d for d in diff if not (ALLOWED_DIFF.match(d[0]) and ALLOWED_DIFF.match(d[1]))]
         check(name + ' stable and beta differ only in name and URLs', len(a) == len(b) and not bad, bad[:3])
+
+# The loader's script lists must match the files.
+sys.path.insert(0, str(ROOT / 'tools'))
+from build_manifest import manifest  # noqa: E402
+for ch in ('stable', 'beta'):
+    p = ROOT / ch / 'scripts.json'
+    check(ch + '/scripts.json is up to date (run tools/build_manifest.py)', p.exists() and p.read_text() == manifest(ch))
+
+# The loader itself.
+loader = ROOT / 'loader' / 'upc-loader.user.js'
+if loader.exists():
+    text = loader.read_text()
+    head = header(text) or ''
+    url = RAW + 'loader/upc-loader.user.js'
+    check('loader update URLs', meta(head, 'updateURL') == [url] and meta(head, 'downloadURL') == [url])
+    ver = meta(head, 'version')
+    const = re.search(r'\bconst VERSION\s*=\s*[\'"]([^\'"]+)', text)
+    check('loader VERSION constant matches', bool(ver and const and const.group(1) == ver[0]))
+    r = subprocess.run(['node', '--check', str(loader)], capture_output=True, text=True)
+    check('loader syntax', r.returncode == 0, r.stderr.strip()[:300])
+else:
+    check('loader exists', False)
 
 print('\n%d failed' % len(FAILS) if FAILS else '\nAll passed')
 sys.exit(1 if FAILS else 0)

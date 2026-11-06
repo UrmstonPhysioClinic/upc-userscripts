@@ -1,0 +1,54 @@
+{
+  "scripts": [
+    {
+      "file": "arrival-chime.user.js",
+      "name": "Halaxy notification chime",
+      "version": "1.2"
+    },
+    {
+      "file": "branding.user.js",
+      "name": "UPC Halaxy branding",
+      "version": "2.9.1"
+    },
+    {
+      "file": "calendar-controls.user.js",
+      "name": "Halaxy: calendar controls",
+      "version": "2.9"
+    },
+    {
+      "file": "chat-alert.user.js",
+      "name": "Halaxy unread count chime",
+      "version": "1.4"
+    },
+    {
+      "file": "custom-reports.user.js",
+      "name": "Halaxy Custom Reports",
+      "version": "0.6"
+    },
+    {
+      "file": "email-html-source.user.js",
+      "name": "Halaxy: HTML source for emails",
+      "version": "0.3"
+    },
+    {
+      "file": "outstanding-actions.user.js",
+      "name": "Halaxy Outstanding Actions",
+      "version": "0.2.0"
+    },
+    {
+      "file": "rebate-sync.user.js",
+      "name": "UPC Halaxy Rebate Sync",
+      "version": "0.1.0"
+    },
+    {
+      "file": "textarea-autogrow.user.js",
+      "name": "Halaxy: auto-expanding text boxes",
+      "version": "1.1"
+    },
+    {
+      "file": "toast-alerts.user.js",
+      "name": "Halaxy: toast alerts",
+      "version": "1.1"
+    }
+  ]
+}
