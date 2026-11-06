@@ -34,7 +34,9 @@ GLOBALS = r"""
   window.HkUtils = { appendURL: f }; window.HkUI = { flash: { show: f } };
   BREAK
 </script>"""
-CAL_BODY = ("<div id='mainMenu'></div><div id='alerts'></div><span id='btn-chat-popover-open'></span>"
+SIDEBAR = ("<nav id='sidebar' style='position:fixed;left:0;top:0;bottom:0;width:210px;z-index:1000;background:#222'>"
+           "<ul id='mainMenu'><li>Reports</li></ul></nav>")
+CAL_BODY = (SIDEBAR + "<div id='alerts'></div><span id='btn-chat-popover-open'></span>"
             "<div id='calToolbar'></div><button id='btnCalendarPreferences'></button><script type='text/template' id='tpl-event'></script>"
             "<div id='swapPracList'><input class='toggle-prac'></div><div id='calendarViewPort'><div class='cal'>"
             "<div class='timeLabel'>08:00</div><div class='timeslot' ts='1'></div></div></div><div id='footer'></div>")
@@ -45,7 +47,7 @@ def page(path):
     if 'timeline' in STATE['break']:
         brk = 'delete HkCalendar.Timeline;'
     head = "<script src='https://cdn.halaxy.com/z/version/%s/build/app.js'></script>" % STATE['version'] + GLOBALS.replace('BREAK', brk)
-    body = CAL_BODY if path.endswith('/calendar') else "<div id='mainMenu'></div>"
+    body = CAL_BODY if path.endswith('/calendar') else SIDEBAR
     if '/invoice/' in path:
         body += "<table id='invoiceLines'></table>" + ('' if 'invoice' in STATE['break'] else "<table id='invoicePayments'></table>")
     return "<!doctype html><html><head>%s</head><body class='vs-theme vs-theme-milky-way'>%s</body></html>" % (head, body)
@@ -128,6 +130,16 @@ async def main():
         check('missing calendar function reported', any(x['title'] == "Halaxy's calendar code has changed" and 'HkCalendar.Timeline.position()' in x['lines']
                                                         and 'Calendar controls' in x['scripts'] for x in probs), probs)
         check('notice shown', pill == 'Clinic scripts: 1 problem', pill)
+        await pg.evaluate("document.querySelector('[data-hx-health]').shadowRoot.querySelector('.pill').click()")
+        clear = await pg.evaluate("""() => {
+            const sh = document.querySelector('[data-hx-health]').shadowRoot;
+            return ['.pill', '.panel'].map(s => {
+                const r = sh.querySelector(s).getBoundingClientRect();
+                return [[r.left + 2, r.top + 10], [r.left + r.width / 2, r.top + r.height / 2]]
+                    .every(([x, y]) => document.elementFromPoint(x, y) === document.querySelector('[data-hx-health]'));
+            });
+        }""")
+        check('notice and panel are not hidden behind the side menu', clear == [True, True], clear)
         STATE['break'] = set()
         probs, pill = await load()
         check('fixed on next calendar visit', probs == [] and pill == '', probs)

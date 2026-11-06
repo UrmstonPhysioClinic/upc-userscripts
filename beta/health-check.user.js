@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.0.0
+// @version      1.0.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.0.0';
+  const VERSION = '1.0.1';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -316,7 +316,7 @@
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   const CSS = `
-    .wrap { position: fixed; left: 16px; bottom: 16px; z-index: 90; font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Arial, sans-serif; color: #1d2433; }
+    .wrap { position: fixed; left: var(--hx-health-left, 16px); bottom: 16px; z-index: 90; font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Arial, sans-serif; color: #1d2433; }
     .pill { border: 0; border-radius: 999px; padding: 6px 12px; background: #b45309; color: #fff; font: inherit; font-weight: 600; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
     .panel { position: absolute; left: 0; bottom: 40px; width: min(440px, calc(100vw - 32px)); max-height: 70vh; overflow: auto; background: #fff;
              border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,.25); padding: 12px 14px; }
@@ -331,8 +331,33 @@
     button.b { font: inherit; font-size: 12px; border-radius: 6px; padding: 4px 10px; border: 1px solid #c9cfdc; background: #fff; color: #1d2433; cursor: pointer; }
   `;
 
+  // Sit just to the right of Halaxy's side menu, which is drawn above our layer.
+  function sidebarRight() {
+    const menu = document.getElementById('mainMenu');
+    if (!menu) return 0;
+    let right = 0;
+    for (let el = menu; el && el !== document.body; el = el.parentElement) {
+      const r = el.getBoundingClientRect();
+      if (r.width && r.left <= 1 && r.width < window.innerWidth / 2) right = Math.max(right, r.right);
+    }
+    return right;
+  }
+  function place() {
+    if (host) host.style.setProperty('--hx-health-left', Math.round(sidebarRight() + 16) + 'px');
+  }
+  window.addEventListener('resize', place);
+  let watchedMenu = null;
+  function watchMenu() {
+    const menu = document.getElementById('mainMenu');
+    if (!menu || menu === watchedMenu || typeof ResizeObserver !== 'function') return;
+    watchedMenu = menu;
+    new ResizeObserver(place).observe(menu.parentElement || menu);   // menu collapsed or expanded
+  }
+
   function render() {
     if (!ensureHost()) return;
+    watchMenu();
+    place();
     const list = problems();
     const halaxy = store.get('halaxy', null);
     if (!list.length && !open) { sh.innerHTML = ''; return; }

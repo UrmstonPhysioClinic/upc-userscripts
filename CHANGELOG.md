@@ -9,6 +9,9 @@
 
 ## Health check
 
+### 1.0.1 (6 Nov 2026, beta)
+- Notice and panel sit to the right of Halaxy's side menu instead of underneath it, and follow it when the menu is collapsed or the window resized.
+
 ### 1.0.0 (6 Nov 2026, beta)
 - Page checks for what calendar controls, Rebate Sync, Custom Reports, the editor scripts, toast alerts, Alerts and branding rely on, run on the pages where they apply.
 - Daily data checks (and straight after a Halaxy update) for the fields Outstanding Actions reads, and for appointment or note statuses it doesn't know.
