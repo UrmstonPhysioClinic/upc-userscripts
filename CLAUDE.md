@@ -6,7 +6,7 @@ Tampermonkey userscripts for Halaxy (eu.halaxy.com), used at Urmston Physio Clin
 
 - Never commit patient data: recon exports, screenshots, remittance PDFs, saved Halaxy HTML, real names in tests. Test fixtures use invented labels ("Patient 09:00").
 - No secrets. Scripts use the user's logged-in Halaxy session; no API keys.
-- Work on a branch and open a pull request. Never push to `main` directly.
+- Work on a branch and open a pull request. Never push to `main` directly. Claude merges its own pull requests once the checks pass; Carl does not handle pull requests or merges.
 - Changes go to `beta/` first. Promote to `stable/` only when Carl confirms beta works on live Halaxy. Stable and beta files differ only in `@name` (" (beta)" suffix) and `@updateURL`/`@downloadURL`.
 - Bump `@version` (and the `VERSION` constant) in every changed script; Tampermonkey only updates on a higher version.
 - Run `python3 tests/check_scripts.py` and the relevant test in `tests/` before opening a PR.
