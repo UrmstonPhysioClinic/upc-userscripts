@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy Outstanding Actions (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.0
+// @version      0.3.0
 // @description  Persistent notice of today's outstanding actions: attended appointments without a published note, and unpaid self-funded invoices.
 // @match        https://*.halaxy.com/a/*
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
@@ -34,6 +34,12 @@
  *  Reads only, using your logged-in Halaxy session. Nothing is sent anywhere else.
  *  Today's list is cached in this tab's sessionStorage (cleared when the tab closes)
  *  so it shows instantly as you move between pages.
+ *
+ * BEING A GOOD HALAXY USER
+ *  With several Halaxy tabs open on a PC, only one checks at a time and the others are sent its
+ *  result (tab to tab, never written to lasting storage). Background checks skip when a check is
+ *  less than a minute old (two for the timed check), and while Halaxy has asked scripts to pause.
+ *  Requests go through the core library's pacing when it is loaded.
  */
 
 (function () {
@@ -41,7 +47,7 @@
   if (window.__hxOutstanding) return;
   window.__hxOutstanding = true;
 
-  const VERSION = '0.2.0';
+  const VERSION = '0.3.0';
   const m = location.pathname.match(/^\/a\/pr\/(\d+)\//);
   if (!m) return;
   const PG = m[1];
@@ -64,9 +70,9 @@
 
   // ------------------------------------------------------------------ refresh triggers (installed at document-start)
   let refreshTimer = null;
-  function scheduleRefresh(ms) {
+  function scheduleRefresh(ms, why) {
     clearTimeout(refreshTimer);
-    refreshTimer = setTimeout(() => refresh('trigger'), ms);
+    refreshTimer = setTimeout(() => refresh(why || 'trigger'), ms);
   }
   // Writes that can resolve an item: note save/publish, payments, appointment status, invoice edits
   const RELEVANT = /\/(note\/note\/save|note\/\d+\/(publish|revert)|invoicefunctions\/|calendar\/appointment\/\d+|appointment\/\d+\/cancel|invoice\/line\/)/;
@@ -98,7 +104,8 @@
       const es = new OES(url, opts);
       try {
         if (/mercure/.test(String(url))) {
-          es.addEventListener('message', ev => { if (/"appointment"/.test(String(ev.data))) scheduleRefresh(4000); });
+          // Every open tab hears these; only the one being looked at checks, and shares its result.
+          es.addEventListener('message', ev => { if (/"appointment"/.test(String(ev.data)) && document.visibilityState === 'visible') scheduleRefresh(4000, 'remote'); });
         }
       } catch (e) {}
       return es;
@@ -129,8 +136,10 @@
   const textOf = html => { const d = document.createElement('div'); d.innerHTML = String(html || ''); const n = d.querySelector('.name-text'); return (n || d).textContent.trim(); };
 
   class FetchError extends Error {}
+  // Through the core library's pacing when it is loaded (beta), otherwise straight to Halaxy.
+  const doFetch = (url, init) => (window.UPC && UPC.http && UPC.http.fetch ? UPC.http.fetch(url, init) : oFetch.call(window, url, init));
   async function getJSON(path) {
-    const res = await oFetch.call(window, BASE + path, {
+    const res = await doFetch(BASE + path, {
       credentials: 'same-origin',
       headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' }
     });
@@ -150,6 +159,42 @@
   if (!state || state.day !== todayKey()) state = null;
   let running = false;
   let diag = {};
+
+  // ------------------------------------------------------------------ sharing between this PC's Halaxy tabs
+  const FRESH_MS = { load: 60e3, focus: 60e3, poll: Math.max(60e3, settings.pollMinutes * 60e3 - 5e3) };
+  const bc = typeof BroadcastChannel === 'function' ? new BroadcastChannel('hx-outstanding') : null;
+  function adopt(s) {
+    if (!s || s.day !== todayKey() || s.mineOnly !== settings.mineOnly) return false;
+    if (state && (state.at || 0) >= (s.at || 0)) return false;
+    state = s;
+    writeJSON(sessionStorage, CACHE_KEY, state);
+    render();
+    return true;
+  }
+  if (bc) {
+    bc.onmessage = (e) => {
+      const d = e.data || {};
+      if (d.type === 'state') adopt(d.state);
+      else if (d.type === 'want' && state && state.at && !state.error && state.mineOnly === settings.mineOnly) bc.postMessage({ type: 'state', state });
+    };
+  }
+  const share = () => { if (bc && state && !state.error) bc.postMessage({ type: 'state', state }); };
+
+  // Background checks (page load, timer, coming back to the tab, a change seen on another PC) are
+  // skipped when a fresh result exists or Halaxy has asked scripts to pause. "Check now" and this
+  // tab's own saves always check. Only one tab on the PC checks at a time.
+  function refresh(why) {
+    if (running) return Promise.resolve();
+    if (why !== 'manual' && why !== 'trigger' && why !== 'setting') {
+      const fresh = FRESH_MS[why];
+      if (fresh && state && !state.error && state.mineOnly === settings.mineOnly && Date.now() - (state.at || 0) < fresh) return Promise.resolve();
+      if (window.UPC && UPC.http && UPC.http.pausedFor && UPC.http.pausedFor() > 0) return Promise.resolve();
+    }
+    if (navigator.locks && navigator.locks.request) {
+      return navigator.locks.request('hx-outstanding-check', { ifAvailable: true }, (lock) => (lock ? doRefresh(why) : null));
+    }
+    return doRefresh(why);
+  }
 
   async function loadPractitioners() {
     if (memo.practitioners && Date.now() - memo.practitionersAt < 3600e3) return memo.practitioners;
@@ -185,7 +230,7 @@
   }
 
   // ------------------------------------------------------------------ main check
-  async function refresh(why) {
+  async function doRefresh(why) {
     if (running) return;
     running = true;
     setBusy(true);
@@ -296,7 +341,7 @@
       }
 
       items.sort((a, b) => a.start - b.start || a.kind.localeCompare(b.kind));
-      state = { day: todayKey(), at: Date.now(), items, unchecked, error: null };
+      state = { day: todayKey(), at: Date.now(), items, unchecked, error: null, mineOnly: settings.mineOnly };
     } catch (e) {
       state = Object.assign({}, state || { day: todayKey(), items: [], unchecked: [] }, {
         error: e instanceof FetchError ? e.message : 'check failed (' + (e && e.message || e) + ')',
@@ -308,6 +353,7 @@
       running = false;
       setBusy(false);
       render();
+      share();
     }
   }
 
@@ -465,7 +511,8 @@
   // ------------------------------------------------------------------ start
   function start() {
     buildUi();
-    refresh('load');
+    // Ask the other tabs for their result first; check only if none is fresh.
+    if (bc) { bc.postMessage({ type: 'want' }); setTimeout(() => refresh('load'), 400); } else refresh('load');
     setInterval(() => { if (document.visibilityState === 'visible') refresh('poll'); }, settings.pollMinutes * 60e3);
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible' && (!state || Date.now() - (state.at || 0) > 60e3)) refresh('focus');

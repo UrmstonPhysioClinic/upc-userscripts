@@ -3,7 +3,12 @@
     {
       "file": "health-check.user.js",
       "name": "Halaxy health check (beta)",
-      "version": "1.0.1"
+      "version": "1.0.3"
+    },
+    {
+      "file": "core.user.js",
+      "name": "UPC core library (beta)",
+      "version": "0.1.0"
     },
     {
       "file": "alerts.user.js",
@@ -18,7 +23,7 @@
     {
       "file": "calendar-controls.user.js",
       "name": "Halaxy: calendar controls (beta)",
-      "version": "2.9"
+      "version": "2.10"
     },
     {
       "file": "custom-reports.user.js",
@@ -33,11 +38,16 @@
     {
       "file": "outstanding-actions.user.js",
       "name": "Halaxy Outstanding Actions (beta)",
-      "version": "0.2.0"
+      "version": "0.3.0"
     },
     {
       "file": "rebate-sync.user.js",
       "name": "UPC Halaxy Rebate Sync (beta)",
+      "version": "0.1.0"
+    },
+    {
+      "file": "remittances.user.js",
+      "name": "Halaxy remittances (beta)",
       "version": "0.1.0"
     },
     {

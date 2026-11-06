@@ -13,3 +13,6 @@ halaxy-recon-*.json
 __pycache__/
 .DS_Store
 node_modules/
+
+# Test scratch
+tests/remittances/.fixtures/

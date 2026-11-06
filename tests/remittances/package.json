@@ -1,0 +1,11 @@
+{
+  "name": "upc-remittances-test-libs",
+  "private": true,
+  "description": "The same library versions the remittances script loads from the CDN, served locally by the test.",
+  "dependencies": {
+    "@tesseract.js-data/eng": "1.0.0",
+    "pdfjs-dist": "3.11.174",
+    "tesseract.js": "5.1.1",
+    "tesseract.js-core": "5.1.1"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "upc-calendar-controls-test-libs",
+  "private": true,
+  "description": "jQuery for the mock calendar page (Halaxy uses jQuery 3.7).",
+  "dependencies": {
+    "jquery": "3.7.1"
+  }
+}

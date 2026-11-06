@@ -1,5 +1,25 @@
 # Changelog
 
+## Calendar controls
+
+### 2.10 (6 Nov 2026, beta)
+- The 30-second check for changes made on other PCs is skipped whenever the calendar was loaded in the last 30 seconds by anything else (Halaxy redrawing, changing date, or a refresh of its own), so the calendar is never loaded twice for nothing.
+- The check goes through the core library's pacing and waits while Halaxy has asked scripts to pause.
+
+## Remittances
+
+### 0.1.0 (6 Nov 2026, beta)
+- Reports > Remittances. Reads Bupa and WPA PDFs directly and AXA and Aviva scans by in-browser text recognition; cross-checks every remittance against its own totals.
+- Matches each UPC number to its organisation invoice; classifies paid in full, excess (moved to the patient), provider shortfall (left for a person) or check.
+- Applies excess fixes after one confirmation (revert, rebate, re-bill to the same invoice) and attaches the remittance to each matched invoice as Payment. Never records payments.
+- Scanned invoice numbers can be corrected and re-checked on the review screen.
+
+## Core library
+
+### 0.1.0 (6 Nov 2026, beta)
+- window.UPC: Halaxy requests, invoice reading and lookup, rebate moves, invoice attachments, CDN loading, menu and page helpers.
+- Request pacing shared by all scripts on a PC, with a pause when Halaxy says it is busy.
+
 ## Alerts
 
 ### 1.0.0 (6 Nov 2026, beta)
@@ -8,6 +28,13 @@
 - Arrival chime and chat alarm can be switched off per PC from the Tampermonkey menu.
 
 ## Health check
+
+### 1.0.3 (6 Nov 2026, beta)
+- Knows the core library and Remittances by name; the reports page check covers Remittances too.
+
+### 1.0.2 (6 Nov 2026, beta)
+- Results are saved one at a time, so two Halaxy tabs checking at once no longer overwrite each other (the daily data results went missing this way on first live use).
+- If the data check itself stops with an error, that is shown as a problem.
 
 ### 1.0.1 (6 Nov 2026, beta)
 - Notice and panel sit to the right of Halaxy's side menu instead of underneath it, and follow it when the menu is collapsed or the window resized.
@@ -35,6 +62,12 @@ Existing scripts moved here from earlier chats, code unchanged. Only the header 
 - HTML source for emails 0.3
 
 ## Outstanding Actions
+
+### 0.3.0 (6 Nov 2026, beta)
+- With several Halaxy tabs open, only one checks at a time and the others are sent its result, tab to tab (nothing is kept after the tabs close).
+- Page changes within a minute of a check, and the 2-minute timer within 2 minutes, reuse the last result instead of checking again. "Check now" and your own saves always check.
+- Changes seen on another PC are checked by the tab you're looking at only.
+- Requests go through the core library's pacing, and background checks wait while Halaxy has asked scripts to pause.
 
 ### 0.2.0 (6 Nov 2026)
 - Attendance now uses `appointmentStatus` (blank = normal; cancelled, did-not-attend and similar are excluded). 0.1.0 wrongly used the online booking request status.

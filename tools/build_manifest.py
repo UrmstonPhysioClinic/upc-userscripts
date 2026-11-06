@@ -16,8 +16,9 @@ def header_value(text, key):
 
 
 # Scripts the loader starts before the rest, in this order. The health check goes first so it
-# can catch errors from every other script. Everything else follows alphabetically.
-FIRST = ['health-check.user.js']
+# can catch errors from every other script, then the core library other scripts use.
+# Everything else follows alphabetically.
+FIRST = ['health-check.user.js', 'core.user.js']
 
 
 def manifest(channel):
