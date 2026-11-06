@@ -8,10 +8,14 @@ Tampermonkey userscripts for Halaxy (eu.halaxy.com), used at Urmston Physio Clin
 - No secrets. Scripts use the user's logged-in Halaxy session; no API keys.
 - Work on a branch and open a pull request. Never push to `main` directly. Claude merges its own pull requests once the checks pass; Carl does not handle pull requests or merges.
 - Changes go to `beta/` first. Promote to `stable/` only when Carl confirms beta works on live Halaxy. Stable and beta files differ only in `@name` (" (beta)" suffix) and `@updateURL`/`@downloadURL`.
-- Bump `@version` (and the `VERSION` constant) in every changed script; Tampermonkey only updates on a higher version.
-- Run `python3 tests/check_scripts.py` and the relevant test in `tests/` before opening a PR.
+- Bump `@version` (and the `VERSION` constant) in every changed script, then run `python3 tools/build_manifest.py`. The loader only fetches a script when its version in `scripts.json` changes.
+- Run `python3 tests/check_scripts.py` and the relevant test in `tests/` before opening a PR (`tests/loader/test_loader.py` for any loader change).
+- The PCs install only `loader/upc-loader.user.js`. Never ask Carl to install a script individually: adding it to `stable/` and `beta/` (and the manifests) is the install.
 
 ## Conventions
+
+- Scripts run in the page through the loader. The only Tampermonkey functions available are `GM_getValue`, `GM_setValue`, `GM_deleteValue` and `GM_registerMenuCommand` (provided by the loader); anything else must be added to the loader first. `tests/check_scripts.py` enforces this.
+- The loader honours each script's `@match`, `@include`, `@exclude`, `@run-at` and `@noframes`.
 
 - `@grant none`, `@inject-into page`, `@run-at document-start` when hooking requests; guard against double runs with a `window.__hx...` flag.
 - UI in a shadow root. Pinned layers stay below Halaxy's overlays (z-index under 100; Halaxy overlays start at 100+).

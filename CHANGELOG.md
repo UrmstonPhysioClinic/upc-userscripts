@@ -1,5 +1,10 @@
 # Changelog
 
+## Loader
+
+### 1.0.0 (6 Nov 2026)
+- One script per PC that runs every script in the repository and picks up new and changed ones by itself, with a per-PC channel (stable or beta), per-script switches, saved copies for offline use, and refusal of broken updates.
+
 ## Added to the repository (6 Nov 2026)
 Existing scripts moved here from earlier chats, code unchanged. Only the header changed: repository namespace and update URLs, plus "(beta)" on the beta copies.
 - Calendar controls 2.9
