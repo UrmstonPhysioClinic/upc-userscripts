@@ -1,9 +1,14 @@
 {
   "scripts": [
     {
-      "file": "arrival-chime.user.js",
-      "name": "Halaxy notification chime (beta)",
-      "version": "1.2"
+      "file": "health-check.user.js",
+      "name": "Halaxy health check (beta)",
+      "version": "1.0.0"
+    },
+    {
+      "file": "alerts.user.js",
+      "name": "Halaxy alerts (beta)",
+      "version": "1.0.0"
     },
     {
       "file": "branding.user.js",
@@ -14,11 +19,6 @@
       "file": "calendar-controls.user.js",
       "name": "Halaxy: calendar controls (beta)",
       "version": "2.9"
-    },
-    {
-      "file": "chat-alert.user.js",
-      "name": "Halaxy unread count chime (beta)",
-      "version": "1.4"
     },
     {
       "file": "custom-reports.user.js",

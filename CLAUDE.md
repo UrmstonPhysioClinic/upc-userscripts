@@ -16,6 +16,8 @@ Tampermonkey userscripts for Halaxy (eu.halaxy.com), used at Urmston Physio Clin
 
 - Scripts run in the page through the loader. The only Tampermonkey functions available are `GM_getValue`, `GM_setValue`, `GM_deleteValue` and `GM_registerMenuCommand` (provided by the loader); anything else must be added to the loader first. `tests/check_scripts.py` enforces this.
 - The loader honours each script's `@match`, `@include`, `@exclude`, `@run-at` and `@noframes`.
+- **Health check** (`health-check.user.js`): when a script starts relying on a new Halaxy global, page element, endpoint or data field, add it to the health check's checks, and add new script files to its `NAMES` map. `tools/build_manifest.py` keeps the health check first in the load order so it catches every script's errors.
+- Retiring a script: remove it from `beta/` first; remove it from `stable/` when the replacement is promoted.
 
 - `@grant none`, `@inject-into page`, `@run-at document-start` when hooking requests; guard against double runs with a `window.__hx...` flag.
 - UI in a shadow root. Pinned layers stay below Halaxy's overlays (z-index under 100; Halaxy overlays start at 100+).

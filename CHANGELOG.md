@@ -1,5 +1,19 @@
 # Changelog
 
+## Alerts
+
+### 1.0.0 (6 Nov 2026, beta)
+- Replaces Arrival chime 1.2 and Chat alert 1.4, same sounds and timings.
+- Each alert sounds once per PC however many Halaxy tabs are open; a click or keypress in any tab stops the chat alarm in all of them.
+- Arrival chime and chat alarm can be switched off per PC from the Tampermonkey menu.
+
+## Health check
+
+### 1.0.0 (6 Nov 2026, beta)
+- Page checks for what calendar controls, Rebate Sync, Custom Reports, the editor scripts, toast alerts, Alerts and branding rely on, run on the pages where they apply.
+- Daily data checks (and straight after a Halaxy update) for the fields Outstanding Actions reads, and for appointment or note statuses it doesn't know.
+- Records the Halaxy version, collects errors from our scripts and the loader's update problems. Notice bottom left only when something is wrong; Copy details gives structure only.
+
 ## Loader
 
 ### 1.0.0 (6 Nov 2026)

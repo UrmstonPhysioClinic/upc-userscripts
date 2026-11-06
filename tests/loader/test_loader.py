@@ -220,27 +220,32 @@ async def main():
         await pg.evaluate("localStorage.removeItem('upc-loader:off')")
         await ctx.close()
 
-        # 12. The real repository: every script loads on a Halaxy page with no syntax errors.
+        # 12. The real repository, both channels: every script loads on a Halaxy page with no syntax errors.
         net['real'] = True
-        ctx = await browser.new_context()
-        await ctx.route(RAW + '**', github)
-        await ctx.route('https://eu.halaxy.com/**', lambda r: r.fulfill(body=PAGE, content_type='text/html'))
-        await ctx.add_init_script(STUBS)
-        await ctx.add_init_script(LOADER)
-        pg = await ctx.new_page()
-        page_errors = []
-        pg.on('pageerror', lambda e: page_errors.append(str(e)))
-        files = [x['file'] for x in json.loads((ROOT / 'stable' / 'scripts.json').read_text())['scripts']]
-        for _ in range(2):
-            await pg.goto('https://eu.halaxy.com/a/pr/555/calendar')
-            await pg.wait_for_timeout(2500)
-        injected = await pg.evaluate('window.__injected')
-        errs = await pg.evaluate('window.__errs')
-        check('real scripts: all run from saved copies', sorted(injected) == sorted(files), sorted(set(files) - set(injected)))
-        syntax = [e for e in errs + [{'message': m} for m in page_errors] if 'SyntaxError' in e['message']]
-        check('real scripts: no syntax errors', not syntax, syntax)
-        if errs:
-            print('     note: errors from scripts on the mock page (expected, no real Halaxy there):', errs)
+        for ch in ('stable', 'beta'):
+            ctx = await browser.new_context()
+            await ctx.route(RAW + '**', github)
+            await ctx.route('https://eu.halaxy.com/**', lambda r: r.fulfill(body=PAGE, content_type='text/html'))
+            await ctx.add_init_script("localStorage.setItem('upc-loader:channel', JSON.stringify('%s'));" % ch)
+            await ctx.add_init_script(STUBS)
+            await ctx.add_init_script(LOADER)
+            pg = await ctx.new_page()
+            page_errors = []
+            pg.on('pageerror', lambda e: page_errors.append(str(e)))
+            files = [x['file'] for x in json.loads((ROOT / ch / 'scripts.json').read_text())['scripts']]
+            for _ in range(2):
+                await pg.goto('https://eu.halaxy.com/a/pr/555/calendar')
+                await pg.wait_for_timeout(2500)
+            injected = await pg.evaluate('window.__injected')
+            errs = await pg.evaluate('window.__errs')
+            check(ch + ' scripts: all run from saved copies', sorted(injected) == sorted(files), sorted(set(files) - set(injected)))
+            if 'health-check.user.js' in files:
+                check(ch + ' scripts: health check starts first', injected[:1] == ['health-check.user.js'], injected)
+            syntax = [e for e in errs + [{'message': m} for m in page_errors] if 'SyntaxError' in e['message']]
+            check(ch + ' scripts: no syntax errors', not syntax, syntax)
+            if errs:
+                print('     note: errors from scripts on the mock page (expected, no real Halaxy there):', errs)
+            await ctx.close()
         await browser.close()
 
     print('\n%d failed' % len(FAILS) if FAILS else '\nAll passed')

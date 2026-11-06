@@ -15,9 +15,15 @@ def header_value(text, key):
     return m.group(1).strip() if m else ''
 
 
+# Scripts the loader starts before the rest, in this order. The health check goes first so it
+# can catch errors from every other script. Everything else follows alphabetically.
+FIRST = ['health-check.user.js']
+
+
 def manifest(channel):
     scripts = []
-    for p in sorted((ROOT / channel).glob('*.user.js')):
+    files = sorted((ROOT / channel).glob('*.user.js'), key=lambda p: (FIRST.index(p.name) if p.name in FIRST else len(FIRST), p.name))
+    for p in files:
         text = p.read_text()
         scripts.append({'file': p.name, 'name': header_value(text, 'name'), 'version': header_value(text, 'version')})
     return json.dumps({'scripts': scripts}, indent=2) + '\n'
