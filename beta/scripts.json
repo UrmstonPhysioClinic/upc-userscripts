@@ -3,7 +3,12 @@
     {
       "file": "health-check.user.js",
       "name": "Halaxy health check (beta)",
-      "version": "1.0.2"
+      "version": "1.0.3"
+    },
+    {
+      "file": "core.user.js",
+      "name": "UPC core library (beta)",
+      "version": "0.1.0"
     },
     {
       "file": "alerts.user.js",
@@ -38,6 +43,11 @@
     {
       "file": "rebate-sync.user.js",
       "name": "UPC Halaxy Rebate Sync (beta)",
+      "version": "0.1.0"
+    },
+    {
+      "file": "remittances.user.js",
+      "name": "Halaxy remittances (beta)",
       "version": "0.1.0"
     },
     {

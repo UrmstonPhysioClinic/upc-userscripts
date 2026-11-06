@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.0.2
+// @version      1.0.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,16 +31,16 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.0.2';
+  const VERSION = '1.0.3';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
 
   const NAMES = {
     'alerts.user.js': 'Alerts', 'arrival-chime.user.js': 'Arrival chime', 'chat-alert.user.js': 'Chat alert',
-    'branding.user.js': 'Branding', 'calendar-controls.user.js': 'Calendar controls', 'custom-reports.user.js': 'Custom Reports',
+    'branding.user.js': 'Branding', 'calendar-controls.user.js': 'Calendar controls', 'core.user.js': 'Core library', 'custom-reports.user.js': 'Custom Reports',
     'email-html-source.user.js': 'HTML source for emails', 'health-check.user.js': 'Health check',
-    'outstanding-actions.user.js': 'Outstanding Actions', 'rebate-sync.user.js': 'Rebate Sync',
+    'outstanding-actions.user.js': 'Outstanding Actions', 'rebate-sync.user.js': 'Rebate Sync', 'remittances.user.js': 'Remittances',
     'textarea-autogrow.user.js': 'Auto-expanding text boxes', 'toast-alerts.user.js': 'Toast alerts',
   };
   // Same rule as Outstanding Actions: these appointment statuses mean "not attended".
@@ -155,7 +155,7 @@
     },
     {
       id: 'reports', title: "Halaxy's table builder",
-      scripts: ['Custom Reports'],
+      scripts: ['Custom Reports', 'Remittances'],
       applies: () => /\/report\//.test(location.pathname),
       test: () => missingIn(['HxGridTable()', 'Hk.jwt']),
     },
