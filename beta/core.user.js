@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.0
+// @version      0.1.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -431,6 +431,8 @@
         const host = sub.parentElement && sub.parentElement.tagName === 'LI' ? sub.parentElement : sub;
         const copy = host.cloneNode(true);
         copy.removeAttribute('id');
+        copy.classList.remove('active');
+        copy.querySelectorAll('.active').forEach((n) => n.classList.remove('active'));   // the copied item may be the highlighted one
         copy.querySelectorAll('[id]').forEach((n) => n.removeAttribute('id'));
         const a = copy.tagName === 'A' ? copy : copy.querySelector('a.mainmenu-sublink');
         a.setAttribute('href', href);
@@ -461,38 +463,83 @@
       };
       if (document.body) start(); else document.addEventListener('DOMContentLoaded', start, { once: true });
     },
-    // Shows `root` in place of the page content, inside Halaxy's layout. Returns an unmount function.
+    // Shows `root` as a page of its own inside Halaxy: it covers the whole content area between
+    // the side menu, the top bar and the footer, whatever Halaxy page is underneath, and sits
+    // below Halaxy's own pop-ups and menus. Returns an unmount function.
     mountPage(title, root, menuCls) {
       const undo = [];
-      const hide = (n) => { const prev = n.style.display; undo.push(() => { n.style.display = prev; }); n.style.display = 'none'; };
-      const content = document.getElementById('pageContent');
-      if (content) {
-        [...content.children].forEach((n) => { if (!['SCRIPT', 'STYLE', 'LINK', 'TEMPLATE'].includes(n.tagName)) hide(n); });
-        content.appendChild(root);
-        const tt = document.getElementById('toolbar-text');
-        if (tt) {
-          const h = tt.querySelector('h1,h2,h3') || tt;
-          const before = h.innerHTML;
-          undo.push(() => { h.innerHTML = before; });
-          h.textContent = title;
+      const shell = document.createElement('div');
+      shell.setAttribute('data-upc-page', '');
+      const bg = getComputedStyle(document.body).backgroundColor;
+      shell.style.cssText = 'position:fixed;z-index:60;overflow:auto;box-sizing:border-box;padding:16px 20px;background:' +
+        (bg && !/rgba\(0, 0, 0, 0\)|transparent/.test(bg) ? bg : '#fff') + ';';
+      shell.appendChild(root);
+      document.body.appendChild(shell);
+
+      const sidebarRight = () => {
+        const menu = document.getElementById('mainMenu');
+        let right = 0;
+        for (let el = menu; el && el !== document.body; el = el.parentElement) {
+          const r = el.getBoundingClientRect();
+          if (r.width && r.left <= 1 && r.width < window.innerWidth / 2) right = Math.max(right, r.right);
         }
-        const tr = document.getElementById('toolbar-right');
-        if (tr) [...tr.children].forEach(hide);
-      } else {
-        const host = document.querySelector('.layout-wrapper') || document.querySelector('.layout-container') || document.body;
-        [...host.children].forEach((n) => {
-          const keep = n.id === 'headerWrapper' || n.id === 'mainMenu' || n.id === 'footer' || (n.querySelector && (n.querySelector('#headerWrapper') || n.querySelector('#mainMenu'))) || ['SCRIPT', 'STYLE', 'LINK'].includes(n.tagName);
-          if (!keep) hide(n);
+        return right;
+      };
+      const topBarBottom = () => {
+        const cands = [document.getElementById('headerWrapper'), document.querySelector('header'), document.querySelector('.navbar')];
+        const search = document.querySelector('input[placeholder*="Search by patient" i], input[type="search"]');
+        for (let el = search; el && el !== document.body; el = el.parentElement) cands.push(el);
+        let bottom = 0;
+        cands.filter(Boolean).forEach((el) => {
+          const r = el.getBoundingClientRect();
+          if (r.height && r.top <= 2 && r.height < 160 && r.width > window.innerWidth / 3) bottom = Math.max(bottom, r.bottom);
         });
-        host.appendChild(root);
+        return bottom || 56;
+      };
+      const footerHeight = () => {
+        const f = document.getElementById('footer');
+        const r = f && f.getBoundingClientRect();
+        if (!r || !r.height || getComputedStyle(f).display === 'none') return 0;
+        return r.top < window.innerHeight && r.bottom >= window.innerHeight - 2 ? window.innerHeight - r.top : 0;
+      };
+      const place = () => {
+        shell.style.left = Math.round(sidebarRight()) + 'px';
+        shell.style.top = Math.round(topBarBottom()) + 'px';
+        shell.style.right = '0';
+        shell.style.bottom = Math.round(footerHeight()) + 'px';
+      };
+      place();
+      window.addEventListener('resize', place);
+      undo.push(() => window.removeEventListener('resize', place));
+      const menuBox = document.getElementById('mainMenu');
+      if (menuBox && typeof ResizeObserver === 'function') {
+        const ro = new ResizeObserver(place);
+        ro.observe(menuBox.parentElement || menuBox);
+        undo.push(() => ro.disconnect());
       }
+
       const docTitle = document.title;
       undo.push(() => { document.title = docTitle; });
       document.title = title + ' | Halaxy';
-      if (menuCls) document.querySelectorAll('.' + menuCls).forEach((a) => a.classList.add('active'));
+      if (menuCls) {
+        // Highlight our menu item instead of the Halaxy page underneath: take the highlight off
+        // other sub-items (link or its line), leave the group heading (it contains ours) alone.
+        const isOther = (n) => !n.classList.contains(menuCls) && !n.querySelector('.' + menuCls) &&
+          (n.matches('a.mainmenu-sublink') || (n.tagName === 'LI' && !!n.querySelector(':scope > a.mainmenu-sublink')));
+        document.querySelectorAll('#mainMenu .active').forEach((n) => {
+          if (!isOther(n)) return;
+          n.classList.remove('active');
+          undo.push(() => n.classList.add('active'));
+        });
+        document.querySelectorAll('a.' + menuCls).forEach((a) => {
+          a.classList.add('active');
+          const li = a.parentElement && a.parentElement.tagName === 'LI' ? a.parentElement : null;
+          if (li && !li.classList.contains('active')) { li.classList.add('active'); undo.push(() => li.classList.remove('active')); }
+        });
+      }
       return () => {
         while (undo.length) undo.pop()();
-        root.remove();
+        shell.remove();
         if (menuCls) document.querySelectorAll('.' + menuCls).forEach((a) => a.classList.remove('active'));
       };
     },

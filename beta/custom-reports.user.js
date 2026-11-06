@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy Custom Reports (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.6
+// @version      0.6.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/custom-reports.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/custom-reports.user.js
@@ -33,7 +33,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '0.6';
+  const VERSION = '0.6.1';
   const prMatch = location.pathname.match(/^\/a\/pr\/(\d+)\//);
   if (!prMatch || window.top !== window.self) return;
   const BASE = '/a/pr/' + prMatch[1];
@@ -1383,6 +1383,8 @@
       const host = sub.parentElement && sub.parentElement.tagName === 'LI' ? sub.parentElement : sub;
       const copy = host.cloneNode(true);
       copy.removeAttribute('id');
+      copy.classList.remove('active');
+      copy.querySelectorAll('.active').forEach((n) => n.classList.remove('active'));   // the copied item may be the highlighted one
       copy.querySelectorAll('[id]').forEach(n => n.removeAttribute('id'));
       const a = copy.tagName === 'A' ? copy : copy.querySelector('a.mainmenu-sublink');
       a.setAttribute('href', href);
