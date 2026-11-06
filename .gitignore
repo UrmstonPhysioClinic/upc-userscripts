@@ -1,0 +1,15 @@
+# Never commit patient data. These patterns catch the usual suspects.
+halaxy-recon-*.json
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.har
+*.htm
+*.html
+*.zip
+
+# Local tooling
+__pycache__/
+.DS_Store
+node_modules/
