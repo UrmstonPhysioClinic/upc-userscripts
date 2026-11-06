@@ -24,7 +24,7 @@ Open an install link in Firefox with Tampermonkey installed, then click **Instal
 ## Channels
 
 - **stable/**: what the clinic PCs run.
-- **beta/**: what Carl's PC runs first. Changes land here, get tested on live Halaxy, then are copied to `stable/`.
+- **beta/**: what Carl's PC runs first. Changes land here, get tested on live Halaxy, then are copied to `stable/` once Carl says beta works.
 
 Install **one channel per PC**, never both. The beta copies have "(beta)" in their name.
 
@@ -38,7 +38,7 @@ Install **one channel per PC**, never both. The beta copies have "(beta)" in the
 
 - **Never commit patient data**: no recon exports, screenshots, remittances or copied Halaxy pages. This repository is public. `.gitignore` blocks the common cases, but check every change.
 - No passwords, keys or tokens. Scripts use the logged-in Halaxy session only.
-- Every change goes through a pull request. Bump `@version` in every file you change, or the PCs won't update.
+- Every change goes through a pull request, merged once the checks pass. Bump `@version` in every file you change, or the PCs won't update.
 - Run the tests in `tests/` before merging.
 
 ## Tests
