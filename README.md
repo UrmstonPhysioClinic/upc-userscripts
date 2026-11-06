@@ -21,8 +21,10 @@ That is the only install. Scripts added to this repository later reach every PC 
 | Branding | Clinic colours, logo, favicon and font in Halaxy. |
 | Auto-expanding text boxes | Text boxes and rich text editors grow to fit their content instead of scrolling. |
 | Toast alerts | Halaxy's alert banners float in the corner instead of pushing the page about. |
-| Arrival chime | Loud chime when a patient arrival notification appears. |
-| Chat alert | Urgent repeating alert when the chat unread count goes up, until someone clicks or types. |
+| Arrival chime | Loud chime when a patient arrival notification appears. Being replaced by Alerts. |
+| Chat alert | Urgent repeating alert when the chat unread count goes up, until someone clicks or types. Being replaced by Alerts. |
+| Alerts (beta only for now) | Arrival chime and chat alarm in one script. Sounds once per PC however many tabs are open; a click in any tab stops the alarm; each sound can be switched off per PC from the Tampermonkey menu. |
+| Health check (beta only for now) | Checks that what our scripts rely on in Halaxy is still there, notes Halaxy updates, and collects script errors and update problems. Shows a small notice bottom left only when something needs looking at; Tampermonkey menu > Health check: show results at any time. |
 | HTML source for emails | A `<>` button on email editors to edit the body as raw HTML with a live preview. |
 
 ## How it works
@@ -52,11 +54,13 @@ The channel is saved on each PC, not synced, so Firefox Sync never moves a clini
 ```
 python3 tests/check_scripts.py                                             # every script: headers, channels, syntax, script lists
 python3 tests/loader/test_loader.py                                        # the loader, against a mock GitHub and Halaxy
+python3 tests/alerts/test_alerts.py                                        # Alerts, two tabs
+python3 tests/health-check/test_health_check.py                            # health check, against a breakable mock Halaxy
 python3 tests/outstanding-actions/test_outstanding_actions.py              # beta
 python3 tests/outstanding-actions/test_outstanding_actions.py stable/outstanding-actions.user.js
 ```
 
-Needs Python 3 and Node.js; the loader and Outstanding Actions tests also need Playwright with Chromium. The mocks contain no patient data.
+Needs Python 3 and Node.js; the other tests also need Playwright with Chromium. The mocks contain no patient data.
 
 ## Background
 

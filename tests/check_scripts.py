@@ -1,10 +1,10 @@
 """
 Checks every script in stable/ and beta/ against the repository rules.
 
-- Each script exists in both channels.
 - Header has @name, @namespace, @version, and update/download URLs pointing at its own file.
 - Beta @name ends in " (beta)"; stable does not.
-- Stable and beta differ only in @name, @updateURL and @downloadURL.
+- A script in both channels at the same version differs only in @name, @updateURL and @downloadURL.
+  Beta may be ahead of stable (newer version, new scripts, scripts removed) until Carl confirms it.
 - If a VERSION constant exists, it matches @version.
 - JavaScript syntax is valid (node --check).
 - No obvious secrets or patient identifiers (invoice numbers, emails, dated names).
@@ -45,7 +45,8 @@ def meta(head, key):
 
 stable = {p.name for p in (ROOT / 'stable').glob('*.user.js')}
 beta = {p.name for p in (ROOT / 'beta').glob('*.user.js')}
-check('every script is in both channels', stable == beta, sorted(stable ^ beta))
+if stable ^ beta:
+    print('     note: only in stable: %s; only in beta: %s' % (sorted(stable - beta), sorted(beta - stable)))
 
 for name in sorted(stable | beta):
     texts = {}
@@ -80,10 +81,16 @@ for name in sorted(stable | beta):
         hits = [label for rx, label in SUSPECT if rx.search(text)]
         check(tag + ' no secrets or identifiers', not hits, hits)
     if len(texts) == 2:
+        vs = meta(header(texts['stable']) or '', 'version')
+        vb = meta(header(texts['beta']) or '', 'version')
+        if vs != vb:
+            key = lambda v: [int(x) if x.isdigit() else x for x in re.split(r'[.-]', v[0] if v else '0')]
+            check(name + ' beta is not behind stable', key(vb) > key(vs), (vs, vb))
+            continue
         a, b = texts['stable'].splitlines(), texts['beta'].splitlines()
         diff = [(x, y) for x, y in zip(a, b) if x != y]
         bad = [d for d in diff if not (ALLOWED_DIFF.match(d[0]) and ALLOWED_DIFF.match(d[1]))]
-        check(name + ' stable and beta differ only in name and URLs', len(a) == len(b) and not bad, bad[:3])
+        check(name + ' same version: stable and beta differ only in name and URLs', len(a) == len(b) and not bad, bad[:3])
 
 # The loader's script lists must match the files.
 sys.path.insert(0, str(ROOT / 'tools'))
