@@ -9,7 +9,7 @@ Tampermonkey userscripts for Halaxy (eu.halaxy.com), used at Urmston Physio Clin
 - Work on a branch and open a pull request. Never push to `main` directly.
 - Changes go to `beta/` first. Promote to `stable/` only when Carl confirms beta works on live Halaxy. Stable and beta files differ only in `@name` (" (beta)" suffix) and `@updateURL`/`@downloadURL`.
 - Bump `@version` (and the `VERSION` constant) in every changed script; Tampermonkey only updates on a higher version.
-- Run the relevant test in `tests/` before opening a PR.
+- Run `python3 tests/check_scripts.py` and the relevant test in `tests/` before opening a PR.
 
 ## Conventions
 

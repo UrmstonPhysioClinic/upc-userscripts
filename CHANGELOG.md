@@ -1,5 +1,17 @@
 # Changelog
 
+## Added to the repository (6 Nov 2026)
+Existing scripts moved here from earlier chats, code unchanged. Only the header changed: repository namespace and update URLs, plus "(beta)" on the beta copies.
+- Calendar controls 2.9
+- Custom Reports 0.6
+- Rebate Sync 0.1.0
+- Branding 2.9.1
+- Auto-expanding text boxes 1.1
+- Toast alerts 1.1
+- Arrival chime 1.2
+- Chat alert 1.4
+- HTML source for emails 0.3
+
 ## Outstanding Actions
 
 ### 0.2.0 (6 Nov 2026)
