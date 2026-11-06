@@ -3,7 +3,7 @@
     {
       "file": "health-check.user.js",
       "name": "Halaxy health check (beta)",
-      "version": "1.0.0"
+      "version": "1.0.1"
     },
     {
       "file": "alerts.user.js",
