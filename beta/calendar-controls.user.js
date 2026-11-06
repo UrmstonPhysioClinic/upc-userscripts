@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy: calendar controls (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      2.9
+// @version      2.10
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/calendar-controls.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/calendar-controls.user.js
@@ -20,7 +20,7 @@
   const COMPACT_15_MINUTE_VIEW = true;
   const NOW_LINE_COLOUR = '#ec6b65';       // Halaxy coral red (Halaxy's default line is blue)
   const SHOW_HOVER_TIME = true;            // time label that follows the cursor over empty time boxes
-  const AUTO_REFRESH_SECONDS = 30;         // check for changes made on other computers (0 = off)
+  const AUTO_REFRESH_SECONDS = (window.__upcCalendarTest && window.__upcCalendarTest.refreshSeconds) || 30;   // check for changes made on other computers (0 = off)
   const ANIMATE_CHANGES = true;            // fade/grow appointments added or removed from elsewhere
   const FIX_DRAG_DROP = true;              // dragged appointments land where their top edge is
   const CURRENCY_SYMBOL = '£';             // replaces Halaxy's "$" invoice icon on appointments ('' = leave as $)
@@ -219,6 +219,38 @@
   })();
 
   const log = (...a) => console.log('[UPC calendar]', ...a);
+
+  // ---------- Being a good Halaxy user ----------
+  // Note when the calendar's appointments were last downloaded by anything other than our own
+  // check (Halaxy redrawing, changing date, its own refresh). If that happened within the last
+  // refresh period, our check is skipped: the calendar is already up to date.
+  let lastOtherCalendarLoad = 0;
+  let ownCheckRunning = false;
+  const isCalendarJson = (method, url) => String(method || 'GET').toUpperCase() === 'GET' && /\/calendar\/json(\?|$)/.test(String(url || ''));
+  (function watchCalendarLoads() {
+    const open = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function (method, url) {
+      try {
+        if (isCalendarJson(method, url) && !ownCheckRunning) {
+          this.addEventListener('load', () => { if (this.status === 200) lastOtherCalendarLoad = Date.now(); }, { once: true });
+        }
+      } catch (e) { /* never get in Halaxy's way */ }
+      return open.apply(this, arguments);
+    };
+    const f = window.fetch;
+    if (f) {
+      window.fetch = function (input, init) {
+        const p = f.apply(this, arguments);
+        try {
+          const url = typeof input === 'string' ? input : input && input.url;
+          if (isCalendarJson((init && init.method) || (input && input.method), url) && !ownCheckRunning) {
+            p.then((r) => { if (r && r.status === 200) lastOtherCalendarLoad = Date.now(); }, () => {});
+          }
+        } catch (e) { /* never get in Halaxy's way */ }
+        return p;
+      };
+    }
+  })();
   let zoomApplied = false;
 
   // ---------- 1. Hook Halaxy's calendar start-up ----------
@@ -563,13 +595,28 @@
     const sig = (e) => JSON.stringify(e);
     const onScreen = () => new Map(HC.eventsView ? HC.eventsView.model.models.map((m) => [String(m.id), m]) : []);
 
+    // Downloads the current view's appointments, through the core library's pacing when it is
+    // loaded (so it pauses when Halaxy is busy), otherwise exactly as before.
+    function download() {
+      const params = HC.getEventUrlQueryParams();
+      if (window.UPC && UPC.http && UPC.http.json) {
+        ownCheckRunning = true;
+        const q = $.param(Object.assign({}, params, { _: Date.now() }));
+        return UPC.http.json(HC.PathForEventJSON + (HC.PathForEventJSON.includes('?') ? '&' : '?') + q)
+          .finally(() => { ownCheckRunning = false; });
+      }
+      return Promise.resolve($.ajax({ url: HC.PathForEventJSON, type: 'GET', dataType: 'json', cache: false, data: params }));
+    }
+
     function poll() {
+      if (Date.now() - lastOtherCalendarLoad < AUTO_REFRESH_SECONDS * 1000) { baseline = null; return; }   // already up to date
+      if (window.UPC && UPC.http && UPC.http.pausedFor && UPC.http.pausedFor() > 0) return;   // Halaxy asked us to wait
       if (running || document.hidden || !HC.calendarModel || HC.calendarModel.get('mode') === 'month') return;
       if (HC.isRoomCalendar && HC.isRoomCalendar()) return;
       running = true;
       const key = viewKey();
-      $.ajax({ url: HC.PathForEventJSON, type: 'GET', dataType: 'json', cache: false, data: HC.getEventUrlQueryParams() })
-        .done((resp) => {
+      download()
+        .then((resp) => {
           if (key !== viewKey()) return;                       // view changed while loading
           const events = resp && resp.payload && resp.payload.events;
           if (!Array.isArray(events)) return;
@@ -597,7 +644,8 @@
             tryApply();
           }
         })
-        .always(() => { running = false; });
+        .catch(() => { /* try again next time */ })
+        .finally(() => { running = false; });
     }
 
     function tryApply() {

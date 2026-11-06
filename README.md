@@ -59,6 +59,7 @@ python3 tests/loader/test_loader.py                                        # the
 python3 tests/alerts/test_alerts.py                                        # Alerts, two tabs
 python3 tests/health-check/test_health_check.py                            # health check, against a breakable mock Halaxy
 python3 tests/remittances/test_remittances.py                              # remittances and core, invented remittances and a mock Halaxy
+python3 tests/calendar-controls/test_calendar_refresh.py                   # calendar controls' refresh, on a minimal mock calendar
 python3 tests/outstanding-actions/test_outstanding_actions.py              # beta
 python3 tests/outstanding-actions/test_outstanding_actions.py stable/outstanding-actions.user.js
 ```

@@ -1,5 +1,11 @@
 # Changelog
 
+## Calendar controls
+
+### 2.10 (6 Nov 2026, beta)
+- The 30-second check for changes made on other PCs is skipped whenever the calendar was loaded in the last 30 seconds by anything else (Halaxy redrawing, changing date, or a refresh of its own), so the calendar is never loaded twice for nothing.
+- The check goes through the core library's pacing and waits while Halaxy has asked scripts to pause.
+
 ## Remittances
 
 ### 0.1.0 (6 Nov 2026, beta)
@@ -56,6 +62,12 @@ Existing scripts moved here from earlier chats, code unchanged. Only the header 
 - HTML source for emails 0.3
 
 ## Outstanding Actions
+
+### 0.3.0 (6 Nov 2026, beta)
+- With several Halaxy tabs open, only one checks at a time and the others are sent its result, tab to tab (nothing is kept after the tabs close).
+- Page changes within a minute of a check, and the 2-minute timer within 2 minutes, reuse the last result instead of checking again. "Check now" and your own saves always check.
+- Changes seen on another PC are checked by the tab you're looking at only.
+- Requests go through the core library's pacing, and background checks wait while Halaxy has asked scripts to pause.
 
 ### 0.2.0 (6 Nov 2026)
 - Attendance now uses `appointmentStatus` (blank = normal; cancelled, did-not-attend and similar are excluded). 0.1.0 wrongly used the online booking request status.

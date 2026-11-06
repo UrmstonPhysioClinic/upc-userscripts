@@ -43,7 +43,7 @@ FEES = [
     {'funder': 'Self-Funded', 'feeColour': SHARED, 'status': 'current'},
     {'funder': 'Bupa', 'feeColour': SHARED, 'status': 'current'},
 ]
-STATE = {'paid': set(), 'mode': 'normal'}
+STATE = {'paid': set(), 'mode': 'normal', 'cal': 0}
 
 
 def events():
@@ -94,7 +94,9 @@ class Mock(http.server.BaseHTTPRequestHandler):
             return self.send('<html>login</html>', 'text/html')
         if p.endswith('/lookup/practitioner'): return self.send([{'id': 11, 'name': 'Prac One'}])
         if p.endswith('/funder/fee/data'): return self.send(FEES)
-        if p.endswith('/calendar/json'): return self.send({'status': 'OK', 'payload': {'events': events()}})
+        if p.endswith('/calendar/json'):
+            STATE['cal'] += 1
+            return self.send({'status': 'OK', 'payload': {'events': events()}})
         if '/patient/invoice/' in p and p.endswith('/list-data'): return self.send(invoices(int(p.split('/')[-2])))
         if '/note/' in p: return self.send({'status': 'draft', 'content': ''})
         return self.send(PAGE, 'text/html')
@@ -166,6 +168,39 @@ async def main():
         pill = await pg.evaluate(shadow + ".querySelector('.pill').textContent")
         check('failure shows warning pill', pill == 'Outstanding check not working', pill)
         await pg.context.close()
+
+        # 4. Two tabs on one PC: one checks, the other is sent its result (0.3.0 and later)
+        if 'BroadcastChannel' not in code:
+            print('SKIP tab sharing: this copy predates it')
+            await browser.close()
+            print('\n%d failed' % len(FAILS) if FAILS else '\nAll passed')
+            sys.exit(1 if FAILS else 0)
+        STATE['mode'] = 'normal'
+        STATE['paid'] = set()
+        ctx = await browser.new_context(viewport={'width': 1280, 'height': 800})
+        async def route(r):
+            resp = await r.fetch(url=r.request.url.replace('https://eu.halaxy.com', 'http://127.0.0.1:%d' % PORT))
+            await r.fulfill(response=resp)
+        await ctx.route('https://eu.halaxy.com/**', route)
+        await ctx.add_init_script(code)
+        t1 = await ctx.new_page()
+        await t1.goto('https://eu.halaxy.com/a/pr/%s/calendar' % PG)
+        await t1.wait_for_timeout(1500)
+        STATE['cal'] = 0
+        t2 = await ctx.new_page()
+        await t2.goto('https://eu.halaxy.com/a/pr/%s/patient' % PG)
+        await t2.wait_for_timeout(1500)
+        pill2 = await t2.evaluate(shadow + ".querySelector('.pill').textContent")
+        check('second tab reuses the first tab\'s result', STATE['cal'] == 0 and pill2 == 'Outstanding today: 1 note · 1 unpaid · 1 to check', (STATE['cal'], pill2))
+        await t2.evaluate(shadow + ".querySelector('.pill').click()")
+        await t2.evaluate("[..." + shadow + ".querySelectorAll('button')].find(b => b.textContent === 'Check now').click()")
+        await t2.wait_for_timeout(1500)
+        a1, a2 = await t1.evaluate('hxOutstanding.state().at'), await t2.evaluate('hxOutstanding.state().at')
+        check('Check now in one tab updates the other', STATE['cal'] == 1 and a1 == a2, (STATE['cal'], a1, a2))
+        await t1.reload()
+        await t1.wait_for_timeout(1500)
+        check('moving between pages within a minute does not re-check', STATE['cal'] == 1, STATE['cal'])
+        await ctx.close()
 
         await browser.close()
     print('\n%d failed' % len(FAILS) if FAILS else '\nAll passed')
