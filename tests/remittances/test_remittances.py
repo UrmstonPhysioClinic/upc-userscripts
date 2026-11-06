@@ -77,10 +77,16 @@ def patient_html(p):
             p['number'], rows, gbp(sum(l['fee'] for l in p['lines'])), pays, gbp(owed))
 
 
-PAGE = ("<!doctype html><html><head><title>Finance report | Halaxy</title><script>window.Hk = { jwt: 'jwt-test' };</script></head><body>"
-        "<ul id='mainMenu'><li class='mainmenu-item'><a class='mainmenu-link'><span class='mainmenu-link-label'>Reports</span></a>"
-        "<ul><li><a class='mainmenu-sublink' href='/a/pr/555/report/finance/'>Finance</a></li></ul></li></ul>"
-        "<div id='toolbar-text'><h1>Finance</h1></div><div id='pageContent'><p id='halaxy-content'>Halaxy report form</p></div></body></html>")
+PAGE = ("<!doctype html><html><head><title>Finance report | Halaxy</title><script>window.Hk = { jwt: 'jwt-test' };</script>"
+        "<style>body{margin:0;background:#fff;font:14px sans-serif} #side{position:fixed;left:0;top:0;bottom:0;width:218px;background:#222;z-index:1000}"
+        "#top{position:fixed;left:218px;right:0;top:0;height:55px;background:#eee;z-index:500} #footer{position:fixed;left:218px;right:0;bottom:0;height:34px;background:#ddd}"
+        "#main{margin-left:218px;padding-top:55px}</style></head><body>"
+        "<nav id='side'><ul id='mainMenu'><li class='mainmenu-item active'><a class='mainmenu-link'><span class='mainmenu-link-label'>Reports</span></a>"
+        "<ul><li class='active'><a class='mainmenu-sublink active' href='/a/pr/555/report/finance/'>Finance</a></li><li><a class='mainmenu-sublink' href='/a/pr/555/report/patient/'>Patient</a></li></ul></li></ul></nav>"
+        "<div id='top'><input placeholder='Search by patient name / email / phone / patient number' style='width:60%'></div>"
+        "<div id='main'><h1 id='halaxy-title'>Finance reports</h1><div id='halaxy-banner' style='background:#bcd;padding:20px'>After you create a report...</div>"
+        "<div id='toolbar-text'></div><div id='pageContent'><p id='halaxy-content'>Halaxy report form</p></div></div>"
+        "<div id='footer'>COPYRIGHT</div></body></html>")
 ATTACH_POPUP = ("<div id='multi-file-upload-content'><form method='post' class='file-upload'></form>"
                 "<form name='form' method='post' id='fileupload' class='js-file-edit-form' data-upload-url='/api/v2/practitioner/file/upload/files?_locale=1'>"
                 "<input type='hidden' id='form__token' name='form[_token]' value='tok-attach'></form></div>")
@@ -219,8 +225,30 @@ async def main():
         check('menu item added under Reports', 'Remittances /a/pr/555/report/finance/#upc-remittances' in menu, menu)
         await pg.click('text=Remittances')
         await pg.wait_for_timeout(300)
-        shown = await pg.evaluate("!!document.querySelector('#pageContent [data-upc-remittances]') && getComputedStyle(document.getElementById('halaxy-content')).display === 'none'")
-        check('page opens inside Halaxy layout', shown)
+        cover = await pg.evaluate("""() => {
+            const page = document.querySelector('[data-upc-page]');
+            const at = (el) => { const r = el.getBoundingClientRect(); return document.elementFromPoint(r.left + 20, r.top + r.height / 2); };
+            return {
+                title: page.contains(at(document.getElementById('halaxy-title'))),
+                banner: page.contains(at(document.getElementById('halaxy-banner'))),
+                menu: document.getElementById('side').contains(document.elementFromPoint(100, 300)),
+                top: document.getElementById('top').contains(document.elementFromPoint(800, 20)),
+                footer: document.getElementById('footer').contains(document.elementFromPoint(800, window.innerHeight - 10)),
+                financeActive: document.querySelector('a[href="/a/pr/555/report/finance/"]:not(.upc-remit-menu)').classList.contains('active'),
+                ourActive: document.querySelector('.upc-remit-menu').classList.contains('active'),
+                title2: document.title };
+        }""")
+        check('page covers Halaxy\'s title, banner and controls underneath', cover['title'] and cover['banner'], cover)
+        check('side menu, top bar and footer stay visible', cover['menu'] and cover['top'] and cover['footer'], cover)
+        check('menu highlights Remittances, not Finance', cover['ourActive'] and not cover['financeActive'] and cover['title2'] == 'Remittances | Halaxy', cover)
+        lit = await pg.evaluate("[...document.querySelectorAll('#mainMenu ul .active')].map(n => n.tagName + ':' + n.textContent.trim())")
+        check('only Remittances is highlighted (link and its line)', sorted(lit) == ['A:Remittances', 'LI:Remittances'], lit)
+        await pg.evaluate("location.hash = ''")
+        await pg.wait_for_timeout(200)
+        lit = await pg.evaluate("[...document.querySelectorAll('#mainMenu ul .active')].map(n => n.tagName + ':' + n.textContent.trim())")
+        check('leaving the page puts Halaxy\'s highlight back', sorted(lit) == ['A:Finance', 'LI:Finance'], lit)
+        await pg.click('text=Remittances')
+        await pg.wait_for_timeout(300)
 
         # Read, match and classify a typed WPA remittance
         await pg.set_input_files('[data-upc-remittances] input[type=file]', str(pdfs['wpa']))

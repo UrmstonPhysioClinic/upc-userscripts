@@ -8,7 +8,7 @@
     {
       "file": "core.user.js",
       "name": "UPC core library (beta)",
-      "version": "0.1.0"
+      "version": "0.1.1"
     },
     {
       "file": "alerts.user.js",
@@ -28,7 +28,7 @@
     {
       "file": "custom-reports.user.js",
       "name": "Halaxy Custom Reports (beta)",
-      "version": "0.6"
+      "version": "0.6.1"
     },
     {
       "file": "email-html-source.user.js",

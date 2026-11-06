@@ -1,5 +1,10 @@
 # Changelog
 
+## Custom Reports
+
+### 0.6.1 (6 Nov 2026, beta)
+- Its menu item no longer shows as highlighted on the Finance reports page (it copied Finance's highlight).
+
 ## Calendar controls
 
 ### 2.10 (6 Nov 2026, beta)
@@ -15,6 +20,9 @@
 - Scanned invoice numbers can be corrected and re-checked on the review screen.
 
 ## Core library
+
+### 0.1.1 (6 Nov 2026, beta)
+- Pages such as Remittances now cover the whole content area between the side menu, top bar and footer, so nothing from the Halaxy page underneath shows through (the Finance reports title, banner and controls did before). The menu highlights only the tool, not the page underneath, and puts Halaxy's highlight back on leaving. Menu items added by scripts no longer copy Halaxy's highlight.
 
 ### 0.1.0 (6 Nov 2026, beta)
 - window.UPC: Halaxy requests, invoice reading and lookup, rebate moves, invoice attachments, CDN loading, menu and page helpers.
