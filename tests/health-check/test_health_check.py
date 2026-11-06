@@ -48,6 +48,9 @@ def page(path):
         brk = 'delete HkCalendar.Timeline;'
     head = "<script src='https://cdn.halaxy.com/z/version/%s/build/app.js'></script>" % STATE['version'] + GLOBALS.replace('BREAK', brk)
     body = CAL_BODY if path.endswith('/calendar') else SIDEBAR
+    if path.endswith('/calendar') and 'slow' in STATE['break']:   # calendar takes 2 s to draw
+        body = body.replace("<div class='timeLabel'>08:00</div>", "") + ("<script>setTimeout(function () { document.querySelector('.cal')"
+                ".insertAdjacentHTML('afterbegin', \"<div class='timeLabel'>08:00</div>\"); }, 2000);</script>")
     if '/invoice/' in path:
         body += "<table id='invoiceLines'></table>" + ('' if 'invoice' in STATE['break'] else "<table id='invoicePayments'></table>")
     return "<!doctype html><html><head>%s</head><body class='vs-theme vs-theme-milky-way'>%s</body></html>" % (head, body)
@@ -180,6 +183,18 @@ async def main():
         await pg.evaluate("document.querySelector('[data-hx-health]').shadowRoot.querySelector('[data-act=clear]').click()")
         probs = await pg.evaluate('hxHealth.problems()')
         check('clear script errors', [x['title'] for x in probs] == ['Updates could not be fetched'], probs)
+
+        # 6. Two tabs checking at once keep each other's results
+        await pg.evaluate("Object.keys(localStorage).filter(k => k.startsWith('upc-health:')).forEach(k => localStorage.removeItem(k))")
+        STATE['break'] = {'slow'}
+        pg2 = await ctx.new_page()
+        await pg.goto('https://eu.halaxy.com/a/pr/555/calendar')       # page checks wait for the calendar
+        await pg2.goto('https://eu.halaxy.com/a/pr/555/patient/9')     # data checks run meanwhile
+        await pg.wait_for_timeout(3500)
+        keys = sorted((await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:results'))")).keys())
+        check('two tabs at once: page and data results both kept', 'calendar' in keys and 'data-calendar' in keys and 'data-run' in keys, keys)
+        await pg2.close()
+        STATE['break'] = set()
 
         # 6. No patient details stored
         dump = await pg.evaluate("JSON.stringify(Object.keys(localStorage).filter(k => k.startsWith('upc-health:')).map(k => localStorage.getItem(k)))")

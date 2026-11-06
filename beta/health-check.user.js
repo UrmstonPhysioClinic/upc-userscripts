@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.0.1
+// @version      1.0.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.0.1';
+  const VERSION = '1.0.2';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -50,6 +50,13 @@
     get(k, d) { try { const v = localStorage.getItem(KEY + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem(KEY + k, JSON.stringify(v)); } catch (e) { /* storage blocked */ } },
   };
+  // Save one result. Read and written in one step, so several Halaxy tabs checking at the
+  // same time can't overwrite each other's results.
+  function saveResult(id, value) {
+    const all = store.get('results', {});
+    all[id] = value;
+    store.set('results', all);
+  }
   const group = () => (location.pathname.match(/\/a\/pr\/(\d+)\//) || [])[1];
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const when = (t) => (t ? new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'never');
@@ -164,7 +171,6 @@
   ];
 
   async function runPageChecks() {
-    const results = store.get('results', {});
     for (const c of PAGE_CHECKS) {
       let applies = false;
       try { applies = c.applies(); } catch (e) { /* treat as not applicable */ }
@@ -172,9 +178,9 @@
       if (c.ready) await waitFor(c.ready, 20000);
       let problems;
       try { problems = c.test(); } catch (e) { problems = ['check failed: ' + e.message]; }
-      results[c.id] = { title: c.title, scripts: c.scripts, problems, at: Date.now(), page: location.pathname.replace(/\d+/g, ':n') };
+      saveResult(c.id, { title: c.title, scripts: c.scripts, problems, at: Date.now(), page: location.pathname.replace(/\d+/g, ':n') });
+      render();
     }
-    store.set('results', results);
   }
 
   // ------------------------------------------------------------------ data checks (daily)
@@ -190,9 +196,8 @@
   async function runDataChecks() {
     if (!group()) return;
     store.set('dataAt', Date.now());   // claim it, so other tabs don't run it too
-    const results = store.get('results', {});
     const put = (id, title, scripts, problems, info) => {
-      results[id] = { title, scripts, problems, info: info || '', at: Date.now(), page: 'data' };
+      saveResult(id, { title, scripts, problems, info: info || '', at: Date.now(), page: 'data' });
     };
     const OA = ['Outstanding Actions'];
 
@@ -247,7 +252,6 @@
         else put('data-invoices', 'Patient invoice list', OA, list.length ? keysMissing(list, ['id', 'total', 'balance', 'status']).map((k) => 'field ' + k) : []);
       } catch (e) { put('data-invoices', 'Patient invoice list', OA, [e.message]); }
     }
-    store.set('results', results);
   }
 
   // ------------------------------------------------------------------ Halaxy version
@@ -419,7 +423,13 @@
       await runPageChecks();
       const due = Date.now() - store.get('dataAt', 0) > DATA_EVERY_HOURS * 3600e3;
       if (forceData || changed || due) {
-        try { await runDataChecks(); } catch (e) { console.warn('[UPC health]', e); }
+        try {
+          await runDataChecks();
+          saveResult('data-run', { title: 'The data check', scripts: ['Health check'], problems: [], at: Date.now(), page: 'data' });
+        } catch (e) {
+          console.warn('[UPC health]', e);
+          saveResult('data-run', { title: 'The data check', scripts: ['Health check'], problems: ['stopped: ' + e.message], at: Date.now(), page: 'data' });
+        }
       }
       render();
       runningAll = null;

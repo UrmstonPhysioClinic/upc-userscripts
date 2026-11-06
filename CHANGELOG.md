@@ -9,6 +9,10 @@
 
 ## Health check
 
+### 1.0.2 (6 Nov 2026, beta)
+- Results are saved one at a time, so two Halaxy tabs checking at once no longer overwrite each other (the daily data results went missing this way on first live use).
+- If the data check itself stops with an error, that is shown as a problem.
+
 ### 1.0.1 (6 Nov 2026, beta)
 - Notice and panel sit to the right of Halaxy's side menu instead of underneath it, and follow it when the menu is collapsed or the window resized.
 
