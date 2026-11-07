@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.4
+// @version      0.1.5
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.4';
+  const VERSION = '0.1.5';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -458,7 +458,78 @@
 
   // ------------------------------------------------------------------ Halaxy page furniture
 
+  // Our interface sits in Halaxy's page and uses Halaxy's own classes (btn, btn-primary,
+  // btn-outline-primary(-light), card, card-header, table, form-control, modal-dialog,
+  // modal-content, modal-header, modal-title, modal-body, text-muted, text-danger), so Halaxy's
+  // theme and the clinic branding style it exactly as they style Halaxy. Everything we add is
+  // inside an element with class "upc-native", and our few rules are scoped to it.
+  // Never use Halaxy's behaviour classes, which its scripts act on: ajax, btn-submit, btn-cancel,
+  // bootbox, bootbox-close-button, modal (on the outer layer), dialogBoxForm, datepicker,
+  // popoverTarget, chosen.
+  const NATIVE_CSS = `
+    .upc-native .upc-gap { margin-top: 12px; }
+    .upc-native .upc-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4.8px; margin-top: 16px; }
+    .upc-native .upc-actions .btn { margin: 0; }
+    .upc-native .upc-version { margin-top: 8px; font-size: .86em; }
+    .upc-native .upc-note { background: var(--vs-card-standout-bg-color, #f0f0f5); border-radius: 4.8px; padding: 2px 8px; margin-top: 3px; }
+    .upc-native .upc-box { background: var(--vs-card-header-bg-color, #f0f0f5); border: 1px solid var(--vs-card-border-color, #ced4da); border-radius: 4.8px; padding: 8px 12px; margin-top: 12px; }
+    .upc-native .upc-ok { color: var(--success, #28a745); font-weight: 600; }
+    .upc-native .upc-warn, .upc-native .upc-err { color: var(--vs-balance-negative-color, #ec6b65); }
+    .upc-native tr.upc-off td { color: var(--vs-viewData-label-color, #6c757d); }
+    .upc-native td.number, .upc-native th.number { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .upc-native table.table { margin: 12px 0 0; }
+    .upc-native table.table td { vertical-align: top; }
+    .upc-dialog { position: fixed; inset: 0; z-index: 2990; overflow-y: auto; }
+    .upc-dialog > .upc-backdrop { position: fixed; inset: 0; background: #000; opacity: .5; }
+    .upc-dialog > .modal-dialog { position: relative; margin: 28px auto; width: calc(100% - 32px); max-width: 800px; pointer-events: auto; }
+    .upc-dialog > .modal-dialog.upc-wide { max-width: 1000px; }
+    .upc-dialog .modal-content { background: var(--vs-modal-bg-color, #fff); border: 1px solid rgba(0,0,0,.2); border-radius: 10px; box-shadow: 0 8px 16px rgba(0,0,0,.5); }
+    .upc-dialog .modal-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 16px; border-bottom: 1px solid var(--vs-modal-border-color, #ced4da); }
+    .upc-dialog .modal-title { margin: 0; padding-left: 8px; font-size: 1.43em; font-weight: 500; text-transform: uppercase; color: var(--vs-modal-title-color, #000); }
+    .upc-dialog .modal-header .close { background: none; border: 0; font-size: 1.9em; line-height: 1; opacity: .5; cursor: pointer; color: var(--vs-modal-close-color, #333); padding: 0 4px; }
+    .upc-dialog .modal-header .close:hover { opacity: .8; }
+    .upc-dialog .modal-body { padding: 16px; }
+  `;
+  function nativeStyles() {
+    if (document.getElementById('upc-native-css')) return;
+    const s = document.createElement('style');
+    s.id = 'upc-native-css';
+    s.textContent = NATIVE_CSS;
+    (document.head || document.documentElement).appendChild(s);
+  }
+
   const ui = {
+    nativeStyles,
+    // A pop-up that looks like Halaxy's own. Returns { root, body, close }. `onClose` runs when it
+    // closes; `canClose` (optional) may return false to keep it open (for example while working).
+    dialog({ title, key, wide, onClose, canClose }) {
+      nativeStyles();
+      if (key && document.querySelector('[data-upc-dialog="' + key + '"]')) return null;
+      const root = document.createElement('div');
+      root.className = 'upc-native upc-dialog';
+      root.setAttribute('role', 'dialog');
+      root.setAttribute('aria-modal', 'true');
+      root.setAttribute('aria-label', title);
+      if (key) root.setAttribute('data-upc-dialog', key);
+      root.innerHTML = '<div class="upc-backdrop"></div><div class="modal-dialog modal-lg' + (wide ? ' upc-wide' : '') + '"><div class="modal-content">' +
+        '<div class="modal-header"><h5 class="modal-title"></h5><button type="button" class="close" aria-label="Close" data-upc-close>&times;</button></div>' +
+        '<div class="modal-body"></div></div></div>';
+      root.querySelector('.modal-title').textContent = title;
+      const body = root.querySelector('.modal-body');
+      const close = () => {
+        if (canClose && canClose() === false) return;
+        document.removeEventListener('keydown', onKey, true);
+        root.remove();
+        if (onClose) onClose();
+      };
+      const onKey = (e) => { if (e.key === 'Escape' && root.isConnected) { e.stopPropagation(); close(); } };
+      root.addEventListener('click', (e) => { if (e.target.closest('[data-upc-close]')) close(); });
+      document.addEventListener('keydown', onKey, true);
+      document.body.appendChild(root);
+      return { root, body, close, setTitle: (s) => { root.querySelector('.modal-title').textContent = s; } };
+    },
+    // Halaxy button class names: 'primary' (filled), 'outline' (pop-up secondary), 'light' (small, on pages).
+    btn: (kind) => 'btn ' + ({ primary: 'btn-primary', outline: 'btn-outline-primary', light: 'btn-outline-primary-light' }[kind] || 'btn-outline-primary'),
     // Adds a link under Reports in Halaxy's side menu (or as its own item). Returns true once added.
     menuItem(label, href, cls) {
       const menu = document.getElementById('mainMenu');

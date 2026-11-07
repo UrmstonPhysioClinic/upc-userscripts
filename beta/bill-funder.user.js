@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy bill funder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.1
+// @version      0.3.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
@@ -40,7 +40,7 @@
   if (window.__upcBillFunder) return;
   window.__upcBillFunder = true;
 
-  const VERSION = '0.2.1';
+  const VERSION = '0.3.0';
   const MAX_AGE_DAYS = 183;   // about 6 months
   const NOT_ATTENDED = /cancel|did-not-attend|dna|reject|declin|reschedul/i;
   const DAY = 86400e3;
@@ -212,85 +212,61 @@
 
   // ------------------------------------------------------------------ panel
 
-  const CSS = `
-    .bg { position: fixed; inset: 0; background: rgba(20,24,35,.45); display: flex; align-items: center; justify-content: center; z-index: 2147483000; }
-    .d { font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Arial, sans-serif; color: #1d2433; background: #fff; border-radius: 10px;
-         box-shadow: 0 12px 40px rgba(0,0,0,.25); width: min(900px, calc(100vw - 32px)); max-height: calc(100vh - 48px); overflow: auto; padding: 20px; }
-    h2 { font-size: 17px; margin: 0 0 4px; }
-    .muted { color: #5b6478; font-size: 12.5px; }
-    table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
-    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e6e8ef; vertical-align: top; }
-    th { font-size: 12px; color: #5b6478; font-weight: 600; }
-    td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-    tr.off td { color: #6b7280; }
-    .warn { color: #9a3412; font-size: 12px; }
-    .cmt { font-size: 12px; background: #fff8db; border-radius: 4px; padding: 2px 6px; margin-top: 3px; }
-    .sum { font-weight: 600; margin: 8px 0; }
-    .log { font-size: 12.5px; background: #f6f7fa; border-radius: 6px; padding: 8px 12px; margin-top: 10px; }
-    .log .err { color: #b3261e; } .ok { color: #1e7a3c; font-weight: 600; }
-    .btns { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 14px; }
-    button { font: inherit; border-radius: 6px; padding: 7px 14px; cursor: pointer; border: 1px solid #c9cfdc; background: #fff; color: #1d2433; }
-    button.p { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
-    button[disabled] { opacity: .5; cursor: default; }
-    a { color: #1d4ed8; }
-  `;
-
   function openPanel(currentId) {
-    if (document.querySelector('[data-upc-bill-funder]')) return;
-    const host = document.createElement('div');
-    host.setAttribute('data-upc-bill-funder', '');
-    const sh = host.attachShadow({ mode: 'open' });
-    document.body.appendChild(host);
     const st = { phase: 'loading', status: 'Reading...', plan: null, log: [], result: null, error: '', confirm: false };
+    const dlg = U().ui.dialog({ title: 'Bill funder', key: 'bill-funder', wide: true, canClose: () => st.phase !== 'running' });
+    if (!dlg) return;
+    dlg.root.setAttribute('data-upc-bill-funder', '');
+    const sh = dlg.body;
     const chosen = () => (st.plan ? st.plan.fees.filter((f) => f.selected) : []);
 
     function render() {
       const p = st.plan;
-      let h = '<style>' + CSS + '</style><div class="bg"><div class="d" role="dialog" aria-label="Bill funder"><h2>Bill funder' + (p && p.current.funderName ? ': ' + esc(p.current.funderName) : '') + '</h2>' +
-        '<div class="muted">Merges the chosen fees onto one invoice, then invoices the funder once, so the patient\'s excess is charged once. Halaxy\'s own steps; nothing changes until you confirm.</div>';
+      dlg.setTitle('Bill funder' + (p && p.current.funderName ? ': ' + p.current.funderName : ''));
+      let h = '<div class="text-muted">Merges the chosen fees onto one invoice, then invoices the funder once, so the patient\'s excess is charged once. Halaxy\'s own steps; nothing changes until you confirm.</div>';
       if (st.phase === 'loading') h += '<p>' + esc(st.status) + '</p>';
-      if (st.error) h += '<p class="warn">' + esc(st.error) + '</p>';
+      if (st.error) h += '<p class="upc-warn upc-gap">' + esc(st.error) + '</p>';
       if (p && st.phase !== 'loading') {
         if (!p.fees.length) h += '<p>No unbilled fees for this claim, dated today or earlier in the last 6 months.</p>';
         else {
-          h += '<table><thead><tr><th></th><th>Date</th><th>Fee</th><th>Invoice</th><th class="n">Amount</th><th>Notes</th></tr></thead><tbody>';
+          h += '<table class="table table-striped table-bordered w-100"><thead><tr><th></th><th>Date</th><th>Fee</th><th>Invoice</th><th class="number">Amount</th><th>Notes</th></tr></thead><tbody>';
           p.fees.forEach((f, i) => {
             const notes = [];
-            if (f.notAttended) notes.push('<span class="warn">' + esc(f.apptStatus.replace(/-/g, ' ')) + ': not ticked, include only if you mean to bill it</span>');
-            if (!f.amount) notes.push('<span class="muted">£0 fee: not ticked</span>');
-            if (f.referral) notes.push((f.beyondAuth ? '<span class="warn">' : '<span class="muted">') + 'Appointment ' + f.referral.position + ' of ' + f.referral.limit + ' authorised' + (f.beyondAuth ? ': beyond the authorisation' : '') + '</span>');
-            if (f.comment) notes.push('<div class="cmt">' + esc(f.comment) + '</div>');
-            h += '<tr class="' + (f.selected ? '' : 'off') + '"><td><input type="checkbox" data-i="' + i + '" ' + (f.selected ? 'checked' : '') + (st.phase !== 'choose' ? ' disabled' : '') + ' aria-label="Include ' + esc(dateLabel(f.when)) + '"></td>' +
-              '<td>' + esc(dateLabel(f.when)) + '</td><td>' + esc(f.name) + (f.practitioner ? '<div class="muted">' + esc(f.practitioner) + '</div>' : '') + '</td>' +
-              '<td><a href="' + esc(U().base() + '/invoice/' + f.invoiceId) + '" target="_blank" rel="noopener">' + esc(f.invoiceNumber) + '</a></td><td class="n">' + fmt(f.amount) + '</td><td>' + notes.join('<br>') + '</td></tr>';
+            if (f.notAttended) notes.push('<span class="upc-warn">' + esc(f.apptStatus.replace(/-/g, ' ')) + ': not ticked, include only if you mean to bill it</span>');
+            if (!f.amount) notes.push('<span class="text-muted">£0 fee: not ticked</span>');
+            if (f.referral) notes.push((f.beyondAuth ? '<span class="upc-warn">' : '<span class="text-muted">') + 'Appointment ' + f.referral.position + ' of ' + f.referral.limit + ' authorised' + (f.beyondAuth ? ': beyond the authorisation' : '') + '</span>');
+            if (f.comment) notes.push('<div class="upc-note">' + esc(f.comment) + '</div>');
+            h += '<tr class="' + (f.selected ? '' : 'upc-off') + '"><td><input type="checkbox" data-i="' + i + '" ' + (f.selected ? 'checked' : '') + (st.phase !== 'choose' ? ' disabled' : '') + ' aria-label="Include ' + esc(dateLabel(f.when)) + '"></td>' +
+              '<td>' + esc(dateLabel(f.when)) + '</td><td>' + esc(f.name) + (f.practitioner ? '<div class="text-muted">' + esc(f.practitioner) + '</div>' : '') + '</td>' +
+              '<td><a href="' + esc(U().base() + '/invoice/' + f.invoiceId) + '" target="_blank" rel="noopener">' + esc(f.invoiceNumber) + '</a></td><td class="number">' + fmt(f.amount) + '</td><td>' + notes.join('<br>') + '</td></tr>';
           });
           h += '</tbody></table>';
           const c = chosen();
-          h += '<div class="sum">' + c.length + ' fee' + (c.length === 1 ? '' : 's') + ' chosen, total ' + fmt(c.reduce((s, f) => s + f.amount, 0)) + '.</div>';
-          if (c.some((f) => f.beyondAuth)) h += '<p class="warn">Some chosen fees are beyond the authorisation. The insurer may not pay them.</p>';
+          h += '<div class="upc-gap font-weight-bold">' + c.length + ' fee' + (c.length === 1 ? '' : 's') + ' chosen, total ' + fmt(c.reduce((s, f) => s + f.amount, 0)) + '.</div>';
+          if (c.some((f) => f.beyondAuth)) h += '<p class="upc-warn upc-gap">Some chosen fees are beyond the authorisation. The insurer may not pay them.</p>';
         }
         const sk = p.skipped;
         const skipped = [[sk.future, 'future-dated'], [sk.old, 'older than 6 months'], [sk.billed, 'already billed'], [sk.issued, 'on Issued invoices'], [sk.otherClaim, 'for another claim or self-funded']]
           .filter(([n]) => n).map(([n, w]) => n + ' ' + w);
-        if (skipped.length) h += '<div class="muted">Not shown: ' + esc(skipped.join(', ')) + '.</div>';
+        if (skipped.length) h += '<div class="text-muted">Not shown: ' + esc(skipped.join(', ')) + '.</div>';
       }
       if (st.confirm) {
         const c = chosen();
-        h += '<div class="log"><b>Confirm</b><br>Merge ' + c.length + ' fee' + (c.length === 1 ? '' : 's') + ' (' + fmt(c.reduce((s, f) => s + f.amount, 0)) + ') onto the latest of their invoices, then invoice ' + esc(p.current.funderName || 'the funder') +
+        h += '<div class="upc-box upc-log"><b>Confirm</b><br>Merge ' + c.length + ' fee' + (c.length === 1 ? '' : 's') + ' (' + fmt(c.reduce((s, f) => s + f.amount, 0)) + ') onto the latest of their invoices, then invoice ' + esc(p.current.funderName || 'the funder') +
           ' once as a new organisation invoice, keeping the patient invoice, and mark that patient invoice Issued. Fees on invoices emptied by the merge are moved and those invoices are deleted by Halaxy, as its merge does.</div>';
       }
-      if (st.log.length) h += '<div class="log">' + st.log.map((l) => '<div class="' + (l.err ? 'err' : '') + '">' + esc(l.t) + '</div>').join('') + '</div>';
+      if (st.log.length) h += '<div class="upc-box upc-log">' + st.log.map((l) => '<div class="' + (l.err ? 'upc-err' : '') + '">' + esc(l.t) + '</div>').join('') + '</div>';
       if (st.result) {
         const r = st.result;
-        h += '<p class="ok">Done. ' + esc(r.patientInvoiceNumber) + ' is billed to the funder on <a href="' + esc(U().base() + '/invoice/' + r.orgInvoiceId) + '" target="_blank" rel="noopener">' + esc(r.orgInvoiceNumber || 'the new organisation invoice') + '</a>' + (r.amount !== null && r.amount !== undefined ? ' (' + fmt(r.amount) + ')' : '') +
-          (r.issuedError ? '.</p><p class="warn">Billing is done, but ' + esc(r.patientInvoiceNumber) + ' could not be marked Issued (' + esc(r.issuedError) + '). Set it with the cogwheel.</p>' : ', and ' + esc(r.patientInvoiceNumber) + ' is marked Issued.</p>');
+        h += '<p class="upc-ok upc-gap">Done. ' + esc(r.patientInvoiceNumber) + ' is billed to the funder on <a href="' + esc(U().base() + '/invoice/' + r.orgInvoiceId) + '" target="_blank" rel="noopener">' + esc(r.orgInvoiceNumber || 'the new organisation invoice') + '</a>' + (r.amount !== null && r.amount !== undefined ? ' (' + fmt(r.amount) + ')' : '') +
+          (r.issuedError ? '.</p><p class="upc-warn upc-gap">Billing is done, but ' + esc(r.patientInvoiceNumber) + ' could not be marked Issued (' + esc(r.issuedError) + '). Set it with the cogwheel.</p>' : ', and ' + esc(r.patientInvoiceNumber) + ' is marked Issued.</p>');
       }
-      h += '<div class="btns">';
-      if (st.phase === 'choose' && !st.confirm) h += '<button data-a="close">Cancel</button><button class="p" data-a="next" ' + (chosen().length ? '' : 'disabled') + '>Merge and bill</button>';
-      else if (st.confirm) h += '<button data-a="back">Back</button><button class="p" data-a="go">Merge and bill</button>';
-      else if (st.phase === 'running') h += '<button disabled>Working...</button>';
-      else h += '<button class="p" data-a="' + (st.result || st.phase === 'failed' ? 'reload' : 'close') + '">' + (st.result || st.phase === 'failed' ? 'Close and reload' : 'Close') + '</button>';
-      h += '</div><div class="muted" style="margin-top:8px">Bill funder ' + VERSION + '</div></div></div>';
+      h += '<div class="upc-actions">';
+      if (st.phase === 'choose' && !st.confirm) h += '<button type="button" class="btn btn-outline-primary" data-a="close">Cancel</button><button type="button" class="btn btn-primary" data-a="next" ' + (chosen().length ? '' : 'disabled') + '>Merge and bill</button>';
+      else if (st.confirm) h += '<button type="button" class="btn btn-outline-primary" data-a="back">Back</button><button type="button" class="btn btn-primary" data-a="go">Merge and bill</button>';
+      else if (st.phase === 'running') h += '<button type="button" class="btn btn-primary" disabled>Working...</button>';
+      else h += '<button type="button" class="btn btn-primary" data-a="' + (st.result || st.phase === 'failed' ? 'reload' : 'close') + '">' + (st.result || st.phase === 'failed' ? 'Close and reload' : 'Close') + '</button>';
+      h += '</div><div class="text-muted upc-version">Bill funder ' + VERSION + '</div>';
       sh.innerHTML = h;
     }
 
@@ -302,7 +278,7 @@
       const a = e.target.closest && e.target.closest('[data-a]');
       if (!a) return;
       const act = a.dataset.a;
-      if (act === 'close') host.remove();
+      if (act === 'close') dlg.close();
       else if (act === 'reload') location.reload();
       else if (act === 'next') { st.confirm = true; render(); }
       else if (act === 'back') { st.confirm = false; render(); }
@@ -337,7 +313,7 @@
     const b = document.createElement('a');
     b.id = 'upcBillFunderBtn';
     b.href = '#';
-    b.className = 'btn btn-primary ml-1';
+    b.className = 'btn btn-outline-primary-light ml-1';
     b.textContent = 'Bill funder';
     b.title = 'Merge this patient\'s unbilled fees for this claim onto one invoice, then invoice the funder once';
     b.addEventListener('click', (e) => { e.preventDefault(); openPanel(id); });

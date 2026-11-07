@@ -23,7 +23,8 @@ Tampermonkey userscripts for Halaxy (eu.halaxy.com), used at Urmston Physio Clin
 - Retiring a script: remove it from `beta/` first; remove it from `stable/` when the replacement is promoted.
 
 - `@grant none`, `@inject-into page`, `@run-at document-start` when hooking requests; guard against double runs with a `window.__hx...` flag.
-- UI in a shadow root. Pinned layers stay below Halaxy's overlays (z-index under 100; Halaxy overlays start at 100+).
+- **Native look** (Carl, 7 Nov 2026): everything we add must look like Halaxy. Build it in the page with Halaxy's own classes (`btn btn-primary`, `btn btn-outline-primary`, `btn btn-outline-primary-light`, `card`/`card-header`, `table table-striped table-bordered`, `form-control`, `text-muted`) inside an element with class `upc-native`, using `UPC.ui.dialog` for pop-ups. Halaxy's theme and the branding script then style it exactly like Halaxy. Our own CSS lives only in core's scoped stylesheet (`.upc-native`/`.upc-dialog` rules) and uses Halaxy's `--vs-*` colour variables. Never use Halaxy's behaviour classes: `ajax`, `btn-submit`, `btn-cancel`, `bootbox`, `bootbox-close-button`, `modal` on the outer layer, `dialogBoxForm`, `datepicker`, `popoverTarget`, `chosen`. Shadow roots only for things that must not pick up Halaxy's styles.
+- Pinned layers stay below Halaxy's overlays (z-index under 100; Halaxy overlays start at 100+). Our pop-ups use 2990, just below Halaxy's own pop-ups (3000).
 - Reads only, unless a feature explicitly needs writes. Writes drive Halaxy's own pop-ups (GET form, read `form[_token]`, POST) and ask the user to confirm first.
 - User-facing text: plain British English, no em dashes.
 - Data facts (endpoints, field meanings) live in the Halaxy reference doc in the Claude project. Key ones:

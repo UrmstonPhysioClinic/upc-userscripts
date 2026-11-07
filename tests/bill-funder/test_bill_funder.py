@@ -196,7 +196,7 @@ async def open_panel(browser, iid, wait='tbody'):
     await pg.wait_for_timeout(300)
     btn = await pg.evaluate("(() => { const b = document.getElementById('upcBillFunderBtn'); return b && b.previousElementSibling && b.previousElementSibling.id; })()")
     await pg.click('#upcBillFunderBtn')
-    root = "document.querySelector('[data-upc-bill-funder]').shadowRoot"
+    root = "document.querySelector('[data-upc-bill-funder]')"
     await pg.wait_for_function(root + ".querySelector('" + wait + "')", timeout=60000)
     return ctx, pg, root, btn, errors
 
@@ -209,6 +209,18 @@ async def main():
         # Scenario 1: the full rule set, then merge and bill
         ctx, pg, root, btn, errors = await open_panel(browser, 1003)
         check('Bill funder button sits next to Halaxy\'s Invoice Funder', btn == 'invoiceFunderBtn', btn)
+        look = await pg.evaluate("""(() => { const d = document.querySelector('[data-upc-bill-funder]'); const b = document.getElementById('upcBillFunderBtn');
+          return { btn: b.className, shadow: !!d.shadowRoot, native: d.classList.contains('upc-native'),
+            parts: ['.modal-dialog', '.modal-content', '.modal-header .modal-title', '.modal-body', 'table.table.table-bordered'].every((q) => d.querySelector(q)),
+            buttons: [...d.querySelectorAll('.upc-actions button')].map((x) => x.className),
+            behaviour: !!d.querySelector('.ajax, .btn-submit, .btn-cancel, .bootbox, .datepicker, .popoverTarget') || d.classList.contains('modal'),
+            css: (document.getElementById('upc-native-css') || {}).textContent || '' }; })()""")
+        check('page button styled like Invoice Funder', look['btn'] == 'btn btn-outline-primary-light ml-1', look['btn'])
+        check('pop-up built from Halaxy\'s own classes, in the page', look['native'] and look['parts'] and not look['shadow'], look)
+        check('pop-up buttons are Halaxy buttons', look['buttons'] == ['btn btn-outline-primary', 'btn btn-primary'], look['buttons'])
+        check('no Halaxy behaviour classes used', not look['behaviour'])
+        rules = [r.split('{')[0].strip() for r in look['css'].split('}') if '{' in r]
+        check('our styles only touch our own elements', rules and all(all(x.strip().startswith(('.upc-native', '.upc-dialog')) for x in r.split(',')) for r in rules), [r for r in rules if not r.startswith(('.upc-native', '.upc-dialog'))])
         rows = await pg.evaluate("[..." + root + ".querySelectorAll('tbody tr')].map(r => ({ inv: r.querySelector('a').textContent, ticked: r.querySelector('input').checked, text: r.innerText.replace(/\\s+/g, ' ') }))")
         by = {r['inv']: r for r in rows}
         check('suggests past, unbilled, same-claim fees in the last 6 months', sorted(by) == ['UPC-1001', 'UPC-1002', 'UPC-1003', 'UPC-1008', 'UPC-1009'], sorted(by))
@@ -221,10 +233,10 @@ async def main():
         check('nothing changed before confirming', S['calls'] == [], S['calls'])
         check('Issued invoice left out', 'UPC-1010' not in by and S['invoices'][1010]['status'] == 'issued')
         await pg.evaluate(root + ".querySelector('[data-a=next]').click()")
-        conf = await pg.evaluate(root + ".querySelector('.log').innerText")
+        conf = await pg.evaluate(root + ".querySelector('.upc-log').innerText")
         check('confirm step explains what will happen', 'Merge 3 fees (£120.00)' in conf and 'new organisation invoice' in conf, conf)
         await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
-        await pg.wait_for_function(root + ".querySelector('.ok') || " + root + ".querySelector('.log .err')", timeout=60000)
+        await pg.wait_for_function(root + ".querySelector('.upc-ok') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60000)
         done = await pg.evaluate(root + ".textContent")
         check('merged first, onto the latest chosen invoice, then billed once, then marked Issued', [c[0] for c in S['calls']] == ['merge', 'bill', 'status'] and S['calls'][0][1] == 1009 and S['calls'][0][2] == [2001, 2003] and S['calls'][1][1] == 1009, S['calls'])
         check('billed as a NEW organisation invoice, keeping the patient invoice', S['calls'][1][2:] == ('0', 'no'), S['calls'])
@@ -244,12 +256,19 @@ async def main():
         check('no page errors', not errors, errors)
         await ctx.close()
 
+        # Escape closes it while nothing is running
+        S = fresh()
+        ctx, pg, root, btn, errors = await open_panel(browser, 1003)
+        await pg.keyboard.press('Escape')
+        check('Escape closes the pop-up', await pg.evaluate("!document.querySelector('[data-upc-bill-funder]')"))
+        await ctx.close()
+
         # Scenario 2: the latest invoice also holds an unticked fee -> merge onto another invoice instead
         S = fresh(extra_line_on_latest=True)
         ctx, pg, root, btn, errors = await open_panel(browser, 1003)
         await pg.evaluate(root + ".querySelector('[data-a=next]').click()")
         await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
-        await pg.wait_for_function(root + ".querySelector('.ok') || " + root + ".querySelector('.log .err')", timeout=60000)
+        await pg.wait_for_function(root + ".querySelector('.upc-ok') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60000)
         merge = [c for c in S['calls'] if c[0] == 'merge']
         check('never merges onto an invoice holding a fee you did not tick', merge and merge[0][1] == 1003 and merge[0][2] == [2001, 2009], S['calls'])
         check('the unticked fee stays unbilled on its own invoice', [l['lineId'] for l in S['invoices'][1009]['lines']] == [2099] and not S['invoices'][1009]['billed'], S['invoices'].get(1009))
@@ -261,7 +280,7 @@ async def main():
         ctx, pg, root, btn, errors = await open_panel(browser, 1003)
         await pg.evaluate(root + ".querySelector('[data-a=next]').click()")
         await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
-        await pg.wait_for_function(root + ".querySelector('.ok') || " + root + ".querySelector('.log .err')", timeout=60000)
+        await pg.wait_for_function(root + ".querySelector('.upc-ok') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60000)
         done = await pg.evaluate(root + ".textContent")
         check('billing still reported when the status does not stick', 'Done.' in done and 'UPC-9001' in done, done[-300:])
         check('warns to set Issued with the cogwheel', 'could not be marked Issued' in done and 'Set it with the cogwheel' in done, done[-300:])
@@ -270,8 +289,8 @@ async def main():
 
         # Scenario 4: a safety stop shows its own message and changes nothing
         S = fresh(broken_merge=True)
-        ctx, pg, root, btn, errors = await open_panel(browser, 1003, wait='p.warn')
-        msg = await pg.evaluate(root + ".querySelector('p.warn').textContent")
+        ctx, pg, root, btn, errors = await open_panel(browser, 1003, wait='p.upc-warn')
+        msg = await pg.evaluate(root + ".querySelector('p.upc-warn').textContent")
         check('safety stop shows its own message', "merge pop-up has changed" in msg and 'constructor' not in msg, msg)
         check('nothing changed after a safety stop', S['calls'] == [], S['calls'])
         await ctx.close()
