@@ -211,14 +211,15 @@ async def main():
         check('Bill funder button sits next to Halaxy\'s Invoice Funder', btn == 'invoiceFunderBtn', btn)
         look = await pg.evaluate("""(() => { const d = document.querySelector('[data-upc-bill-funder]'); const b = document.getElementById('upcBillFunderBtn');
           return { btn: b.className, shadow: !!d.shadowRoot, native: d.classList.contains('upc-native'),
-            parts: ['.modal-dialog', '.modal-content', '.modal-header .modal-title', '.modal-body', 'table.table.table-bordered'].every((q) => d.querySelector(q)),
-            buttons: [...d.querySelectorAll('.upc-actions button')].map((x) => x.className),
+            parts: ['.modal-dialog', '.modal-content', '.modal-header .modal-title', '.modal-body', 'table.table'].every((q) => d.querySelector(q)),
+            buttons: [...d.querySelectorAll('.upc-actions button')].map((x) => x.className), dates: [...d.querySelectorAll('tbody tr td:nth-child(2)')].map((x) => x.textContent), amounts: [...d.querySelectorAll('tbody td.number')].map((x) => x.textContent),
             behaviour: !!d.querySelector('.ajax, .btn-submit, .btn-cancel, .bootbox, .datepicker, .popoverTarget') || d.classList.contains('modal'),
             css: (document.getElementById('upc-native-css') || {}).textContent || '' }; })()""")
         check('page button styled like Invoice Funder', look['btn'] == 'btn btn-outline-primary-light ml-1', look['btn'])
         check('pop-up built from Halaxy\'s own classes, in the page', look['native'] and look['parts'] and not look['shadow'], look)
         check('pop-up buttons are Halaxy buttons', look['buttons'] == ['btn btn-outline-primary', 'btn btn-primary'], look['buttons'])
         check('no Halaxy behaviour classes used', not look['behaviour'])
+        check('dates and amounts written as Halaxy writes them', all(re.fullmatch(r'\d\d-[A-Z][a-z]{2}-\d{4}', x) for x in look['dates']) and all(x.startswith('£ ') for x in look['amounts']), (look['dates'], look['amounts']))
         rules = [r.split('{')[0].strip() for r in look['css'].split('}') if '{' in r]
         check('our styles only touch our own elements', rules and all(all(x.strip().startswith(('.upc-native', '.upc-dialog')) for x in r.split(',')) for r in rules), [r for r in rules if not r.startswith(('.upc-native', '.upc-dialog'))])
         rows = await pg.evaluate("[..." + root + ".querySelectorAll('tbody tr')].map(r => ({ inv: r.querySelector('a').textContent, ticked: r.querySelector('input').checked, text: r.innerText.replace(/\\s+/g, ' ') }))")
@@ -234,7 +235,7 @@ async def main():
         check('Issued invoice left out', 'UPC-1010' not in by and S['invoices'][1010]['status'] == 'issued')
         await pg.evaluate(root + ".querySelector('[data-a=next]').click()")
         conf = await pg.evaluate(root + ".querySelector('.upc-log').innerText")
-        check('confirm step explains what will happen', 'Merge 3 fees (£120.00)' in conf and 'new organisation invoice' in conf, conf)
+        check('confirm step explains what will happen', 'Merge 3 fees (£ 120.00)' in conf and 'new organisation invoice' in conf, conf)
         await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
         await pg.wait_for_function(root + ".querySelector('.upc-ok') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60000)
         done = await pg.evaluate(root + ".textContent")

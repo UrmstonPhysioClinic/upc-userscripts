@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.5
+// @version      0.1.6
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.5';
+  const VERSION = '0.1.6';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -471,6 +471,7 @@
     .upc-native .upc-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4.8px; margin-top: 16px; }
     .upc-native .upc-actions .btn { margin: 0; }
     .upc-native .upc-version { margin-top: 8px; font-size: .86em; }
+    .upc-native .upc-actions .upc-version { margin: 0 auto 0 0; }
     .upc-native .upc-note { background: var(--vs-card-standout-bg-color, #f0f0f5); border-radius: 4.8px; padding: 2px 8px; margin-top: 3px; }
     .upc-native .upc-box { background: var(--vs-card-header-bg-color, #f0f0f5); border: 1px solid var(--vs-card-border-color, #ced4da); border-radius: 4.8px; padding: 8px 12px; margin-top: 12px; }
     .upc-native .upc-ok { color: var(--success, #28a745); font-weight: 600; }
@@ -486,8 +487,7 @@
     .upc-dialog .modal-content { background: var(--vs-modal-bg-color, #fff); border: 1px solid rgba(0,0,0,.2); border-radius: 10px; box-shadow: 0 8px 16px rgba(0,0,0,.5); }
     .upc-dialog .modal-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 16px; border-bottom: 1px solid var(--vs-modal-border-color, #ced4da); }
     .upc-dialog .modal-title { margin: 0; padding-left: 8px; font-size: 1.43em; font-weight: 500; text-transform: uppercase; color: var(--vs-modal-title-color, #000); }
-    .upc-dialog .modal-header .close { background: none; border: 0; font-size: 1.9em; line-height: 1; opacity: .5; cursor: pointer; color: var(--vs-modal-close-color, #333); padding: 0 4px; }
-    .upc-dialog .modal-header .close:hover { opacity: .8; }
+    .upc-dialog .modal-header .close { cursor: pointer; }
     .upc-dialog .modal-body { padding: 16px; }
   `;
   function nativeStyles() {
