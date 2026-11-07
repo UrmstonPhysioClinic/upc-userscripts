@@ -2,6 +2,9 @@
 
 ## Bill funder
 
+### 0.3.1 (7 Nov 2026, beta)
+- Closer to Halaxy's own pop-ups: same width, table with lines between rows only, dates as 05-Nov-2026 and amounts as £ 40.00, version shown at the left of the buttons.
+
 ### 0.3.0 (7 Nov 2026, beta)
 - Looks like Halaxy: the button matches Invoice Funder next to it, and the pop-up is built from Halaxy's own pop-up, table and button styles, so it follows Halaxy's theme and the clinic branding. Escape or the cross closes it (not while it is working).
 
@@ -37,6 +40,9 @@
 - Scanned invoice numbers can be corrected and re-checked on the review screen.
 
 ## Core library
+
+### 0.1.6 (7 Nov 2026, beta)
+- Pop-up close cross sized and placed by Halaxy's own style.
 
 ### 0.1.5 (7 Nov 2026, beta)
 - `UPC.ui.dialog` and `UPC.ui.btn`: pop-ups and buttons built from Halaxy's own classes, with a small stylesheet scoped to our elements.

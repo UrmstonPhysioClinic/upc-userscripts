@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy bill funder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.0
+// @version      0.3.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
@@ -40,13 +40,13 @@
   if (window.__upcBillFunder) return;
   window.__upcBillFunder = true;
 
-  const VERSION = '0.3.0';
+  const VERSION = '0.3.1';
   const MAX_AGE_DAYS = 183;   // about 6 months
   const NOT_ATTENDED = /cancel|did-not-attend|dna|reject|declin|reschedul/i;
   const DAY = 86400e3;
 
   const U = () => window.UPC;
-  const fmt = (c) => U().money.fmt(c);
+  const fmt = (c) => U().money.fmt(c).replace('£', '£ ');   // Halaxy writes £ 40.00
   const esc = (s) => U().esc(s);
   const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
   const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
@@ -56,7 +56,8 @@
     const m = String(s).match(/(\d{1,2})-([A-Za-z]{3})-(\d{4})/);
     return m ? new Date(+m[3], MONTHS[m[2].toLowerCase()], +m[1]).getTime() : null;
   }
-  const dateLabel = (t) => (t ? new Date(t).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '');
+  const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const dateLabel = (t) => { if (!t) return ''; const d = new Date(t); return String(d.getDate()).padStart(2, '0') + '-' + MON[d.getMonth()] + '-' + d.getFullYear(); };   // 05-Nov-2026, as Halaxy
 
   // ------------------------------------------------------------------ reading Halaxy
 
@@ -214,7 +215,7 @@
 
   function openPanel(currentId) {
     const st = { phase: 'loading', status: 'Reading...', plan: null, log: [], result: null, error: '', confirm: false };
-    const dlg = U().ui.dialog({ title: 'Bill funder', key: 'bill-funder', wide: true, canClose: () => st.phase !== 'running' });
+    const dlg = U().ui.dialog({ title: 'Bill funder', key: 'bill-funder', canClose: () => st.phase !== 'running' });
     if (!dlg) return;
     dlg.root.setAttribute('data-upc-bill-funder', '');
     const sh = dlg.body;
@@ -229,7 +230,7 @@
       if (p && st.phase !== 'loading') {
         if (!p.fees.length) h += '<p>No unbilled fees for this claim, dated today or earlier in the last 6 months.</p>';
         else {
-          h += '<table class="table table-striped table-bordered w-100"><thead><tr><th></th><th>Date</th><th>Fee</th><th>Invoice</th><th class="number">Amount</th><th>Notes</th></tr></thead><tbody>';
+          h += '<table class="table w-100"><thead><tr><th></th><th>Date</th><th>Fee</th><th>Invoice</th><th class="number">Amount</th><th>Notes</th></tr></thead><tbody>';
           p.fees.forEach((f, i) => {
             const notes = [];
             if (f.notAttended) notes.push('<span class="upc-warn">' + esc(f.apptStatus.replace(/-/g, ' ')) + ': not ticked, include only if you mean to bill it</span>');
@@ -261,12 +262,12 @@
         h += '<p class="upc-ok upc-gap">Done. ' + esc(r.patientInvoiceNumber) + ' is billed to the funder on <a href="' + esc(U().base() + '/invoice/' + r.orgInvoiceId) + '" target="_blank" rel="noopener">' + esc(r.orgInvoiceNumber || 'the new organisation invoice') + '</a>' + (r.amount !== null && r.amount !== undefined ? ' (' + fmt(r.amount) + ')' : '') +
           (r.issuedError ? '.</p><p class="upc-warn upc-gap">Billing is done, but ' + esc(r.patientInvoiceNumber) + ' could not be marked Issued (' + esc(r.issuedError) + '). Set it with the cogwheel.</p>' : ', and ' + esc(r.patientInvoiceNumber) + ' is marked Issued.</p>');
       }
-      h += '<div class="upc-actions">';
+      h += '<div class="upc-actions"><span class="text-muted upc-version">Bill funder ' + VERSION + '</span>';
       if (st.phase === 'choose' && !st.confirm) h += '<button type="button" class="btn btn-outline-primary" data-a="close">Cancel</button><button type="button" class="btn btn-primary" data-a="next" ' + (chosen().length ? '' : 'disabled') + '>Merge and bill</button>';
       else if (st.confirm) h += '<button type="button" class="btn btn-outline-primary" data-a="back">Back</button><button type="button" class="btn btn-primary" data-a="go">Merge and bill</button>';
       else if (st.phase === 'running') h += '<button type="button" class="btn btn-primary" disabled>Working...</button>';
       else h += '<button type="button" class="btn btn-primary" data-a="' + (st.result || st.phase === 'failed' ? 'reload' : 'close') + '">' + (st.result || st.phase === 'failed' ? 'Close and reload' : 'Close') + '</button>';
-      h += '</div><div class="text-muted upc-version">Bill funder ' + VERSION + '</div>';
+      h += '</div>';
       sh.innerHTML = h;
     }
 
