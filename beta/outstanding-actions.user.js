@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy Outstanding Actions (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.0
+// @version      0.5.0
 // @description  Persistent notice of today's outstanding actions: attended appointments without a published note, and unpaid self-funded invoices.
 // @match        https://*.halaxy.com/a/*
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
@@ -47,7 +47,7 @@
   if (window.__hxOutstanding) return;
   window.__hxOutstanding = true;
 
-  const VERSION = '0.4.0';
+  const VERSION = '0.5.0';
   const m = location.pathname.match(/^\/a\/pr\/(\d+)\//);
   if (!m) return;
   const PG = m[1];
@@ -56,12 +56,13 @@
   // ------------------------------------------------------------------ settings (no patient data)
   const SET_KEY = 'hxOutstanding.settings';
   const settings = Object.assign({
-    mineOnly: false,          // show only my appointments
+    showEveryone: false,      // false: only the logged-in practitioner's appointments
     graceMinutes: 0,          // flag this many minutes after the appointment ends
     pollMinutes: 2,
     selfFundedPattern: 'self|private',
     collapsed: true
   }, readJSON(localStorage, SET_KEY) || {});
+  delete settings.mineOnly;   // replaced by showEveryone (7 Nov 2026): yours only is now the default
   const saveSettings = () => writeJSON(localStorage, SET_KEY, settings);
   const SELF_FUNDED_RE = () => new RegExp(settings.selfFundedPattern, 'i');
 
@@ -164,7 +165,7 @@
   const FRESH_MS = { load: 60e3, focus: 60e3, poll: Math.max(60e3, settings.pollMinutes * 60e3 - 5e3) };
   const bc = typeof BroadcastChannel === 'function' ? new BroadcastChannel('hx-outstanding') : null;
   function adopt(s) {
-    if (!s || s.day !== todayKey() || s.mineOnly !== settings.mineOnly) return false;
+    if (!s || s.day !== todayKey() || !!s.everyone !== !!settings.showEveryone) return false;
     if (state && (state.at || 0) >= (s.at || 0)) return false;
     state = s;
     writeJSON(sessionStorage, CACHE_KEY, state);
@@ -175,7 +176,7 @@
     bc.onmessage = (e) => {
       const d = e.data || {};
       if (d.type === 'state') adopt(d.state);
-      else if (d.type === 'want' && state && state.at && !state.error && state.mineOnly === settings.mineOnly) bc.postMessage({ type: 'state', state });
+      else if (d.type === 'want' && state && state.at && !state.error && !!state.everyone === !!settings.showEveryone) bc.postMessage({ type: 'state', state });
     };
   }
   const share = () => { if (bc && state && !state.error) bc.postMessage({ type: 'state', state }); };
@@ -187,7 +188,7 @@
     if (running) return Promise.resolve();
     if (why !== 'manual' && why !== 'trigger' && why !== 'setting') {
       const fresh = FRESH_MS[why];
-      if (fresh && state && !state.error && state.mineOnly === settings.mineOnly && Date.now() - (state.at || 0) < fresh) return Promise.resolve();
+      if (fresh && state && !state.error && !!state.everyone === !!settings.showEveryone && Date.now() - (state.at || 0) < fresh) return Promise.resolve();
       if (window.UPC && UPC.http && UPC.http.pausedFor && UPC.http.pausedFor() > 0) return Promise.resolve();
     }
     if (navigator.locks && navigator.locks.request) {
@@ -248,6 +249,9 @@
 
       const me = [String(window.HkUser && HkUser.linkPrG || ''), String(window.HkUser && HkUser.pracID || '')];
       const pracName = id => (pracs.find(p => p.id === String(id)) || {}).name || '';
+      // Someone with no calendar of their own (reception) sees everyone's appointments.
+      const isPrac = pracs.some(p => me.includes(String(p.id)));
+      const mineOnly = !settings.showEveryone && isPrac;
       const grace = settings.graceMinutes * 60e3;
 
       diag = {
@@ -280,7 +284,7 @@
         if (ev.isRequest && /pending|reject|declin/i.test(String(ev.requestStatus || ''))) continue;
         if (toMs(ev.end) + grace > now) continue;
         if (ev.isGroupAppointment === true) continue;
-        if (settings.mineOnly && !me.includes(String(ev.practitionerID))) continue;
+        if (mineOnly && !me.includes(String(ev.practitionerID))) continue;
         diag.attendedFinished++;
 
         const lpg = ev.linkPaGId || ev.linkPaG;
@@ -341,7 +345,7 @@
       }
 
       items.sort((a, b) => a.start - b.start || a.kind.localeCompare(b.kind));
-      state = { day: todayKey(), at: Date.now(), items, unchecked, error: null, mineOnly: settings.mineOnly };
+      state = { day: todayKey(), at: Date.now(), items, unchecked, error: null, everyone: !!settings.showEveryone, notPrac: !isPrac };
     } catch (e) {
       state = Object.assign({}, state || { day: todayKey(), items: [], unchecked: [] }, {
         error: e instanceof FetchError ? e.message : 'check failed (' + (e && e.message || e) + ')',
@@ -383,6 +387,7 @@
     .upc-oa .upc-oa-acts { display: flex; gap: 10px; grid-column: 2 / 4; }
     .upc-oa .upc-oa-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; background: var(--vs-card-header-bg-color, #f0f0f5);
       border-top: 1px solid var(--vs-card-border-color, #ced4da); }
+    .upc-oa .upc-oa-foot .upc-oa-scope { margin-right: auto; }
     .upc-oa .upc-oa-foot label { display: flex; align-items: center; gap: 4px; margin: 0 auto 0 0; cursor: pointer; }
     .upc-oa .upc-oa-foot .btn { margin: 0; }
     .upc-oa .upc-oa-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; background: var(--success, #28a745); opacity: .55; cursor: pointer;
@@ -456,7 +461,7 @@
   function buildPanel(items, unchecked) {
     const checked = state.at ? 'Checked ' + hhmm(state.at) : '';
     const panel = el('div', { class: 'card upc-oa-panel', role: 'region', 'aria-label': 'Outstanding actions today' }, [
-      el('div', { class: 'card-header' }, [el('h2', { text: 'Outstanding today' }), el('span', { class: 'text-muted', text: checked })])
+      el('div', { class: 'card-header' }, [el('h2', { text: settings.showEveryone || state.notPrac ? 'Outstanding today' : 'Your outstanding today' }), el('span', { class: 'text-muted', text: checked })])
     ]);
     if (state.error) panel.appendChild(el('div', { class: 'upc-oa-err', text: 'Last check failed: ' + state.error + '. Showing the previous result.' }));
     const list = el('div', { class: 'upc-oa-list' });
@@ -486,10 +491,12 @@
     if (!groups.length) list.appendChild(el('div', { class: 'upc-oa-none', text: state.error ? 'No result yet.' : 'Nothing outstanding today.' }));
     panel.appendChild(list);
     panel.appendChild(el('div', { class: 'upc-oa-foot' }, [
-      el('label', {}, [
-        (() => { const c = el('input', { type: 'checkbox' }); c.checked = settings.mineOnly; c.addEventListener('change', () => { settings.mineOnly = c.checked; saveSettings(); refresh('setting'); }); return c; })(),
-        el('span', { text: 'Only mine' })
-      ]),
+      state.notPrac
+        ? el('span', { class: 'text-muted upc-oa-scope', text: 'Everyone\'s appointments (you have none of your own)' })
+        : el('label', {}, [
+          (() => { const c = el('input', { type: 'checkbox' }); c.checked = !!settings.showEveryone; c.addEventListener('change', () => { settings.showEveryone = c.checked; saveSettings(); refresh('setting'); }); return c; })(),
+          el('span', { text: 'Show everyone' })
+        ]),
       el('button', { type: 'button', class: 'btn btn-outline-primary-light', text: 'Check now', onclick: () => refresh('manual') }),
       el('button', { type: 'button', class: 'btn btn-outline-primary-light', text: 'Copy diagnostics', title: 'Copies counts and status codes only, no patient details', onclick: copyDiag })
     ]));
