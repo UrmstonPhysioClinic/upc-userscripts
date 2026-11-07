@@ -2,10 +2,11 @@
 Test for Bill funder, against a mock Halaxy with one invented patient whose invoices cover every rule.
 
 Checks: which fees are suggested and ticked (past attended fees in the last 6 months, same claim,
-unbilled, not Issued; DNA and £0 fees listed but not ticked, with the appointment comment; future,
+unbilled, not Issued in the cogwheel; DNA and £0 fees listed but not ticked, with the appointment comment; future,
 old, other-claim and billed fees left out); nothing changes before confirming; fees are merged first
 onto an invoice that holds only chosen fees, then the funder is invoiced once as a NEW organisation
-invoice (never the existing one Halaxy pre-selects); the result is checked and reported.
+invoice (never the existing one Halaxy pre-selects); the merged invoice is marked Issued through the
+cogwheel settings form with every other field unchanged; the result is checked and reported.
 
 Run:  python3 tests/bill-funder/test_bill_funder.py
 Needs: Python 3 with Playwright (Chromium).
@@ -23,11 +24,11 @@ d = lambda days: TODAY - datetime.timedelta(days=days)
 hx = lambda day: day.strftime('%d-%b-%Y')
 
 
-def fresh(extra_line_on_latest=False):
-    S = {'invoices': {}, 'calls': [], 'next_org': 9001}
-    def inv(iid, days, status='', note='', claim=CLAIM, billed=False, amount=4000, ref=None, lines=None):
+def fresh(extra_line_on_latest=False, refuse_status=False):
+    S = {'invoices': {}, 'calls': [], 'next_org': 9001, 'refuse_status': refuse_status}
+    def inv(iid, days, status='', note='', claim=CLAIM, billed=False, amount=4000, ref=None, lines=None, inv_status=''):
         day = d(days)
-        S['invoices'][iid] = {'id': iid, 'claim': claim, 'billed': billed, 'ref': ref,
+        S['invoices'][iid] = {'id': iid, 'claim': claim, 'billed': billed, 'ref': ref, 'status': inv_status,
                               'lines': lines or [{'lineId': iid + 1000, 'appt': iid + 2000, 'day': day, 'amount': amount, 'status': status, 'note': note}]}
     inv(1001, 60, ref=(1, 5))
     inv(1002, 45, status='did-not-attend', note='Late cancellation. Bill Bupa? Check policy first.')
@@ -38,8 +39,9 @@ def fresh(extra_line_on_latest=False):
     inv(1007, 20, billed=True)             # already billed to the funder
     inv(1008, 15, amount=0)                # £0 fee
     inv(1009, 10, ref=(6, 5))              # beyond the authorisation
+    inv(1010, 35, inv_status='issued')     # Issued in the cogwheel, not yet billed
     if extra_line_on_latest:               # latest invoice also holds an unticked DNA fee
-        S['invoices'][1009]['lines'].append({'lineId': 2010, 'appt': 3010, 'day': d(9), 'amount': 4000, 'status': 'did-not-attend', 'note': 'No show'})
+        S['invoices'][1009]['lines'].append({'lineId': 2099, 'appt': 3099, 'day': d(9), 'amount': 4000, 'status': 'did-not-attend', 'note': 'No show'})
     S['orgs'] = {7777: {'number': 'UPC-7777', 'lines': [], 'patient': 'Another Patient'}}
     return S
 
@@ -84,6 +86,27 @@ def merge_popup(target):
             "<input type='hidden' name='form[hasUnpaidInvoices]' value='1'></form><script>var allInvoiceGroupEditGridData = JSON.parse('%s').map(l => l);</script>" % lit)
 
 
+SETTINGS_FIXED = [('form[prefix]', 'UPC-'), ('form[number]', None), ('form[suffix]', ''), ('form[issuerType]', '2'), ('form[displayDate]', '05-Nov-2026'),
+                  ('form[dueDate]', ''), ('form[template]', '75272'), ('form[type]', ''), ('form[payer]', '33'), ('form[relatedLinkPaG]', ''),
+                  ('form[showOrganisationPatientDetails]', '1'), ('form[_token]', 'TOKEN-%d')]
+
+
+def settings_popup(iid):
+    st = S['invoices'][iid]['status'] if iid in S['invoices'] else ''
+    opts = ''.join("<option value='%s'%s>%s</option>" % (v, ' selected' if v == st else '', n) for v, n in [('', 'Active'), ('issued', 'Issued'), ('deleted', 'Deleted'), ('write-off', 'Write-off')])
+    return ("<form name='form' method='post' id='frmInvoiceType'><input type='text' name='form[prefix]' value='UPC-'><input type='number' name='form[number]' value='%d'>"
+            "<input type='text' name='form[suffix]'><select name='form[issuerType]'><option value='1'>A</option><option value='2' selected>B</option></select>"
+            "<select name='form[status]' required>%s</select><input type='text' name='form[displayDate]' value='05-Nov-2026'><input type='text' name='form[dueDate]'>"
+            "<select name='form[template]'><option value='23876'>A</option><option value='75272' selected>C</option></select>"
+            "<select name='form[type]'><option value='' selected>Invoice</option><option value='quote'>Quote</option></select>"
+            "<select name='form[payer]'><option value='33' selected>Patient</option><option value='34'>Organisation</option></select>"
+            "<select name='form[relatedLinkPaG]'><option value=''></option><option value='4031012'>X</option></select>"
+            "<input type='radio' name='form[showOrganisationPatientDetails]' value='1' checked><input type='radio' name='form[showOrganisationPatientDetails]' value='2'>"
+            "<input type='hidden' name='form[_token]' value='TOKEN-%d'>"
+            "<a class='ajax merge-invoices' href='/a/pr/555/invoice/%d/group' id='mergeInvoices'>Merge</a>"
+            "<button id='invoiceOptionsSubmitBtn' type='submit'>Save</button></form>") % (iid, opts, iid, iid)
+
+
 def bill_popup(iid):
     return ("<form name='form' method='post' id='organisationBillForm'><input type='radio' name='form[switchPayer]' value='yes'>"
             "<input type='radio' name='form[switchPayer]' value='no' checked><table id='invoices'><tbody>"
@@ -118,6 +141,15 @@ async def halaxy(route):
                 del S['invoices'][iid]
             else:
                 inv['lines'] = keep
+        return await js({'status': 'REFRESH'})
+    m = re.search(r'/invoice/options/(\d+)$', p)
+    if m:
+        iid = int(m.group(1))
+        if req.method == 'GET':
+            return await js({'status': 'FORM', 'title': 'Invoice Settings', 'message': settings_popup(iid)})
+        S['calls'].append(('status', iid, form.get('form[status]', [''])[0], {k: v[0] for k, v in form.items()}))
+        if not S['refuse_status']:
+            S['invoices'][iid]['status'] = form.get('form[status]', [''])[0]
         return await js({'status': 'REFRESH'})
     m = re.search(r'/invoicefunctions/(\d+)/claim/(\d+)/$', p)
     if m:
@@ -185,20 +217,29 @@ async def main():
         check('£0 fee listed but not ticked', not by['UPC-1008']['ticked'] and '£0 fee' in by['UPC-1008']['text'])
         check('beyond the authorisation flagged', 'Appointment 6 of 5 authorised: beyond the authorisation' in by['UPC-1009']['text'], by['UPC-1009']['text'])
         note = await pg.evaluate(root + ".textContent")
-        check('says what was left out', 'Not shown: 1 future-dated, 1 older than 6 months, 1 already billed, 1 for another claim or self-funded.' in note, re.findall(r'Not shown:[^.]*\.', note))
+        check('says what was left out', 'Not shown: 1 future-dated, 1 older than 6 months, 1 already billed, 1 on Issued invoices, 1 for another claim or self-funded.' in note, re.findall(r'Not shown:[^.]*\.', note))
         check('nothing changed before confirming', S['calls'] == [], S['calls'])
+        check('Issued invoice left out', 'UPC-1010' not in by and S['invoices'][1010]['status'] == 'issued')
         await pg.evaluate(root + ".querySelector('[data-a=next]').click()")
         conf = await pg.evaluate(root + ".querySelector('.log').innerText")
         check('confirm step explains what will happen', 'Merge 3 fees (£120.00)' in conf and 'new organisation invoice' in conf, conf)
         await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
         await pg.wait_for_function(root + ".querySelector('.ok') || " + root + ".querySelector('.log .err')", timeout=60000)
         done = await pg.evaluate(root + ".textContent")
-        check('merged first, onto the latest chosen invoice, then billed once', [c[0] for c in S['calls']] == ['merge', 'bill'] and S['calls'][0][1] == 1009 and S['calls'][0][2] == [2001, 2003] and S['calls'][1][1] == 1009, S['calls'])
+        check('merged first, onto the latest chosen invoice, then billed once, then marked Issued', [c[0] for c in S['calls']] == ['merge', 'bill', 'status'] and S['calls'][0][1] == 1009 and S['calls'][0][2] == [2001, 2003] and S['calls'][1][1] == 1009, S['calls'])
         check('billed as a NEW organisation invoice, keeping the patient invoice', S['calls'][1][2:] == ('0', 'no'), S['calls'])
         check('never used Halaxy\'s pre-selected invoice for another patient', S['orgs'][7777]['lines'] == [])
         org = S['orgs'].get(9001, {})
         check('organisation invoice holds exactly the chosen fees', sorted(l['lineId'] for l in org.get('lines', [])) == [2001, 2003, 2009], org)
         check('unticked fees left alone', 1002 in S['invoices'] and 1008 in S['invoices'] and not S['invoices'][1002]['billed'])
+        st = S['calls'][2] if len(S['calls']) > 2 else ('status', None, None, {})
+        check('marks the merged patient invoice Issued', st[1] == 1009 and st[2] == 'issued' and S['invoices'][1009]['status'] == 'issued', st[:3])
+        sent = st[3]
+        want = {k: (v if v is not None else '1009') for k, v in SETTINGS_FIXED}
+        want['form[_token]'] = 'TOKEN-1009'
+        check('cogwheel form sent with every other setting unchanged', all(sent.get(k) == v for k, v in want.items()), {k: (sent.get(k), v) for k, v in want.items() if sent.get(k) != v})
+        check('other invoices keep their status', all(S['invoices'][i]['status'] == '' for i in (1002, 1008)))
+        check('result says the invoice is marked Issued', 'UPC-1009 is marked Issued' in done, done[-300:])
         check('reports the result with the new invoice number', 'Done.' in done and 'UPC-9001' in done and '£ 120.00'.replace(' ', '') in done.replace(' ', ''), done[-300:])
         check('no page errors', not errors, errors)
         await ctx.close()
@@ -211,8 +252,20 @@ async def main():
         await pg.wait_for_function(root + ".querySelector('.ok') || " + root + ".querySelector('.log .err')", timeout=60000)
         merge = [c for c in S['calls'] if c[0] == 'merge']
         check('never merges onto an invoice holding a fee you did not tick', merge and merge[0][1] == 1003 and merge[0][2] == [2001, 2009], S['calls'])
-        check('the unticked fee stays unbilled on its own invoice', [l['lineId'] for l in S['invoices'][1009]['lines']] == [2010] and not S['invoices'][1009]['billed'], S['invoices'].get(1009))
+        check('the unticked fee stays unbilled on its own invoice', [l['lineId'] for l in S['invoices'][1009]['lines']] == [2099] and not S['invoices'][1009]['billed'], S['invoices'].get(1009))
         check('no page errors (scenario 2)', not errors, errors)
+        await ctx.close()
+
+        # Scenario 3: Halaxy does not apply the status change -> billing still reported, with a warning
+        S = fresh(refuse_status=True)
+        ctx, pg, root, btn, errors = await open_panel(browser, 1003)
+        await pg.evaluate(root + ".querySelector('[data-a=next]').click()")
+        await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
+        await pg.wait_for_function(root + ".querySelector('.ok') || " + root + ".querySelector('.log .err')", timeout=60000)
+        done = await pg.evaluate(root + ".textContent")
+        check('billing still reported when the status does not stick', 'Done.' in done and 'UPC-9001' in done, done[-300:])
+        check('warns to set Issued with the cogwheel', 'could not be marked Issued' in done and 'Set it with the cogwheel' in done, done[-300:])
+        check('no page errors (scenario 3)', not errors, errors)
         await ctx.close()
         await browser.close()
 
