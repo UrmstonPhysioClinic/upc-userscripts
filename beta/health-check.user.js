@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.0.3
+// @version      1.0.4
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,13 +31,13 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.0.3';
+  const VERSION = '1.0.4';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
 
   const NAMES = {
-    'alerts.user.js': 'Alerts', 'arrival-chime.user.js': 'Arrival chime', 'chat-alert.user.js': 'Chat alert',
+    'alerts.user.js': 'Alerts', 'bill-funder.user.js': 'Bill funder', 'arrival-chime.user.js': 'Arrival chime', 'chat-alert.user.js': 'Chat alert',
     'branding.user.js': 'Branding', 'calendar-controls.user.js': 'Calendar controls', 'core.user.js': 'Core library', 'custom-reports.user.js': 'Custom Reports',
     'email-html-source.user.js': 'HTML source for emails', 'health-check.user.js': 'Health check',
     'outstanding-actions.user.js': 'Outstanding Actions', 'rebate-sync.user.js': 'Rebate Sync', 'remittances.user.js': 'Remittances',
@@ -149,9 +149,11 @@
     },
     {
       id: 'invoice-page', title: 'Invoice page layout',
-      scripts: ['Rebate Sync'],
+      scripts: ['Rebate Sync', 'Remittances', 'Bill funder'],
       applies: () => /\/invoice\/(\d+\/)?\d+\/?$/.test(location.pathname),
-      test: () => missingEls(['#invoiceLines', '#invoicePayments']),
+      test: () => missingEls(['#invoiceLines', '#invoicePayments'])
+        // Bill funder reads the patient, claim and authorisation from patient invoices that can still be billed.
+        .concat(document.getElementById('invoiceFunderBtn') ? missingEls(['#card-invoice-view-patient a[href*="/patient/"]', '#card-invoice-parts-claim-view', '#btn-group-outstanding-charges']) : []),
     },
     {
       id: 'reports', title: "Halaxy's table builder",

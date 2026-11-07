@@ -1,5 +1,12 @@
 # Changelog
 
+## Bill funder
+
+### 0.1.0 (7 Nov 2026, beta)
+- "Bill funder" button next to Halaxy's Invoice Funder on patient invoices.
+- Suggests this patient's fees for the same claim: dated today or earlier and within 6 months, not already billed, not on an Issued invoice. Did-not-attend/cancelled and £0 fees are listed with the appointment's comments but not ticked. Flags fees beyond the authorisation.
+- After one confirmation: merges the chosen fees onto the latest of their invoices that holds only chosen fees (Halaxy's Merge invoice fees), checks the result, then uses Invoice Funder once to create a new organisation invoice while keeping the patient invoice. Never uses the existing organisation invoice Halaxy pre-selects.
+
 ## Custom Reports
 
 ### 0.6.1 (6 Nov 2026, beta)
@@ -21,6 +28,9 @@
 
 ## Core library
 
+### 0.1.2 (7 Nov 2026, beta)
+- The invoice reader also returns, for patient invoices: patient, claim, funder, whether Invoice Funder is still available, the appointment behind each fee, and the authorisation position ("3rd of 5 appts").
+
 ### 0.1.1 (6 Nov 2026, beta)
 - Pages such as Remittances now cover the whole content area between the side menu, top bar and footer, so nothing from the Halaxy page underneath shows through (the Finance reports title, banner and controls did before). The menu highlights only the tool, not the page underneath, and puts Halaxy's highlight back on leaving. Menu items added by scripts no longer copy Halaxy's highlight.
 
@@ -36,6 +46,9 @@
 - Arrival chime and chat alarm can be switched off per PC from the Tampermonkey menu.
 
 ## Health check
+
+### 1.0.4 (7 Nov 2026, beta)
+- Knows Bill funder; the invoice page check covers what it reads.
 
 ### 1.0.3 (6 Nov 2026, beta)
 - Knows the core library and Remittances by name; the reports page check covers Remittances too.

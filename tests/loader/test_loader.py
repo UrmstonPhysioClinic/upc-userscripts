@@ -232,7 +232,14 @@ async def main():
             pg = await ctx.new_page()
             page_errors = []
             pg.on('pageerror', lambda e: page_errors.append(str(e)))
-            files = [x['file'] for x in json.loads((ROOT / ch / 'scripts.json').read_text())['scripts']]
+            # Only the scripts whose own @match/@include/@exclude cover the calendar page.
+            def covers(f, url='https://eu.halaxy.com/a/pr/555/calendar'):
+                import re as _re
+                head = (ROOT / ch / f).read_text().split('// ==/UserScript==')[0]
+                pats = lambda k: _re.findall(r'//\s*@' + k + r'\s+(\S+)', head)
+                rx = lambda g: _re.compile('^' + _re.escape(g).replace('\\*', '.*') + '$')
+                return any(rx(g).match(url) for g in pats('match') + pats('include')) and not any(rx(g).match(url) for g in pats('exclude'))
+            files = [x['file'] for x in json.loads((ROOT / ch / 'scripts.json').read_text())['scripts'] if covers(x['file'])]
             for _ in range(2):
                 await pg.goto('https://eu.halaxy.com/a/pr/555/calendar')
                 await pg.wait_for_timeout(2500)

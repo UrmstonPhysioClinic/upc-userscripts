@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.1
+// @version      0.1.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.1';
+  const VERSION = '0.1.2';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -199,7 +199,9 @@
           const dateTd = tr.querySelector('td[data-property="date"]');
           const dateLink = dateTd && dateTd.querySelector('a[href]');
           const pInv = dateLink && (dateLink.getAttribute('href').match(/\/invoice\/(\d+)\/?$/) || [])[1];
+          const apptLink = dateTd && dateTd.querySelector('a[href*="/appointment/"]');
           inv.lines.push({
+            appointmentId: apptLink ? (apptLink.getAttribute('href').match(/\/appointment\/(\d+)/) || [])[1] || null : null,
             lineId: edit.getAttribute('href').match(/\/invoice\/line\/(\d+)\//)[1],
             date: (clean(dateTd && dateTd.textContent).match(/\d{2}-[A-Za-z]{3}-\d{4}/) || [''])[0],
             item: clean((tr.querySelector('td[data-property="itemNumber"]') || {}).textContent),
@@ -233,6 +235,24 @@
       });
     }
     inv.isFunder = inv.lines.some((l) => l.patientInvoiceId);
+    // Patient invoices: who, which claim, whether it is still waiting to be billed to the funder,
+    // and where this fee sits in the authorisation ("3rd of 5 appts").
+    const pLink = doc.querySelector('#card-invoice-view-patient a[href*="/patient/"]');
+    inv.patientId = pLink ? (pLink.getAttribute('href').match(/\/patient\/(\d+)\/?$/) || [])[1] || null : null;
+    inv.patientName = pLink ? clean(pLink.textContent) : '';
+    const funderBtn = doc.querySelector('#invoiceFunderBtn[data-modal-href*="/claim/"]');
+    inv.billFunderHref = funderBtn ? funderBtn.getAttribute('data-modal-href').split('?')[0] : null;
+    const claimLink = doc.querySelector('#editClaimButton') || doc.querySelector('a[href*="/claim/"][href*="/referral/"]');
+    const claimFromBtn = inv.billFunderHref && (inv.billFunderHref.match(/\/claim\/(\d+)/) || [])[1];
+    const claimFromEdit = claimLink && ((claimLink.getAttribute('href').match(/\/patient\/claim\/\d+\/\d+\/(\d+)\//) || [])[1] || (claimLink.getAttribute('href').match(/\/claim\/(\d+)\/referral/) || [])[1]);
+    inv.claimId = claimFromBtn || claimFromEdit || null;
+    const org = doc.querySelector('#card-invoice-parts-claim-view a[href*="/organisation/"]');
+    inv.funderName = org ? clean(org.textContent) : '';
+    const ref = doc.querySelector('[data-referral]');
+    const pos = ref && clean(ref.textContent).match(/\((\d+)(?:st|nd|rd|th)\s+of\s+(\d+)\s+appt/i);
+    inv.referral = pos ? { position: +pos[1], limit: +pos[2] } : null;
+    inv.issued = [...doc.querySelectorAll('.status-badge, .badge, .invoice-status, [class*="status"]')]
+      .some((e) => !e.closest('#invoicePayments') && /^issued$/i.test(clean(e.textContent)));
     return inv;
   }
 
