@@ -133,7 +133,7 @@ async def main():
             await pg.wait_for_timeout(1500)
             return pg, errors
 
-        shadow = "document.querySelector('[data-hx-outstanding]').shadowRoot"
+        shadow = "document.querySelector('[data-hx-outstanding]')"
 
         # 1. Normal day
         pg, errors = await page()
@@ -142,10 +142,10 @@ async def main():
         check('flags 09:00 note and payment only', flagged == [('Patient 09:00', 'Note not started'), ('Patient 09:00', 'Unpaid £45.00')], flagged)
         unchecked = [(i['patient'], i['label']) for i in st['unchecked']]
         check('shared colour reported as unclear', unchecked == [('Patient 08:00', 'Funder unclear: check invoice')], unchecked)
-        pill = await pg.evaluate(shadow + ".querySelector('.pill').textContent")
+        pill = await pg.evaluate(shadow + ".querySelector('.upc-oa-pill').textContent")
         check('pill summary', pill == 'Outstanding today: 1 note · 1 unpaid · 1 to check', pill)
-        await pg.evaluate(shadow + ".querySelector('.pill').click()")
-        links = await pg.evaluate("[..." + shadow + ".querySelectorAll('.acts a')].map(a => a.getAttribute('href'))")
+        await pg.evaluate(shadow + ".querySelector('.upc-oa-pill').click()")
+        links = await pg.evaluate("[..." + shadow + ".querySelectorAll('.upc-oa-acts a')].map(a => a.getAttribute('href'))")
         check('note link format', '/a/pr/555/patient/401/clinical/category/note/id/601' in links, links)
         check('invoice link format', '/a/pr/555/invoice/501' in links, links)
         await pg.click('#pay')
@@ -158,14 +158,14 @@ async def main():
         # 2. All clear
         STATE['mode'] = 'clear'
         pg, errors = await page()
-        dot = await pg.evaluate(shadow + ".querySelector('.dot') !== null")
+        dot = await pg.evaluate(shadow + ".querySelector('.upc-oa-dot') !== null")
         check('all clear shows the dot', dot)
         await pg.context.close()
 
         # 3. Logged out
         STATE['mode'] = 'logged-out'
         pg, errors = await page()
-        pill = await pg.evaluate(shadow + ".querySelector('.pill').textContent")
+        pill = await pg.evaluate(shadow + ".querySelector('.upc-oa-pill').textContent")
         check('failure shows warning pill', pill == 'Outstanding check not working', pill)
         await pg.context.close()
 
@@ -190,9 +190,9 @@ async def main():
         t2 = await ctx.new_page()
         await t2.goto('https://eu.halaxy.com/a/pr/%s/patient' % PG)
         await t2.wait_for_timeout(1500)
-        pill2 = await t2.evaluate(shadow + ".querySelector('.pill').textContent")
+        pill2 = await t2.evaluate(shadow + ".querySelector('.upc-oa-pill').textContent")
         check('second tab reuses the first tab\'s result', STATE['cal'] == 0 and pill2 == 'Outstanding today: 1 note · 1 unpaid · 1 to check', (STATE['cal'], pill2))
-        await t2.evaluate(shadow + ".querySelector('.pill').click()")
+        await t2.evaluate(shadow + ".querySelector('.upc-oa-pill').click()")
         await t2.evaluate("[..." + shadow + ".querySelectorAll('button')].find(b => b.textContent === 'Check now').click()")
         await t2.wait_for_timeout(1500)
         a1, a2 = await t1.evaluate('hxOutstanding.state().at'), await t2.evaluate('hxOutstanding.state().at')

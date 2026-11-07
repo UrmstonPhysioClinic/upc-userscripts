@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy Custom Reports (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.6.1
+// @version      0.7.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/custom-reports.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/custom-reports.user.js
@@ -33,7 +33,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '0.6.1';
+  const VERSION = '0.7.0';
   const prMatch = location.pathname.match(/^\/a\/pr\/(\d+)\//);
   if (!prMatch || window.top !== window.self) return;
   const BASE = '/a/pr/' + prMatch[1];
@@ -763,7 +763,8 @@
       #hxr .hxr-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:12px}
       #hxr .hxr-bar select.hxr-views{min-width:280px;width:auto}
       #hxr .hxr-dirty{font-size:12px;opacity:.75}
-      #hxr .card{margin-bottom:12px}
+      #hxr .card{margin-bottom:16px}
+      #hxr .card-header h2{margin:0}
       #hxr .card-body{padding:12px 14px}
       #hxr .hxr-h{font-weight:600;margin:0 0 6px}
       #hxr .hxr-row{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center}
@@ -806,18 +807,20 @@
   function shell() {
     const el = document.createElement('div');
     el.id = 'hxr';
+    el.className = 'upc-native';
+    if (window.UPC && UPC.ui.nativeStyles) UPC.ui.nativeStyles();
     el.innerHTML = `
       <div class="hxr-bar">
         <select class="form-control hxr-views" data-a="views"></select>
-        <button type="button" class="btn btn-sm btn-outline-primary" data-a="new">New</button>
-        <button type="button" class="btn btn-sm btn-outline-primary" data-a="save">Save</button>
-        <button type="button" class="btn btn-sm btn-outline-primary" data-a="saveas">Save as</button>
-        <button type="button" class="btn btn-sm btn-outline-primary" data-a="delete">Delete</button>
-        <button type="button" class="btn btn-sm btn-outline-primary" data-a="link" title="Copies a link to this view. Bookmark it in Firefox to have it on every PC.">Copy link</button>
+        <button type="button" class="btn btn-outline-primary-light" data-a="new">New</button>
+        <button type="button" class="btn btn-outline-primary-light" data-a="save">Save</button>
+        <button type="button" class="btn btn-outline-primary-light" data-a="saveas">Save as</button>
+        <button type="button" class="btn btn-outline-primary-light" data-a="delete">Delete</button>
+        <button type="button" class="btn btn-outline-primary-light" data-a="link" title="Copies a link to this view. Bookmark it in Firefox to have it on every PC.">Copy link</button>
         <span class="hxr-dirty"></span>
       </div>
-      <div class="card"><div class="card-body"><div class="hxr-row" data-part="source"></div></div></div>
-      <div class="card"><div class="card-body"><div class="hxr-h">Filters</div><div data-part="filters"></div></div></div>
+      <div class="card"><div class="card-header"><h2>Report</h2></div><div class="card-body"><div class="hxr-row" data-part="source"></div></div></div>
+      <div class="card"><div class="card-header"><h2>Filters</h2></div><div class="card-body"><div data-part="filters"></div></div></div>
       <div class="hxr-actions">
         <button type="button" class="btn btn-primary" data-a="run">Run</button>
         <input type="search" class="form-control" data-a="quick" placeholder="Search keywords">
@@ -828,7 +831,7 @@
       <div class="hxr-status">Choose what to report on, add filters, then press Run.</div>
       <div class="hxr-notes"></div>
       <div data-part="grid"></div>
-      <div class="hxr-sub" style="margin-top:12px">Custom Reports v${VERSION}</div>`;
+      <div class="text-muted upc-version">Custom Reports ${VERSION}</div>`;
     el.addEventListener('click', onClick);
     el.querySelector('[data-a="views"]').addEventListener('change', e => loadNamed(e.target.value));
     el.querySelector('[data-a="quick"]').addEventListener('input', e => quickFilter(e.target.value));

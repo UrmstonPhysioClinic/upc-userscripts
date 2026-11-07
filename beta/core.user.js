@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.6
+// @version      0.1.7
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.6';
+  const VERSION = '0.1.7';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -51,7 +51,8 @@
       const n = parseFloat(String(v === undefined || v === null ? '' : v).replace(/[£,\s]/g, ''));
       return isNaN(n) ? null : Math.round(n * 100);
     },
-    fmt: (c) => (c === null || c === undefined ? '' : (c < 0 ? '-£' : '£') + (Math.abs(c) / 100).toFixed(2)),
+    // As Halaxy writes amounts: £ 40.00 (and -£ 5.00).
+    fmt: (c) => (c === null || c === undefined ? '' : (c < 0 ? '-£ ' : '£ ') + (Math.abs(c) / 100).toFixed(2)),
     plain: (c) => (c / 100).toFixed(2),
     inText(s) { const m = String(s || '').match(/£\s*(-?[\d,]+\.\d{2})/); return m ? money.cents(m[1]) : null; },
     lastInText(s) { const all = String(s || '').match(/£\s*-?[\d,]+\.\d{2}/g); return all ? money.cents(all[all.length - 1]) : null; },
@@ -484,6 +485,8 @@
     .upc-dialog > .upc-backdrop { position: fixed; inset: 0; background: #000; opacity: .5; }
     .upc-dialog > .modal-dialog { position: relative; margin: 28px auto; width: calc(100% - 32px); max-width: 800px; pointer-events: auto; }
     .upc-dialog > .modal-dialog.upc-wide { max-width: 1000px; }
+    .upc-dialog > .modal-dialog.upc-small { max-width: 500px; }
+    .upc-dialog.upc-above { z-index: 3100; }
     .upc-dialog .modal-content { background: var(--vs-modal-bg-color, #fff); border: 1px solid rgba(0,0,0,.2); border-radius: 10px; box-shadow: 0 8px 16px rgba(0,0,0,.5); }
     .upc-dialog .modal-header { display: flex; align-items: flex-start; justify-content: space-between; padding: 16px; border-bottom: 1px solid var(--vs-modal-border-color, #ced4da); }
     .upc-dialog .modal-title { margin: 0; padding-left: 8px; font-size: 1.43em; font-weight: 500; text-transform: uppercase; color: var(--vs-modal-title-color, #000); }
@@ -500,21 +503,22 @@
 
   const ui = {
     nativeStyles,
-    // A pop-up that looks like Halaxy's own. Returns { root, body, close }. `onClose` runs when it
-    // closes; `canClose` (optional) may return false to keep it open (for example while working).
-    dialog({ title, key, wide, onClose, canClose }) {
+    // A pop-up that looks like Halaxy's own. Returns { root, body, close, setTitle }. `onClose` runs when
+    // it closes; `canClose` (optional) may return false to keep it open (for example while working).
+    // `above` puts it over Halaxy's own pop-ups (for steps that start from one); `small` is 500px, `wide` 1000px.
+    dialog({ title, key, wide, small, above, onClose, canClose }) {
       nativeStyles();
       if (key && document.querySelector('[data-upc-dialog="' + key + '"]')) return null;
       const root = document.createElement('div');
-      root.className = 'upc-native upc-dialog';
+      root.className = 'upc-native upc-dialog' + (above ? ' upc-above' : '');
       root.setAttribute('role', 'dialog');
       root.setAttribute('aria-modal', 'true');
       root.setAttribute('aria-label', title);
       if (key) root.setAttribute('data-upc-dialog', key);
-      root.innerHTML = '<div class="upc-backdrop"></div><div class="modal-dialog modal-lg' + (wide ? ' upc-wide' : '') + '"><div class="modal-content">' +
+      root.innerHTML = '<div class="upc-backdrop"></div><div class="modal-dialog' + (small ? ' upc-small' : ' modal-lg') + (wide ? ' upc-wide' : '') + '"><div class="modal-content">' +
         '<div class="modal-header"><h5 class="modal-title"></h5><button type="button" class="close" aria-label="Close" data-upc-close>&times;</button></div>' +
         '<div class="modal-body"></div></div></div>';
-      root.querySelector('.modal-title').textContent = title;
+      root.querySelector('.modal-title').textContent = title || '';
       const body = root.querySelector('.modal-body');
       const close = () => {
         if (canClose && canClose() === false) return;

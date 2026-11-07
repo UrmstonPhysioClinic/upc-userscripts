@@ -117,7 +117,7 @@ async def main():
             await pg.goto('https://eu.halaxy.com' + path)
             await pg.wait_for_timeout(1200)
             probs = await pg.evaluate('hxHealth.problems()')
-            pill = await pg.evaluate("(document.querySelector('[data-hx-health]').shadowRoot.querySelector('.pill') || {}).textContent || ''")
+            pill = await pg.evaluate("(document.querySelector('[data-hx-health]').querySelector('.upc-hc-pill') || {}).textContent || ''")
             return probs, pill
 
         # 1. Healthy
@@ -128,7 +128,7 @@ async def main():
         results = await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:results'))")
         check('data checks ran', all(k in results for k in ('data-calendar', 'data-fees', 'data-practitioners', 'data-invoices')), list(results))
         await pg.evaluate("window.__menu.find(m => m[0] === 'Health check: show results')[1]()")
-        txt = await pg.evaluate("document.querySelector('[data-hx-health]').shadowRoot.textContent")
+        txt = await pg.evaluate("document.querySelector('[data-hx-health]').textContent")
         check('menu opens results: all passed', 'All checks passed' in txt and 'Halaxy version 4.12' in txt, txt[:200])
 
         # 2. Halaxy calendar code changed
@@ -137,13 +137,13 @@ async def main():
         check('missing calendar function reported', any(x['title'] == "Halaxy's calendar code has changed" and 'HkCalendar.Timeline.position()' in x['lines']
                                                         and 'Calendar controls' in x['scripts'] for x in probs), probs)
         check('notice shown', pill == 'Clinic scripts: 1 problem', pill)
-        await pg.evaluate("document.querySelector('[data-hx-health]').shadowRoot.querySelector('.pill').click()")
+        await pg.evaluate("document.querySelector('[data-hx-health]').querySelector('.upc-hc-pill').click()")
         clear = await pg.evaluate("""() => {
-            const sh = document.querySelector('[data-hx-health]').shadowRoot;
-            return ['.pill', '.panel'].map(s => {
+            const sh = document.querySelector('[data-hx-health]');
+            return ['.upc-hc-pill', '.upc-hc-panel'].map(s => {
                 const r = sh.querySelector(s).getBoundingClientRect();
                 return [[r.left + 2, r.top + 10], [r.left + r.width / 2, r.top + r.height / 2]]
-                    .every(([x, y]) => document.elementFromPoint(x, y) === document.querySelector('[data-hx-health]'));
+                    .every(([x, y]) => sh.contains(document.elementFromPoint(x, y)));
             });
         }""")
         check('notice and panel are not hidden behind the side menu', clear == [True, True], clear)
@@ -185,8 +185,8 @@ async def main():
         probs, pill = await load()
         check('update problem reported', any(x['title'] == 'Updates could not be fetched' for x in probs), probs)
         check('errors persist across pages', any(x['title'] == 'Calendar controls stopped with an error' for x in probs))
-        await pg.evaluate("document.querySelector('[data-hx-health]').shadowRoot.querySelector('.pill').click()")
-        await pg.evaluate("document.querySelector('[data-hx-health]').shadowRoot.querySelector('[data-act=clear]').click()")
+        await pg.evaluate("document.querySelector('[data-hx-health]').querySelector('.upc-hc-pill').click()")
+        await pg.evaluate("document.querySelector('[data-hx-health]').querySelector('[data-act=clear]').click()")
         probs = await pg.evaluate('hxHealth.problems()')
         check('clear script errors', [x['title'] for x in probs] == ['Updates could not be fetched'], probs)
 

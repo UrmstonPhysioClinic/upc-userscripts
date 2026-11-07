@@ -252,20 +252,20 @@ async def main():
 
         # Read, match and classify a typed WPA remittance
         await pg.set_input_files('[data-upc-remittances] input[type=file]', str(pdfs['wpa']))
-        await pg.wait_for_function("document.querySelector('[data-upc-remittances]').shadowRoot.querySelectorAll('tbody tr').length === 3", timeout=60000)
+        await pg.wait_for_function("document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr').length === 3", timeout=60000)
         await pg.wait_for_timeout(300)
-        rows = await pg.evaluate("[...document.querySelector('[data-upc-remittances]').shadowRoot.querySelectorAll('tbody tr')].map(r => r.innerText.replace(/\\s+/g, ' '))")
+        rows = await pg.evaluate("[...document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr')].map(r => r.innerText.replace(/\\s+/g, ' '))")
         check('fully paid invoice marked paid in full', 'Paid in full' in rows[0], rows[0])
-        check('excess proposed on earliest line', 'Excess' in rows[1] and '02-Oct-2026: funder £60.00 to £24.00, patient pays £36.00' in rows[1], rows[1])
+        check('excess proposed on earliest line', 'Excess' in rows[1] and '02-Oct-2026: funder £ 60.00 to £ 24.00, patient pays £ 36.00' in rows[1], rows[1])
         check('provider shortfall left for a person', 'By hand' in rows[2] and 'Provider shortfall' in rows[2], rows[2])
 
         # Apply
         S['log'].clear()
-        await pg.evaluate("document.querySelector('[data-upc-remittances]').shadowRoot.querySelector('[data-act=apply]').click()")
-        dlg = await pg.evaluate("document.querySelector('[data-upc-remittances]').shadowRoot.querySelector('.dlg').innerText")
-        check('asks before changing anything', 'Patients will owe £36.00' in dlg and 'No payments are recorded' in dlg, dlg)
-        await pg.evaluate("document.querySelector('[data-upc-remittances]').shadowRoot.querySelector('[data-a=yes]').click()")
-        await pg.wait_for_function("(document.querySelector('[data-upc-remittances]').shadowRoot.querySelector('.log') || {}).innerText && document.querySelector('[data-upc-remittances]').shadowRoot.querySelector('.log').innerText.includes('Finished')", timeout=300000)
+        await pg.evaluate("document.querySelector('[data-upc-remittances]').querySelector('[data-act=apply]').click()")
+        dlg = await pg.evaluate("document.querySelector('[data-upc-remit-confirm]').textContent")
+        check('asks before changing anything', 'Patients will owe £ 36.00' in dlg and 'No payments are recorded' in dlg, dlg)
+        await pg.evaluate("document.querySelector('[data-upc-remit-confirm] [data-a=yes]').click()")
+        await pg.wait_for_function("(document.querySelector('[data-upc-remittances]').querySelector('.upc-log') || {}).innerText && document.querySelector('[data-upc-remittances]').querySelector('.upc-log').innerText.includes('Finished')", timeout=300000)
         f2 = S['funders'][102]
         amounts = sorted(l['amount'] for l in f2['lines'])
         check('funder invoice now totals what the insurer paid', sum(amounts) == 14400 and amounts == [2400, 6000, 6000], amounts)
@@ -279,7 +279,7 @@ async def main():
         api = [t for t, m, pth in S['log'] if '/a/pr/' in pth or '/api/' in pth]
         gaps = [round(b - a, 3) for a, b in zip(api, api[1:])]
         check('requests are paced (at least 0.25 s apart)', gaps and min(gaps) >= 0.25, min(gaps) if gaps else None)
-        status = await pg.evaluate("[...document.querySelector('[data-upc-remittances]').shadowRoot.querySelectorAll('tbody tr')][1].innerText")
+        status = await pg.evaluate("[...document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr')][1].innerText")
         check('result shown as done', 'Done' in status, status)
 
         # Reading the other layouts

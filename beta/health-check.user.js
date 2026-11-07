@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.0.5
+// @version      1.1.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.0.5';
+  const VERSION = '1.1.0';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -329,9 +329,18 @@
 
   function ensureHost() {
     if (host || !document.body) return !!host;
+    // In the page with Halaxy's own classes, so it looks like Halaxy. It does not rely on the core
+    // library (it loads first, to catch every script's errors), so it adds its own scoped rules.
+    if (!document.getElementById('upc-hc-css')) {
+      const st = document.createElement('style');
+      st.id = 'upc-hc-css';
+      st.textContent = CSS;
+      (document.head || document.documentElement).appendChild(st);
+    }
     host = document.createElement('div');
+    host.className = 'upc-native upc-hc';
     host.setAttribute('data-hx-health', '');
-    sh = host.attachShadow({ mode: 'open' });
+    sh = host;
     document.body.appendChild(host);
     sh.addEventListener('click', onClick);
     return true;
@@ -340,19 +349,17 @@
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   const CSS = `
-    .wrap { position: fixed; left: var(--hx-health-left, 16px); bottom: 16px; z-index: 90; font: 13px/1.4 system-ui, -apple-system, "Segoe UI", Arial, sans-serif; color: #1d2433; }
-    .pill { border: 0; border-radius: 999px; padding: 6px 12px; background: #b45309; color: #fff; font: inherit; font-weight: 600; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,.2); }
-    .panel { position: absolute; left: 0; bottom: 40px; width: min(440px, calc(100vw - 32px)); max-height: 70vh; overflow: auto; background: #fff;
-             border-radius: 8px; box-shadow: 0 8px 30px rgba(0,0,0,.25); padding: 12px 14px; }
-    h3 { margin: 0 0 8px; font-size: 14px; }
-    .item { border-top: 1px solid #eee; padding: 8px 0; }
-    .item:first-of-type { border-top: 0; }
-    .t { font-weight: 600; }
-    .aff, .muted { color: #5b6478; font-size: 12px; }
-    ul { margin: 4px 0 0; padding-left: 18px; }
-    .ok { color: #1e7a3c; font-weight: 600; }
-    .btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-    button.b { font: inherit; font-size: 12px; border-radius: 6px; padding: 4px 10px; border: 1px solid #c9cfdc; background: #fff; color: #1d2433; cursor: pointer; }
+    .upc-hc .upc-hc-wrap { position: fixed; left: var(--hx-health-left, 16px); bottom: 16px; z-index: 90; }
+    .upc-hc .upc-hc-pill { box-shadow: 0 4px 14px rgba(0,0,0,.25); }
+    .upc-hc .upc-hc-panel { position: absolute; left: 0; bottom: 40px; width: min(440px, calc(100vw - 32px)); max-height: 70vh; overflow: auto; margin: 0;
+      box-shadow: 0 8px 16px rgba(0,0,0,.2); }
+    .upc-hc .card-header h2 { margin: 0; }
+    .upc-hc .upc-hc-item { border-top: 1px solid var(--vs-card-border-color, #ced4da); padding: 8px 0; }
+    .upc-hc .upc-hc-item:first-child { border-top: 0; padding-top: 0; }
+    .upc-hc ul { margin: 4px 0 0; padding-left: 18px; }
+    .upc-hc .upc-hc-ok { color: var(--success, #28a745); font-weight: 600; }
+    .upc-hc .upc-hc-btns { display: flex; flex-wrap: wrap; gap: 4.8px; margin-top: 10px; }
+    .upc-hc .upc-hc-btns .btn { margin: 0; }
   `;
 
   // Sit just to the right of Halaxy's side menu, which is drawn above our layer.
@@ -385,25 +392,26 @@
     const list = problems();
     const halaxy = store.get('halaxy', null);
     if (!list.length && !open) { sh.innerHTML = ''; return; }
-    let html = '<style>' + CSS + '</style><div class="wrap">';
+    let html = '<div class="upc-hc-wrap">';
     if (open) {
-      html += '<div class="panel" role="dialog" aria-label="Clinic scripts health check"><h3>Clinic scripts health check</h3>';
-      if (!list.length) html += '<p class="ok">All checks passed.</p>';
+      html += '<div class="card upc-hc-panel" role="dialog" aria-label="Clinic scripts health check"><div class="card-header"><h2>Clinic scripts health check</h2></div><div class="card-body">';
+      if (!list.length) html += '<p class="upc-hc-ok">All checks passed.</p>';
       list.forEach((p) => {
-        html += '<div class="item"><div class="t">' + esc(p.title) + '</div>' +
-          '<div class="aff">Affects: ' + esc(p.scripts.join(', ')) + (p.at ? '. Seen ' + esc(when(p.at)) : '') + '</div>' +
+        html += '<div class="upc-hc-item"><b>' + esc(p.title) + '</b>' +
+          '<div class="text-muted">Affects: ' + esc(p.scripts.join(', ')) + (p.at ? '. Seen ' + esc(when(p.at)) : '') + '</div>' +
           '<ul>' + p.lines.map((l) => '<li>' + esc(l) + '</li>').join('') + '</ul></div>';
       });
-      if (list.length) html += '<p class="muted">The scripts may not work properly until this is fixed. Copy the details and send them to Claude.</p>';
+      if (list.length) html += '<p class="text-muted">The scripts may not work properly until this is fixed. Copy the details and send them to Claude.</p>';
       const info = Object.values(store.get('results', {})).filter((r) => r.info).map((r) => r.title + ': ' + r.info);
-      html += '<p class="muted">Halaxy version ' + esc(halaxy ? halaxy.version : 'unknown') +
+      html += '<p class="text-muted">Halaxy version ' + esc(halaxy ? halaxy.version : 'unknown') +
         (halaxy && halaxy.previous ? ' (updated from ' + esc(halaxy.previous) + ' on ' + esc(when(halaxy.since)) + ')' : '') +
         '. Last data check: ' + esc(when(store.get('dataAt', 0))) + '.' + (info.length ? '<br>' + info.map(esc).join('<br>') : '') + '</p>';
-      html += '<div class="btns"><button class="b" data-act="run">Check again</button><button class="b" data-act="copy">Copy details</button>' +
-        (list.some((p) => p.error) ? '<button class="b" data-act="clear">Clear script errors</button>' : '') +
-        '<button class="b" data-act="close">Close</button></div></div>';
+      const B = '<button type="button" class="btn btn-outline-primary-light" data-act=';
+      html += '<div class="upc-hc-btns">' + B + '"run">Check again</button>' + B + '"copy">Copy details</button>' +
+        (list.some((p) => p.error) ? B + '"clear">Clear script errors</button>' : '') +
+        B + '"close">Close</button></div></div></div>';
     }
-    if (list.length) html += '<button class="pill" data-act="toggle">Clinic scripts: ' + list.length + (list.length === 1 ? ' problem' : ' problems') + '</button>';
+    if (list.length) html += '<button type="button" class="btn btn-danger upc-hc-pill" data-act="toggle">Clinic scripts: ' + list.length + (list.length === 1 ? ' problem' : ' problems') + '</button>';
     sh.innerHTML = html + '</div>';
   }
 

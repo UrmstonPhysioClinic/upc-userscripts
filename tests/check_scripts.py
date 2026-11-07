@@ -80,6 +80,12 @@ for name in sorted(stable | beta):
         check(tag + ' uses only what the loader provides', not used and not grants, sorted(used | grants))
         hits = [label for rx, label in SUSPECT if rx.search(text)]
         check(tag + ' no secrets or identifiers', not hits, hits)
+        if ch == 'beta':
+            # Native look (CLAUDE.md): interfaces live in the page with Halaxy's classes, not in a
+            # shadow root, and never use Halaxy's behaviour classes on our own elements.
+            check(tag + ' native look: no shadow root', 'attachShadow' not in body)
+            behaviour = re.findall(r'class="[^"]*\b(ajax|btn-submit|btn-cancel|bootbox|dialogBoxForm|datepicker|popoverTarget)\b', body)
+            check(tag + ' native look: no Halaxy behaviour classes on our elements', not behaviour, behaviour)
     if len(texts) == 2:
         vs = meta(header(texts['stable']) or '', 'version')
         vb = meta(header(texts['beta']) or '', 'version')
