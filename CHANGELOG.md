@@ -128,6 +128,10 @@ Existing scripts moved here from earlier chats, code unchanged. Only the header 
 
 ## Outstanding Actions
 
+### 0.5.0 (7 Nov 2026, beta)
+- Shows only your own appointments by default ("Your outstanding today"). Tick Show everyone for the whole clinic; each PC remembers it. Replaces Only mine.
+- Someone with no appointments of their own, such as reception, sees everyone's, and the panel says so.
+
 ### 0.4.0 (7 Nov 2026, beta)
 - Looks like Halaxy: the panel is a Halaxy card with Halaxy buttons; the notice is a Halaxy button.
 

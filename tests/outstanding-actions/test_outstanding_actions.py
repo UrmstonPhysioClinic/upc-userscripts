@@ -43,7 +43,7 @@ FEES = [
     {'funder': 'Self-Funded', 'feeColour': SHARED, 'status': 'current'},
     {'funder': 'Bupa', 'feeColour': SHARED, 'status': 'current'},
 ]
-STATE = {'paid': set(), 'mode': 'normal', 'cal': 0}
+STATE = {'paid': set(), 'mode': 'normal', 'cal': 0, 'user': 11}
 
 
 def events():
@@ -62,6 +62,13 @@ def events():
                     'title': "<span class='name-text'>Patient " + hm + '</span>',
                     'requestStatus': rs, 'appointmentStatus': ap, 'isRequest': req,
                     'invoiceStatus': inv, 'noteStatusCss': css, 'isGroupAppointment': False})
+    # Another practitioner's patient with a note not started: shown only with "Show everyone"
+    other = int((day + datetime.timedelta(hours=7, minutes=30)).timestamp())
+    if STATE['mode'] != 'clear':
+        out.append({'id': 50, 'type': 'appointment', 'start': other, 'end': other + 1800, 'patientID': 420, 'linkPaG': 420, 'linkPaGId': 420,
+                    'practitionerID': 12, 'invoiceID': 520, 'noteID': 620, 'colour': SELF_A, 'title': "<span class='name-text'>Patient 07:30</span>",
+                    'requestStatus': '', 'appointmentStatus': '', 'isRequest': False, 'invoiceStatus': 'Paid In Full',
+                    'noteStatusCss': 'empty-clinical-note', 'isGroupAppointment': False})
     out.append({'id': 99, 'type': 'personal', 'start': out[0]['start'], 'end': out[0]['start'] + 1800, 'title': 'Lunch'})
     return out
 
@@ -76,7 +83,7 @@ def invoices(pid):
 
 
 PAGE = ("<!doctype html><html><body style='margin:0;height:900px'><h1>Mock Halaxy</h1>"
-        "<button id='pay'>Pay</button><script>window.HkUser={linkPrG:11,pracID:11};"
+        "<button id='pay'>Pay</button><script>window.HkUser={linkPrG:USER,pracID:USER};"
         "document.getElementById('pay').onclick=()=>{const x=new XMLHttpRequest();"
         "x.open('POST','/a/pr/" + PG + "/invoicefunctions/501/pay/offline');x.send('a=1');};</script></body></html>")
 
@@ -92,14 +99,14 @@ class Mock(http.server.BaseHTTPRequestHandler):
         p = urllib.parse.urlparse(self.path).path
         if STATE['mode'] == 'logged-out' and p.endswith('/calendar/json'):
             return self.send('<html>login</html>', 'text/html')
-        if p.endswith('/lookup/practitioner'): return self.send([{'id': 11, 'name': 'Prac One'}])
+        if p.endswith('/lookup/practitioner'): return self.send([{'id': 11, 'name': 'Prac One'}, {'id': 12, 'name': 'Prac Two'}])
         if p.endswith('/funder/fee/data'): return self.send(FEES)
         if p.endswith('/calendar/json'):
             STATE['cal'] += 1
             return self.send({'status': 'OK', 'payload': {'events': events()}})
         if '/patient/invoice/' in p and p.endswith('/list-data'): return self.send(invoices(int(p.split('/')[-2])))
         if '/note/' in p: return self.send({'status': 'draft', 'content': ''})
-        return self.send(PAGE, 'text/html')
+        return self.send(PAGE.replace('USER', str(STATE['user'])), 'text/html')
 
     def do_POST(self):
         self.rfile.read(int(self.headers.get('Content-Length', 0) or 0))
@@ -153,6 +160,34 @@ async def main():
         st = await pg.evaluate('hxOutstanding.state()')
         check('payment clears unpaid tag', [i['label'] for i in st['items']] == ['Note not started'], st['items'])
         check('no page errors', not errors, errors)
+        await pg.context.close()
+
+        # 1b. Yours only by default; "Show everyone" adds the other practitioner's patient
+        STATE['paid'] = set()
+        pg, errors = await page()
+        st = await pg.evaluate('hxOutstanding.state()')
+        check('only your appointments by default', 'Patient 07:30' not in [i['patient'] for i in st['items']], st['items'])
+        await pg.evaluate(shadow + ".querySelector('.upc-oa-pill').click()")
+        foot = await pg.evaluate(shadow + ".querySelector('.upc-oa-foot').textContent + '|' + " + shadow + ".querySelector('.card-header h2').textContent")
+        check('offers Show everyone, header says yours', 'Show everyone' in foot and 'Only mine' not in foot and 'Your outstanding today' in foot, foot)
+        await pg.evaluate(shadow + ".querySelector('.upc-oa-foot input[type=checkbox]').click()")
+        await pg.wait_for_timeout(1500)
+        st = await pg.evaluate('hxOutstanding.state()')
+        check('Show everyone includes other practitioners', ('Patient 07:30', 'Note not started') in [(i['patient'], i['label']) for i in st['items']], st['items'])
+        kept = await pg.evaluate("JSON.parse(localStorage.getItem('hxOutstanding.settings')).showEveryone")
+        check('Show everyone remembered on this PC', kept is True, kept)
+        await pg.evaluate("localStorage.removeItem('hxOutstanding.settings')")
+        await pg.context.close()
+
+        # 1c. Someone with no appointments of their own (reception) sees everyone, and is told so
+        STATE['user'] = 99
+        pg, errors = await page()
+        st = await pg.evaluate('hxOutstanding.state()')
+        check('non-practitioner sees everyone', 'Patient 07:30' in [i['patient'] for i in st['items']] and 'Patient 09:00' in [i['patient'] for i in st['items']], st['items'])
+        await pg.evaluate(shadow + ".querySelector('.upc-oa-pill').click()")
+        foot = await pg.evaluate(shadow + ".querySelector('.upc-oa-foot').textContent")
+        check('non-practitioner told why', 'you have none of your own' in foot and 'Show everyone' not in foot, foot)
+        STATE['user'] = 11
         await pg.context.close()
 
         # 2. All clear
