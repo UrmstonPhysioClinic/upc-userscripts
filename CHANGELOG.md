@@ -2,6 +2,9 @@
 
 ## Bill funder
 
+### 0.2.1 (7 Nov 2026, beta)
+- Safety stops now show their own message (they showed "U is not a constructor").
+
 ### 0.2.0 (7 Nov 2026, beta)
 - Marks the merged patient invoice Issued after billing (the cogwheel's Status), so nothing more merges into it. If that step fails, billing is still reported as done, with a note to set Issued with the cogwheel.
 - Leaves out fees on invoices whose cogwheel status is Issued (or anything other than Active), read from the settings rather than the page.
@@ -31,6 +34,9 @@
 - Scanned invoice numbers can be corrected and re-checked on the review screen.
 
 ## Core library
+
+### 0.1.4 (7 Nov 2026, beta)
+- The invoice reader finds the patient from the patient's own page link, not the edit link that comes first on the card. Bill funder stopped on live invoices because of this.
 
 ### 0.1.3 (7 Nov 2026, beta)
 - `UPC.invoice.status(id)` and `UPC.invoice.setStatus(id, status)`: read and set an invoice's status through its settings pop-up (cogwheel), sending every other setting unchanged and checking the result.

@@ -24,8 +24,8 @@ d = lambda days: TODAY - datetime.timedelta(days=days)
 hx = lambda day: day.strftime('%d-%b-%Y')
 
 
-def fresh(extra_line_on_latest=False, refuse_status=False):
-    S = {'invoices': {}, 'calls': [], 'next_org': 9001, 'refuse_status': refuse_status}
+def fresh(extra_line_on_latest=False, refuse_status=False, broken_merge=False):
+    S = {'invoices': {}, 'calls': [], 'next_org': 9001, 'refuse_status': refuse_status, 'broken_merge': broken_merge}
     def inv(iid, days, status='', note='', claim=CLAIM, billed=False, amount=4000, ref=None, lines=None, inv_status=''):
         day = d(days)
         S['invoices'][iid] = {'id': iid, 'claim': claim, 'billed': billed, 'ref': ref, 'status': inv_status,
@@ -64,11 +64,11 @@ def invoice_html(iid):
     pay += "<tr><td></td><td></td><td>Outstanding</td><td>%s</td></tr>" % gbp(total)
     ref = "<span data-referral='1'>%s (%d%s of %d appts)</span>" % (hx(inv['lines'][0]['day']), inv['ref'][0], 'th' if inv['ref'][0] > 3 else ['st', 'nd', 'rd'][inv['ref'][0] - 1], inv['ref'][1]) if inv['ref'] else ''
     return ("<html><head><title>Invoice UPC-%d | Halaxy</title></head><body><div id='mainMenu'></div><div id='pageContent'>"
-            "<div id='card-invoice-view-patient'><a href='/a/pr/555/patient/%d'>Patient Test</a></div>"
+            "<div id='card-invoice-view-patient'><a class='ajax' id='invoicePatientEditLink' href='/a/magic/add/patient/9%d/invoice'>Edit</a><a href='/a/pr/555/patient/%d'>Patient Test</a></div>"
             "<div id='card-invoice-parts-claim-view'><a href='/a/pr/555/organisation/7364'>Bupa Healthcare</a>"
             "<a id='editClaimButton' href='/a/pr/555/patient/claim/18874/%d/%d/edit?invoice=%d'>e</a>%s</div>"
             "<table id='invoiceLines'><tbody>%s<tr class='totals'><td>Total</td><td>£ 0.00</td><td>%s</td></tr></tbody></table>"
-            "<table id='invoicePayments'><tbody>%s</tbody></table></div></body></html>") % (iid, PATIENT, PATIENT, inv['claim'], iid, ref, lines, gbp(total), pay)
+            "<table id='invoicePayments'><tbody>%s</tbody></table></div></body></html>") % (iid, PATIENT, PATIENT, PATIENT, inv['claim'], iid, ref, lines, gbp(total), pay)
 
 
 def merge_popup(target):
@@ -129,7 +129,7 @@ async def halaxy(route):
     if m:
         target = int(m.group(1))
         if req.method == 'GET':
-            return await js({'status': 'VIEW', 'title': 'Merge invoice fees', 'message': merge_popup(target)})
+            return await js({'status': 'VIEW', 'title': 'Merge invoice fees', 'message': '<form></form>' if S['broken_merge'] else merge_popup(target)})
         S['calls'].append(('merge', target, sorted(int(x) for x in form.get('form[il][]', []))))
         moving = set(int(x) for x in form.get('form[il][]', []))
         for iid, inv in list(S['invoices'].items()):
@@ -184,7 +184,7 @@ def check(name, ok, detail=''):
         FAILS.append(name)
 
 
-async def open_panel(browser, iid):
+async def open_panel(browser, iid, wait='tbody'):
     ctx = await browser.new_context(viewport={'width': 1300, 'height': 900})
     await ctx.route('https://eu.halaxy.com/**', halaxy)
     await ctx.add_init_script(CORE)
@@ -197,7 +197,7 @@ async def open_panel(browser, iid):
     btn = await pg.evaluate("(() => { const b = document.getElementById('upcBillFunderBtn'); return b && b.previousElementSibling && b.previousElementSibling.id; })()")
     await pg.click('#upcBillFunderBtn')
     root = "document.querySelector('[data-upc-bill-funder]').shadowRoot"
-    await pg.wait_for_function(root + ".querySelector('tbody')", timeout=60000)
+    await pg.wait_for_function(root + ".querySelector('" + wait + "')", timeout=60000)
     return ctx, pg, root, btn, errors
 
 
@@ -266,6 +266,14 @@ async def main():
         check('billing still reported when the status does not stick', 'Done.' in done and 'UPC-9001' in done, done[-300:])
         check('warns to set Issued with the cogwheel', 'could not be marked Issued' in done and 'Set it with the cogwheel' in done, done[-300:])
         check('no page errors (scenario 3)', not errors, errors)
+        await ctx.close()
+
+        # Scenario 4: a safety stop shows its own message and changes nothing
+        S = fresh(broken_merge=True)
+        ctx, pg, root, btn, errors = await open_panel(browser, 1003, wait='p.warn')
+        msg = await pg.evaluate(root + ".querySelector('p.warn').textContent")
+        check('safety stop shows its own message', "merge pop-up has changed" in msg and 'constructor' not in msg, msg)
+        check('nothing changed after a safety stop', S['calls'] == [], S['calls'])
         await ctx.close()
         await browser.close()
 

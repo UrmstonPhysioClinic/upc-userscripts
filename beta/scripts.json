@@ -8,7 +8,7 @@
     {
       "file": "core.user.js",
       "name": "UPC core library (beta)",
-      "version": "0.1.3"
+      "version": "0.1.4"
     },
     {
       "file": "alerts.user.js",
@@ -18,7 +18,7 @@
     {
       "file": "bill-funder.user.js",
       "name": "Halaxy bill funder (beta)",
-      "version": "0.2.0"
+      "version": "0.2.1"
     },
     {
       "file": "branding.user.js",
