@@ -25,6 +25,7 @@ That is the only install. Scripts added to this repository later reach every PC 
 | Chat alert | Urgent repeating alert when the chat unread count goes up, until someone clicks or types. Being replaced by Alerts. |
 | Alerts (beta only for now) | Arrival chime and chat alarm in one script. Sounds once per PC however many tabs are open; a click in any tab stops the alarm; each sound can be switched off per PC from the Tampermonkey menu. |
 | Remittances (beta only for now) | Reports > Remittances: read a Bupa, WPA, AXA or Aviva remittance (typed or scanned PDF), match each line to its Halaxy invoice, flag differences, move excesses to the patient after one confirmation, and attach the remittance to each invoice. Never records payments. |
+| Bill funder (beta only for now) | A "Bill funder" button next to Halaxy's Invoice Funder on a patient invoice: picks this patient's unbilled fees for the claim (past, last 6 months, not Issued; did-not-attend and £0 fees listed with comments but not ticked), merges them onto one invoice, then invoices the funder once as a new organisation invoice. Asks first, checks every step. |
 | Core library (beta only for now) | Shared helpers the other scripts use, including request pacing so our traffic stays modest. Does nothing on its own. |
 | Health check (beta only for now) | Checks that what our scripts rely on in Halaxy is still there, notes Halaxy updates, and collects script errors and update problems. Shows a small notice bottom left only when something needs looking at; Tampermonkey menu > Health check: show results at any time. |
 | HTML source for emails | A `<>` button on email editors to edit the body as raw HTML with a live preview. |
@@ -60,6 +61,7 @@ python3 tests/alerts/test_alerts.py                                        # Ale
 python3 tests/health-check/test_health_check.py                            # health check, against a breakable mock Halaxy
 python3 tests/remittances/test_remittances.py                              # remittances and core, invented remittances and a mock Halaxy
 python3 tests/calendar-controls/test_calendar_refresh.py                   # calendar controls' refresh, on a minimal mock calendar
+python3 tests/bill-funder/test_bill_funder.py                              # bill funder, one invented patient covering every rule
 python3 tests/outstanding-actions/test_outstanding_actions.py              # beta
 python3 tests/outstanding-actions/test_outstanding_actions.py stable/outstanding-actions.user.js
 ```
