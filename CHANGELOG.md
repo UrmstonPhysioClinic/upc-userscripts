@@ -2,6 +2,9 @@
 
 ## Bill funder
 
+### 0.3.0 (7 Nov 2026, beta)
+- Looks like Halaxy: the button matches Invoice Funder next to it, and the pop-up is built from Halaxy's own pop-up, table and button styles, so it follows Halaxy's theme and the clinic branding. Escape or the cross closes it (not while it is working).
+
 ### 0.2.1 (7 Nov 2026, beta)
 - Safety stops now show their own message (they showed "U is not a constructor").
 
@@ -34,6 +37,9 @@
 - Scanned invoice numbers can be corrected and re-checked on the review screen.
 
 ## Core library
+
+### 0.1.5 (7 Nov 2026, beta)
+- `UPC.ui.dialog` and `UPC.ui.btn`: pop-ups and buttons built from Halaxy's own classes, with a small stylesheet scoped to our elements.
 
 ### 0.1.4 (7 Nov 2026, beta)
 - The invoice reader finds the patient from the patient's own page link, not the edit link that comes first on the card. Bill funder stopped on live invoices because of this.
