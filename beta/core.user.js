@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.2
+// @version      0.1.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.2';
+  const VERSION = '0.1.3';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -262,6 +262,25 @@
       const doc = await http.html('/invoice/' + id);
       if (!doc.querySelector('#invoiceLines')) throw new UPCError('Could not open invoice ' + id + '.');
       return parseInvoice(doc, id);
+    },
+    // The invoice's status from its settings (cogwheel): '' (Active), 'issued', 'deleted' or 'write-off'.
+    async status(id) {
+      const { doc } = await http.popup('/invoice/options/' + id);
+      const sel = doc.querySelector('form#frmInvoiceType select[name="form[status]"]');
+      if (!sel) throw new UPCError('Could not read the settings of invoice ' + id + '.');
+      return sel.value;
+    },
+    // Sets the status the way the cogwheel's Save does: the whole settings form as Halaxy filled
+    // it, with only the status changed. Reads it back to confirm.
+    async setStatus(id, status) {
+      const { doc } = await http.popup('/invoice/options/' + id);
+      const form = doc.querySelector('form#frmInvoiceType');
+      const sel = form && form.querySelector('select[name="form[status]"]');
+      if (!sel || ![...sel.options].some((o) => o.value === status)) throw new UPCError('The invoice settings pop-up has changed, so the status was not set.');
+      const pairs = serialize(form).map(([k, v]) => [k, k === 'form[status]' ? status : v]);
+      if (!pairs.some(([k]) => k === 'form[status]')) pairs.push(['form[status]', status]);
+      http.expectRefresh(await http.postForm('/invoice/options/' + id, pairs), 'Setting the invoice status');
+      if ((await invoice.status(id)) !== status) throw new UPCError('Halaxy accepted the change, but invoice ' + id + ' does not show the new status.');
     },
     // Finds an invoice by its number (UPC-12345). Returns the list row ({ id, invoiceNum, payerName, total, balance, ... }) or null.
     async findByNumber(number) {

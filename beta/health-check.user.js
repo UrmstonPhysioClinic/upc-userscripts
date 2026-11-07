@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.0.4
+// @version      1.0.5
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.0.4';
+  const VERSION = '1.0.5';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -253,6 +253,24 @@
         if (!Array.isArray(list)) put('data-invoices', 'Patient invoice list', OA, ['not a list']);
         else put('data-invoices', 'Patient invoice list', OA, list.length ? keysMissing(list, ['id', 'total', 'balance', 'status']).map((k) => 'field ' + k) : []);
       } catch (e) { put('data-invoices', 'Patient invoice list', OA, [e.message]); }
+    }
+
+    // Invoice settings (cogwheel): Bill funder reads and sets the status here.
+    const withInvoice = appts.find((e) => e.invoiceID);
+    if (withInvoice) {
+      try {
+        const res = await getJSON('/invoice/options/' + encodeURIComponent(withInvoice.invoiceID));
+        const doc = new DOMParser().parseFromString(String((res && res.message) || ''), 'text/html');
+        const form = doc.querySelector('form#frmInvoiceType');
+        const sel = form && form.querySelector('select[name="form[status]"]');
+        const values = sel ? [...sel.options].map((o) => o.value) : [];
+        const problems = !form ? ['settings form missing'] : []
+          .concat(sel ? [] : ['status list missing'])
+          .concat(sel && !values.includes('issued') ? ['no Issued status'] : [])
+          .concat(sel && !values.includes('') ? ['no Active status'] : [])
+          .concat(form.querySelector('[name="form[_token]"]') ? [] : ['form token missing']);
+        put('data-invoice-settings', 'Invoice settings (cogwheel)', ['Bill funder'], problems);
+      } catch (e) { put('data-invoice-settings', 'Invoice settings (cogwheel)', ['Bill funder'], [e.message]); }
     }
   }
 

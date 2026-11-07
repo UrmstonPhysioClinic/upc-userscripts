@@ -2,6 +2,10 @@
 
 ## Bill funder
 
+### 0.2.0 (7 Nov 2026, beta)
+- Marks the merged patient invoice Issued after billing (the cogwheel's Status), so nothing more merges into it. If that step fails, billing is still reported as done, with a note to set Issued with the cogwheel.
+- Leaves out fees on invoices whose cogwheel status is Issued (or anything other than Active), read from the settings rather than the page.
+
 ### 0.1.0 (7 Nov 2026, beta)
 - "Bill funder" button next to Halaxy's Invoice Funder on patient invoices.
 - Suggests this patient's fees for the same claim: dated today or earlier and within 6 months, not already billed, not on an Issued invoice. Did-not-attend/cancelled and £0 fees are listed with the appointment's comments but not ticked. Flags fees beyond the authorisation.
@@ -28,6 +32,9 @@
 
 ## Core library
 
+### 0.1.3 (7 Nov 2026, beta)
+- `UPC.invoice.status(id)` and `UPC.invoice.setStatus(id, status)`: read and set an invoice's status through its settings pop-up (cogwheel), sending every other setting unchanged and checking the result.
+
 ### 0.1.2 (7 Nov 2026, beta)
 - The invoice reader also returns, for patient invoices: patient, claim, funder, whether Invoice Funder is still available, the appointment behind each fee, and the authorisation position ("3rd of 5 appts").
 
@@ -46,6 +53,9 @@
 - Arrival chime and chat alarm can be switched off per PC from the Tampermonkey menu.
 
 ## Health check
+
+### 1.0.5 (7 Nov 2026, beta)
+- Daily check of the invoice settings pop-up (cogwheel) that Bill funder uses to mark invoices Issued.
 
 ### 1.0.4 (7 Nov 2026, beta)
 - Knows Bill funder; the invoice page check covers what it reads.

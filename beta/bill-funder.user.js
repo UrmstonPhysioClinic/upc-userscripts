@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy bill funder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.0
+// @version      0.2.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
@@ -31,6 +31,7 @@
  *  3. Invoice Funder once: keep the patient invoice, create a NEW organisation invoice
  *     (Halaxy pre-selects an existing one, often another patient's; this never uses it).
  *  4. Check the patient invoice now shows the organisation invoice.
+ *  5. Mark the merged patient invoice Issued (cogwheel status), so nothing more merges into it.
  * Needs the core library (core.user.js).
  */
 
@@ -39,7 +40,7 @@
   if (window.__upcBillFunder) return;
   window.__upcBillFunder = true;
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.2.0';
   const MAX_AGE_DAYS = 183;   // about 6 months
   const NOT_ATTENDED = /cancel|did-not-attend|dna|reject|declin|reschedul/i;
   const DAY = 86400e3;
@@ -109,7 +110,9 @@
     for (let i = 0; i < ids.length; i++) {
       say('Checking invoice ' + (i + 1) + ' of ' + ids.length + '...');
       const inv = String(ids[i]) === String(currentId) ? current : await U().invoice.fetch(ids[i]);
-      if (inv.issued) { skipped.issued += inv.lines.length; continue; }
+      let status = '';
+      try { status = await U().invoice.status(inv.id); } catch (e) { status = inv.issued ? 'issued' : ''; }
+      if (status) { skipped.issued += inv.lines.length; continue; }   // Issued, or anything other than Active
       if (inv.claimId !== current.claimId) { skipped.otherClaim += inv.lines.length; continue; }
       if (!inv.billFunderHref) { skipped.billed += inv.lines.length; continue; }
       inv.lines.forEach((l) => {
@@ -199,7 +202,12 @@
     if (after.billFunderHref || !org) throw new U().Error('Halaxy accepted the request, but ' + after.number + ' does not show an organisation invoice. Check it.');
     let orgNumber = '';
     try { orgNumber = (await U().invoice.fetch(org.funderInvoiceId)).number; } catch (e) { /* link still works */ }
-    return { patientInvoiceId: targetId, patientInvoiceNumber: after.number, orgInvoiceId: org.funderInvoiceId, orgInvoiceNumber: orgNumber, amount: org.amount };
+
+    // 5. Mark the patient invoice Issued.
+    say('Marking ' + after.number + ' as Issued...');
+    let issuedError = '';
+    try { await U().invoice.setStatus(targetId, 'issued'); } catch (e) { issuedError = e.message || String(e); }
+    return { patientInvoiceId: targetId, patientInvoiceNumber: after.number, orgInvoiceId: org.funderInvoiceId, orgInvoiceNumber: orgNumber, amount: org.amount, issuedError };
   }
 
   // ------------------------------------------------------------------ panel
@@ -269,12 +277,13 @@
       if (st.confirm) {
         const c = chosen();
         h += '<div class="log"><b>Confirm</b><br>Merge ' + c.length + ' fee' + (c.length === 1 ? '' : 's') + ' (' + fmt(c.reduce((s, f) => s + f.amount, 0)) + ') onto the latest of their invoices, then invoice ' + esc(p.current.funderName || 'the funder') +
-          ' once as a new organisation invoice, keeping the patient invoice. Fees on invoices emptied by the merge are moved and those invoices are deleted by Halaxy, as its merge does.</div>';
+          ' once as a new organisation invoice, keeping the patient invoice, and mark that patient invoice Issued. Fees on invoices emptied by the merge are moved and those invoices are deleted by Halaxy, as its merge does.</div>';
       }
       if (st.log.length) h += '<div class="log">' + st.log.map((l) => '<div class="' + (l.err ? 'err' : '') + '">' + esc(l.t) + '</div>').join('') + '</div>';
       if (st.result) {
         const r = st.result;
-        h += '<p class="ok">Done. ' + esc(r.patientInvoiceNumber) + ' is billed to the funder on <a href="' + esc(U().base() + '/invoice/' + r.orgInvoiceId) + '" target="_blank" rel="noopener">' + esc(r.orgInvoiceNumber || 'the new organisation invoice') + '</a>' + (r.amount !== null && r.amount !== undefined ? ' (' + fmt(r.amount) + ')' : '') + '.</p>';
+        h += '<p class="ok">Done. ' + esc(r.patientInvoiceNumber) + ' is billed to the funder on <a href="' + esc(U().base() + '/invoice/' + r.orgInvoiceId) + '" target="_blank" rel="noopener">' + esc(r.orgInvoiceNumber || 'the new organisation invoice') + '</a>' + (r.amount !== null && r.amount !== undefined ? ' (' + fmt(r.amount) + ')' : '') +
+          (r.issuedError ? '.</p><p class="warn">Billing is done, but ' + esc(r.patientInvoiceNumber) + ' could not be marked Issued (' + esc(r.issuedError) + '). Set it with the cogwheel.</p>' : ', and ' + esc(r.patientInvoiceNumber) + ' is marked Issued.</p>');
       }
       h += '<div class="btns">';
       if (st.phase === 'choose' && !st.confirm) h += '<button data-a="close">Cancel</button><button class="p" data-a="next" ' + (chosen().length ? '' : 'disabled') + '>Merge and bill</button>';

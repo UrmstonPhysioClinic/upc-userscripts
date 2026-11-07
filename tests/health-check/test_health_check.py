@@ -86,6 +86,10 @@ async def halaxy(route):
         return await j({'status': 'OK', 'payload': {'events': events()}})
     if '/patient/invoice/' in p and p.endswith('/list-data'):
         return await j([{'id': 501, 'total': 45, 'balance': 0, 'status': 'Paid In Full'}])
+    if '/invoice/options/' in p:
+        opts = "<option value=''>Active</option>" + ('' if 'settings' in STATE['break'] else "<option value='issued'>Issued</option>")
+        return await j({'status': 'FORM', 'title': 'Invoice Settings', 'message': "<form id='frmInvoiceType'><select name='form[status]'>%s</select>"
+                        "<input type='hidden' name='form[_token]' value='T'></form>" % opts})
     await route.fulfill(body=page(p), content_type='text/html')
 
 
@@ -158,7 +162,7 @@ async def main():
 
         # 4. Halaxy update: data checks run straight away and catch data changes
         STATE['version'] = '4.13'
-        STATE['break'] = {'field', 'status'}
+        STATE['break'] = {'field', 'status', 'settings'}
         probs, pill = await load()
         stored = await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:halaxy'))")
         check('Halaxy update noted', stored['version'] == '4.13' and stored['previous'] == '4.12', stored)
@@ -166,6 +170,8 @@ async def main():
         lines = cal[0]['lines'] if cal else []
         check('missing data field reported', 'field noteStatusCss' in lines, lines)
         check('new appointment status reported', any('no-show' in l for l in lines), lines)
+        sett = [x for x in probs if x['title'] == 'Invoice settings (cogwheel) has changed']
+        check('cogwheel status change reported for Bill funder', sett and sett[0]['lines'] == ['no Issued status'] and 'Bill funder' in sett[0]['scripts'], sett)
         STATE['break'] = set()
         await pg.evaluate('hxHealth.run(true)')
         await pg.wait_for_timeout(500)
