@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy bill funder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.0
+// @version      0.2.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
@@ -40,7 +40,7 @@
   if (window.__upcBillFunder) return;
   window.__upcBillFunder = true;
 
-  const VERSION = '0.2.0';
+  const VERSION = '0.2.1';
   const MAX_AGE_DAYS = 183;   // about 6 months
   const NOT_ATTENDED = /cancel|did-not-attend|dna|reject|declin|reschedul/i;
   const DAY = 86400e3;
@@ -64,7 +64,7 @@
   function mergeCandidates(popupJson) {
     const html = String(popupJson && popupJson.message || '');
     const m = html.match(/allInvoiceGroupEditGridData\s*=\s*JSON\.parse\('([\s\S]*?)'\)/);
-    if (!m) throw new U().Error('Halaxy\'s merge pop-up has changed, so nothing was done.');
+    if (!m) throw new (U().Error)('Halaxy\'s merge pop-up has changed, so nothing was done.');
     const text = m[1].replace(/\\(["'\\/])/g, '$1');
     return JSON.parse(text);
   }
@@ -95,8 +95,8 @@
   async function gather(currentId, say) {
     say('Reading this invoice...');
     const current = await U().invoice.fetch(currentId);
-    if (!current.billFunderHref || !current.claimId) throw new U().Error('This invoice has no Invoice Funder button, so there is nothing to bill from here.');
-    if (!current.patientId) throw new U().Error('Could not tell which patient this invoice is for.');
+    if (!current.billFunderHref || !current.claimId) throw new (U().Error)('This invoice has no Invoice Funder button, so there is nothing to bill from here.');
+    if (!current.patientId) throw new (U().Error)('Could not tell which patient this invoice is for.');
     say('Finding this patient\'s other fees...');
     const popup = await U().http.popup('/invoice/' + currentId + '/group');
     const others = mergeCandidates(popup.json);
@@ -155,7 +155,7 @@
       const inv = await U().invoice.fetch(id);
       if (inv.lines.length && inv.lines.every((l) => ids.has(String(l.lineId))) && inv.billFunderHref && !inv.issued) return chosen.find((f) => String(f.invoiceId) === id);
     }
-    throw new U().Error('Every chosen invoice also holds a fee you did not choose, so there is nowhere safe to merge them. Nothing was changed. Tick those fees too, or merge by hand.');
+    throw new (U().Error)('Every chosen invoice also holds a fee you did not choose, so there is nowhere safe to merge them. Nothing was changed. Tick those fees too, or merge by hand.');
   }
 
   async function run(plan, chosen, say) {
@@ -171,7 +171,7 @@
       const popup = await U().http.popup('/invoice/' + targetId + '/group');
       const offered = new Set(mergeCandidates(popup.json).map((r) => String(r.invoiceLineId)));
       const missing = toMove.filter((id) => !offered.has(id));
-      if (missing.length) throw new U().Error('Halaxy no longer offers some of the chosen fees for merging. Nothing was changed. Reload and try again.');
+      if (missing.length) throw new (U().Error)('Halaxy no longer offers some of the chosen fees for merging. Nothing was changed. Reload and try again.');
       const pairs = [['form[type]', '1'], ['form[hasUnpaidInvoices]', '1']].concat(toMove.map((id) => ['form[il][]', id]));
       U().http.expectRefresh(await U().http.postForm('/invoice/' + targetId + '/group', pairs), 'Merging the fees');
     }
@@ -182,24 +182,24 @@
     const have = merged.lines.map((l) => String(l.lineId)).sort();
     const extra = have.filter((id) => !expectLines.includes(id));
     const lacking = expectLines.filter((id) => !have.includes(id));
-    if (lacking.length) throw new U().Error('After merging, ' + merged.number + ' is missing ' + lacking.length + ' of the chosen fees. The funder has not been invoiced. Check the invoice.');
-    if (extra.length) throw new U().Error(merged.number + ' also has fees you did not choose. The funder has not been invoiced. Check the invoice.');
-    if (merged.total !== null && merged.total !== expectTotal) throw new U().Error(merged.number + ' totals ' + fmt(merged.total) + ', expected ' + fmt(expectTotal) + '. The funder has not been invoiced. Check the invoice.');
-    if (!merged.billFunderHref || merged.claimId !== plan.current.claimId) throw new U().Error(merged.number + ' no longer shows Invoice Funder for this claim. The funder has not been invoiced.');
+    if (lacking.length) throw new (U().Error)('After merging, ' + merged.number + ' is missing ' + lacking.length + ' of the chosen fees. The funder has not been invoiced. Check the invoice.');
+    if (extra.length) throw new (U().Error)(merged.number + ' also has fees you did not choose. The funder has not been invoiced. Check the invoice.');
+    if (merged.total !== null && merged.total !== expectTotal) throw new (U().Error)(merged.number + ' totals ' + fmt(merged.total) + ', expected ' + fmt(expectTotal) + '. The funder has not been invoiced. Check the invoice.');
+    if (!merged.billFunderHref || merged.claimId !== plan.current.claimId) throw new (U().Error)(merged.number + ' no longer shows Invoice Funder for this claim. The funder has not been invoiced.');
 
     // 3. Invoice Funder once, as a new organisation invoice, keeping the patient invoice.
     say('Invoicing ' + (plan.current.funderName || 'the funder') + ' from ' + merged.number + ' (new organisation invoice)...');
     const bill = await U().http.popup(merged.billFunderHref);
     const form = bill.doc.querySelector('form#organisationBillForm');
     if (!form || !form.querySelector('input[name="form[orgInvoice]"][value="0"]') || !form.querySelector('input[name="form[switchPayer]"][value="no"]')) {
-      throw new U().Error('Halaxy\'s Invoice Funder pop-up has changed, so the funder was not invoiced. The fees are merged on ' + merged.number + '; use Invoice Funder there by hand.');
+      throw new (U().Error)('Halaxy\'s Invoice Funder pop-up has changed, so the funder was not invoiced. The fees are merged on ' + merged.number + '; use Invoice Funder there by hand.');
     }
     U().http.expectRefresh(await U().http.postForm(merged.billFunderHref, [['form[switchPayer]', 'no'], ['form[orgInvoice]', '0']]), 'Invoicing the funder');
 
     // 4. Check.
     const after = await U().invoice.fetch(targetId);
     const org = after.payments.find((p) => p.funderInvoiceId);
-    if (after.billFunderHref || !org) throw new U().Error('Halaxy accepted the request, but ' + after.number + ' does not show an organisation invoice. Check it.');
+    if (after.billFunderHref || !org) throw new (U().Error)('Halaxy accepted the request, but ' + after.number + ' does not show an organisation invoice. Check it.');
     let orgNumber = '';
     try { orgNumber = (await U().invoice.fetch(org.funderInvoiceId)).number; } catch (e) { /* link still works */ }
 

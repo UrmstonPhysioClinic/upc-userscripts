@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.3
+// @version      0.1.4
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.3';
+  const VERSION = '0.1.4';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -237,7 +237,8 @@
     inv.isFunder = inv.lines.some((l) => l.patientInvoiceId);
     // Patient invoices: who, which claim, whether it is still waiting to be billed to the funder,
     // and where this fee sits in the authorisation ("3rd of 5 appts").
-    const pLink = doc.querySelector('#card-invoice-view-patient a[href*="/patient/"]');
+    // The card also holds an edit link (/a/magic/add/patient/{id}/invoice) before the patient's own page link.
+    const pLink = [...doc.querySelectorAll('#card-invoice-view-patient a[href]')].find((a) => /\/a\/pr\/\d+\/patient\/\d+\/?$/.test(a.getAttribute('href')));
     inv.patientId = pLink ? (pLink.getAttribute('href').match(/\/patient\/(\d+)\/?$/) || [])[1] || null : null;
     inv.patientName = pLink ? clean(pLink.textContent) : '';
     const funderBtn = doc.querySelector('#invoiceFunderBtn[data-modal-href*="/claim/"]');
