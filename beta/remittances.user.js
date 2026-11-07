@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.0
+// @version      0.2.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -31,7 +31,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.2.0';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -62,7 +62,7 @@
   const DATE_RE = /^\d{1,2}\/\d{1,2}\/\d{2,4}$/;
   const MONEY_RE = /^£?-?\d{1,6}\.\d{2}$/;
   const cents = (t) => Math.round(parseFloat(String(t).replace(/[£,]/g, '')) * 100);
-  const fmt = (c) => (c === null || c === undefined ? '' : (c < 0 ? '-£' : '£') + (Math.abs(c) / 100).toFixed(2));
+  const fmt = (c) => UPC.money.fmt(c);   // £ 40.00, as Halaxy
   // OCR reads UPC-37536 as 'UPC=37536', 'UPC-375 36', 'UPC—37536' and so on.
   const UPC_RE = /U\s*P\s*C\s*[-=+–—_.:~]?\s*(\d{3,6})/i;
 
@@ -441,75 +441,74 @@
   let root = null;
   let sh = null;
 
+  // Halaxy's own classes (cards, tables, buttons, form controls) style the page; these rules only
+  // cover what Halaxy has no class for, scoped to our page and using Halaxy's colour variables.
   const CSS = `
-    :host { all: initial; }
-    .wrap { font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Arial, sans-serif; color: #1d2433; padding: 16px; max-width: 1100px; }
-    h2 { font-size: 18px; margin: 0 0 4px; }
-    .muted { color: #5b6478; font-size: 12.5px; }
-    .drop { border: 2px dashed #b9c0d0; border-radius: 10px; padding: 28px; text-align: center; margin: 14px 0; background: #fafbfd; cursor: pointer; }
-    .drop.on { border-color: #1d4ed8; background: #eef3ff; }
-    .status { margin: 10px 0; }
-    .notes { background: #fff8db; border: 1px solid #e0b400; border-radius: 6px; padding: 8px 12px; margin: 10px 0; }
-    .notes li { margin: 2px 0; }
-    table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
-    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #e6e8ef; vertical-align: top; }
-    th { font-size: 12px; color: #5b6478; font-weight: 600; }
-    td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-    .tag { display: inline-block; border-radius: 999px; padding: 1px 8px; font-size: 12px; font-weight: 600; }
-    .t-ok { background: #dcf3e3; color: #14532d; } .t-fix { background: #e3e9ff; color: #1e3a8a; }
-    .t-manual { background: #fde7d3; color: #7c2d12; } .t-check { background: #fbd5d5; color: #7a1229; }
-    .t-done { background: #dcf3e3; color: #14532d; } .t-failed { background: #fbd5d5; color: #7a1229; }
-    .chg { font-size: 12px; color: #374151; }
-    .btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 12px 0; }
-    button { font: inherit; border-radius: 6px; padding: 7px 14px; cursor: pointer; border: 1px solid #c9cfdc; background: #fff; color: #1d2433; }
-    button.p { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
-    button[disabled] { opacity: .5; cursor: default; }
-    a { color: #1d4ed8; }
-    .log { font-size: 12.5px; background: #f6f7fa; border-radius: 6px; padding: 8px 12px; max-height: 260px; overflow: auto; }
-    .log .err { color: #b3261e; }
-    .modal { position: fixed; inset: 0; background: rgba(20,24,35,.45); display: flex; align-items: center; justify-content: center; z-index: 2147483000; }
-    .dlg { background: #fff; border-radius: 10px; padding: 20px; width: min(560px, calc(100vw - 32px)); max-height: 80vh; overflow: auto; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+    .upc-rem { max-width: 1200px; }
+    .upc-rem h1 { margin: 0 0 16px; }
+    .upc-rem .card { margin-bottom: 24px; }
+    .upc-rem .upc-rem-drop { border: 2px dashed var(--vs-theme-border-color, #ced4da); border-radius: 4.8px; padding: 28px; text-align: center; margin-top: 12px;
+      background: var(--vs-card-standout-bg-color, #f0f0f5); cursor: pointer; }
+    .upc-rem .upc-rem-drop.on { border-color: var(--vs-theme-primary, #0e0793); }
+    .upc-rem .upc-rem-status { margin-top: 10px; }
+    .upc-rem .upc-rem-notes { border: 1px solid #e0b400; background: #fff8db; border-radius: 4.8px; padding: 8px 12px; margin-top: 12px; }
+    .upc-rem .upc-rem-notes ul { margin: 4px 0 0; padding-left: 20px; }
+    .upc-rem .upc-tag { display: inline-block; border-radius: 4.8px; padding: 0 6px; font-weight: 600; border: 1px solid transparent; }
+    .upc-rem .t-ok, .upc-rem .t-done { background: #e3f4e8; border-color: #9fd3ad; color: #14532d; }
+    .upc-rem .t-fix { background: var(--vs-status-badge-neutral-bg-color, #f0f0f5); border-color: var(--vs-theme-primary, #0e0793); color: var(--vs-theme-primary, #0e0793); }
+    .upc-rem .t-manual { background: #fff3e0; border-color: #ffd8a8; color: #8a4b00; }
+    .upc-rem .t-check, .upc-rem .t-failed { background: #fdecea; border-color: var(--vs-balance-negative-color, #ec6b65); color: #a01818; }
+    .upc-rem .upc-rem-chg { margin-top: 2px; }
+    .upc-rem .upc-rem-fix { display: inline-flex; align-items: center; gap: 4px; }
+    .upc-rem .upc-rem-fix .form-control { width: 110px; height: auto; padding: 1px 6px; }
+    .upc-rem .upc-rem-apply { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px; }
+    .upc-rem .upc-rem-apply .btn { margin: 0; }
+    .upc-rem .upc-rem-apply label { margin: 0; display: flex; align-items: center; gap: 4px; }
+    .upc-rem .upc-log { max-height: 260px; overflow: auto; margin-top: 0; }
   `;
 
   const $ = (s) => sh.querySelector(s);
   const esc = (s) => UPC.esc(s);
-  const status = (t) => { const el = sh && $('.status'); if (el) el.textContent = t || ''; };
+  const status = (t) => { const el = sh && $('.upc-rem-status'); if (el) el.textContent = t || ''; };
 
   function render() {
     const r = state.remit;
     const fixes = state.results.filter((x) => x.status === 'fix');
-    let html = '<style>' + CSS + '</style><div class="wrap"><h2>Remittances</h2>' +
-      '<div class="muted">Read a remittance, check it against Halaxy, and move excesses to the patient. Payments are never recorded here. Remittances are read on this computer and not uploaded anywhere, except as an attachment to the invoices they cover.</div>' +
-      '<div class="drop" tabindex="0" role="button">Drop a remittance PDF here, or click to choose one<input type="file" accept="application/pdf" hidden></div>' +
-      '<div class="status" aria-live="polite"></div>';
+    let html = '<div class="upc-rem"><h1>Remittances</h1>' +
+      '<div class="card"><div class="card-header"><h2>Read a remittance</h2></div><div class="card-body">' +
+      '<div class="text-muted">Read a remittance, check it against Halaxy, and move excesses to the patient. Payments are never recorded here. Remittances are read on this computer and not uploaded anywhere, except as an attachment to the invoices they cover.</div>' +
+      '<div class="upc-rem-drop" tabindex="0" role="button">Drop a remittance PDF here, or click to choose one<input type="file" accept="application/pdf" hidden></div>' +
+      '<div class="upc-rem-status" aria-live="polite"></div>';
     if (r) {
-      html += '<div><b>' + esc(r.insurer || 'Unknown insurer') + '</b>' + (r.date ? ' remittance dated ' + esc(r.date) : '') + (r.reference ? ', reference ' + esc(r.reference) : '') +
+      html += '<div class="upc-gap"><b>' + esc(r.insurer || 'Unknown insurer') + '</b>' + (r.date ? ' remittance dated ' + esc(r.date) : '') + (r.reference ? ', reference ' + esc(r.reference) : '') +
         '. ' + r.items.length + ' invoice' + (r.items.length === 1 ? '' : 's') + ' read' + (r.checks && r.checks.paidTotal !== null ? ', total paid ' + fmt(r.checks.paidTotal) : '') + '.</div>';
-      if (r.notes.length) html += '<div class="notes"><b>Check before applying</b><ul>' + r.notes.map((n) => '<li>' + esc(n) + '</li>').join('') + '</ul></div>';
+      if (r.notes.length) html += '<div class="upc-rem-notes"><b>Check before applying</b><ul>' + r.notes.map((n) => '<li>' + esc(n) + '</li>').join('') + '</ul></div>';
     }
+    html += '</div></div>';
     if (state.results.length) {
-      html += '<table><thead><tr><th></th><th>Invoice</th><th class="n">Halaxy</th><th class="n">Insurer paid</th><th class="n">Difference</th><th>Result</th></tr></thead><tbody>';
+      html += '<div class="card"><div class="card-header"><h2>Invoices on this remittance</h2></div><div class="card-body p-0 table-responsive-sm">' +
+        '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th></th><th>Invoice</th><th class="number">Halaxy</th><th class="number">Insurer paid</th><th class="number">Difference</th><th>Result</th></tr></thead><tbody>';
       state.results.forEach((x, i) => {
         const it = x.item;
         const label = { ok: 'Paid in full', fix: 'Excess', manual: 'By hand', check: 'Check', done: 'Done', failed: 'Failed' }[x.status];
         let link = x.invoiceId ? '<a href="' + esc(UPC.base() + '/invoice/' + x.invoiceId) + '" target="_blank" rel="noopener">' + esc(it.invoice) + '</a>' : esc(it.invoice);
         if (r.scanned && !['done', 'failed'].includes(x.status) && !state.busy) {
-          link += '<div class="chg">Read as ' + esc(it.invoice) + '. Wrong? <input data-num="' + i + '" value="' + esc(it.invoice) + '" size="10" aria-label="Correct invoice number"> <button data-act="recheck" data-i="' + i + '">Re-check</button></div>';
+          link += '<div class="upc-rem-chg text-muted">Read as ' + esc(it.invoice) + '. Wrong? <span class="upc-rem-fix"><input class="form-control" data-num="' + i + '" value="' + esc(it.invoice) + '" aria-label="Correct invoice number"> <button type="button" class="btn btn-outline-primary-light" data-act="recheck" data-i="' + i + '">Re-check</button></span></div>';
         }
         html += '<tr><td>' + (x.status === 'fix' ? '<input type="checkbox" data-i="' + i + '" ' + (x.selected !== false ? 'checked' : '') + ' aria-label="Apply to ' + esc(it.invoice) + '">' : '') + '</td>' +
-          '<td>' + link + '</td><td class="n">' + fmt(x.halaxyTotal) + '</td><td class="n">' + fmt(it.insurerTotal !== undefined && it.insurerTotal !== null ? it.insurerTotal : it.paid) + '</td>' +
-          '<td class="n">' + (x.shortfall ? fmt(x.shortfall) : '') + '</td>' +
-          '<td><span class="tag t-' + x.status + '">' + label + '</span> ' + esc(x.message) +
-          (x.changes.length ? '<div class="chg">' + x.changes.map((c) => esc(c.date) + ': funder ' + fmt(c.from) + ' to ' + fmt(c.to) + ', patient pays ' + fmt(c.from - c.to)).join('<br>') + '</div>' : '') +
-          (x.error ? '<div class="chg" style="color:#b3261e">' + esc(x.error) + '</div>' : '') + '</td></tr>';
+          '<td>' + link + '</td><td class="number">' + fmt(x.halaxyTotal) + '</td><td class="number">' + fmt(it.insurerTotal !== undefined && it.insurerTotal !== null ? it.insurerTotal : it.paid) + '</td>' +
+          '<td class="number">' + (x.shortfall ? fmt(x.shortfall) : '') + '</td>' +
+          '<td><span class="upc-tag t-' + x.status + '">' + label + '</span> ' + esc(x.message) +
+          (x.changes.length ? '<div class="upc-rem-chg">' + x.changes.map((c) => esc(c.date) + ': funder ' + fmt(c.from) + ' to ' + fmt(c.to) + ', patient pays ' + fmt(c.from - c.to)).join('<br>') + '</div>' : '') +
+          (x.error ? '<div class="upc-rem-chg upc-err">' + esc(x.error) + '</div>' : '') + '</td></tr>';
       });
       html += '</tbody></table>';
       const n = fixes.filter((x) => x.selected !== false).length;
-      html += '<div class="btns"><button class="p" data-act="apply" ' + (n && !state.busy ? '' : 'disabled') + '>Apply ' + n + ' excess fix' + (n === 1 ? '' : 'es') + '</button>' +
-        '<label><input type="checkbox" data-act="attach" ' + (state.attach !== false ? 'checked' : '') + '> Attach the remittance to each matched invoice</label></div>';
+      html += '<div class="upc-rem-apply"><button type="button" class="btn btn-primary" data-act="apply" ' + (n && !state.busy ? '' : 'disabled') + '>Apply ' + n + ' excess fix' + (n === 1 ? '' : 'es') + '</button>' +
+        '<label><input type="checkbox" data-act="attach" ' + (state.attach !== false ? 'checked' : '') + '> Attach the remittance to each matched invoice</label></div></div></div>';
     }
-    if (state.log.length) html += '<div class="log">' + state.log.map((l) => '<div class="' + (l.err ? 'err' : '') + '">' + esc(l.t) + '</div>').join('') + '</div>';
-    html += '<div class="muted" style="margin-top:16px">Remittances ' + VERSION + '</div></div>';
+    if (state.log.length) html += '<div class="upc-box upc-log">' + state.log.map((l) => '<div class="' + (l.err ? 'upc-err' : '') + '">' + esc(l.t) + '</div>').join('') + '</div>';
+    html += '<div class="text-muted upc-version">Remittances ' + VERSION + '</div></div>';
     sh.innerHTML = html;
   }
 
@@ -540,7 +539,7 @@
     } finally {
       state.busy = false;
       render();
-      status(state.results.length ? 'Checked. Review the results, then apply the excess fixes you want.' : $('.status').textContent);
+      status(state.results.length ? 'Checked. Review the results, then apply the excess fixes you want.' : $('.upc-rem-status').textContent);
     }
   }
 
@@ -559,21 +558,21 @@
 
   function confirmApply(list) {
     return new Promise((resolve) => {
-      const m = document.createElement('div');
-      m.className = 'modal';
+      let answered = false;
+      const done = (v) => { if (!answered) { answered = true; resolve(v); } };
       const total = sum(list.map((x) => x.shortfall));
-      m.innerHTML = '<div class="dlg" role="dialog" aria-label="Apply excess fixes"><h2>Apply ' + list.length + ' excess fix' + (list.length === 1 ? '' : 'es') + '?</h2>' +
-        '<p>For each invoice below, the funder line is reverted to the patient invoice, the rebate is lowered, and the rest is re-billed to the same organisation invoice. ' +
+      const dlg = UPC.ui.dialog({ title: 'Apply ' + list.length + ' excess fix' + (list.length === 1 ? '' : 'es') + '?', small: true, onClose: () => done(false) });
+      dlg.root.setAttribute('data-upc-remit-confirm', '');
+      dlg.body.innerHTML = '<p>For each invoice below, the funder line is reverted to the patient invoice, the rebate is lowered, and the rest is re-billed to the same organisation invoice. ' +
         'Patients will owe ' + fmt(total) + ' in total. No payments are recorded.</p><ul>' +
         list.map((x) => '<li>' + esc(x.item.invoice) + ': ' + x.changes.map((c) => esc(c.date) + ' ' + fmt(c.from) + ' to ' + fmt(c.to)).join(', ') + '</li>').join('') +
-        '</ul>' + (state.attach !== false ? '<p class="muted">The remittance will also be attached to each matched invoice.</p>' : '') +
-        '<div class="btns" style="justify-content:flex-end"><button data-a="no">Cancel</button><button class="p" data-a="yes">Apply</button></div></div>';
-      sh.appendChild(m);
-      m.addEventListener('click', (e) => {
+        '</ul>' + (state.attach !== false ? '<p class="text-muted">The remittance will also be attached to each matched invoice.</p>' : '') +
+        '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-a="no">Cancel</button><button type="button" class="btn btn-primary" data-a="yes">Apply</button></div>';
+      dlg.body.addEventListener('click', (e) => {
         const a = e.target.closest('[data-a]');
         if (!a) return;
-        m.remove();
-        resolve(a.dataset.a === 'yes');
+        done(a.dataset.a === 'yes');
+        dlg.close();
       });
     });
   }
@@ -619,29 +618,32 @@
 
   function bind() {
     sh.addEventListener('click', (e) => {
-      if (e.target.closest('.drop')) { $('.drop input').click(); return; }
+      if (e.target.closest('.upc-rem-drop') && e.target.type !== 'file') { $('.upc-rem-drop input').click(); return; }
       const act = e.target.closest('[data-act]');
       if (act && act.dataset.act === 'apply') apply();
       if (act && act.dataset.act === 'recheck') recheck(+act.dataset.i);
     });
-    sh.addEventListener('keydown', (e) => { if (e.target.classList && e.target.classList.contains('drop') && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); $('.drop input').click(); } });
+    sh.addEventListener('keydown', (e) => { if (e.target.classList && e.target.classList.contains('upc-rem-drop') && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); $('.upc-rem-drop input').click(); } });
     sh.addEventListener('change', (e) => {
       const t = e.target;
       if (t.type === 'file') handleFile(t.files[0]);
       else if (t.dataset.i) { state.results[+t.dataset.i].selected = t.checked; render(); }
       else if (t.dataset.act === 'attach') { state.attach = t.checked; }
     });
-    sh.addEventListener('dragover', (e) => { if (e.target.closest('.drop')) { e.preventDefault(); e.target.closest('.drop').classList.add('on'); } });
-    sh.addEventListener('dragleave', (e) => { const d = e.target.closest('.drop'); if (d) d.classList.remove('on'); });
-    sh.addEventListener('drop', (e) => { if (e.target.closest('.drop')) { e.preventDefault(); handleFile(e.dataTransfer.files[0]); } });
+    sh.addEventListener('dragover', (e) => { if (e.target.closest('.upc-rem-drop')) { e.preventDefault(); e.target.closest('.upc-rem-drop').classList.add('on'); } });
+    sh.addEventListener('dragleave', (e) => { const d = e.target.closest('.upc-rem-drop'); if (d) d.classList.remove('on'); });
+    sh.addEventListener('drop', (e) => { if (e.target.closest('.upc-rem-drop')) { e.preventDefault(); handleFile(e.dataTransfer.files[0]); } });
   }
 
   function mount() {
     if (state.unmount) return;
     if (!window.UPC) { console.error('[UPC remittances] needs the core library'); return; }
+    UPC.ui.nativeStyles();
+    if (!document.getElementById('upc-rem-css')) { const st = document.createElement('style'); st.id = 'upc-rem-css'; st.textContent = CSS; document.head.appendChild(st); }
     root = document.createElement('div');
+    root.className = 'upc-native';
     root.setAttribute('data-upc-remittances', '');
-    sh = root.attachShadow({ mode: 'open' });
+    sh = root;
     bind();
     render();
     state.unmount = UPC.ui.mountPage('Remittances', root, MENU_CLS);

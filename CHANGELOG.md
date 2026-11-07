@@ -2,6 +2,9 @@
 
 ## Bill funder
 
+### 0.3.2 (7 Nov 2026, beta)
+- Amounts use the core library's Halaxy format.
+
 ### 0.3.1 (7 Nov 2026, beta)
 - Closer to Halaxy's own pop-ups: same width, table with lines between rows only, dates as 05-Nov-2026 and amounts as £ 40.00, version shown at the left of the buttons.
 
@@ -22,6 +25,9 @@
 
 ## Custom Reports
 
+### 0.7.0 (7 Nov 2026, beta)
+- Halaxy card headers on the Report and Filters sections, and Halaxy's page buttons in the toolbar.
+
 ### 0.6.1 (6 Nov 2026, beta)
 - Its menu item no longer shows as highlighted on the Finance reports page (it copied Finance's highlight).
 
@@ -33,6 +39,9 @@
 
 ## Remittances
 
+### 0.2.0 (7 Nov 2026, beta)
+- Looks like Halaxy: page title, Halaxy cards, tables, buttons and text boxes, and Halaxy's pop-up to confirm. Amounts as £ 40.00.
+
 ### 0.1.0 (6 Nov 2026, beta)
 - Reports > Remittances. Reads Bupa and WPA PDFs directly and AXA and Aviva scans by in-browser text recognition; cross-checks every remittance against its own totals.
 - Matches each UPC number to its organisation invoice; classifies paid in full, excess (moved to the patient), provider shortfall (left for a person) or check.
@@ -40,6 +49,10 @@
 - Scanned invoice numbers can be corrected and re-checked on the review screen.
 
 ## Core library
+
+### 0.1.7 (7 Nov 2026, beta)
+- Amounts written as Halaxy writes them (£ 40.00) everywhere.
+- Pop-ups can sit above Halaxy's own pop-ups (for steps that start from one) and come in Halaxy's narrower size.
 
 ### 0.1.6 (7 Nov 2026, beta)
 - Pop-up close cross sized and placed by Halaxy's own style.
@@ -71,6 +84,9 @@
 - Arrival chime and chat alarm can be switched off per PC from the Tampermonkey menu.
 
 ## Health check
+
+### 1.1.0 (7 Nov 2026, beta)
+- Looks like Halaxy: the panel is a Halaxy card with Halaxy buttons; the notice is a Halaxy button.
 
 ### 1.0.5 (7 Nov 2026, beta)
 - Daily check of the invoice settings pop-up (cogwheel) that Bill funder uses to mark invoices Issued.
@@ -112,6 +128,9 @@ Existing scripts moved here from earlier chats, code unchanged. Only the header 
 
 ## Outstanding Actions
 
+### 0.4.0 (7 Nov 2026, beta)
+- Looks like Halaxy: the panel is a Halaxy card with Halaxy buttons; the notice is a Halaxy button.
+
 ### 0.3.0 (6 Nov 2026, beta)
 - With several Halaxy tabs open, only one checks at a time and the others are sent its result, tab to tab (nothing is kept after the tabs close).
 - Page changes within a minute of a check, and the 2-minute timer within 2 minutes, reuse the last result instead of checking again. "Check now" and your own saves always check.
@@ -125,3 +144,13 @@ Existing scripts moved here from earlier chats, code unchanged. Only the header 
 
 ### 0.1.0 (6 Nov 2026)
 - First version: attended appointments with an unpublished note, unpaid self-funded invoices (over £0), grouped per appointment, on every Halaxy page.
+
+## Rebate Sync
+
+### 0.2.0 (7 Nov 2026, beta)
+- Its confirmation and progress use Halaxy's pop-up, shown above the fee edit pop-up. Amounts as £ 40.00. Now uses the core library.
+
+## HTML source for emails
+
+### 0.4 (7 Nov 2026, beta)
+- Halaxy buttons and text box in the HTML panel.

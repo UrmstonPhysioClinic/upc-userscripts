@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Halaxy Rebate Sync (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.0
+// @version      0.2.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/rebate-sync.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/rebate-sync.user.js
@@ -16,7 +16,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.2.0';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
   const MONEY_FIELDS = ['form[amount]', 'form[rebate]', 'form[tax]', 'form[taxManual]'];
 
@@ -33,7 +33,7 @@
     const n = parseFloat(String(v === undefined || v === null ? '' : v).replace(/[£,\s]/g, ''));
     return isNaN(n) ? null : Math.round(n * 100);
   };
-  const money = (c) => '£' + (c / 100).toFixed(2);
+  const money = (c) => '£ ' + (c / 100).toFixed(2);   // as Halaxy writes it
   const plain = (c) => (c / 100).toFixed(2);
   const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();
   const moneyIn = (s) => { const m = String(s || '').match(/£\s*(-?[\d,]+\.\d{2})/); return m ? cents(m[1]) : null; };
@@ -307,46 +307,29 @@
 
   // ------------------------------------------------------------------ dialog
 
-  function showDialog() {
-    const host = document.createElement('div');
-    host.style.cssText = 'position:fixed;inset:0;z-index:2147483647;';
-    const root = host.attachShadow({ mode: 'open' });
-    root.innerHTML = `
-      <style>
-        .bg { position: fixed; inset: 0; background: rgba(20,24,35,.45); display: flex; align-items: center; justify-content: center; }
-        .d { font: 14px/1.45 system-ui, -apple-system, Segoe UI, Arial, sans-serif; color: #1d2433; background: #fff; border-radius: 10px;
-             box-shadow: 0 12px 40px rgba(0,0,0,.25); width: min(480px, calc(100vw - 32px)); padding: 20px; }
-        h2 { font-size: 16px; margin: 0 0 12px; }
-        table { width: 100%; border-collapse: collapse; margin: 8px 0 12px; }
-        td { padding: 4px 0; vertical-align: top; }
-        td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
-        .muted { color: #5b6478; font-size: 12.5px; }
-        .err { color: #b3261e; }
-        .ok { color: #1e7a3c; }
-        ol { margin: 8px 0; padding-left: 20px; }
-        .btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
-        button { font: inherit; border-radius: 6px; padding: 7px 14px; cursor: pointer; border: 1px solid #c9cfdc; background: #fff; }
-        button.p { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
-        button[disabled] { opacity: .5; cursor: default; }
-      </style>
-      <div class="bg"><div class="d"><h2></h2><div class="body"></div><div class="btns"></div></div></div>`;
-    document.documentElement.appendChild(host);
-    const el = (s) => root.querySelector(s);
+  // A Halaxy-style pop-up (core library), shown above Halaxy's fee edit pop-up it starts from.
+  function showDialog(onDismiss) {
+    let closable = true;
+    const dlg = window.UPC.ui.dialog({ title: '', small: true, above: true, canClose: () => closable, onClose: () => { if (onDismiss) onDismiss(); } });
+    dlg.body.innerHTML = '<div class="upc-body"></div><div class="upc-actions"></div>';
+    const el = (q) => dlg.body.querySelector(q);
     return {
-      title(t) { el('h2').textContent = t; },
-      body(html) { el('.body').innerHTML = html; },
+      title(t) { dlg.setTitle(t); },
+      body(html) { el('.upc-body').innerHTML = html; },
       buttons(list) {
-        const b = el('.btns');
+        const b = el('.upc-actions');
         b.innerHTML = '';
+        closable = list.length > 0;   // no buttons means it is working: keep it open
         list.forEach(([label, fn, primary]) => {
           const x = document.createElement('button');
+          x.type = 'button';
           x.textContent = label;
-          if (primary) x.className = 'p';
+          x.className = primary ? 'btn btn-primary' : 'btn btn-outline-primary';
           x.addEventListener('click', fn);
           b.appendChild(x);
         });
       },
-      close() { host.remove(); },
+      close() { onDismiss = null; closable = true; dlg.close(); },
     };
   }
 
@@ -354,17 +337,17 @@
 
   function confirmPlan(plan) {
     return new Promise((resolve) => {
-      const d = showDialog();
+      const d = showDialog(() => resolve(false));
       const diff = plan.origRebate - plan.newRebate;
       d.title('Update both invoices?');
       d.body(`
-        <div class="muted">${esc(plan.date)} · ${esc(plan.item)}</div>
-        <table>
-          <tr><td>Rebate on patient invoice ${esc(plan.patient.number)}</td><td>${money(plan.origRebate)} → <b>${money(plan.newRebate)}</b></td></tr>
-          <tr><td>Line on funder invoice ${esc(plan.funderNumber)}</td><td>${money(plan.origRebate)} → <b>${plan.newRebate ? money(plan.newRebate) : 'removed'}</b></td></tr>
-          <tr><td>${diff >= 0 ? 'Patient pays more' : 'Patient pays less'}</td><td><b>${money(Math.abs(diff))}</b></td></tr>
+        <div class="text-muted">${esc(plan.date)} · ${esc(plan.item)}</div>
+        <table class="table w-100">
+          <tr><td>Rebate on patient invoice ${esc(plan.patient.number)}</td><td class="number">${money(plan.origRebate)} → <b>${money(plan.newRebate)}</b></td></tr>
+          <tr><td>Line on funder invoice ${esc(plan.funderNumber)}</td><td class="number">${money(plan.origRebate)} → <b>${plan.newRebate ? money(plan.newRebate) : 'removed'}</b></td></tr>
+          <tr><td>${diff >= 0 ? 'Patient pays more' : 'Patient pays less'}</td><td class="number"><b>${money(Math.abs(diff))}</b></td></tr>
         </table>
-        <div class="muted">Done with Halaxy's own steps: revert the funder line, change the rebate, re-bill to ${esc(plan.funderNumber)}. The funder line on the patient's payment list will show today's date.</div>`);
+        <div class="text-muted">Done with Halaxy's own steps: revert the funder line, change the rebate, re-bill to ${esc(plan.funderNumber)}. The funder line on the patient's payment list will show today's date.</div>`);
       d.buttons([['Cancel', () => { d.close(); resolve(false); }], ['Update both', () => { d.close(); resolve(true); }, true]]);
     });
   }
@@ -385,11 +368,11 @@
     render();
     try {
       const r = await runSync(plan, (s) => { steps.push(s); render(); });
-      render(`<p class="ok">Done. ${esc(r.funderNumber)} total is now ${r.funderTotal !== null ? money(r.funderTotal) : 'updated'}${r.patientOutstanding !== null ? ', and ' + esc(r.patientNumber) + ' shows ' + money(r.patientOutstanding) + ' outstanding' : ''}.</p>`);
+      render(`<p class="upc-ok upc-gap">Done. ${esc(r.funderNumber)} total is now ${r.funderTotal !== null ? money(r.funderTotal) : 'updated'}${r.patientOutstanding !== null ? ', and ' + esc(r.patientNumber) + ' shows ' + money(r.patientOutstanding) + ' outstanding' : ''}.</p>`);
       d.buttons([['Reload', () => location.reload(), true]]);
       setTimeout(() => location.reload(), 2500);
     } catch (e) {
-      render(`<p class="err">${esc(e.message || e)}</p>`);
+      render(`<p class="upc-err upc-gap">${esc(e.message || e)}</p>`);
       d.buttons([['Reload', () => location.reload(), true]]);
     } finally {
       busy = false;
@@ -439,7 +422,7 @@
     } catch (err) {
       btn.disabled = false;
       busy = false;
-      message('Not saved', '<p>' + esc(err.message || err) + '</p><p style="color:#5b6478;font-size:12.5px">Nothing has been changed. Cancel the edit dialog or adjust it.</p>');
+      message('Not saved', '<p>' + esc(err.message || err) + '</p><p class="text-muted">Nothing has been changed. Cancel the edit dialog or adjust it.</p>');
       return;
     }
     btn.disabled = false;

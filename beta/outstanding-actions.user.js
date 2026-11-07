@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy Outstanding Actions (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.0
+// @version      0.4.0
 // @description  Persistent notice of today's outstanding actions: attended appointments without a published note, and unpaid self-funded invoices.
 // @match        https://*.halaxy.com/a/*
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
@@ -47,7 +47,7 @@
   if (window.__hxOutstanding) return;
   window.__hxOutstanding = true;
 
-  const VERSION = '0.3.0';
+  const VERSION = '0.4.0';
   const m = location.pathname.match(/^\/a\/pr\/(\d+)\//);
   if (!m) return;
   const PG = m[1];
@@ -359,42 +359,38 @@
 
   // ------------------------------------------------------------------ UI
   let host, root;
+  // Halaxy's own classes (card, card-header, btn) style the panel; these rules only place it and
+  // lay out its rows, scoped to our element, using Halaxy's colour variables.
   const CSS = `
-    :host { all: initial; }
-    * { box-sizing: border-box; font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-    .wrap { position: fixed; right: 16px; bottom: 16px; z-index: 90; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
-    .pill { display: flex; align-items: center; gap: 8px; border: 0; border-radius: 999px; padding: 8px 14px; font-size: 13px; font-weight: 600;
-            color: #fff; background: #c62828; box-shadow: 0 4px 14px rgba(0,0,0,.25); cursor: pointer; }
-    .pill.warn { background: #6b6b6b; }
-    .pill .n { background: rgba(255,255,255,.25); border-radius: 999px; padding: 1px 8px; }
-    .pill:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid #1565c0; outline-offset: 2px; }
-    .panel { width: 380px; max-width: calc(100vw - 32px); max-height: 60vh; display: flex; flex-direction: column; background: #fff; color: #222;
-             border: 1px solid #d0d0d0; border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.22); overflow: hidden; }
-    .hd { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid #eee; font-size: 14px; font-weight: 700; }
-    .hd .sub { font-weight: 400; color: #666; font-size: 12px; }
-    .list { overflow-y: auto; }
-    .row { display: grid; grid-template-columns: 44px 1fr auto; gap: 8px; align-items: center; padding: 8px 12px; border-bottom: 1px solid #f1f1f1; font-size: 13px; }
-    .t { color: #555; font-variant-numeric: tabular-nums; }
-    .who { min-width: 0; }
-    .who b { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .who span { color: #666; font-size: 12px; }
-    .tags { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
-    .tag { font-size: 11px; font-weight: 600; border-radius: 4px; padding: 2px 6px; white-space: nowrap; }
-    .tag.note { background: #fff3e0; color: #8a4b00; }
-    .tag.invoice { background: #ffebee; color: #a01818; }
-    .tag.unchecked { background: #eceff1; color: #455a64; }
-    .acts { display: flex; gap: 6px; grid-column: 2 / 4; }
-    .acts a { font-size: 12px; color: #1565c0; text-decoration: none; }
-    .acts a:hover { text-decoration: underline; }
-    .ft { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 12px; font-size: 12px; color: #555; background: #fafafa; }
-    .ft label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
-    .ft button { font: inherit; font-size: 12px; padding: 3px 8px; border: 1px solid #ccc; border-radius: 5px; background: #fff; cursor: pointer; }
-    .dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; background: #2e7d32; opacity: .55; cursor: pointer;
-           box-shadow: 0 1px 4px rgba(0,0,0,.3); padding: 0; }
-    .dot:hover, .dot[aria-expanded="true"] { opacity: 1; }
-    .none { padding: 14px 12px; font-size: 13px; color: #2e7d32; }
-    .err { padding: 8px 12px; font-size: 12px; color: #a01818; background: #ffebee; }
-    .busy { opacity: .6; }
+    .upc-oa { position: fixed; right: 16px; bottom: 16px; z-index: 90; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+    .upc-oa .upc-oa-pill { box-shadow: 0 4px 14px rgba(0,0,0,.25); }
+    .upc-oa .upc-oa-panel { width: 380px; max-width: calc(100vw - 32px); max-height: 60vh; display: flex; flex-direction: column; margin: 0;
+      box-shadow: 0 8px 16px rgba(0,0,0,.2); overflow: hidden; }
+    .upc-oa .card-header { display: flex; align-items: center; justify-content: space-between; }
+    .upc-oa .card-header h2 { margin: 0; }
+    .upc-oa .upc-oa-list { overflow-y: auto; }
+    .upc-oa .upc-oa-row { display: grid; grid-template-columns: 44px 1fr auto; gap: 4px 8px; align-items: center; padding: 8px 12px;
+      border-bottom: 1px solid var(--vs-table-border-color, #ced4da); }
+    .upc-oa .upc-oa-row:nth-child(odd) { background: var(--vs-div-table-row-odd-bg-color, #f8f9fa); }
+    .upc-oa .upc-oa-time { font-variant-numeric: tabular-nums; }
+    .upc-oa .upc-oa-who { min-width: 0; }
+    .upc-oa .upc-oa-who b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .upc-oa .upc-oa-tags { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+    .upc-oa .upc-oa-tag { font-size: .86em; font-weight: 600; border-radius: 4.8px; padding: 1px 6px; white-space: nowrap; border: 1px solid transparent; }
+    .upc-oa .upc-oa-tag.note { background: #fff3e0; border-color: #ffd8a8; color: #8a4b00; }
+    .upc-oa .upc-oa-tag.invoice { background: #fdecea; border-color: var(--vs-balance-negative-color, #ec6b65); color: #a01818; }
+    .upc-oa .upc-oa-tag.unchecked { background: var(--vs-status-badge-neutral-bg-color, #f0f0f5); border-color: var(--vs-status-badge-neutral-border-color, #dee2e6); color: var(--vs-status-badge-color, #333); }
+    .upc-oa .upc-oa-acts { display: flex; gap: 10px; grid-column: 2 / 4; }
+    .upc-oa .upc-oa-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; background: var(--vs-card-header-bg-color, #f0f0f5);
+      border-top: 1px solid var(--vs-card-border-color, #ced4da); }
+    .upc-oa .upc-oa-foot label { display: flex; align-items: center; gap: 4px; margin: 0 auto 0 0; cursor: pointer; }
+    .upc-oa .upc-oa-foot .btn { margin: 0; }
+    .upc-oa .upc-oa-dot { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; background: var(--success, #28a745); opacity: .55; cursor: pointer;
+      box-shadow: 0 1px 4px rgba(0,0,0,.3); padding: 0; }
+    .upc-oa .upc-oa-dot:hover, .upc-oa .upc-oa-dot[aria-expanded="true"] { opacity: 1; }
+    .upc-oa .upc-oa-none { padding: 14px 12px; color: var(--success, #28a745); }
+    .upc-oa .upc-oa-err { padding: 8px 12px; color: #a01818; background: #fdecea; }
+    .upc-oa.upc-oa-busy { opacity: .6; }
   `;
 
   function el(tag, attrs, kids) {
@@ -410,20 +406,18 @@
 
   function buildUi() {
     if (host || window.top !== window) return;
-    host = document.createElement('div');
-    host.setAttribute('data-hx-outstanding', VERSION);
-    root = host.attachShadow({ mode: 'open' });
-    root.appendChild(el('style', { text: CSS }));
-    root.appendChild(el('div', { class: 'wrap' }));
+    if (!document.getElementById('upc-oa-css')) document.head.appendChild(el('style', { id: 'upc-oa-css', text: CSS }));
+    host = el('div', { class: 'upc-native upc-oa', 'data-hx-outstanding': VERSION });
+    root = host;
     document.body.appendChild(host);
     render();
   }
 
-  function setBusy(b) { if (root) root.querySelector('.wrap').classList.toggle('busy', b); }
+  function setBusy(b) { if (root) root.classList.toggle('upc-oa-busy', b); }
 
   function render() {
     if (!root) return;
-    const wrap = root.querySelector('.wrap');
+    const wrap = root;
     wrap.textContent = '';
     if (!state) return;
     const items = state.items || [];
@@ -439,7 +433,7 @@
     if (clear) {
       // All clear: a small, quiet dot so the panel and diagnostics stay reachable
       wrap.appendChild(el('button', {
-        class: 'dot', type: 'button', 'aria-expanded': String(!settings.collapsed),
+        class: 'upc-oa-dot', type: 'button', 'aria-expanded': String(!settings.collapsed),
         title: 'Nothing outstanding today' + (state.at ? ' (checked ' + hhmm(state.at) + ')' : ''),
         'aria-label': 'Nothing outstanding today', onclick: toggle
       }));
@@ -452,7 +446,7 @@
     if (unchecked.length) parts.push(unchecked.length + ' to check');
     const label = total ? 'Outstanding today: ' + parts.join(' · ') : 'Outstanding check not working';
     const pill = el('button', {
-      class: 'pill' + (total ? '' : ' warn'), type: 'button', title: state.error ? 'Last check failed: ' + state.error : 'Click to ' + (settings.collapsed ? 'show' : 'hide'),
+      class: 'btn upc-oa-pill ' + (total ? 'btn-danger' : 'btn-outline-primary'), type: 'button', title: state.error ? 'Last check failed: ' + state.error : 'Click to ' + (settings.collapsed ? 'show' : 'hide'),
       'aria-expanded': String(!settings.collapsed),
       onclick: toggle
     }, [el('span', { text: label })]);
@@ -461,11 +455,11 @@
 
   function buildPanel(items, unchecked) {
     const checked = state.at ? 'Checked ' + hhmm(state.at) : '';
-    const panel = el('div', { class: 'panel', role: 'region', 'aria-label': 'Outstanding actions today' }, [
-      el('div', { class: 'hd' }, [el('span', { text: 'Outstanding today' }), el('span', { class: 'sub', text: checked })])
+    const panel = el('div', { class: 'card upc-oa-panel', role: 'region', 'aria-label': 'Outstanding actions today' }, [
+      el('div', { class: 'card-header' }, [el('h2', { text: 'Outstanding today' }), el('span', { class: 'text-muted', text: checked })])
     ]);
-    if (state.error) panel.appendChild(el('div', { class: 'err', text: 'Last check failed: ' + state.error + '. Showing the previous result.' }));
-    const list = el('div', { class: 'list' });
+    if (state.error) panel.appendChild(el('div', { class: 'upc-oa-err', text: 'Last check failed: ' + state.error + '. Showing the previous result.' }));
+    const list = el('div', { class: 'upc-oa-list' });
     // One row per appointment, with every outstanding issue on it
     const groups = [];
     items.concat(unchecked).forEach(it => {
@@ -481,23 +475,23 @@
       if (g.issues.some(i => i.kind !== 'note') && it.invoiceID) acts.push(el('a', { href: BASE + '/invoice/' + it.invoiceID, text: 'Open invoice' }));
       acts.push(el('a', { href: BASE + '/appointment/' + it.apptId, text: 'Appointment' }));
       const order = { note: 0, invoice: 1, unchecked: 2 };
-      const tags = g.issues.slice().sort((a, b) => order[a.kind] - order[b.kind]).map(i => el('span', { class: 'tag ' + i.kind, text: i.label }));
-      list.appendChild(el('div', { class: 'row' }, [
-        el('span', { class: 't', text: hhmm(it.start) }),
-        el('div', { class: 'who' }, [el('b', { text: it.patient || 'Patient' }), el('span', { text: it.practitioner })]),
-        el('div', { class: 'tags' }, tags),
-        el('div', { class: 'acts' }, acts)
+      const tags = g.issues.slice().sort((a, b) => order[a.kind] - order[b.kind]).map(i => el('span', { class: 'upc-oa-tag ' + i.kind, text: i.label }));
+      list.appendChild(el('div', { class: 'upc-oa-row' }, [
+        el('span', { class: 'upc-oa-time', text: hhmm(it.start) }),
+        el('div', { class: 'upc-oa-who' }, [el('b', { text: it.patient || 'Patient' }), el('span', { class: 'text-muted', text: it.practitioner })]),
+        el('div', { class: 'upc-oa-tags' }, tags),
+        el('div', { class: 'upc-oa-acts' }, acts)
       ]));
     });
-    if (!groups.length) list.appendChild(el('div', { class: 'none', text: state.error ? 'No result yet.' : 'Nothing outstanding today.' }));
+    if (!groups.length) list.appendChild(el('div', { class: 'upc-oa-none', text: state.error ? 'No result yet.' : 'Nothing outstanding today.' }));
     panel.appendChild(list);
-    panel.appendChild(el('div', { class: 'ft' }, [
+    panel.appendChild(el('div', { class: 'upc-oa-foot' }, [
       el('label', {}, [
         (() => { const c = el('input', { type: 'checkbox' }); c.checked = settings.mineOnly; c.addEventListener('change', () => { settings.mineOnly = c.checked; saveSettings(); refresh('setting'); }); return c; })(),
         el('span', { text: 'Only mine' })
       ]),
-      el('button', { type: 'button', text: 'Check now', onclick: () => refresh('manual') }),
-      el('button', { type: 'button', text: 'Copy diagnostics', title: 'Copies counts and status codes only, no patient details', onclick: copyDiag })
+      el('button', { type: 'button', class: 'btn btn-outline-primary-light', text: 'Check now', onclick: () => refresh('manual') }),
+      el('button', { type: 'button', class: 'btn btn-outline-primary-light', text: 'Copy diagnostics', title: 'Copies counts and status codes only, no patient details', onclick: copyDiag })
     ]));
     return panel;
   }
