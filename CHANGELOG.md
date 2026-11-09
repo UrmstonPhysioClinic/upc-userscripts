@@ -70,6 +70,12 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Remittances
 
+### 0.3.1 (9 Nov 2026, beta)
+- With nothing to fix (all paid in full), the button reads "Attach remittance to n invoices" and attaches it, instead of being greyed out.
+- Never attaches the same remittance twice: an invoice that already has it is skipped.
+- After a run the button is disabled until the remittance is loaded again.
+- Moved to Finances in the menu, opening over Halaxy's Invoices page. Older links still work.
+
 ### 0.3.0 (9 Nov 2026, beta)
 - After an excess fix, adds a task on the patient invoice to bill the patient: assigned to Carl Healy, due today, medium priority, titled "Bill excess: UPC-n (insurer remittance date, ref)", with what the patient owes and which fees moved. Not added twice for the same remittance. If it can't be added, the fix still stands and the log says to add the task by hand.
 
@@ -87,6 +93,10 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Scanned invoice numbers can be corrected and re-checked on the review screen.
 
 ## Core library
+
+### 0.1.17 (9 Nov 2026, beta)
+- The invoice reader keeps each attachment's whole row (the first cell is the date, not the file name). `files.attachToInvoice(..., { skipIfAttached })`.
+- `ui.menuItem` / `ensureMenuItem` take a section (default Reports) and an href function.
 
 ### 0.1.16 (9 Nov 2026, beta)
 - `UPC.tasks.addToInvoice(id, task)` and `UPC.tasks.forInvoice(id)`, through Halaxy's own add-task pop-up (`task/new/invoice/{id}`); confirms the task shows on the invoice's task list.
