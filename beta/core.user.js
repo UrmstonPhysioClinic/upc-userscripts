@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.16
+// @version      0.1.17
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.16';
+  const VERSION = '0.1.17';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -241,9 +241,11 @@
     }
     const att = doc.querySelector('#invoiceAttachments');
     if (att) {
+      // Each attachment as its whole row (created date, type, file name, comment): the first cell is
+      // the date, not the name.
       att.querySelectorAll('tbody tr').forEach((tr) => {
-        const name = clean((tr.querySelector('td') || {}).textContent);
-        if (name) inv.attachments.push(name);
+        const row = clean(tr.textContent);
+        if (row && tr.querySelector('td')) inv.attachments.push(row);
       });
     }
     inv.isFunder = inv.lines.some((l) => l.patientInvoiceId);
@@ -485,9 +487,12 @@
     // Attaches a file to an invoice the way the attach button does: open the pop-up, upload the
     // file to Halaxy's file store, then save it against the invoice with a title and category.
     // Checks the invoice lists one more attachment afterwards.
+    // Returns false, attaching nothing, when opts.skipIfAttached and a file with this title is already on the invoice.
     async attachToInvoice(invoiceId, file, opts) {
       opts = opts || {};
       const before = await invoice.fetch(invoiceId);
+      const wanted = String(opts.title || file.name || 'Attachment').replace(/\.pdf$/i, '');
+      if (opts.skipIfAttached && before.attachments.some((r) => r.includes(wanted))) return false;
       const { doc } = await http.popup('/file/upload/invoice/' + invoiceId);
       const form = doc.querySelector('form#fileupload, form.js-file-edit-form');
       const uploadUrl = form && form.getAttribute('data-upload-url');
@@ -672,13 +677,17 @@
     // Halaxy button class names: 'primary' (filled), 'outline' (pop-up secondary), 'light' (small, on pages).
     btn: (kind) => 'btn ' + ({ primary: 'btn-primary', outline: 'btn-outline-primary', light: 'btn-outline-primary-light' }[kind] || 'btn-outline-primary'),
     // Adds a link under Reports in Halaxy's side menu (or as its own item). Returns true once added.
-    menuItem(label, href, cls) {
+    // Adds a menu item at the end of a section (default Reports; `section` is a pattern for its heading,
+    // e.g. /^finances?$/i). `href` may be a function given the section's element.
+    menuItem(label, href, cls, section) {
       const menu = document.getElementById('mainMenu');
       if (!menu) return false;
       if (menu.querySelector('.' + cls)) return true;
       const items = [...menu.querySelectorAll('.mainmenu-item')];
-      const reports = items.find((li) => /^reports?$/i.test(clean((li.querySelector('.mainmenu-link-label') || li.querySelector('.mainmenu-link') || {}).textContent)));
+      const want = section || /^reports?$/i;
+      const reports = items.find((li) => want.test(clean((li.querySelector('.mainmenu-link-label') || li.querySelector('.mainmenu-link') || {}).textContent)));
       const sub = reports && reports.querySelector('a.mainmenu-sublink');
+      if (typeof href === 'function') { href = href(reports || null); if (!href) return false; }
       if (sub) {
         const host = sub.parentElement && sub.parentElement.tagName === 'LI' ? sub.parentElement : sub;
         const copy = host.cloneNode(true);
@@ -706,10 +715,10 @@
       return false;
     },
     // Keeps trying to add the menu item while Halaxy draws its menu.
-    ensureMenuItem(label, href, cls) {
+    ensureMenuItem(label, href, cls, section) {
       const start = () => {
-        if (ui.menuItem(label, href, cls)) return;
-        const mo = new MutationObserver(() => { if (ui.menuItem(label, href, cls)) mo.disconnect(); });
+        if (ui.menuItem(label, href, cls, section)) return;
+        const mo = new MutationObserver(() => { if (ui.menuItem(label, href, cls, section)) mo.disconnect(); });
         mo.observe(document.body, { childList: true, subtree: true });
         setTimeout(() => mo.disconnect(), 15000);
       };

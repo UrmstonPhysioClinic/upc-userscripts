@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.0
+// @version      0.3.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -31,7 +31,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.3.0';
+  const VERSION = '0.3.1';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -520,7 +520,11 @@
       });
       html += '</tbody></table>';
       const n = fixes.filter((x) => x.selected !== false).length;
-      html += '<div class="upc-rem-apply"><button type="button" class="btn btn-primary" data-act="apply" ' + (n && !state.busy ? '' : 'disabled') + '>Apply ' + n + ' excess fix' + (n === 1 ? '' : 'es') + '</button>' +
+      const toAttach = attachable().length;
+      // Nothing to fix (all paid in full): the button attaches the remittance on its own.
+      const label = n ? 'Apply ' + n + ' excess fix' + (n === 1 ? '' : 'es') : 'Attach remittance to ' + toAttach + ' invoice' + (toAttach === 1 ? '' : 's');
+      const can = !state.busy && !state.applied && (n || (state.attach !== false && toAttach));
+      html += '<div class="upc-rem-apply"><button type="button" class="btn btn-primary" data-act="apply" ' + (can ? '' : 'disabled') + '>' + label + '</button>' +
         '<label><input type="checkbox" data-act="attach" ' + (state.attach !== false ? 'checked' : '') + '> Attach the remittance to each matched invoice</label></div></div></div>';
     }
     if (state.log.length) html += '<div class="upc-box upc-log">' + state.log.map((l) => '<div class="' + (l.err ? 'upc-err' : '') + '">' + esc(l.t) + '</div>').join('') + '</div>';
@@ -536,6 +540,7 @@
     state.remit = null;
     state.results = [];
     state.log = [];
+    state.applied = false;
     render();
     try {
       const read = await readPdf(file, status);
@@ -598,10 +603,14 @@
   const MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const todayLabel = () => { const d = new Date(); return String(d.getDate()).padStart(2, '0') + '-' + MON3[d.getMonth()] + '-' + d.getFullYear(); };
 
+  const attachable = () => state.results.filter((r) => r.invoiceId && r.funder && r.funder.isFunder);
+
   async function apply() {
     const list = state.results.filter((x) => x.status === 'fix' && x.selected !== false);
-    if (!list.length || state.busy) return;
-    if (!(await confirmApply(list))) return;
+    if (state.busy || state.applied) return;
+    if (!list.length && (state.attach === false || !attachable().length)) return;
+    // Excess fixes ask first; attaching alone is what the button says it does.
+    if (list.length && !(await confirmApply(list))) return;
     state.busy = true;
     const say = (t, err) => { state.log.push({ t, err }); render(); };
     for (const x of list) {
@@ -638,20 +647,22 @@
       }
     }
     if (state.attach !== false) {
-      for (const x of state.results.filter((r) => r.invoiceId && r.funder && r.funder.isFunder)) {
+      for (const x of attachable()) {
         try {
-          await UPC.files.attachToInvoice(x.invoiceId, state.file, {
+          const done = await UPC.files.attachToInvoice(x.invoiceId, state.file, {
             title: (state.remit.insurer || 'Insurer') + ' remittance' + (state.remit.date ? ' ' + state.remit.date : ''),
             comments: state.remit.reference ? 'Insurer reference ' + state.remit.reference : '',
             category: UPC.files.CATEGORY.payment,
+            skipIfAttached: true,
           });
-          say('Attached the remittance to ' + x.item.invoice + '.');
+          say(done === false ? 'The remittance is already attached to ' + x.item.invoice + '.' : 'Attached the remittance to ' + x.item.invoice + '.');
         } catch (e) {
           say('Could not attach the remittance to ' + x.item.invoice + ': ' + (e.message || e), true);
         }
       }
     }
     state.busy = false;
+    state.applied = true;   // load the remittance again to run it again
     say('Finished. Open the invoices to check, then record the payments once the money is in the bank.');
   }
 
@@ -696,7 +707,12 @@
 
   function start() {
     if (!window.UPC) { console.error('[UPC remittances] needs the core library'); return; }
-    UPC.ui.ensureMenuItem('Remittances', UPC.base() + '/report/finance/#' + ROUTE, MENU_CLS);
+    // Under Finances (Carl, 9 Nov 2026), opening over Halaxy's Invoices page so Halaxy highlights Finances.
+    // Remittances opens on any page with its address, so older links to the Finance report still work.
+    UPC.ui.ensureMenuItem('Remittances', (section) => {
+      const inv = section && [...section.querySelectorAll('a.mainmenu-sublink')].find((a) => /^invoices$/i.test(UPC.clean(a.textContent)));
+      return (inv ? inv.getAttribute('href').split('#')[0] : UPC.base() + '/invoice/') + '#' + ROUTE;
+    }, MENU_CLS, /^finances?$/i);
     window.addEventListener('hashchange', route);
     route();
   }

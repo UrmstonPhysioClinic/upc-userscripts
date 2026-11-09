@@ -81,12 +81,15 @@ def patient_html(p):
             p['number'], rows, gbp(sum(l['fee'] for l in p['lines'])), pays, gbp(owed))
 
 
-PAGE = ("<!doctype html><html><head><title>Finance report | Halaxy</title><script>window.Hk = { jwt: 'jwt-test' };</script>"
+PAGE = ("<!doctype html><html><head><title>Invoices | Halaxy</title><script>window.Hk = { jwt: 'jwt-test' };</script>"
         "<style>body{margin:0;background:#fff;font:14px sans-serif} #side{position:fixed;left:0;top:0;bottom:0;width:218px;background:#222;z-index:1000}"
         "#top{position:fixed;left:218px;right:0;top:0;height:55px;background:#eee;z-index:500} #footer{position:fixed;left:218px;right:0;bottom:0;height:34px;background:#ddd}"
         "#main{margin-left:218px;padding-top:55px}</style></head><body>"
-        "<nav id='side'><ul id='mainMenu'><li class='mainmenu-item active'><a class='mainmenu-link'><span class='mainmenu-link-label'>Reports</span></a>"
-        "<ul><li class='active'><a class='mainmenu-sublink active' href='/a/pr/555/report/finance/'>Finance</a></li><li><a class='mainmenu-sublink' href='/a/pr/555/report/patient/'>Patient</a></li></ul></li></ul></nav>"
+        "<nav id='side'><ul id='mainMenu'><li class='mainmenu-item active'><a class='mainmenu-link'><span class='mainmenu-link-label'>Finances</span></a>"
+        "<ul><li><a class='mainmenu-sublink' href='/a/pr/555/expense/'>Expenses</a></li><li class='active'><a class='mainmenu-sublink active' href='/a/pr/555/invoice/'>Invoices</a></li>"
+        "<li><a class='mainmenu-sublink' href='/a/pr/555/fee/'>Fees</a></li></ul></li>"
+        "<li class='mainmenu-item'><a class='mainmenu-link'><span class='mainmenu-link-label'>Reports</span></a>"
+        "<ul><li><a class='mainmenu-sublink' href='/a/pr/555/report/finance/'>Finance</a></li><li><a class='mainmenu-sublink' href='/a/pr/555/report/patient/'>Patient</a></li></ul></li></ul></nav>"
         "<div id='top'><input placeholder='Search by patient name / email / phone / patient number' style='width:60%'></div>"
         "<div id='main'><h1 id='halaxy-title'>Finance reports</h1><div id='halaxy-banner' style='background:#bcd;padding:20px'>After you create a report...</div>"
         "<div id='toolbar-text'></div><div id='pageContent'><p id='halaxy-content'>Halaxy report form</p></div></div>"
@@ -247,11 +250,13 @@ async def main():
         pg = await ctx.new_page()
         errors = []
         pg.on('pageerror', lambda e: errors.append(str(e)))
-        await pg.goto('https://eu.halaxy.com/a/pr/555/report/finance/')
+        await pg.goto('https://eu.halaxy.com/a/pr/555/invoice/')
         await pg.wait_for_timeout(500)
 
         menu = await pg.evaluate("[...document.querySelectorAll('#mainMenu a.mainmenu-sublink')].map(a => a.textContent + ' ' + a.getAttribute('href'))")
-        check('menu item added under Reports', 'Remittances /a/pr/555/report/finance/#upc-remittances' in menu, menu)
+        check('menu item added under Finances, opening over the Invoices page', 'Remittances /a/pr/555/invoice/#upc-remittances' in menu, menu)
+        sect = await pg.evaluate("document.querySelector('.upc-remit-menu').closest('.mainmenu-item').querySelector('.mainmenu-link-label').textContent")
+        check('it sits in the Finances section', sect == 'Finances', sect)
         await pg.click('text=Remittances')
         await pg.wait_for_timeout(300)
         cover = await pg.evaluate("""() => {
@@ -263,19 +268,19 @@ async def main():
                 menu: document.getElementById('side').contains(document.elementFromPoint(100, 300)),
                 top: document.getElementById('top').contains(document.elementFromPoint(800, 20)),
                 footer: document.getElementById('footer').contains(document.elementFromPoint(800, window.innerHeight - 10)),
-                financeActive: document.querySelector('a[href="/a/pr/555/report/finance/"]:not(.upc-remit-menu)').classList.contains('active'),
+                financeActive: document.querySelector('a[href="/a/pr/555/invoice/"]:not(.upc-remit-menu)').classList.contains('active'),
                 ourActive: document.querySelector('.upc-remit-menu').classList.contains('active'),
                 title2: document.title };
         }""")
         check('page covers Halaxy\'s title, banner and controls underneath', cover['title'] and cover['banner'], cover)
         check('side menu, top bar and footer stay visible', cover['menu'] and cover['top'] and cover['footer'], cover)
-        check('menu highlights Remittances, not Finance', cover['ourActive'] and not cover['financeActive'] and cover['title2'] == 'Remittances | Halaxy', cover)
+        check('menu highlights Remittances, not Invoices', cover['ourActive'] and not cover['financeActive'] and cover['title2'] == 'Remittances | Halaxy', cover)
         lit = await pg.evaluate("[...document.querySelectorAll('#mainMenu ul .active')].map(n => n.tagName + ':' + n.textContent.trim())")
         check('only Remittances is highlighted (link and its line)', sorted(lit) == ['A:Remittances', 'LI:Remittances'], lit)
         await pg.evaluate("location.hash = ''")
         await pg.wait_for_timeout(200)
         lit = await pg.evaluate("[...document.querySelectorAll('#mainMenu ul .active')].map(n => n.tagName + ':' + n.textContent.trim())")
-        check('leaving the page puts Halaxy\'s highlight back', sorted(lit) == ['A:Finance', 'LI:Finance'], lit)
+        check('leaving the page puts Halaxy\'s highlight back', sorted(lit) == ['A:Invoices', 'LI:Invoices'], lit)
         await pg.click('text=Remittances')
         await pg.wait_for_timeout(300)
 
@@ -319,6 +324,18 @@ async def main():
         check('requests are paced (at least 0.25 s apart)', gaps and min(gaps) >= 0.25, min(gaps) if gaps else None)
         status = await pg.evaluate("[...document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr')][1].innerText")
         check('result shown as done', 'Done' in status, status)
+        btn = await pg.evaluate("document.querySelector('[data-upc-remittances] [data-act=apply]').disabled")
+        check('nothing can be applied twice from the same reading', btn is True, btn)
+
+        # The same remittance again: everything now paid in full, so the button only attaches, and skips invoices that already have it
+        await pg.set_input_files('[data-upc-remittances] input[type=file]', str(pdfs['wpa']))
+        await pg.wait_for_function("document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr').length === 3 && !document.querySelector('[data-upc-remittances] [data-act=apply]').disabled", timeout=60000)
+        label = await pg.evaluate("document.querySelector('[data-upc-remittances] [data-act=apply]').textContent")
+        check('with nothing to fix, the button attaches the remittance', label == 'Attach remittance to 3 invoices', label)
+        await pg.evaluate("document.querySelector('[data-upc-remittances] [data-act=apply]').click()")
+        await pg.wait_for_function("(document.querySelector('[data-upc-remittances] .upc-log') || {}).innerText && document.querySelector('[data-upc-remittances] .upc-log').innerText.includes('Finished')", timeout=120000)
+        log2 = await pg.evaluate("document.querySelector('[data-upc-remittances] .upc-log').innerText")
+        check('no duplicate attachments', all(len(v) == 1 for v in S['attachments'].values()) and log2.count('already attached') == 3, (S['attachments'], log2))
 
         # The insurer paid nothing for a fee: it stays on the funder invoice at £0.00, never removed (Carl, 9 Nov 2026)
         res = await pg.evaluate("""(async () => { try { const f = await UPC.invoice.fetch('103'); const l = f.lines[0];
