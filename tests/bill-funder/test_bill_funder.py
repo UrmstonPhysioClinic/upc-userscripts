@@ -11,6 +11,7 @@ cogwheel settings form with every other field unchanged; the result is checked a
 Run:  python3 tests/bill-funder/test_bill_funder.py
 Needs: Python 3 with Playwright (Chromium).
 """
+import datetime
 import asyncio, datetime, json, re, sys, urllib.parse
 from pathlib import Path
 from playwright.async_api import async_playwright
@@ -24,8 +25,8 @@ d = lambda days: TODAY - datetime.timedelta(days=days)
 hx = lambda day: day.strftime('%d-%b-%Y')
 
 
-def fresh(extra_line_on_latest=False, refuse_status=False, broken_merge=False):
-    S = {'invoices': {}, 'calls': [], 'calls_read': [], 'next_org': 9001, 'refuse_status': refuse_status, 'broken_merge': broken_merge}
+def fresh(extra_line_on_latest=False, refuse_status=False, broken_merge=False, shift=1):
+    S = {'invoices': {}, 'calls': [], 'calls_read': [], 'dates': {}, 'shift': shift, 'next_org': 9001, 'refuse_status': refuse_status, 'broken_merge': broken_merge}
     def inv(iid, days, status='', note='', claim=CLAIM, billed=False, amount=4000, ref=None, lines=None, inv_status=''):
         day = d(days)
         S['invoices'][iid] = {'id': iid, 'claim': claim, 'billed': billed, 'ref': ref, 'status': inv_status,
@@ -93,10 +94,11 @@ SETTINGS_FIXED = [('form[prefix]', 'UPC-'), ('form[number]', None), ('form[suffi
 
 def settings_popup(iid):
     st = S['invoices'][iid]['status'] if iid in S['invoices'] else ''
+    dates = S['dates'].get(iid, ('05-Nov-2026', ''))
     opts = ''.join("<option value='%s'%s>%s</option>" % (v, ' selected' if v == st else '', n) for v, n in [('', 'Active'), ('issued', 'Issued'), ('deleted', 'Deleted'), ('write-off', 'Write-off')])
     return ("<form name='form' method='post' id='frmInvoiceType'><input type='text' name='form[prefix]' value='UPC-'><input type='number' name='form[number]' value='%d'>"
             "<input type='text' name='form[suffix]'><select name='form[issuerType]'><option value='1'>A</option><option value='2' selected>B</option></select>"
-            "<select name='form[status]' required>%s</select><input type='text' name='form[displayDate]' value='05-Nov-2026'><input type='text' name='form[dueDate]'>"
+            "<select name='form[status]' required>%s</select><input type='text' name='form[displayDate]' value='%s'><input type='text' name='form[dueDate]' value='%s'>"
             "<select name='form[template]'><option value='23876'>A</option><option value='75272' selected>C</option></select>"
             "<select name='form[type]'><option value='' selected>Invoice</option><option value='quote'>Quote</option></select>"
             "<select name='form[payer]'><option value='33' selected>Patient</option><option value='34'>Organisation</option></select>"
@@ -104,7 +106,7 @@ def settings_popup(iid):
             "<input type='radio' name='form[showOrganisationPatientDetails]' value='1' checked><input type='radio' name='form[showOrganisationPatientDetails]' value='2'>"
             "<input type='hidden' name='form[_token]' value='TOKEN-%d'>"
             "<a class='ajax merge-invoices' href='/a/pr/555/invoice/%d/group' id='mergeInvoices'>Merge</a>"
-            "<button id='invoiceOptionsSubmitBtn' type='submit'>Save</button></form>") % (iid, opts, iid, iid)
+            "<button id='invoiceOptionsSubmitBtn' type='submit'>Save</button></form>") % (iid, opts, dates[0], dates[1], iid, iid)
 
 
 def bill_popup(iid):
@@ -128,13 +130,14 @@ async def halaxy(route):
     m = re.search(r'/invoice/line/(\d+)/edit$', p)
     if m:
         lid = int(m.group(1))
-        line = next(l for inv in S['invoices'].values() for l in inv['lines'] if l['lineId'] == lid)
+        line = next(l for inv in list(S['invoices'].values()) + list(S['orgs'].values()) for l in inv['lines'] if l['lineId'] == lid)
         if req.method == 'GET':
-            form = ("<form id='invoiceLineForm' method='post'><input name='form[date]' value='x'><input name='form[amount]' value='%.2f'>"
+            form = ("<form id='invoiceLineForm' method='post'><input name='form[date]' value='%s'><input name='form[amount]' value='%.2f'>"
                     "<input name='form[rebate]' value='%.2f'><input name='form[tax]' value='0.00'><input name='form[notes]' value='keep me'>"
-                    "<input type='hidden' name='form[_token]' value='LT-%d'></form>") % (line['amount'] / 100, line.get('rebate', line['amount']) / 100, lid)   # as live: claim fees carry their rebate
+                    "<input type='hidden' name='form[_token]' value='LT-%d'></form>") % (hx(line['day']), line['amount'] / 100, line.get('rebate', line['amount']) / 100, lid)   # as live: claim fees carry their rebate
             return await js({'status': 'FORM', 'title': 'Edit fee', 'message': form})
-        S['calls'].append(('zero', lid, {k: v[0] for k, v in form.items()}))
+        S['calls'].append(('linedate' if lid >= 50000 else 'zero', lid, {k: v[0] for k, v in form.items()}))
+        line['day'] = datetime.datetime.strptime(form['form[date]'][0], '%d-%b-%Y').date() if isinstance(line['day'], datetime.date) and not isinstance(line['day'], datetime.datetime) else datetime.datetime.strptime(form['form[date]'][0], '%d-%b-%Y')
         line['amount'] = int(round(float(form['form[amount]'][0]) * 100))
         line['rebate'] = int(round(float(form['form[rebate]'][0]) * 100))
         if line['rebate'] > line['amount']:
@@ -173,9 +176,15 @@ async def halaxy(route):
         iid = int(m.group(1))
         if req.method == 'GET':
             return await js({'status': 'FORM', 'title': 'Invoice Settings', 'message': settings_popup(iid)})
-        S['calls'].append(('status', iid, form.get('form[status]', [''])[0], {k: v[0] for k, v in form.items()}))
-        if not S['refuse_status']:
-            S['invoices'][iid]['status'] = form.get('form[status]', [''])[0]
+        fields = {k: v[0] for k, v in form.items()}
+        old_status = S['invoices'][iid]['status'] if iid in S['invoices'] else ''
+        if fields.get('form[status]', '') != old_status:
+            S['calls'].append(('status', iid, fields.get('form[status]', ''), fields))
+            if not S['refuse_status']:
+                S['invoices'][iid]['status'] = fields.get('form[status]', '')
+        else:
+            S['calls'].append(('dates', iid, (fields.get('form[displayDate]'), fields.get('form[dueDate]')), fields))
+            S['dates'][iid] = (fields.get('form[displayDate]', ''), fields.get('form[dueDate]', ''))
         return await js({'status': 'REFRESH'})
     m = re.search(r'/invoicefunctions/(\d+)/claim/(\d+)/$', p)
     if m:
@@ -187,7 +196,10 @@ async def halaxy(route):
         inv = S['invoices'][iid]
         if choice == '0':
             org = S['next_org']; S['next_org'] += 1
-            S['orgs'][org] = {'number': 'UPC-%d' % org, 'lines': list(inv['lines']), 'patient': 'Patient Test'}
+            copies = [{'lineId': l['lineId'] + 50000, 'day': l['day'], 'amount': l['amount'], 'patientInvoice': iid} for l in sorted(inv['lines'], key=lambda l: l['day'])]
+            if copies and S['shift']:
+                copies[0]['day'] = copies[0]['day'] + datetime.timedelta(days=S['shift'])   # Halaxy's date slip, as seen live 9 Nov
+            S['orgs'][org] = {'number': 'UPC-%d' % org, 'lines': copies, 'patient': 'Patient Test'}
         else:
             org = int(choice); S['orgs'][org]['lines'] += inv['lines']
         inv['billed'], inv['org'] = True, org
@@ -198,7 +210,11 @@ async def halaxy(route):
         if iid in S['invoices']:
             return await route.fulfill(body=invoice_html(iid), content_type='text/html')
         if iid in S['orgs']:
-            return await route.fulfill(body="<html><head><title>Invoice %s | Halaxy</title></head><body><table id='invoiceLines'></table></body></html>" % S['orgs'][iid]['number'], content_type='text/html')
+            rows = ''.join("<tr><td data-property='date'><a href='/a/pr/555/invoice/%d'>%s</a></td><td data-property='itemNumber'>Bup-FU</td>"
+                           "<td data-property='tax'>£ 0.00</td><td data-property='amount' class='money number'>%s</td>"
+                           "<td><a class='btn icon ajax' href='/a/pr/555/invoice/line/%d/edit'>e</a></td></tr>" % (l.get('patientInvoice', 0), hx(l['day']), gbp(l['amount']), l['lineId'])
+                           for l in S['orgs'][iid]['lines'])
+            return await route.fulfill(body="<html><head><title>Invoice %s | Halaxy</title></head><body><table id='invoiceLines'>%s</table></body></html>" % (S['orgs'][iid]['number'], rows), content_type='text/html')
         return await route.fulfill(status=404, body='gone')
     await route.fulfill(status=404, body='not mocked: ' + p)
 
@@ -275,11 +291,11 @@ async def main():
         await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
         await pg.wait_for_function(root + ".querySelector('.upc-ok') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60000)
         done = await pg.evaluate(root + ".textContent")
-        check('merged first, onto the latest chosen invoice, then billed once, then marked Issued', [c[0] for c in S['calls']] == ['merge', 'bill', 'status'] and S['calls'][0][1] == 1009 and S['calls'][0][2] == [2001, 2003] and S['calls'][1][1] == 1009, S['calls'])
+        check('merged first, onto the latest chosen invoice, then billed once, then marked Issued', [c[0] for c in S['calls']] == ['merge', 'bill', 'status', 'linedate', 'dates'] and S['calls'][0][1] == 1009 and S['calls'][0][2] == [2001, 2003] and S['calls'][1][1] == 1009, S['calls'])
         check('billed as a NEW organisation invoice, keeping the patient invoice', S['calls'][1][2:] == ('0', 'no'), S['calls'])
         check('never used Halaxy\'s pre-selected invoice for another patient', S['orgs'][7777]['lines'] == [])
         org = S['orgs'].get(9001, {})
-        check('organisation invoice holds exactly the chosen fees', sorted(l['lineId'] for l in org.get('lines', [])) == [2001, 2003, 2009], org)
+        check('organisation invoice holds exactly the chosen fees', sorted(l['lineId'] - 50000 for l in org.get('lines', [])) == [2001, 2003, 2009], org)
         check('unticked fees left alone', 1002 in S['invoices'] and 1008 in S['invoices'] and not S['invoices'][1002]['billed'])
         st = S['calls'][2] if len(S['calls']) > 2 else ('status', None, None, {})
         check('marks the merged patient invoice Issued', st[1] == 1009 and st[2] == 'issued' and S['invoices'][1009]['status'] == 'issued', st[:3])
@@ -288,6 +304,24 @@ async def main():
         want['form[_token]'] = 'TOKEN-1009'
         check('cogwheel form sent with every other setting unchanged', all(sent.get(k) == v for k, v in want.items()), {k: (sent.get(k), v) for k, v in want.items() if sent.get(k) != v})
         check('other invoices keep their status', all(S['invoices'][i]['status'] == '' for i in (1002, 1008)))
+        today = datetime.date.today()
+        mon = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        m3 = today.month - 1 + 3
+        y3, mm3 = today.year + m3 // 12, m3 % 12 + 1
+        last = [31, 29 if y3 % 4 == 0 and (y3 % 100 or y3 % 400 == 0) else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][mm3 - 1]
+        due = datetime.date(y3, mm3, min(today.day, last))
+        lab = lambda d: '%02d-%s-%d' % (d.day, mon[d.month - 1], d.year)
+        dc = [c for c in S['calls'] if c[0] == 'dates']
+        check('funder invoice dated today, due 3 months later', dc and dc[0][1] == 9001 and dc[0][2] == (lab(today), lab(due)) and S['dates'].get(9001) == (lab(today), lab(due)), dc[:1])
+        check('dates set with every other setting unchanged', dc and dc[0][3].get('form[_token]') == 'TOKEN-9001' and dc[0][3].get('form[template]') == '75272' and dc[0][3].get('form[status]') == '', dc[0][3] if dc else None)
+        check('patient invoice dates left alone', 1009 not in S['dates'])
+        ld = [c for c in S['calls'] if c[0] == 'linedate']
+        pdays = sorted(hx(l['day']) for l in S['invoices'][1009]['lines'])
+        odays = sorted(hx(l['day']) for l in S['orgs'][9001]['lines'])
+        check('Halaxy\'s wrong fee date on the funder invoice corrected to the patient fee\'s date', len(ld) == 1 and pdays == odays, (ld[:1], pdays, odays))
+        check('only the date changed on that fee', ld and ld[0][2].get('form[amount]') == '%.2f' % 40 and ld[0][2].get('form[_token]') == 'LT-%d' % ld[0][1], ld[0][2] if ld else None)
+        check('result says which fee date was corrected', 'Fee date corrected on UPC-9001' in done, done[-500:])
+        check('result gives the funder invoice dates', 'invoice date ' + lab(today) + ', due ' + lab(due) in done, done[-400:])
         check('result says the invoice is marked Issued', 'UPC-1009 is marked Issued' in done, done[-300:])
         check('reports the result with the new invoice number', 'Billed.' in done and 'UPC-9001' in done and '£ 120.00'.replace(' ', '') in done.replace(' ', ''), done[-300:])
         check('no page errors', not errors, errors)
@@ -307,7 +341,7 @@ async def main():
         check('confirmation says there is nothing to merge', 'Nothing to merge' in conf and 'already on UPC-1003' in conf, conf)
         await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
         await pg.wait_for_function(root + ".querySelector('.upc-ok') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60000)
-        check('billed without a merge', [c[0] for c in S['calls']] == ['bill', 'status'], [c[0] for c in S['calls']])
+        check('billed without a merge', [c[0] for c in S['calls']] == ['bill', 'status', 'linedate', 'dates'], [c[0] for c in S['calls']])
         await ctx.close()
 
         # After billing: cancelled / did-not-attend fees left out can be kept or set to £0
@@ -338,7 +372,7 @@ async def main():
         zc = [c for c in S['calls'] if c[0] == 'zero']
         check('only the chosen fee is set to £0', [c[1] for c in zc] == [2002] and S['invoices'][1002]['lines'][0]['amount'] == 0, zc)
         sent = zc[0][2] if zc else {}
-        check('amount and funder rebate both set to £0, every other field unchanged', sent.get('form[amount]') == '0.00' and sent.get('form[rebate]') == '0.00' and sent.get('form[notes]') == 'keep me' and sent.get('form[_token]') == 'LT-2002' and sent.get('form[date]') == 'x', sent)
+        check('amount and funder rebate both set to £0, every other field unchanged', sent.get('form[amount]') == '0.00' and sent.get('form[rebate]') == '0.00' and sent.get('form[notes]') == 'keep me' and sent.get('form[_token]') == 'LT-2002' and sent.get('form[date]') == hx(S['invoices'][1002]['lines'][0]['day']), sent)
         kept = [l for l in S['invoices'][1009]['lines'] if l['lineId'] == 2099]
         check('kept fee left alone', kept and kept[0]['amount'] == 4000, kept)
         txt = await pg.evaluate(root + ".textContent")
@@ -384,6 +418,16 @@ async def main():
         ok = await pg.evaluate(root + " !== null && !window.__nativeOpens")
         rows = await pg.evaluate("document.querySelectorAll('[data-upc-bill-funder] tbody tr').length")
         check('opens our flow from the patient Invoices tab address too', ok and rows > 0, (ok, rows))
+        await ctx.close()
+
+        # A funder fee far from its patient fee's date is reported, not changed
+        S = fresh(shift=10)
+        ctx, pg, root, btn, errors = await open_panel(browser, 1003)
+        await pg.evaluate(root + ".querySelector('[data-a=next]').click()")
+        await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
+        await pg.wait_for_function(root + ".querySelector('.upc-ok') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60000)
+        done = await pg.evaluate(root + ".textContent")
+        check('far-off fee date reported, not changed', not [c for c in S['calls'] if c[0] == 'linedate'] and 'Check the fee dates on UPC-9001' in done and '10 days' in done, done[-400:])
         await ctx.close()
 
         # Escape closes it while nothing is running

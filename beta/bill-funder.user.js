@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy bill funder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.6.2
+// @version      0.7.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
@@ -40,7 +40,7 @@
   if (window.__upcBillFunder) return;
   window.__upcBillFunder = true;
 
-  const VERSION = '0.6.2';
+  const VERSION = '0.7.1';
   const MAX_AGE_DAYS = 183;   // about 6 months
   const NOT_ATTENDED = /cancel|did-not-attend|dna|reject|declin|reschedul/i;
   const DAY = 86400e3;
@@ -57,6 +57,8 @@
     return m ? new Date(+m[3], MONTHS[m[2].toLowerCase()], +m[1]).getTime() : null;
   }
   const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // Same day N months later; the last day of the month when that day doesn't exist (31-Aug + 3 = 30-Nov).
+  const addMonths = (d, n) => { const r = new Date(d.getFullYear(), d.getMonth() + n, 1); r.setDate(Math.min(d.getDate(), new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate())); return r; };
   const dateLabel = (t) => { if (!t) return ''; const d = new Date(t); return String(d.getDate()).padStart(2, '0') + '-' + MON[d.getMonth()] + '-' + d.getFullYear(); };   // 05-Nov-2026, as Halaxy
 
   // ------------------------------------------------------------------ reading Halaxy
@@ -218,7 +220,41 @@
     say('Marking ' + after.number + ' as Issued...');
     let issuedError = '';
     try { await U().invoice.setStatus(targetId, 'issued'); } catch (e) { issuedError = e.message || String(e); }
-    return { patientInvoiceId: targetId, patientInvoiceNumber: after.number, orgInvoiceId: org.funderInvoiceId, orgInvoiceNumber: orgNumber, amount: org.amount, issuedError };
+
+    // 6. Fee dates on the funder invoice (Carl, 9 Nov 2026): Halaxy sometimes copies a fee with the wrong
+    // date (13-Oct became 14-Oct). Pair each funder fee with the patient fee it came from (same order by
+    // date, same item) and correct dates a day or two out. Anything else is reported, not changed.
+    say('Checking the fee dates on ' + (orgNumber || 'the funder invoice') + '...');
+    const dateFixes = [];
+    let feeDateError = '';
+    try {
+      const byWhen = (a, b2) => (parseDate(a.date) || 0) - (parseDate(b2.date) || 0);
+      const P = after.lines.slice().sort(byWhen);
+      const O = (await U().invoice.fetch(org.funderInvoiceId)).lines.slice().sort(byWhen);
+      if (P.length !== O.length || P.some((l, i) => l.item && O[i].item && l.item !== O[i].item)) {
+        feeDateError = 'its fees could not be paired with the patient invoice\'s, so their dates were not checked';
+      } else {
+        for (let i = 0; i < P.length; i++) {
+          const want = P[i].date, have = O[i].date;
+          if (!want || !have || want === have) continue;
+          const days = Math.round(Math.abs(parseDate(want) - parseDate(have)) / DAY);
+          if (days > 2) { feeDateError = 'the ' + have + ' fee is ' + days + ' days from the patient fee (' + want + '), so it was not changed'; continue; }
+          say('Correcting a fee date on ' + (orgNumber || 'the funder invoice') + ': ' + have + ' to ' + want + '...');
+          try { await U().invoice.setLineDate(O[i].lineId, want); dateFixes.push({ from: have, to: want }); }
+          catch (e) { feeDateError = 'the ' + have + ' fee could not be changed to ' + want + ' (' + (e.message || e) + ')'; }
+        }
+      }
+    } catch (e) { feeDateError = e.message || String(e); }
+
+    // 7. Funder invoice dates (Carl, 9 Nov 2026): invoice date the day it was created, due 3 months later.
+    // Halaxy copies the patient invoice's date and leaves the due date empty.
+    const today = new Date();
+    const invDate = dateLabel(today.getTime());
+    const dueDate = dateLabel(addMonths(today, 3).getTime());
+    say('Setting ' + (orgNumber || 'the funder invoice') + ' to invoice date ' + invDate + ', due ' + dueDate + '...');
+    let datesError = '';
+    try { await U().invoice.setSettings(org.funderInvoiceId, { 'form[displayDate]': invDate, 'form[dueDate]': dueDate }, 'the invoice dates'); } catch (e) { datesError = e.message || String(e); }
+    return { patientInvoiceId: targetId, patientInvoiceNumber: after.number, orgInvoiceId: org.funderInvoiceId, orgInvoiceNumber: orgNumber, amount: org.amount, issuedError, invDate, dueDate, datesError, dateFixes, feeDateError };
   }
 
   // ------------------------------------------------------------------ panel
@@ -278,14 +314,18 @@
         const total = fmt(c.reduce((s, f) => s + f.amount, 0));
         const funder = esc(p.current.funderName || 'the funder');
         h += '<div class="upc-box upc-log"><b>Confirm</b><br>' + (needsMerge()
-          ? 'Merge ' + c.length + ' fees (' + total + ') onto the latest of their invoices, then invoice ' + funder + ' once as a new organisation invoice, keeping the patient invoice, and mark that patient invoice Issued. Fees on invoices emptied by the merge are moved and those invoices are deleted by Halaxy, as its merge does.'
-          : 'Nothing to merge: ' + (c.length === 1 ? 'the fee is' : 'the fees are') + ' already on ' + esc(c[0].invoiceNumber) + '. Invoice ' + funder + ' once from it (' + total + ') as a new organisation invoice, keeping the patient invoice, and mark it Issued.') + '</div>';
+          ? 'Merge ' + c.length + ' fees (' + total + ') onto the latest of their invoices, then invoice ' + funder + ' once as a new organisation invoice (dated today, due in 3 months), keeping the patient invoice, and mark that patient invoice Issued. Fees on invoices emptied by the merge are moved and those invoices are deleted by Halaxy, as its merge does.'
+          : 'Nothing to merge: ' + (c.length === 1 ? 'the fee is' : 'the fees are') + ' already on ' + esc(c[0].invoiceNumber) + '. Invoice ' + funder + ' once from it (' + total + ') as a new organisation invoice (dated today, due in 3 months), keeping the patient invoice, and mark it Issued.') + '</div>';
       }
       if (st.log.length) h += '<div class="upc-box upc-log">' + st.log.map((l) => '<div class="' + (l.err ? 'upc-err' : '') + '">' + esc(l.t) + '</div>').join('') + '</div>';
       if (st.result) {
         const r = st.result;
         h += '<p class="upc-ok upc-gap">Billed. ' + esc(r.patientInvoiceNumber) + ' is billed to the funder on <a href="' + esc(U().base() + '/invoice/' + r.orgInvoiceId) + '" target="_blank" rel="noopener">' + esc(r.orgInvoiceNumber || 'the new organisation invoice') + '</a>' + (r.amount !== null && r.amount !== undefined ? ' (' + fmt(r.amount) + ')' : '') +
           (r.issuedError ? '.</p><p class="upc-warn upc-gap">Billing is done, but ' + esc(r.patientInvoiceNumber) + ' could not be marked Issued (' + esc(r.issuedError) + '). Set it with the cogwheel.</p>' : ', and ' + esc(r.patientInvoiceNumber) + ' is marked Issued.</p>');
+        h += r.datesError ? '<p class="upc-warn">The funder invoice dates were not set (' + esc(r.datesError) + '). Set the invoice date to ' + esc(r.invDate) + ' and the due date to ' + esc(r.dueDate) + ' with its cogwheel.</p>'
+          : '<p class="text-muted">' + esc(r.orgInvoiceNumber || 'The funder invoice') + ': invoice date ' + esc(r.invDate) + ', due ' + esc(r.dueDate) + '.</p>';
+        if (r.dateFixes && r.dateFixes.length) h += '<p class="text-muted">Fee date' + (r.dateFixes.length === 1 ? '' : 's') + ' corrected on ' + esc(r.orgInvoiceNumber || 'the funder invoice') + ' (Halaxy copied ' + (r.dateFixes.length === 1 ? 'it' : 'them') + ' wrongly): ' + esc(r.dateFixes.map((f) => f.from + ' to ' + f.to).join(', ')) + '.</p>';
+        if (r.feeDateError) h += '<p class="upc-warn">Check the fee dates on ' + esc(r.orgInvoiceNumber || 'the funder invoice') + ': ' + esc(r.feeDateError) + '.</p>';
       }
       // After billing: cancelled or did-not-attend fees left out, to keep or set to £0.
       const left = leftover();

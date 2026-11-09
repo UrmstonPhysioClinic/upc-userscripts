@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.11
+// @version      0.1.13
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.11';
+  const VERSION = '0.1.13';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -281,6 +281,21 @@
     },
     // Sets the status the way the cogwheel's Save does: the whole settings form as Halaxy filled
     // it, with only the status changed. Reads it back to confirm.
+    // Changes fields in the invoice settings (cogwheel) the way its Save does: the whole form as Halaxy
+    // filled it, with only the given fields changed (e.g. { 'form[displayDate]': '09-Nov-2026' }).
+    // Reads the pop-up again to confirm each one.
+    async setSettings(id, changes, what) {
+      const { doc } = await http.popup('/invoice/options/' + id);
+      const form = doc.querySelector('form#frmInvoiceType');
+      const missing = Object.keys(changes).filter((k) => !form || !form.querySelector('[name="' + k + '"]'));
+      if (missing.length) throw new UPCError('The invoice settings pop-up has changed (' + missing.join(', ') + ' not found), so ' + (what || 'the settings') + ' were not changed.');
+      const pairs = serialize(form).map(([k, v]) => [k, k in changes ? changes[k] : v]);
+      Object.keys(changes).forEach((k) => { if (!pairs.some(([x]) => x === k)) pairs.push([k, changes[k]]); });
+      http.expectRefresh(await http.postForm('/invoice/options/' + id, pairs), 'Saving ' + (what || 'the invoice settings'));
+      const again = (await http.popup('/invoice/options/' + id)).doc.querySelector('form#frmInvoiceType');
+      const wrong = Object.keys(changes).filter((k) => { const el = again && again.querySelector('[name="' + k + '"]'); return !el || String(el.value).trim() !== String(changes[k]); });
+      if (wrong.length) throw new UPCError('Halaxy accepted the change, but invoice ' + id + ' does not show the new ' + (what || 'settings') + '.');
+    },
     async setStatus(id, status) {
       const { doc } = await http.popup('/invoice/options/' + id);
       const form = doc.querySelector('form#frmInvoiceType');
@@ -316,6 +331,15 @@
       if (money.cents(get('form[amount]')) !== amount || (newRebate !== null && money.cents(get('form[rebate]')) !== newRebate)) {
         throw new UPCError('Halaxy accepted the change, but the fee does not show ' + money.fmt(amount) + (newRebate !== null ? ' with a ' + money.fmt(newRebate) + ' rebate' : '') + '.');
       }
+    },
+    // Sets a fee line's date ('13-Oct-2026'), the field form[date] in the fee edit pop-up (confirmed live
+    // 9 Nov 2026), every other field as Halaxy filled it. Re-reads the fee to confirm.
+    async setLineDate(lineId, date) {
+      const pairs = await lineForm(lineId);
+      if (!pairs.some(([k]) => k === 'form[date]')) throw new UPCError('The fee edit pop-up has changed, so the fee date was not changed.');
+      http.expectRefresh(await http.postForm('/invoice/line/' + lineId + '/edit', pairs.map(([k, v]) => [k, k === 'form[date]' ? date : v])), 'Saving the fee date');
+      const after = (await lineForm(lineId)).find(([k]) => k === 'form[date]');
+      if (!after || String(after[1]).trim() !== date) throw new UPCError('Halaxy accepted the change, but the fee does not show ' + date + '.');
     },
     // Finds an invoice by its number (UPC-12345). Returns the list row ({ id, invoiceNum, payerName, total, balance, ... }) or null.
     async findByNumber(number) {
