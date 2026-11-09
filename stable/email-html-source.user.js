@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy: HTML source for emails
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3
+// @version      0.4
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/email-html-source.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/email-html-source.user.js
@@ -67,17 +67,17 @@
   // ---------- 2. Styles ----------
   const css = document.createElement('style');
   css.textContent = `
-    .hx-raw-panel{display:flex;flex-wrap:wrap;gap:8px;padding:8px;border:1px solid var(--ck-color-base-border,#c4c4c4);border-top:0;background:#fff}
+    .hx-raw-panel{display:flex;flex-wrap:wrap;gap:8px;padding:8px;border:1px solid var(--ck-color-base-border,#c4c4c4);border-top:0;background:var(--vs-form-bg-color,#fff)}
     .hx-raw-panel textarea,.hx-raw-panel iframe{flex:1 1 300px;min-height:420px;box-sizing:border-box}
-    .hx-raw-panel textarea{font:12px/1.5 ui-monospace,Consolas,"Liberation Mono",monospace;white-space:pre;tab-size:2;resize:vertical;padding:8px;border:1px solid #ccc;color:#222;background:#fafafa}
-    .hx-raw-panel iframe{border:1px solid #ddd;background:#fff}
-    .hx-raw-bar{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:12px;color:#555}
+    .hx-raw-panel textarea.form-control{height:auto;font-family:ui-monospace,Consolas,"Liberation Mono",monospace;white-space:pre;tab-size:2;resize:vertical}
+    .hx-raw-panel iframe{border:1px solid var(--vs-form-border-color,#ced4da);border-radius:4.8px;background:#fff}
+    .hx-raw-bar{flex-basis:100%;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+    .hx-raw-panel .btn{margin:0}
     .hx-raw-bar .hx-raw-note{flex:1 1 auto}
-    .hx-raw-warn{flex-basis:100%;color:#a15c00}
+    .hx-raw-warn{flex-basis:100%;color:var(--vs-balance-negative-color,#ec6b65)}
     .hx-raw-warn:empty{display:none}
-    .hx-raw-confirm{flex-basis:100%;padding:8px;border:1px solid #e0b400;background:#fff8db;font-size:12px;color:#333}
+    .hx-raw-confirm{flex-basis:100%;padding:8px 12px;border:1px solid #e0b400;border-radius:4.8px;background:#fff8db}
     .hx-raw-confirm button{margin-left:8px}
-    .hx-raw-panel button.hx-raw-act{font-size:12px;padding:3px 10px;border:1px solid #bbb;border-radius:3px;background:#f4f4f4;color:#222;cursor:pointer}
     .hx-raw-btn .ck-button__label{font-family:ui-monospace,Consolas,monospace;font-weight:bold}
     .hx-raw-btn.hx-raw-flag .ck-button__label{color:#c05600}
   `;
@@ -135,20 +135,20 @@
     items.appendChild(btn);
 
     const panel = document.createElement('div');
-    panel.className = 'hx-raw-panel';
+    panel.className = 'upc-native hx-raw-panel';
     panel.style.display = 'none';
     panel.innerHTML =
-      '<textarea spellcheck="false" aria-label="HTML source"></textarea>' +
+      '<textarea class="form-control" spellcheck="false" aria-label="HTML source"></textarea>' +
       '<iframe sandbox="" title="Email preview"></iframe>' +
       '<div class="hx-raw-bar">' +
-        '<span class="hx-raw-note">HTML mode: this HTML is saved or sent as written (Halaxy still filters some CSS).</span>' +
-        '<button type="button" class="hx-raw-act" data-act="back">Back to editor</button>' +
+        '<span class="hx-raw-note text-muted">HTML mode: this HTML is saved or sent as written (Halaxy still filters some CSS).</span>' +
+        '<button type="button" class="btn btn-outline-primary-light hx-raw-act" data-act="back">Back to editor</button>' +
         '<div class="hx-raw-warn"></div>' +
       '</div>' +
       '<div class="hx-raw-confirm" style="display:none">' +
         'The editor will remove formatting it does not support, such as layout divs, inline styles, padding, borders and table styling.' +
-        '<button type="button" class="hx-raw-act" data-act="yes">Switch to editor</button>' +
-        '<button type="button" class="hx-raw-act" data-act="no">Stay in HTML</button>' +
+        '<button type="button" class="btn btn-outline-primary-light hx-raw-act" data-act="yes">Switch to editor</button>' +
+        '<button type="button" class="btn btn-outline-primary-light hx-raw-act" data-act="no">Stay in HTML</button>' +
       '</div>';
     main.after(panel);
 

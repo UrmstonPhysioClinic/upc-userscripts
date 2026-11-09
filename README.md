@@ -14,20 +14,18 @@ That is the only install. Scripts added to this repository later reach every PC 
 
 | Script | What it does |
 |---|---|
-| Outstanding Actions | Persistent notice of today's attended appointments with an unpublished note, and unpaid self-funded invoices. |
+| Outstanding Actions | Notice at the bottom centre of today's attended appointments with an unpublished note, and unpaid self-funded invoices. Your own appointments by default; Show everyone for the whole clinic. Reception sees everyone. |
 | Calendar controls | Clinic calendar defaults, compact 15-minute zoom, accurate time line, Just me / All practitioners, live refresh from other PCs, drag fixes, resizable personal appointments, 24-hour time picker, durations from fees. |
 | Custom Reports | Reports menu item: invoices, appointments or patients with any filters, chosen columns and saved views. Read-only. |
 | Rebate Sync | Change a rebate on the patient or funder invoice and the linked line on the other follows. Asks before changing anything. |
 | Branding | Clinic colours, logo, favicon and font in Halaxy. |
 | Auto-expanding text boxes | Text boxes and rich text editors grow to fit their content instead of scrolling. |
 | Toast alerts | Halaxy's alert banners float in the corner instead of pushing the page about. |
-| Arrival chime | Loud chime when a patient arrival notification appears. Being replaced by Alerts. |
-| Chat alert | Urgent repeating alert when the chat unread count goes up, until someone clicks or types. Being replaced by Alerts. |
-| Alerts (beta only for now) | Arrival chime and chat alarm in one script. Sounds once per PC however many tabs are open; a click in any tab stops the alarm; each sound can be switched off per PC from the Tampermonkey menu. |
+| Alerts | Arrival chime and chat alarm in one script. Sounds once per PC however many tabs are open; a click in any tab stops the alarm; each sound can be switched off per PC from the Tampermonkey menu. |
 | Remittances (beta only for now) | Reports > Remittances: read a Bupa, WPA, AXA or Aviva remittance (typed or scanned PDF), match each line to its Halaxy invoice, flag differences, move excesses to the patient after one confirmation, and attach the remittance to each invoice. Never records payments. |
 | Bill funder (beta only for now) | A "Bill funder" button next to Halaxy's Invoice Funder on a patient invoice: picks this patient's unbilled fees for the claim (past, last 6 months, not Issued; did-not-attend and £0 fees listed with comments but not ticked), merges them onto one invoice, then invoices the funder once as a new organisation invoice. Asks first, checks every step. |
-| Core library (beta only for now) | Shared helpers the other scripts use, including request pacing so our traffic stays modest. Does nothing on its own. |
-| Health check (beta only for now) | Checks that what our scripts rely on in Halaxy is still there, notes Halaxy updates, and collects script errors and update problems. Shows a small notice bottom left only when something needs looking at; Tampermonkey menu > Health check: show results at any time. |
+| Core library | Shared helpers the other scripts use, including request pacing so our traffic stays modest. Does nothing on its own. |
+| Health check | Checks that what our scripts rely on in Halaxy is still there, notes Halaxy updates, and collects script errors and update problems. Shows a small notice at the bottom centre only when something needs looking at; Tampermonkey menu > Health check: show results at any time. |
 | HTML source for emails | A `<>` button on email editors to edit the body as raw HTML with a live preview. |
 
 ## How it works
