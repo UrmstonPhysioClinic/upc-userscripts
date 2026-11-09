@@ -8,6 +8,10 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Bill funder
 
+### 0.7.1 (9 Nov 2026, beta)
+- After invoicing the funder: checks each fee's date on the new funder invoice against the patient fee it came from and corrects dates a day or two out (Halaxy copied 13-Oct as 14-Oct on a live run). Fees it can't pair, or further out, are reported for a manual check.
+- Sets the funder invoice's date to the day it was created and its due date to 3 months later (Halaxy copies the patient invoice's date and leaves the due date empty).
+
 ### 0.6.2 (9 Nov 2026, beta)
 - Fix: Zero failed on live Halaxy because a fee on a claim carries its funder rebate before any billing. Zero now sets the fee and its funder rebate to £ 0.00 together (which also clears the funder's row in Payments), but only while the fee's invoice still shows Invoice Funder; a fee on a billed invoice is refused.
 - First live billing run (9 Nov): merged three fees, invoiced Bupa on a new organisation invoice, marked the patient invoice Issued.
@@ -76,6 +80,10 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Scanned invoice numbers can be corrected and re-checked on the review screen.
 
 ## Core library
+
+### 0.1.13 (9 Nov 2026, beta)
+- `UPC.invoice.setSettings(id, changes)`: any invoice settings fields through the cogwheel, others unchanged, confirmed by re-reading.
+- `UPC.invoice.setLineDate(lineId, date)`: a fee's date (`form[date]`, confirmed live), confirmed by re-reading.
 
 ### 0.1.11 (9 Nov 2026, beta)
 - `UPC.invoice.setLineAmount(..., { lowerRebate: true })` lowers the funder rebate with the amount, only while the invoice still shows Invoice Funder; confirms by re-reading the fee's form.
