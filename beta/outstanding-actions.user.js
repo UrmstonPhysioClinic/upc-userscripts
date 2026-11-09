@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy Outstanding Actions (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.5.2
+// @version      0.5.3
 // @description  Persistent notice of today's outstanding actions: attended appointments without a published note, and unpaid self-funded invoices.
 // @match        https://*.halaxy.com/a/*
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
@@ -47,7 +47,7 @@
   if (window.__hxOutstanding) return;
   window.__hxOutstanding = true;
 
-  const VERSION = '0.5.2';
+  const VERSION = '0.5.3';
   const m = location.pathname.match(/^\/a\/pr\/(\d+)\//);
   if (!m) return;
   const PG = m[1];
@@ -368,10 +368,11 @@
   const CSS = `
     /* Bottom centre of the content area: clear of the patient side panel and the booking panel's Save. */
     .upc-oa { position: fixed; left: var(--upc-oa-centre, 50%); transform: translateX(-50%); bottom: 12px; z-index: 90; display: flex; flex-direction: column; align-items: center; gap: 8px; }
-    .upc-oa .upc-oa-pill { box-shadow: 0 4px 14px rgba(0,0,0,.25); }
-    /* Halaxy's red button is filled, and turns into an unfilled outline on hover. Over the page that
-       lets the content show through, so give only the hover state a solid fill behind the outline. */
-    .upc-oa .upc-oa-pill:hover, .upc-oa .upc-oa-pill:active { background-color: var(--vs-modal-bg-color, #fff); }
+    /* Halaxy's red button is filled, and an unfilled outline on hover. A white backing that Halaxy's
+       styles never touch sits behind it, so the page never shows through, whatever Halaxy does on hover. */
+    .upc-oa .upc-oa-back { display: inline-flex; background: #fff; border-radius: 4.8px; box-shadow: 0 4px 14px rgba(0,0,0,.25); }
+    .upc-oa .upc-oa-back > .btn { margin: 0; }
+
     .upc-oa .upc-oa-panel { width: 380px; max-width: calc(100vw - 32px); max-height: 60vh; display: flex; flex-direction: column; margin: 0;
       box-shadow: 0 8px 16px rgba(0,0,0,.2); overflow: hidden; }
     .upc-oa .card-header { display: flex; align-items: center; justify-content: space-between; }
@@ -484,7 +485,7 @@
       'aria-expanded': String(!settings.collapsed),
       onclick: toggle
     }, [el('span', { text: label })]);
-    wrap.appendChild(pill);
+    wrap.appendChild(el('span', { class: 'upc-oa-back' }, [pill]));
   }
 
   function buildPanel(items, unchecked) {

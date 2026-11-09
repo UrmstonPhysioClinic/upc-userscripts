@@ -85,6 +85,9 @@
 
 ## Health check
 
+### 1.1.3 (9 Nov 2026, beta)
+- Same fix as Outstanding Actions 0.5.3 for its notice.
+
 ### 1.1.2 (9 Nov 2026, beta)
 - Same fix as Outstanding Actions 0.5.2 for its notice.
 
@@ -133,6 +136,9 @@ Existing scripts moved here from earlier chats, code unchanged. Only the header 
 - HTML source for emails 0.3
 
 ## Outstanding Actions
+
+### 0.5.3 (9 Nov 2026, beta)
+- The hover state is no longer see-through on live Halaxy: a white backing sits behind the notice, out of reach of Halaxy's button styles (0.5.2's fill lost to Halaxy's hover style).
 
 ### 0.5.2 (9 Nov 2026, beta)
 - Fix to 0.5.1: the notice is Halaxy's filled red again; only its hover state (an outline) gets a solid fill, so the page no longer shows through when you hover.
