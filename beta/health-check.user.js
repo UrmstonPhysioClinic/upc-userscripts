@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.8
+// @version      1.1.9
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.8';
+  const VERSION = '1.1.9';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -158,8 +158,10 @@
     },
     {
       id: 'reports', title: "Halaxy's table builder",
-      scripts: ['Custom Reports', 'Remittances'],
-      applies: () => /\/report\//.test(location.pathname),
+      scripts: ['Custom Reports'],
+      // Only the Finance report page, where Custom Reports opens: other report pages (such as the form
+      // at /report/appointment/new) don't load the table builder (false alarm, 9 Nov 2026).
+      applies: () => /\/report\/finance(\/|$)/.test(location.pathname),
       test: () => missingIn(['HxGridTable()', 'Hk.jwt']),
     },
     {

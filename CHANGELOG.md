@@ -159,6 +159,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Health check
 
+### 1.1.9 (9 Nov 2026, beta)
+- Halaxy's table builder is only checked on the Finance report page, where Custom Reports uses it. Other report pages, such as the new appointment report form, don't load it, which gave a false alarm. Remittances no longer listed as relying on it.
+
 ### 1.1.8 (9 Nov 2026, beta)
 - Daily check of the add-task pop-up (fields, and Carl Healy in the Assign to list). Opening it adds nothing.
 

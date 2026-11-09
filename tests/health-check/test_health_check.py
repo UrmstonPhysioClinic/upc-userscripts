@@ -153,6 +153,14 @@ async def main():
         txt = await pg.evaluate("document.querySelector('[data-hx-health]').textContent")
         check('menu opens results: all passed', 'All checks passed' in txt and 'Halaxy version 4.12' in txt, txt[:200])
 
+        # 1b. Halaxy's table builder: checked only on the Finance report page (the mock pages don't have it)
+        probs, pill = await load('/a/pr/555/report/appointment/new')
+        check('no false alarm about the table builder on other report pages', not [p for p in probs if 'table builder' in p['title']], probs)
+        probs, pill = await load('/a/pr/555/report/finance/')
+        tb = [p for p in probs if 'table builder' in p['title']]
+        check('missing table builder still reported on the Finance report page, for Custom Reports only', tb and tb[0]['scripts'] == ['Custom Reports'], tb)
+        await pg.evaluate("(() => { const r = JSON.parse(localStorage.getItem('upc-health:results')); delete r.reports; localStorage.setItem('upc-health:results', JSON.stringify(r)); })()")
+
         # 2. Halaxy calendar code changed
         STATE['break'] = {'timeline'}
         probs, pill = await load()
