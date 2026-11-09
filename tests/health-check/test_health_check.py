@@ -89,6 +89,10 @@ async def halaxy(route):
         return await j({'status': 'OK', 'payload': {'events': events()}})
     if '/patient/invoice/' in p and p.endswith('/list-data'):
         return await j([{'id': 501, 'total': 45, 'balance': 0, 'status': 'Paid In Full'}])
+    if re.search(r'/task/new/invoice/\d+$', p):
+        f = "<form id='form_task_edit'><input name='form[title]'><select name='form[linkPrGs][]'><option value='31'>Carl Healy</option></select><input type='radio' name='form[priority]' value='2'>"
+        f += ("" if 'task' in STATE['break'] else "<input name='form[displayDueDate]'>") + "<textarea name='form[comment]'></textarea><input type='hidden' name='form[_token]' value='t'></form>"
+        return await j({'status': 'FORM', 'message': f})
     if re.search(r'/appointment/\d+$', p):
         good = "<div class='appointment-details-popup'><div class='subTitle'>Notes</div><div class='px-2'>x</div></div>"
         return await route.fulfill(body='<div></div>' if 'details' in STATE['break'] else good, content_type='text/html')
@@ -182,7 +186,7 @@ async def main():
 
         # 4. Halaxy update: data checks run straight away and catch data changes
         STATE['version'] = '4.13'
-        STATE['break'] = {'field', 'status', 'settings', 'details'}
+        STATE['break'] = {'field', 'status', 'settings', 'details', 'task'}
         probs, pill = await load()
         stored = await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:halaxy'))")
         check('Halaxy update noted', stored['version'] == '4.13' and stored['previous'] == '4.12', stored)
@@ -191,6 +195,8 @@ async def main():
         check('missing data field reported', 'field noteStatusCss' in lines, lines)
         check('new appointment status reported, with an example time to find it', any('no-show' in l and re.search(r'for example the appointment at \d\d:\d\d on \d\d-[A-Z][a-z]{2}-\d{4}', l) for l in lines), lines)
         check('check-response is a known status', not any('check-response' in l for l in lines), lines)
+        tsk = [x for x in probs if x['title'] == 'Add-task pop-up has changed']
+        check('add-task pop-up change reported for Remittances', tsk and 'Remittances' in tsk[0]['scripts'] and any('displayDueDate' in l for l in tsk[0]['lines']), tsk)
         det = [x for x in probs if x['title'] == 'Appointment details pop-up has changed']
         check('appointment details layout change reported for Bill funder', det and 'Bill funder' in det[0]['scripts'], det)
         sett = [x for x in probs if x['title'] == 'Invoice settings (cogwheel) has changed']

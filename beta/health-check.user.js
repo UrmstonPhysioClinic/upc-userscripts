@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.7
+// @version      1.1.8
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.7';
+  const VERSION = '1.1.8';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -275,6 +275,20 @@
         const box = doc.querySelector('.appointment-details-popup');
         put('data-appointment-details', 'Appointment details pop-up', ['Bill funder'], box ? [] : ['details layout missing (div.appointment-details-popup)']);
       } catch (e) { put('data-appointment-details', 'Appointment details pop-up', ['Bill funder'], [e.message]); }
+    }
+
+    // Add-task pop-up for an invoice: Remittances adds a task to bill the patient's excess. Opening it adds nothing.
+    const forTask = appts.find((e) => e.invoiceID);
+    if (forTask) {
+      try {
+        const res = await getJSON('/task/new/invoice/' + encodeURIComponent(forTask.invoiceID) + '?clicked=' + Date.now());
+        const doc = new DOMParser().parseFromString(String((res && res.message) || ''), 'text/html');
+        const form = doc.querySelector('form#form_task_edit');
+        const need = ['form[title]', 'form[linkPrGs][]', 'form[priority]', 'form[displayDueDate]', 'form[comment]', 'form[_token]'];
+        const problems = !form ? ['add-task form missing'] : need.filter((k) => !form.querySelector('[name="' + k + '"]')).map((k) => 'field ' + k + ' missing');
+        if (form && ![...form.querySelectorAll('select[name="form[linkPrGs][]"] option')].some((o) => /carl healy/i.test(o.textContent))) problems.push('Carl Healy is not in the Assign to list');
+        put('data-task-form', 'Add-task pop-up', ['Remittances'], problems);
+      } catch (e) { put('data-task-form', 'Add-task pop-up', ['Remittances'], [e.message]); }
     }
 
     // Invoice settings (cogwheel): Bill funder reads and sets the status here.
