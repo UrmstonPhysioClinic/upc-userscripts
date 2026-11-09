@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.7
+// @version      0.1.8
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.7';
+  const VERSION = '0.1.8';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -138,6 +138,13 @@
     },
     async html(path) {
       const res = await pacedFetch(url(path), { credentials: 'same-origin' });
+      if (!res.ok) throw new UPCError('Halaxy returned ' + res.status + ' for ' + path.split('?')[0]);
+      return htmlDoc(await res.text());
+    },
+    // An HTML fragment as Halaxy's own pop-ups request it (with X-Requested-With). Some pages, such
+    // as an appointment's details, only include their content when asked this way.
+    async fragment(path) {
+      const res = await pacedFetch(url(path), { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
       if (!res.ok) throw new UPCError('Halaxy returned ' + res.status + ' for ' + path.split('?')[0]);
       return htmlDoc(await res.text());
     },
@@ -457,6 +464,25 @@
     },
   };
 
+  // ------------------------------------------------------------------ appointments
+
+  const appointment = {
+    // The appointment's comments (the details pop-up's "Notes" box), as plain text with line breaks.
+    // '' when there are none. Confirmed on live Halaxy 9 Nov 2026: GET /appointment/{id} with
+    // X-Requested-With returns div.appointment-details-popup, where div.subTitle "Notes" is followed
+    // by the comment's div. The calendar's own `note` field is empty for these.
+    async notes(id) {
+      const doc = await http.fragment('/appointment/' + encodeURIComponent(id));
+      const box = doc.querySelector('.appointment-details-popup');
+      if (!box) throw new UPCError('The appointment details pop-up has changed, so its comments could not be read.');
+      const head = [...box.querySelectorAll('.subTitle')].find((h) => /^\s*notes\s*$/i.test(h.textContent));
+      const body = head && head.nextElementSibling;
+      if (!body) return '';
+      body.querySelectorAll('br').forEach((b) => b.replaceWith('\n'));
+      return body.textContent.split('\n').map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n');
+    },
+  };
+
   // ------------------------------------------------------------------ Halaxy page furniture
 
   // Our interface sits in Halaxy's page and uses Halaxy's own classes (btn, btn-primary,
@@ -473,7 +499,7 @@
     .upc-native .upc-actions .btn { margin: 0; }
     .upc-native .upc-version { margin-top: 8px; font-size: .86em; }
     .upc-native .upc-actions .upc-version { margin: 0 auto 0 0; }
-    .upc-native .upc-note { background: var(--vs-card-standout-bg-color, #f0f0f5); border-radius: 4.8px; padding: 2px 8px; margin-top: 3px; }
+    .upc-native .upc-note { white-space: pre-line; background: var(--vs-card-standout-bg-color, #f0f0f5); border-radius: 4.8px; padding: 2px 8px; margin-top: 3px; }
     .upc-native .upc-box { background: var(--vs-card-header-bg-color, #f0f0f5); border: 1px solid var(--vs-card-border-color, #ced4da); border-radius: 4.8px; padding: 8px 12px; margin-top: 12px; }
     .upc-native .upc-ok { color: var(--success, #28a745); font-weight: 600; }
     .upc-native .upc-warn, .upc-native .upc-err { color: var(--vs-balance-negative-color, #ec6b65); }
@@ -661,6 +687,6 @@
   };
 
   window.UPC = Object.freeze({
-    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, rebate, files, load, ui,
+    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, rebate, files, load, ui,
   });
 })();

@@ -5,6 +5,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Bill funder
 
+### 0.3.3 (9 Nov 2026, beta)
+- Shows the appointment's comments (cancellation reason, billing notes) under cancelled and did-not-attend fees. They are read from the appointment's details pop-up, as the calendar data leaves them out. Line breaks are kept.
+
 ### 0.3.2 (7 Nov 2026, beta)
 - Amounts use the core library's Halaxy format.
 
@@ -53,6 +56,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Core library
 
+### 0.1.8 (9 Nov 2026, beta)
+- `UPC.http.fragment` (HTML as Halaxy's pop-ups request it) and `UPC.appointment.notes(id)` (the appointment's comments).
+
 ### 0.1.7 (7 Nov 2026, beta)
 - Amounts written as Halaxy writes them (£ 40.00) everywhere.
 - Pop-ups can sit above Halaxy's own pop-ups (for steps that start from one) and come in Halaxy's narrower size.
@@ -87,6 +93,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Arrival chime and chat alarm can be switched off per PC from the Tampermonkey menu.
 
 ## Health check
+
+### 1.1.5 (9 Nov 2026, beta)
+- Daily check of the appointment details pop-up that Bill funder reads comments from.
 
 ### 1.1.4 (9 Nov 2026, beta)
 - Notice moved to the bottom centre, just above Outstanding Actions' notice, so Halaxy's side panels (such as the patient notes list) no longer hide it. Its panel comes to the front while open.

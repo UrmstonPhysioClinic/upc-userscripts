@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy bill funder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.2
+// @version      0.3.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
@@ -40,7 +40,7 @@
   if (window.__upcBillFunder) return;
   window.__upcBillFunder = true;
 
-  const VERSION = '0.3.2';
+  const VERSION = '0.3.3';
   const MAX_AGE_DAYS = 183;   // about 6 months
   const NOT_ATTENDED = /cancel|did-not-attend|dna|reject|declin|reschedul/i;
   const DAY = 86400e3;
@@ -139,6 +139,12 @@
         f.beyondAuth = !!(f.referral && f.referral.position > f.referral.limit);
         f.selected = f.amount > 0 && !f.notAttended;
       });
+      // Cancellation reasons and billing notes are in the appointment's own comments, which the
+      // calendar data leaves out: read them from its details pop-up (one request per such fee).
+      for (const f of fees.filter((x) => x.notAttended && x.appointmentId && !x.comment)) {
+        say('Reading the comments on the ' + dateLabel(f.when) + ' appointment...');
+        try { f.comment = await U().appointment.notes(f.appointmentId); } catch (e) { f.commentError = e.message || String(e); }
+      }
     }
     fees.sort((a, b) => a.when - b.when);
     return { current, fees, skipped };
@@ -237,6 +243,7 @@
             if (!f.amount) notes.push('<span class="text-muted">£0 fee: not ticked</span>');
             if (f.referral) notes.push((f.beyondAuth ? '<span class="upc-warn">' : '<span class="text-muted">') + 'Appointment ' + f.referral.position + ' of ' + f.referral.limit + ' authorised' + (f.beyondAuth ? ': beyond the authorisation' : '') + '</span>');
             if (f.comment) notes.push('<div class="upc-note">' + esc(f.comment) + '</div>');
+            else if (f.commentError) notes.push('<span class="text-muted">Comments could not be read: open the appointment to check.</span>');
             h += '<tr class="' + (f.selected ? '' : 'upc-off') + '"><td><input type="checkbox" data-i="' + i + '" ' + (f.selected ? 'checked' : '') + (st.phase !== 'choose' ? ' disabled' : '') + ' aria-label="Include ' + esc(dateLabel(f.when)) + '"></td>' +
               '<td>' + esc(dateLabel(f.when)) + '</td><td>' + esc(f.name) + (f.practitioner ? '<div class="text-muted">' + esc(f.practitioner) + '</div>' : '') + '</td>' +
               '<td><a href="' + esc(U().base() + '/invoice/' + f.invoiceId) + '" target="_blank" rel="noopener">' + esc(f.invoiceNumber) + '</a></td><td class="number">' + fmt(f.amount) + '</td><td>' + notes.join('<br>') + '</td></tr>';

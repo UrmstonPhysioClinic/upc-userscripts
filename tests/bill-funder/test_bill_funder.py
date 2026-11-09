@@ -25,13 +25,13 @@ hx = lambda day: day.strftime('%d-%b-%Y')
 
 
 def fresh(extra_line_on_latest=False, refuse_status=False, broken_merge=False):
-    S = {'invoices': {}, 'calls': [], 'next_org': 9001, 'refuse_status': refuse_status, 'broken_merge': broken_merge}
+    S = {'invoices': {}, 'calls': [], 'calls_read': [], 'next_org': 9001, 'refuse_status': refuse_status, 'broken_merge': broken_merge}
     def inv(iid, days, status='', note='', claim=CLAIM, billed=False, amount=4000, ref=None, lines=None, inv_status=''):
         day = d(days)
         S['invoices'][iid] = {'id': iid, 'claim': claim, 'billed': billed, 'ref': ref, 'status': inv_status,
                               'lines': lines or [{'lineId': iid + 1000, 'appt': iid + 2000, 'day': day, 'amount': amount, 'status': status, 'note': note}]}
     inv(1001, 60, ref=(1, 5))
-    inv(1002, 45, status='did-not-attend', note='Late cancellation. Bill Bupa? Check policy first.')
+    inv(1002, 45, status='did-not-attend', note='Late cancellation. | Bill Bupa? Check policy first.')
     inv(1003, 30, ref=(2, 5))
     inv(1004, -20)                         # future booking
     inv(1005, 240)                         # older than 6 months
@@ -123,8 +123,19 @@ async def halaxy(route):
     if p.endswith('/lookup/practitioner'):
         return await js([{'id': 11, 'name': 'Prac One'}])
     if p.endswith('/calendar/json'):
-        ev = [{'id': l['appt'], 'type': 'appointment', 'appointmentStatus': l['status'], 'note': l['note']} for inv in S['invoices'].values() for l in inv['lines']]
+        ev = [{'id': l['appt'], 'type': 'appointment', 'appointmentStatus': l['status'], 'note': None} for inv in S['invoices'].values() for l in inv['lines']]   # as live: empty
         return await js({'status': 'OK', 'payload': {'events': ev}})
+    m = re.search(r'/appointment/(\d+)$', p)
+    if m:
+        appt = int(m.group(1))
+        S['calls_read'].append(('appointment', appt))
+        line = next((l for inv in S['invoices'].values() for l in inv['lines'] if l['appt'] == appt), None)
+        if req.headers.get('x-requested-with') != 'XMLHttpRequest':   # as live: the plain page has no details
+            return await route.fulfill(body='<html><body><div id="page"></div></body></html>', content_type='text/html')
+        notes = ''.join('%s<br>' % part for part in (line['note'].split(' | ') if line and line['note'] else []))
+        body = ('<div class="appointment-details-popup"><div class="row pb-1"><div class="col-12 p-1"><div class="subTitle p-2">Details</div><div class="px-2">Booked</div></div></div>'
+                '<div class="row pb-1"><div class="col-12 p-1"><div class="subTitle p-2 border-top">Notes</div><div class="px-2">%s</div></div></div></div>') % notes
+        return await route.fulfill(body=body, content_type='text/html')
     m = re.search(r'/invoice/(\d+)/group$', p)
     if m:
         target = int(m.group(1))
@@ -226,7 +237,11 @@ async def main():
         by = {r['inv']: r for r in rows}
         check('suggests past, unbilled, same-claim fees in the last 6 months', sorted(by) == ['UPC-1001', 'UPC-1002', 'UPC-1003', 'UPC-1008', 'UPC-1009'], sorted(by))
         check('attended fees ticked', by['UPC-1001']['ticked'] and by['UPC-1003']['ticked'] and by['UPC-1009']['ticked'])
-        check('did-not-attend listed but not ticked, with its comment', not by['UPC-1002']['ticked'] and 'did not attend' in by['UPC-1002']['text'] and 'Late cancellation. Bill Bupa? Check policy first.' in by['UPC-1002']['text'], by['UPC-1002'])
+        check('did-not-attend listed but not ticked, with its comment', not by['UPC-1002']['ticked'] and 'did not attend' in by['UPC-1002']['text'] and 'Late cancellation.' in by['UPC-1002']['text'] and 'Bill Bupa? Check policy first.' in by['UPC-1002']['text'], by['UPC-1002'])
+        note_lines = await pg.evaluate("[...document.querySelectorAll('[data-upc-bill-funder] .upc-note')].map((n) => n.innerText)")
+        check('comment keeps its line breaks', any(n.split('\n') == ['Late cancellation.', 'Bill Bupa? Check policy first.'] for n in note_lines), note_lines)
+        reads = [c for c in S['calls_read'] if c[0] == 'appointment']
+        check('details read only for cancelled or did-not-attend fees', reads == [('appointment', 3002)], reads)
         check('£0 fee listed but not ticked', not by['UPC-1008']['ticked'] and '£0 fee' in by['UPC-1008']['text'])
         check('beyond the authorisation flagged', 'Appointment 6 of 5 authorised: beyond the authorisation' in by['UPC-1009']['text'], by['UPC-1009']['text'])
         note = await pg.evaluate(root + ".textContent")

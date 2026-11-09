@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.4
+// @version      1.1.5
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.4';
+  const VERSION = '1.1.5';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -253,6 +253,17 @@
         if (!Array.isArray(list)) put('data-invoices', 'Patient invoice list', OA, ['not a list']);
         else put('data-invoices', 'Patient invoice list', OA, list.length ? keysMissing(list, ['id', 'total', 'balance', 'status']).map((k) => 'field ' + k) : []);
       } catch (e) { put('data-invoices', 'Patient invoice list', OA, [e.message]); }
+    }
+
+    // Appointment details pop-up: Bill funder reads cancellation comments from its "Notes" box.
+    if (appts.length) {
+      try {
+        const res = await fetch('/a/pr/' + group() + '/appointment/' + encodeURIComponent(appts[0].id), { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        if (!res.ok) throw new Error('Halaxy returned ' + res.status + ' for /appointment');
+        const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+        const box = doc.querySelector('.appointment-details-popup');
+        put('data-appointment-details', 'Appointment details pop-up', ['Bill funder'], box ? [] : ['details layout missing (div.appointment-details-popup)']);
+      } catch (e) { put('data-appointment-details', 'Appointment details pop-up', ['Bill funder'], [e.message]); }
     }
 
     // Invoice settings (cogwheel): Bill funder reads and sets the status here.
