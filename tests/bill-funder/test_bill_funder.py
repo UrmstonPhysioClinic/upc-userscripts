@@ -217,8 +217,10 @@ async def open_panel(browser, iid, wait='tbody'):
     pg.on('pageerror', lambda e: errors.append(str(e)))
     await pg.goto('https://eu.halaxy.com/a/pr/555/invoice/%d' % iid)
     await pg.wait_for_timeout(300)
-    btn = await pg.evaluate("(() => { const b = document.getElementById('upcBillFunderBtn'); return b && b.previousElementSibling && b.previousElementSibling.id; })()")
-    await pg.click('#upcBillFunderBtn')
+    # Halaxy's own handler on its button (a delegated listener, as Halaxy's .ajax links use) records native opens
+    await pg.evaluate("document.addEventListener('click', (e) => { if (e.target.closest('#invoiceFunderBtn')) window.__nativeOpens = (window.__nativeOpens || 0) + 1; })")
+    btn = await pg.evaluate("[...document.querySelectorAll('a, button')].filter((x) => /funder/i.test(x.textContent)).map((x) => x.id).join(',')")
+    await pg.click('#invoiceFunderBtn')
     root = "document.querySelector('[data-upc-bill-funder]')"
     await pg.wait_for_function(root + ".querySelector('" + wait + "')", timeout=60000)
     return ctx, pg, root, btn, errors
@@ -231,16 +233,16 @@ async def main():
 
         # Scenario 1: the full rule set, then merge and bill
         ctx, pg, root, btn, errors = await open_panel(browser, 1003)
-        check('Bill funder button sits next to Halaxy\'s Invoice Funder', btn == 'invoiceFunderBtn', btn)
-        look = await pg.evaluate("""(() => { const d = document.querySelector('[data-upc-bill-funder]'); const b = document.getElementById('upcBillFunderBtn');
+        check('one funder button only: Halaxy\'s own Invoice Funder', btn == 'invoiceFunderBtn', btn)
+        check('Halaxy\'s button opens our flow, not Halaxy\'s pop-up', await pg.evaluate("!window.__nativeOpens") and await pg.evaluate(root + ".querySelector('.modal-title').textContent") == 'Invoice Funder')
+        look = await pg.evaluate("""(() => { const d = document.querySelector('[data-upc-bill-funder]'); const b = document.getElementById('invoiceFunderBtn');
           return { btn: b.className, shadow: !!d.shadowRoot, native: d.classList.contains('upc-native'),
             parts: ['.modal-dialog', '.modal-content', '.modal-header .modal-title', '.modal-body', 'table.table'].every((q) => d.querySelector(q)),
             buttons: [...d.querySelectorAll('.upc-actions button')].map((x) => x.className), dates: [...d.querySelectorAll('tbody tr td:nth-child(2)')].map((x) => x.textContent), amounts: [...d.querySelectorAll('tbody td.number')].map((x) => x.textContent),
             behaviour: !!d.querySelector('.ajax, .btn-submit, .btn-cancel, .bootbox, .datepicker, .popoverTarget') || d.classList.contains('modal'),
             css: (document.getElementById('upc-native-css') || {}).textContent || '' }; })()""")
-        check('page button styled like Invoice Funder', look['btn'] == 'btn btn-outline-primary-light ml-1', look['btn'])
         check('pop-up built from Halaxy\'s own classes, in the page', look['native'] and look['parts'] and not look['shadow'], look)
-        check('pop-up buttons are Halaxy buttons', look['buttons'] == ['btn btn-outline-primary', 'btn btn-primary'], look['buttons'])
+        check('pop-up buttons are Halaxy buttons, with Halaxy\'s original on the left', look['buttons'] == ['btn btn-outline-primary-light upc-native-funder', 'btn btn-outline-primary', 'btn btn-primary'], look['buttons'])
         check('no Halaxy behaviour classes used', not look['behaviour'])
         check('dates and amounts written as Halaxy writes them', all(re.fullmatch(r'\d\d-[A-Z][a-z]{2}-\d{4}', x) for x in look['dates']) and all(x.startswith('£ ') for x in look['amounts']), (look['dates'], look['amounts']))
         rules = [r.split('{')[0].strip() for r in look['css'].split('}') if '{' in r]
@@ -341,6 +343,19 @@ async def main():
         check('no page errors (zero step)', not errors, errors)
         await ctx.close()
 
+        # "Use Halaxy's Invoice Funder" closes ours and opens Halaxy's own, changing nothing
+        S = fresh()
+        ctx, pg, root, btn, errors = await open_panel(browser, 1003)
+        await pg.evaluate(root + ".querySelector('[data-a=native]').click()")
+        await pg.wait_for_timeout(200)
+        gone = await pg.evaluate("!document.querySelector('[data-upc-bill-funder]')")
+        check('Use Halaxy\'s Invoice Funder closes ours and opens Halaxy\'s', gone and await pg.evaluate("window.__nativeOpens") == 1, (gone, await pg.evaluate("window.__nativeOpens")))
+        await pg.click('#invoiceFunderBtn')
+        await pg.wait_for_function(root + ".querySelector('tbody')", timeout=60000)
+        check('the next click opens ours again', await pg.evaluate("window.__nativeOpens") == 1)
+        check('nothing changed', S['calls'] == [], S['calls'])
+        await ctx.close()
+
         # Escape closes it while nothing is running
         S = fresh()
         ctx, pg, root, btn, errors = await open_panel(browser, 1003)
@@ -378,6 +393,7 @@ async def main():
         msg = await pg.evaluate(root + ".querySelector('p.upc-warn').textContent")
         check('safety stop shows its own message', "merge pop-up has changed" in msg and 'constructor' not in msg, msg)
         check('nothing changed after a safety stop', S['calls'] == [], S['calls'])
+        check('safety stop offers Halaxy\'s own Invoice Funder', await pg.evaluate(root + ".querySelector('[data-a=native]') !== null"))
         await ctx.close()
         await browser.close()
 

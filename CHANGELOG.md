@@ -5,6 +5,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Bill funder
 
+### 0.6.0 (9 Nov 2026, beta)
+- One button: Halaxy's own Invoice Funder now opens this flow (titled Invoice Funder), and the separate Bill funder button is gone. Use Halaxy's Invoice Funder, at the bottom left of the pop-up (and on any error), opens Halaxy's original pop-up instead. Without the clinic scripts the button works as Halaxy's.
+
 ### 0.5.0 (9 Nov 2026, beta)
 - After billing, cancelled and did-not-attend fees that were left out are listed with their comments, each with Keep or Zero (Keep by default). Zero sets the fee to £ 0.00 in its fee edit pop-up, every other field unchanged, after one confirmation, and checks the invoice shows it.
 
@@ -63,6 +66,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Scanned invoice numbers can be corrected and re-checked on the review screen.
 
 ## Core library
+
+### 0.1.10 (9 Nov 2026, beta)
+- Version label sits after a left-hand button in pop-up button rows.
 
 ### 0.1.9 (9 Nov 2026, beta)
 - `UPC.invoice.setLineAmount(invoiceId, lineId, pence)`: sets a fee's amount through its edit pop-up, other fields unchanged; refuses a fee with a funder rebate above the new amount; checks the result.
