@@ -62,7 +62,7 @@ def page(path):
 def events():
     now = int(time.time())
     out = []
-    for i, (status, note) in enumerate([('', 'published-clinical-note'), ('cancelled', 'empty-clinical-note'), ('', 'draft-clinical-note')]):
+    for i, (status, note) in enumerate([('', 'published-clinical-note'), ('cancelled', 'empty-clinical-note'), ('', 'draft-clinical-note'), ('check-response', 'published-clinical-note')]):
         if 'status' in STATE['break'] and i == 2:
             status = 'no-show'
         e = {'id': i, 'type': 'appointment', 'start': now - 3600 * i, 'end': now - 3600 * i + 1800, 'linkPaGId': 400 + i,
@@ -177,7 +177,8 @@ async def main():
         cal = [x for x in probs if x['title'] == 'Calendar data has changed']
         lines = cal[0]['lines'] if cal else []
         check('missing data field reported', 'field noteStatusCss' in lines, lines)
-        check('new appointment status reported', any('no-show' in l for l in lines), lines)
+        check('new appointment status reported, with an example time to find it', any('no-show' in l and re.search(r'for example the appointment at \d\d:\d\d on \d\d-[A-Z][a-z]{2}-\d{4}', l) for l in lines), lines)
+        check('check-response is a known status', not any('check-response' in l for l in lines), lines)
         det = [x for x in probs if x['title'] == 'Appointment details pop-up has changed']
         check('appointment details layout change reported for Bill funder', det and 'Bill funder' in det[0]['scripts'], det)
         sett = [x for x in probs if x['title'] == 'Invoice settings (cogwheel) has changed']
