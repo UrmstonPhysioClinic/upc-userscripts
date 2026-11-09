@@ -245,7 +245,11 @@ async def main():
         check('£0 fee listed but not ticked', not by['UPC-1008']['ticked'] and '£0 fee' in by['UPC-1008']['text'])
         check('beyond the authorisation flagged', 'Appointment 6 of 5 authorised: beyond the authorisation' in by['UPC-1009']['text'], by['UPC-1009']['text'])
         note = await pg.evaluate(root + ".textContent")
-        check('says what was left out', 'Not shown: 1 future-dated, 1 older than 6 months, 1 already billed, 1 on Issued invoices, 1 for another claim or self-funded.' in note, re.findall(r'Not shown:[^.]*\.', note))
+        left = await pg.evaluate("[...document.querySelectorAll('[data-upc-bill-funder] .text-muted li')].map((li) => li.textContent)")
+        want = {'UPC-1004': 'future-dated', 'UPC-1005': 'older than 6 months', 'UPC-1006': 'another claim or self-funded', 'UPC-1007': 'already billed to the funder', 'UPC-1010': 'invoice is Issued'}
+        check('lists each left-out invoice with its date and reason', len(left) == 5 and all(any(li.startswith(k + ', ') and re.search(r'\d\d-[A-Z][a-z]{2}-\d{4}: ' + v + '$', li) for li in left) for k, v in want.items()), left)
+        check('fees on the open invoice say so', 'On this invoice' in by['UPC-1003']['text'] and 'On this invoice' not in by['UPC-1001']['text'], by['UPC-1003']['text'])
+        check('button says Merge and bill when fees come from several invoices', await pg.evaluate(root + ".querySelector('[data-a=next]').textContent") == 'Merge and bill')
         check('nothing changed before confirming', S['calls'] == [], S['calls'])
         check('Issued invoice left out', 'UPC-1010' not in by and S['invoices'][1010]['status'] == 'issued')
         await pg.evaluate(root + ".querySelector('[data-a=next]').click()")
@@ -270,6 +274,23 @@ async def main():
         check('result says the invoice is marked Issued', 'UPC-1009 is marked Issued' in done, done[-300:])
         check('reports the result with the new invoice number', 'Done.' in done and 'UPC-9001' in done and '£ 120.00'.replace(' ', '') in done.replace(' ', ''), done[-300:])
         check('no page errors', not errors, errors)
+        await ctx.close()
+
+        # Only the open invoice's own fee chosen: nothing to merge, and the pop-up says so
+        S = fresh()
+        ctx, pg, root, btn, errors = await open_panel(browser, 1003)
+        # Each tick redraws the table, so look the boxes up again after every click.
+        await pg.evaluate("""(() => { for (let n = 0; n < 20; n++) {
+            const c = [...document.querySelectorAll('[data-upc-bill-funder] tbody input[type=checkbox]')].find((b) => b.checked !== b.closest('tr').textContent.includes('UPC-1003'));
+            if (!c) return; c.click(); } })()""")
+        lbl = await pg.evaluate(root + ".querySelector('[data-a=next]').textContent")
+        check('button says Bill funder when nothing needs merging', lbl == 'Bill funder', lbl)
+        await pg.evaluate(root + ".querySelector('[data-a=next]').click()")
+        conf = await pg.evaluate(root + ".querySelector('.upc-log').innerText")
+        check('confirmation says there is nothing to merge', 'Nothing to merge' in conf and 'already on UPC-1003' in conf, conf)
+        await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
+        await pg.wait_for_function(root + ".querySelector('.upc-ok') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60000)
+        check('billed without a merge', [c[0] for c in S['calls']] == ['bill', 'status'], [c[0] for c in S['calls']])
         await ctx.close()
 
         # Escape closes it while nothing is running

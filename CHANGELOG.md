@@ -5,6 +5,10 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Bill funder
 
+### 0.4.0 (9 Nov 2026, beta)
+- Fees already on the open invoice are marked "On this invoice".
+- When nothing needs merging, the button reads Bill funder and the confirmation says there is nothing to merge.
+- "Not shown" lists each left-out invoice with its date and reason, to match against Halaxy's merge menu.
 ### 0.3.3 (9 Nov 2026, beta)
 - Shows the appointment's comments (cancellation reason, billing notes) under cancelled and did-not-attend fees. They are read from the appointment's details pop-up, as the calendar data leaves them out. Line breaks are kept.
 

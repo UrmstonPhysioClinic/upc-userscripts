@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy bill funder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.3
+// @version      0.4.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
@@ -40,7 +40,7 @@
   if (window.__upcBillFunder) return;
   window.__upcBillFunder = true;
 
-  const VERSION = '0.3.3';
+  const VERSION = '0.4.0';
   const MAX_AGE_DAYS = 183;   // about 6 months
   const NOT_ATTENDED = /cancel|did-not-attend|dna|reject|declin|reschedul/i;
   const DAY = 86400e3;
@@ -108,19 +108,23 @@
     const cutoff = today - MAX_AGE_DAYS * DAY;
     const fees = [];
     const skipped = { future: 0, old: 0, otherClaim: 0, billed: 0, issued: 0 };
+    // Which invoice and date each left-out fee is, so the list can be checked against Halaxy's merge menu.
+    const leftOut = [];
+    const lineWhen = (l) => { const row = others.find((r) => String(r.invoiceLineId) === String(l.lineId)); return parseDate(row ? row.invoiceLineDate : l.date); };
+    const leave = (inv, reason, lines) => leftOut.push({ number: inv.number, id: inv.id, reason, dates: lines.map(lineWhen).filter((w) => w !== null) });
     for (let i = 0; i < ids.length; i++) {
       say('Checking invoice ' + (i + 1) + ' of ' + ids.length + '...');
       const inv = String(ids[i]) === String(currentId) ? current : await U().invoice.fetch(ids[i]);
       let status = '';
       try { status = await U().invoice.status(inv.id); } catch (e) { status = inv.issued ? 'issued' : ''; }
-      if (status) { skipped.issued += inv.lines.length; continue; }   // Issued, or anything other than Active
-      if (inv.claimId !== current.claimId) { skipped.otherClaim += inv.lines.length; continue; }
-      if (!inv.billFunderHref) { skipped.billed += inv.lines.length; continue; }
+      if (status) { skipped.issued += inv.lines.length; leave(inv, status === 'issued' ? 'invoice is Issued' : 'invoice is ' + status, inv.lines); continue; }   // anything other than Active
+      if (inv.claimId !== current.claimId) { skipped.otherClaim += inv.lines.length; leave(inv, 'another claim or self-funded', inv.lines); continue; }
+      if (!inv.billFunderHref) { skipped.billed += inv.lines.length; leave(inv, 'already billed to the funder', inv.lines); continue; }
       inv.lines.forEach((l) => {
         const row = others.find((r) => String(r.invoiceLineId) === String(l.lineId));
         const when = parseDate(row ? row.invoiceLineDate : l.date);
-        if (when === null || when >= today + DAY) { skipped.future++; return; }
-        if (when < cutoff) { skipped.old++; return; }
+        if (when === null || when >= today + DAY) { skipped.future++; leave(inv, 'future-dated', [l]); return; }
+        if (when < cutoff) { skipped.old++; leave(inv, 'older than 6 months', [l]); return; }
         fees.push({
           invoiceId: inv.id, invoiceNumber: inv.number, lineId: l.lineId, appointmentId: l.appointmentId, when,
           name: row ? row.invoiceLineName : (l.item || 'Fee'), amount: row ? Math.round(parseFloat(row.total) * 100) : l.amount,
@@ -147,7 +151,7 @@
       }
     }
     fees.sort((a, b) => a.when - b.when);
-    return { current, fees, skipped };
+    return { current, fees, skipped, leftOut };
   }
 
   // ------------------------------------------------------------------ doing it
@@ -226,6 +230,8 @@
     dlg.root.setAttribute('data-upc-bill-funder', '');
     const sh = dlg.body;
     const chosen = () => (st.plan ? st.plan.fees.filter((f) => f.selected) : []);
+    const needsMerge = () => new Set(chosen().map((f) => String(f.invoiceId))).size > 1;
+    const goLabel = () => (needsMerge() ? 'Merge and bill' : 'Bill funder');
 
     function render() {
       const p = st.plan;
@@ -240,6 +246,7 @@
           p.fees.forEach((f, i) => {
             const notes = [];
             if (f.notAttended) notes.push('<span class="upc-warn">' + esc(f.apptStatus.replace(/-/g, ' ')) + ': not ticked, include only if you mean to bill it</span>');
+            if (f.isCurrent) notes.push('<span class="text-muted">On this invoice</span>');
             if (!f.amount) notes.push('<span class="text-muted">£0 fee: not ticked</span>');
             if (f.referral) notes.push((f.beyondAuth ? '<span class="upc-warn">' : '<span class="text-muted">') + 'Appointment ' + f.referral.position + ' of ' + f.referral.limit + ' authorised' + (f.beyondAuth ? ': beyond the authorisation' : '') + '</span>');
             if (f.comment) notes.push('<div class="upc-note">' + esc(f.comment) + '</div>');
@@ -253,15 +260,24 @@
           h += '<div class="upc-gap font-weight-bold">' + c.length + ' fee' + (c.length === 1 ? '' : 's') + ' chosen, total ' + fmt(c.reduce((s, f) => s + f.amount, 0)) + '.</div>';
           if (c.some((f) => f.beyondAuth)) h += '<p class="upc-warn upc-gap">Some chosen fees are beyond the authorisation. The insurer may not pay them.</p>';
         }
-        const sk = p.skipped;
-        const skipped = [[sk.future, 'future-dated'], [sk.old, 'older than 6 months'], [sk.billed, 'already billed'], [sk.issued, 'on Issued invoices'], [sk.otherClaim, 'for another claim or self-funded']]
-          .filter(([n]) => n).map(([n, w]) => n + ' ' + w);
-        if (skipped.length) h += '<div class="text-muted">Not shown: ' + esc(skipped.join(', ')) + '.</div>';
+        // Left out, one line per invoice and reason, to match against Halaxy's merge menu.
+        const groups = [];
+        (p.leftOut || []).forEach((x) => {
+          const g = groups.find((y) => y.id === x.id && y.reason === x.reason);
+          if (g) g.dates.push(...x.dates); else groups.push({ id: x.id, number: x.number, reason: x.reason, dates: x.dates.slice() });
+        });
+        if (groups.length) {
+          h += '<div class="text-muted upc-gap">Not shown:<ul class="mb-0">' + groups.map((g) => '<li><a href="' + esc(U().base() + '/invoice/' + g.id) + '" target="_blank" rel="noopener">' + esc(g.number) + '</a>' +
+            (g.dates.length ? ', ' + esc([...new Set(g.dates.sort((a, b) => a - b).map(dateLabel))].join(', ')) : '') + ': ' + esc(g.reason) + '</li>').join('') + '</ul></div>';
+        }
       }
       if (st.confirm) {
         const c = chosen();
-        h += '<div class="upc-box upc-log"><b>Confirm</b><br>Merge ' + c.length + ' fee' + (c.length === 1 ? '' : 's') + ' (' + fmt(c.reduce((s, f) => s + f.amount, 0)) + ') onto the latest of their invoices, then invoice ' + esc(p.current.funderName || 'the funder') +
-          ' once as a new organisation invoice, keeping the patient invoice, and mark that patient invoice Issued. Fees on invoices emptied by the merge are moved and those invoices are deleted by Halaxy, as its merge does.</div>';
+        const total = fmt(c.reduce((s, f) => s + f.amount, 0));
+        const funder = esc(p.current.funderName || 'the funder');
+        h += '<div class="upc-box upc-log"><b>Confirm</b><br>' + (needsMerge()
+          ? 'Merge ' + c.length + ' fees (' + total + ') onto the latest of their invoices, then invoice ' + funder + ' once as a new organisation invoice, keeping the patient invoice, and mark that patient invoice Issued. Fees on invoices emptied by the merge are moved and those invoices are deleted by Halaxy, as its merge does.'
+          : 'Nothing to merge: ' + (c.length === 1 ? 'the fee is' : 'the fees are') + ' already on ' + esc(c[0].invoiceNumber) + '. Invoice ' + funder + ' once from it (' + total + ') as a new organisation invoice, keeping the patient invoice, and mark it Issued.') + '</div>';
       }
       if (st.log.length) h += '<div class="upc-box upc-log">' + st.log.map((l) => '<div class="' + (l.err ? 'upc-err' : '') + '">' + esc(l.t) + '</div>').join('') + '</div>';
       if (st.result) {
@@ -270,8 +286,8 @@
           (r.issuedError ? '.</p><p class="upc-warn upc-gap">Billing is done, but ' + esc(r.patientInvoiceNumber) + ' could not be marked Issued (' + esc(r.issuedError) + '). Set it with the cogwheel.</p>' : ', and ' + esc(r.patientInvoiceNumber) + ' is marked Issued.</p>');
       }
       h += '<div class="upc-actions"><span class="text-muted upc-version">Bill funder ' + VERSION + '</span>';
-      if (st.phase === 'choose' && !st.confirm) h += '<button type="button" class="btn btn-outline-primary" data-a="close">Cancel</button><button type="button" class="btn btn-primary" data-a="next" ' + (chosen().length ? '' : 'disabled') + '>Merge and bill</button>';
-      else if (st.confirm) h += '<button type="button" class="btn btn-outline-primary" data-a="back">Back</button><button type="button" class="btn btn-primary" data-a="go">Merge and bill</button>';
+      if (st.phase === 'choose' && !st.confirm) h += '<button type="button" class="btn btn-outline-primary" data-a="close">Cancel</button><button type="button" class="btn btn-primary" data-a="next" ' + (chosen().length ? '' : 'disabled') + '>' + goLabel() + '</button>';
+      else if (st.confirm) h += '<button type="button" class="btn btn-outline-primary" data-a="back">Back</button><button type="button" class="btn btn-primary" data-a="go">' + goLabel() + '</button>';
       else if (st.phase === 'running') h += '<button type="button" class="btn btn-primary" disabled>Working...</button>';
       else h += '<button type="button" class="btn btn-primary" data-a="' + (st.result || st.phase === 'failed' ? 'reload' : 'close') + '">' + (st.result || st.phase === 'failed' ? 'Close and reload' : 'Close') + '</button>';
       h += '</div>';
