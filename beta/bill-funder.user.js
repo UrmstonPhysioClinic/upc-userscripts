@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy bill funder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.0
+// @version      0.5.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
@@ -40,7 +40,7 @@
   if (window.__upcBillFunder) return;
   window.__upcBillFunder = true;
 
-  const VERSION = '0.4.0';
+  const VERSION = '0.5.0';
   const MAX_AGE_DAYS = 183;   // about 6 months
   const NOT_ATTENDED = /cancel|did-not-attend|dna|reject|declin|reschedul/i;
   const DAY = 86400e3;
@@ -224,14 +224,16 @@
   // ------------------------------------------------------------------ panel
 
   function openPanel(currentId) {
-    const st = { phase: 'loading', status: 'Reading...', plan: null, log: [], result: null, error: '', confirm: false };
-    const dlg = U().ui.dialog({ title: 'Bill funder', key: 'bill-funder', canClose: () => st.phase !== 'running' });
+    const st = { phase: 'loading', status: 'Reading...', plan: null, log: [], result: null, error: '', confirm: false, zero: {}, zeroDone: {}, zeroConfirm: false };
+    const dlg = U().ui.dialog({ title: 'Bill funder', key: 'bill-funder', canClose: () => st.phase !== 'running' && st.phase !== 'zeroing' });
     if (!dlg) return;
     dlg.root.setAttribute('data-upc-bill-funder', '');
     const sh = dlg.body;
     const chosen = () => (st.plan ? st.plan.fees.filter((f) => f.selected) : []);
     const needsMerge = () => new Set(chosen().map((f) => String(f.invoiceId))).size > 1;
     const goLabel = () => (needsMerge() ? 'Merge and bill' : 'Bill funder');
+    const leftover = () => (st.plan && st.result ? st.plan.fees.filter((f) => !f.selected && f.notAttended && f.amount > 0) : []);
+    const toZero = () => leftover().filter((f) => st.zero[String(f.lineId)] === 'zero' && !st.zeroDone[String(f.lineId)]);
 
     function render() {
       const p = st.plan;
@@ -282,13 +284,39 @@
       if (st.log.length) h += '<div class="upc-box upc-log">' + st.log.map((l) => '<div class="' + (l.err ? 'upc-err' : '') + '">' + esc(l.t) + '</div>').join('') + '</div>';
       if (st.result) {
         const r = st.result;
-        h += '<p class="upc-ok upc-gap">Done. ' + esc(r.patientInvoiceNumber) + ' is billed to the funder on <a href="' + esc(U().base() + '/invoice/' + r.orgInvoiceId) + '" target="_blank" rel="noopener">' + esc(r.orgInvoiceNumber || 'the new organisation invoice') + '</a>' + (r.amount !== null && r.amount !== undefined ? ' (' + fmt(r.amount) + ')' : '') +
+        h += '<p class="upc-ok upc-gap">Billed. ' + esc(r.patientInvoiceNumber) + ' is billed to the funder on <a href="' + esc(U().base() + '/invoice/' + r.orgInvoiceId) + '" target="_blank" rel="noopener">' + esc(r.orgInvoiceNumber || 'the new organisation invoice') + '</a>' + (r.amount !== null && r.amount !== undefined ? ' (' + fmt(r.amount) + ')' : '') +
           (r.issuedError ? '.</p><p class="upc-warn upc-gap">Billing is done, but ' + esc(r.patientInvoiceNumber) + ' could not be marked Issued (' + esc(r.issuedError) + '). Set it with the cogwheel.</p>' : ', and ' + esc(r.patientInvoiceNumber) + ' is marked Issued.</p>');
+      }
+      // After billing: cancelled or did-not-attend fees left out, to keep or set to £0.
+      const left = leftover();
+      if (st.result && left.length) {
+        h += '<div class="upc-gap"><b>Not billed to ' + esc(p.current.funderName || 'the funder') + '</b>' +
+          '<div class="text-muted">These cancelled or did-not-attend fees were left out. Keep any you will charge another way; set the rest to £ 0.00. Nothing changes until you confirm.</div>' +
+          '<table class="table w-100"><thead><tr><th>Date</th><th>Fee</th><th>Invoice</th><th class="number">Amount</th><th>Comments</th><th>Keep or zero</th></tr></thead><tbody>';
+        left.forEach((f) => {
+          const key = String(f.lineId);
+          const choice = st.zero[key] || 'keep';
+          const done = st.zeroDone[key];
+          const pick = done ? (done.ok ? '<span class="upc-ok">Set to £ 0.00</span>' : '<span class="upc-err">Not changed: ' + esc(done.error) + '</span>')
+            : ['keep', 'zero'].map((v) => '<label class="mr-2 mb-0"><input type="radio" name="upc-z-' + key + '" data-z="' + key + '" value="' + v + '"' + (choice === v ? ' checked' : '') +
+              (st.phase !== 'done' || st.zeroConfirm ? ' disabled' : '') + '> ' + (v === 'keep' ? 'Keep' : 'Zero') + '</label>').join('');
+          h += '<tr><td>' + esc(dateLabel(f.when)) + '</td><td>' + esc(f.name) + '<div class="text-muted">' + esc(f.apptStatus.replace(/-/g, ' ')) + '</div></td>' +
+            '<td><a href="' + esc(U().base() + '/invoice/' + f.invoiceId) + '" target="_blank" rel="noopener">' + esc(f.invoiceNumber) + '</a></td><td class="number">' + fmt(f.amount) + '</td>' +
+            '<td>' + (f.comment ? '<div class="upc-note">' + esc(f.comment) + '</div>' : '<span class="text-muted">None</span>') + '</td><td>' + pick + '</td></tr>';
+        });
+        h += '</tbody></table></div>';
+        if (st.zeroConfirm) {
+          const z = toZero();
+          h += '<div class="upc-box upc-log"><b>Confirm</b><br>Set ' + z.length + ' fee' + (z.length === 1 ? '' : 's') + ' to £ 0.00: ' +
+            esc(z.map((f) => dateLabel(f.when) + ' on ' + f.invoiceNumber + ' (' + fmt(f.amount) + ')').join(', ')) + '. Each is changed in its fee edit pop-up, with every other field left as it is.</div>';
+        }
       }
       h += '<div class="upc-actions"><span class="text-muted upc-version">Bill funder ' + VERSION + '</span>';
       if (st.phase === 'choose' && !st.confirm) h += '<button type="button" class="btn btn-outline-primary" data-a="close">Cancel</button><button type="button" class="btn btn-primary" data-a="next" ' + (chosen().length ? '' : 'disabled') + '>' + goLabel() + '</button>';
       else if (st.confirm) h += '<button type="button" class="btn btn-outline-primary" data-a="back">Back</button><button type="button" class="btn btn-primary" data-a="go">' + goLabel() + '</button>';
-      else if (st.phase === 'running') h += '<button type="button" class="btn btn-primary" disabled>Working...</button>';
+      else if (st.phase === 'running' || st.phase === 'zeroing') h += '<button type="button" class="btn btn-primary" disabled>Working...</button>';
+      else if (st.phase === 'done' && st.zeroConfirm) h += '<button type="button" class="btn btn-outline-primary" data-a="zeroback">Back</button><button type="button" class="btn btn-primary" data-a="zerogo">Set ' + toZero().length + ' to £ 0.00</button>';
+      else if (st.phase === 'done' && left.length) h += '<button type="button" class="btn btn-outline-primary" data-a="reload">Close and reload</button><button type="button" class="btn btn-primary" data-a="zeronext" ' + (toZero().length ? '' : 'disabled') + '>Zero chosen fees</button>';
       else h += '<button type="button" class="btn btn-primary" data-a="' + (st.result || st.phase === 'failed' ? 'reload' : 'close') + '">' + (st.result || st.phase === 'failed' ? 'Close and reload' : 'Close') + '</button>';
       h += '</div>';
       sh.innerHTML = h;
@@ -297,6 +325,8 @@
     sh.addEventListener('change', (e) => {
       const i = e.target.dataset && e.target.dataset.i;
       if (i !== undefined && st.plan) { st.plan.fees[+i].selected = e.target.checked; render(); }
+      const z = e.target.dataset && e.target.dataset.z;
+      if (z !== undefined && e.target.checked) { st.zero[z] = e.target.value; render(); }
     });
     sh.addEventListener('click', async (e) => {
       const a = e.target.closest && e.target.closest('[data-a]');
@@ -306,6 +336,26 @@
       else if (act === 'reload') location.reload();
       else if (act === 'next') { st.confirm = true; render(); }
       else if (act === 'back') { st.confirm = false; render(); }
+      else if (act === 'zeronext') { st.zeroConfirm = true; render(); }
+      else if (act === 'zeroback') { st.zeroConfirm = false; render(); }
+      else if (act === 'zerogo') {
+        const list = toZero();
+        st.zeroConfirm = false;
+        st.phase = 'zeroing';
+        const say = (t, err) => { st.log.push({ t, err }); render(); };
+        for (const f of list) {
+          say('Setting the ' + dateLabel(f.when) + ' fee on ' + f.invoiceNumber + ' to £ 0.00...');
+          try {
+            await U().invoice.setLineAmount(f.invoiceId, f.lineId, 0);
+            st.zeroDone[String(f.lineId)] = { ok: true };
+          } catch (err) {
+            st.zeroDone[String(f.lineId)] = { ok: false, error: err.message || String(err) };
+            say('Not changed: ' + (err.message || err), true);
+          }
+        }
+        st.phase = 'done';
+        render();
+      }
       else if (act === 'go') {
         st.confirm = false;
         st.phase = 'running';

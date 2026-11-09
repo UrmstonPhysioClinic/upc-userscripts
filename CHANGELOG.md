@@ -1,14 +1,18 @@
+# Changelog
+
 ## Moved to the clinic PCs (stable), 9 Nov 2026
 Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outstanding Actions 0.5.3, calendar controls 2.10, Alerts 1.0.0, Custom Reports 0.7.0, HTML source for emails 0.4. Arrival chime and Chat alert retired from stable (replaced by Alerts). `tools/promote.py` added for promotions.
 
-# Changelog
-
 ## Bill funder
+
+### 0.5.0 (9 Nov 2026, beta)
+- After billing, cancelled and did-not-attend fees that were left out are listed with their comments, each with Keep or Zero (Keep by default). Zero sets the fee to £ 0.00 in its fee edit pop-up, every other field unchanged, after one confirmation, and checks the invoice shows it.
 
 ### 0.4.0 (9 Nov 2026, beta)
 - Fees already on the open invoice are marked "On this invoice".
 - When nothing needs merging, the button reads Bill funder and the confirmation says there is nothing to merge.
 - "Not shown" lists each left-out invoice with its date and reason, to match against Halaxy's merge menu.
+
 ### 0.3.3 (9 Nov 2026, beta)
 - Shows the appointment's comments (cancellation reason, billing notes) under cancelled and did-not-attend fees. They are read from the appointment's details pop-up, as the calendar data leaves them out. Line breaks are kept.
 
@@ -59,6 +63,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Scanned invoice numbers can be corrected and re-checked on the review screen.
 
 ## Core library
+
+### 0.1.9 (9 Nov 2026, beta)
+- `UPC.invoice.setLineAmount(invoiceId, lineId, pence)`: sets a fee's amount through its edit pop-up, other fields unchanged; refuses a fee with a funder rebate above the new amount; checks the result.
 
 ### 0.1.8 (9 Nov 2026, beta)
 - `UPC.http.fragment` (HTML as Halaxy's pop-ups request it) and `UPC.appointment.notes(id)` (the appointment's comments).
