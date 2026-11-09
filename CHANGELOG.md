@@ -1,5 +1,8 @@
 # Changelog
 
+## Moved to the clinic PCs (stable), 9 Nov 2026 (evening)
+Health check 1.1.9 (Carl), which also brings 1.1.8's add-task check and the table builder false alarm fix.
+
 ## Moved to the clinic PCs (stable), 9 Nov 2026 (afternoon)
 Health check 1.1.6, then 1.1.7, at Carl's request, so the clinic PCs stop reporting the check-response status as a problem.
 
