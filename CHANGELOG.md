@@ -81,6 +81,10 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Core library
 
+### 0.1.14 (9 Nov 2026, beta)
+- Excess fixes (Remittances): when Halaxy copied a fee onto the funder invoice a day or two out, the patient fee is still found (the one same-item fee within two days that no other funder line claims); anything ambiguous still stops. The error now lists the patient invoice's fee dates. Live failure 9 Nov: "Could not find the matching line on UPC-37382".
+- After re-billing part of a fee, the new funder line's date is corrected to the patient fee's date if Halaxy slipped it.
+
 ### 0.1.13 (9 Nov 2026, beta)
 - `UPC.invoice.setSettings(id, changes)`: any invoice settings fields through the cogwheel, others unchanged, confirmed by re-reading.
 - `UPC.invoice.setLineDate(lineId, date)`: a fee's date (`form[date]`, confirmed live), confirmed by re-reading.
