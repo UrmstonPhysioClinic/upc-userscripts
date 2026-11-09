@@ -11,6 +11,7 @@ Run:  python3 tests/remittances/test_remittances.py
 Needs: Python 3 with Playwright (Chromium), reportlab and Pillow; npm (installs the PDF and text
 recognition libraries into tests/remittances/node_modules on first run).
 """
+import datetime
 import asyncio, json, re, subprocess, sys, time, urllib.parse
 from pathlib import Path
 from playwright.async_api import async_playwright
@@ -30,7 +31,7 @@ PG = '555'
 # ------------------------------------------------------------------ mock Halaxy
 
 def fresh_state():
-    s = {'next_line': 900, 'funders': {}, 'patients': {}, 'attachments': {}, 'log': [], 'busy_once': False}
+    s = {'next_line': 900, 'funders': {}, 'patients': {}, 'attachments': {}, 'log': [], 'busy_once': False, 'slip': {}}
     def add(fid, num, pid, pnum, dates, amount=6000):
         s['funders'][fid] = {'id': fid, 'number': num, 'lines': []}
         s['patients'][pid] = {'id': pid, 'number': pnum, 'lines': [], 'pending': []}
@@ -39,8 +40,11 @@ def fresh_state():
             pl = s['next_line']
             s['next_line'] += 1
             fl = s['next_line']
-            s['patients'][pid]['lines'].append({'lineId': pl, 'date': d, 'item': 'PHY', 'fee': amount, 'rebate': amount})
+            s['patients'][pid]['lines'].append({'lineId': pl, 'date': s['slip'].get((pid, d), d), 'item': 'PHY', 'fee': amount, 'rebate': amount})
             s['funders'][fid]['lines'].append({'lineId': fl, 'pid': pid, 'plineId': pl, 'date': d, 'item': 'PHY', 'amount': amount})
+    # Halaxy's date slip, as seen live 9 Nov 2026: patient 202's 01-Oct fee was copied onto the funder
+    # invoice (and so billed and paid by the insurer) as 02-Oct.
+    s['slip'] = {(202, '02-Oct-2026'): '01-Oct-2026'}
     add(101, 'UPC-40001', 201, 'UPC-30001', ['01-Oct-2026'])
     add(102, 'UPC-40002', 202, 'UPC-30002', ['02-Oct-2026', '09-Oct-2026', '16-Oct-2026'])
     add(103, 'UPC-40003', 203, 'UPC-30003', ['02-Oct-2026'])
@@ -138,9 +142,14 @@ async def halaxy(route):
     if m:
         kind, owner, line = find_line(int(m.group(1)))
         if req.method == 'GET':
-            return await js({'status': 'FORM', 'message': "<form id='invoiceLineForm'><input name='form[amount]' value='%.2f'><input name='form[rebate]' value='%.2f'>"
-                                                          "<input name='form[feeItemNumber]' value='PHY'><input name='form[_token]' value='tok-line'></form>" % (line['fee'] / 100, line['rebate'] / 100)})
+            fee, reb = (line['fee'], line['rebate']) if kind == 'p' else (line['amount'], 0)
+            return await js({'status': 'FORM', 'message': "<form id='invoiceLineForm'><input name='form[date]' value='%s'><input name='form[amount]' value='%.2f'><input name='form[rebate]' value='%.2f'>"
+                                                          "<input name='form[feeItemNumber]' value='PHY'><input name='form[_token]' value='tok-line'></form>" % (line['date'], fee / 100, reb / 100)})
         assert form.get('form[_token]') == 'tok-line', form
+        if kind != 'p':
+            S['linedates'] = S.get('linedates', 0) + 1
+            line['date'] = form['form[date]']
+            return await js({'status': 'REFRESH'})
         line['rebate'] = round(float(form['form[rebate]']) * 100)
         for pend in owner['pending']:
             if pend['plineId'] == line['lineId']:
@@ -166,7 +175,8 @@ async def halaxy(route):
         fid = int(form['form[orgInvoice]'])
         pend = p['pending'].pop(0)
         S['next_line'] += 1
-        S['funders'][fid]['lines'].append({'lineId': S['next_line'], 'pid': p['id'], 'plineId': pend['plineId'], 'date': pend['date'], 'item': 'PHY', 'amount': pend['amount']})
+        slipped = (datetime.datetime.strptime(pend['date'], '%d-%b-%Y') + datetime.timedelta(days=1)).strftime('%d-%b-%Y')   # Halaxy slips the re-billed line too
+        S['funders'][fid]['lines'].append({'lineId': S['next_line'], 'pid': p['id'], 'plineId': pend['plineId'], 'date': slipped, 'item': 'PHY', 'amount': pend['amount']})
         return await js({'status': 'REFRESH'})
     if path.endswith('/practitioner/file/upload/files'):
         ok = req.headers.get('authorization') == 'Bearer jwt-test' and 'name="file"' in (req.post_data_buffer or b'').decode('latin-1')
@@ -269,7 +279,9 @@ async def main():
         f2 = S['funders'][102]
         amounts = sorted(l['amount'] for l in f2['lines'])
         check('funder invoice now totals what the insurer paid', sum(amounts) == 14400 and amounts == [2400, 6000, 6000], amounts)
-        check('patient line rebate lowered', [l['rebate'] for l in S['patients'][202]['lines'] if l['date'] == '02-Oct-2026'] == [2400])
+        check('patient line rebate lowered, found despite Halaxy\'s date slip', [l['rebate'] for l in S['patients'][202]['lines'] if l['date'] == '01-Oct-2026'] == [2400])
+        newl = [l for l in S['funders'][102]['lines'] if l['amount'] == 2400]
+        check('re-billed funder line dated as the patient fee (Halaxy\'s slip corrected)', [l['date'] for l in newl] == ['01-Oct-2026'] and S.get('linedates') == 1, newl)
         check('nothing left waiting to bill', not S['patients'][202]['pending'])
         check('other invoices untouched', [l['amount'] for l in S['funders'][101]['lines']] == [6000] and [l['amount'] for l in S['funders'][103]['lines']] == [6000])
         atts = {k: v for k, v in S['attachments'].items()}

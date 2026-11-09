@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.13
+// @version      0.1.14
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.13';
+  const VERSION = '0.1.14';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -43,6 +43,10 @@
   const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();
   const esc = (s) => String(s === undefined || s === null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const htmlDoc = (html) => new DOMParser().parseFromString(html || '', 'text/html');
+  // Whole days between two Halaxy dates ('13-Oct-2026'); Infinity if either can't be read.
+  const MONTH_NO = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+  const halaxyDay = (s) => { const m = String(s || '').match(/(\d{1,2})-([A-Za-z]{3})-(\d{4})/); return m && m[2].toLowerCase() in MONTH_NO ? Date.UTC(+m[3], MONTH_NO[m[2].toLowerCase()], +m[1]) : null; };
+  const dayGap = (a, b) => { const x = halaxyDay(a), y = halaxyDay(b); return x === null || y === null ? Infinity : Math.round(Math.abs(x - y) / 86400e3); };
 
   // ------------------------------------------------------------------ money (pence)
 
@@ -382,8 +386,19 @@
       throw new UPCError(funder.number + ' has more than one ' + line.item + ' line for that patient on ' + line.date + '. Do this one by hand.');
     }
     const patient = await invoice.fetch(line.patientInvoiceId);
-    const cands = patient.lines.filter((l) => l.date === line.date && l.item === line.item);
-    if (cands.length !== 1) throw new UPCError(cands.length ? patient.number + ' has more than one ' + line.item + ' line on ' + line.date + '. Do this one by hand.' : 'Could not find the matching line on ' + patient.number + '.');
+    let cands = patient.lines.filter((l) => l.date === line.date && l.item === line.item);
+    if (!cands.length) {
+      // Halaxy sometimes copies a fee onto the funder invoice a day or two out (13-Oct became 14-Oct,
+      // seen 9 Nov 2026). Accept the one same-item fee within two days that no other funder line claims.
+      const claimed = new Set(funder.lines.filter((l) => l !== line && l.patientInvoiceId === line.patientInvoiceId).map((l) => l.date + '|' + l.item));
+      cands = patient.lines.filter((l) => l.item === line.item && dayGap(l.date, line.date) <= 2 && !claimed.has(l.date + '|' + l.item));
+      if (cands.length > 1) throw new UPCError(patient.number + ' has more than one ' + line.item + ' fee near ' + line.date + ' (' + cands.map((l) => l.date).join(', ') + '). Do this one by hand.');
+    }
+    if (cands.length !== 1) {
+      const dates = patient.lines.filter((l) => l.item === line.item).map((l) => l.date);
+      throw new UPCError(cands.length ? patient.number + ' has more than one ' + line.item + ' line on ' + line.date + '. Do this one by hand.'
+        : 'Could not find the ' + line.date + ' ' + line.item + ' fee on ' + patient.number + (dates.length ? ' (its ' + line.item + ' fees are dated ' + dates.join(', ') + ')' : '') + '.');
+    }
     const pFields = Object.fromEntries(await lineForm(cands[0].lineId));
     const origRebate = money.cents(pFields['form[rebate]']);
     if (origRebate !== line.amount) throw new UPCError('The invoices already disagree (patient rebate ' + money.fmt(origRebate) + ', funder line ' + money.fmt(line.amount) + '). Sort that out by hand first.');
@@ -391,7 +406,7 @@
     if (newRebate < 0) throw new UPCError('The new funder amount cannot be negative.');
     if (fee !== null && newRebate > fee) throw new UPCError('The new funder amount (' + money.fmt(newRebate) + ') is more than the fee (' + money.fmt(fee) + ').');
     return { funderInvoiceId: funder.id, funderNumber: funder.number, funderLineId: line.lineId, patientInvoiceId: patient.id, patientNumber: patient.number,
-      patientLineId: cands[0].lineId, date: line.date, item: line.item, fee, origRebate, newRebate };
+      patientLineId: cands[0].lineId, date: line.date, patientDate: cands[0].date, item: line.item, fee, origRebate, newRebate };
   }
 
   // Carries out a plan from planMove: revert the funder line, change the rebate on the patient
@@ -436,12 +451,22 @@
       await rebill(patientInvoiceId, funderInvoiceId, newRebate);
     }
 
-    const fAfter = await invoice.fetch(funderInvoiceId);
-    const pAfter = await invoice.fetch(patientInvoiceId);
-    const lines = fAfter.lines.filter((l) => l.patientInvoiceId === patientInvoiceId && l.date === plan.date && l.item === plan.item);
+    let fAfter = await invoice.fetch(funderInvoiceId);
+    const before = new Set(funder.lines.map((l) => l.lineId));
+    const added = fAfter.lines.filter((l) => !before.has(l.lineId) && l.patientInvoiceId === patientInvoiceId && l.item === plan.item);
     const problems = [];
-    if (newRebate > 0 && !lines.some((l) => l.amount === newRebate)) problems.push('no ' + money.fmt(newRebate) + ' line found on ' + fAfter.number);
-    if (newRebate === 0 && lines.length) problems.push('a line for this fee is still on ' + fAfter.number);
+    if (fAfter.lines.some((l) => l.lineId === funderLineId)) problems.push('the original line is still on ' + fAfter.number);
+    if (newRebate > 0) {
+      const nl = added.filter((l) => l.amount === newRebate);
+      if (nl.length !== 1) problems.push('no new ' + money.fmt(newRebate) + ' line found on ' + fAfter.number);
+      else if (plan.patientDate && nl[0].date !== plan.patientDate) {
+        // Halaxy can give the re-billed line the wrong date too: set it to the patient fee's date.
+        say('Correcting the date Halaxy gave the re-billed line: ' + nl[0].date + ' to ' + plan.patientDate);
+        try { await invoice.setLineDate(nl[0].lineId, plan.patientDate); fAfter = await invoice.fetch(funderInvoiceId); }
+        catch (e) { problems.push('the re-billed line on ' + fAfter.number + ' is dated ' + nl[0].date + ' instead of ' + plan.patientDate + ' (' + (e.message || e) + ')'); }
+      }
+    } else if (added.length) problems.push('a new line for this fee is on ' + fAfter.number);
+    const pAfter = await invoice.fetch(patientInvoiceId);
     if (fAfter.total !== funder.total - origRebate + newRebate) problems.push(fAfter.number + ' total is ' + money.fmt(fAfter.total) + ', expected ' + money.fmt(funder.total - origRebate + newRebate));
     if (pAfter.pending.length) problems.push(pAfter.number + ' still has an amount waiting to bill');
     if (problems.length) throw new UPCError('Changes were made but the result looks wrong: ' + problems.join('; ') + '.');
