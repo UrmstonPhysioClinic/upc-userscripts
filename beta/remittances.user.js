@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.0
+// @version      0.2.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -31,7 +31,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.2.0';
+  const VERSION = '0.2.1';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -372,6 +372,17 @@
   // Works out what to change on an organisation invoice so the funder lines total what the insurer paid.
   // Uses per-line figures when the remittance gives them, otherwise takes the shortfall from the
   // earliest lines first.
+  // Days between two ISO dates (2026-09-09); Infinity if either is missing.
+  const isoGap = (a, b) => (a && b ? Math.round(Math.abs(Date.parse(a) - Date.parse(b)) / 86400e3) : Infinity);
+  // A funder line for a remittance line: the same date first, otherwise the one within two days
+  // (Halaxy sometimes dates a fee a day out on the funder invoice, and the date is corrected afterwards).
+  const findLine = (pool, date, test) => {
+    const exact = pool.findIndex((l) => halaxyDateIso(l.date) === date && test(l));
+    if (exact >= 0) return exact;
+    const near = pool.map((l, i) => i).filter((i) => isoGap(halaxyDateIso(pool[i].date), date) <= 2 && test(pool[i]));
+    return near.length === 1 ? near[0] : -1;
+  };
+
   function proposeLines(funder, item, shortfall) {
     const lines = funder.lines.slice().sort((a, b) => (halaxyDateIso(a.date) || '').localeCompare(halaxyDateIso(b.date) || ''));
     const changes = [];
@@ -379,12 +390,17 @@
       const pool = lines.slice();
       for (const rl of item.lines) {
         if (rl.paid === null || rl.invoiced === null || rl.paid === rl.invoiced) {
-          const idx = pool.findIndex((l) => halaxyDateIso(l.date) === rl.date);
+          const idx = findLine(pool, rl.date, () => true);
           if (idx >= 0) pool.splice(idx, 1);
           continue;
         }
-        const idx = pool.findIndex((l) => halaxyDateIso(l.date) === rl.date && l.amount === rl.invoiced);
-        if (idx < 0) return { error: 'No line on ' + funder.number + ' for ' + rl.date + ' at ' + fmt(rl.invoiced) + '.' };
+        let idx = findLine(pool, rl.date, (l) => l.amount === rl.invoiced);
+        if (idx < 0) {
+          // Already done (an earlier run, or by hand): the line already shows what the insurer paid.
+          const done = findLine(pool, rl.date, (l) => l.amount === rl.paid);
+          if (done >= 0) { pool.splice(done, 1); continue; }
+          return { error: 'No line on ' + funder.number + ' for ' + rl.date + ' at ' + fmt(rl.invoiced) + ' (or already at ' + fmt(rl.paid) + ').' };
+        }
         const l = pool.splice(idx, 1)[0];
         changes.push({ lineId: l.lineId, date: l.date, from: l.amount, to: rl.paid });
       }

@@ -294,6 +294,14 @@ async def main():
         status = await pg.evaluate("[...document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr')][1].innerText")
         check('result shown as done', 'Done' in status, status)
 
+        # The insurer paid nothing for a fee: it stays on the funder invoice at £0.00, never removed (Carl, 9 Nov 2026)
+        res = await pg.evaluate("""(async () => { try { const f = await UPC.invoice.fetch('103'); const l = f.lines[0];
+            const plan = await UPC.rebate.plan('103', l.lineId, 0); await UPC.rebate.apply(plan); return 'ok'; } catch (e) { return e.message; } })()""")
+        f3, p3 = S['funders'][103]['lines'], S['patients'][203]
+        check('fee the insurer paid nothing for stays on the funder invoice at £0.00, correctly dated',
+              res == 'ok' and [l['amount'] for l in f3] == [0] and [l['date'] for l in f3] == ['02-Oct-2026'], (res, f3))
+        check('patient owes the fee, nothing left waiting to bill', not p3['pending'] and [l['rebate'] for l in p3['lines']] == [0], p3)
+
         # Reading the other layouts
         async def read(name):
             import base64
