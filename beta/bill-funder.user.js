@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy bill funder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.6.1
+// @version      0.6.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
@@ -40,7 +40,7 @@
   if (window.__upcBillFunder) return;
   window.__upcBillFunder = true;
 
-  const VERSION = '0.6.1';
+  const VERSION = '0.6.2';
   const MAX_AGE_DAYS = 183;   // about 6 months
   const NOT_ATTENDED = /cancel|did-not-attend|dna|reject|declin|reschedul/i;
   const DAY = 86400e3;
@@ -308,7 +308,7 @@
         if (st.zeroConfirm) {
           const z = toZero();
           h += '<div class="upc-box upc-log"><b>Confirm</b><br>Set ' + z.length + ' fee' + (z.length === 1 ? '' : 's') + ' to £ 0.00: ' +
-            esc(z.map((f) => dateLabel(f.when) + ' on ' + f.invoiceNumber + ' (' + fmt(f.amount) + ')').join(', ')) + '. Each is changed in its fee edit pop-up, with every other field left as it is.</div>';
+            esc(z.map((f) => dateLabel(f.when) + ' on ' + f.invoiceNumber + ' (' + fmt(f.amount) + ')').join(', ')) + '. Each fee and its funder rebate are set to £ 0.00 in its fee edit pop-up, with every other field left as it is. A fee on an invoice that has been billed to the funder is not changed.</div>';
         }
       }
       // Halaxy's original, at the left like Halaxy's own Merge Invoices: before anything has changed only.
@@ -350,7 +350,7 @@
         for (const f of list) {
           say('Setting the ' + dateLabel(f.when) + ' fee on ' + f.invoiceNumber + ' to £ 0.00...');
           try {
-            await U().invoice.setLineAmount(f.invoiceId, f.lineId, 0);
+            await U().invoice.setLineAmount(f.invoiceId, f.lineId, 0, { lowerRebate: true });   // amount and funder rebate together
             st.zeroDone[String(f.lineId)] = { ok: true };
           } catch (err) {
             st.zeroDone[String(f.lineId)] = { ok: false, error: err.message || String(err) };

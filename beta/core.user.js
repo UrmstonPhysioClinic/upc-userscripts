@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.10
+// @version      0.1.11
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.10';
+  const VERSION = '0.1.11';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -292,19 +292,30 @@
       if ((await invoice.status(id)) !== status) throw new UPCError('Halaxy accepted the change, but invoice ' + id + ' does not show the new status.');
     },
     // Sets a fee line's amount (pence) the way the fee edit pop-up's Save does: every other field as
-    // Halaxy filled it. Refuses a line with a funder rebate above the new amount (it has been billed).
-    // Re-reads the invoice to confirm.
-    async setLineAmount(invoiceId, lineId, amount) {
+    // Halaxy filled it. A fee on a claim carries its funder rebate (the share the funder is expected to
+    // pay) from the start, before any billing. With { lowerRebate: true }, a rebate above the new amount
+    // is lowered with it, but only while the invoice still shows Invoice Funder (nothing billed yet);
+    // otherwise, and without the option, such a fee is refused. Re-reads the fee to confirm.
+    async setLineAmount(invoiceId, lineId, amount, opts) {
+      const o = opts || {};
       const pairs = await lineForm(lineId);
       const field = (k) => { const p = pairs.find(([x]) => x === k); return p ? p[1] : undefined; };
       if (field('form[amount]') === undefined) throw new UPCError('The fee edit pop-up has changed, so the fee was not changed.');
-      const rebate = field('form[rebate]');
-      if (rebate !== undefined && money.cents(rebate) > amount) throw new UPCError('This fee has a funder rebate of ' + money.fmt(money.cents(rebate)) + ', so it was not changed.');
-      const out = pairs.map(([k, v]) => [k, k === 'form[amount]' ? money.plain(amount) : v]);
+      const rebate = field('form[rebate]') === undefined ? null : money.cents(field('form[rebate]'));
+      let newRebate = null;
+      if (rebate !== null && rebate > amount) {
+        if (!o.lowerRebate) throw new UPCError('This fee has a funder rebate of ' + money.fmt(rebate) + ', so it was not changed.');
+        const inv = await invoice.fetch(invoiceId);
+        if (!inv.billFunderHref) throw new UPCError(inv.number + ' no longer shows Invoice Funder, so this fee may have been billed to the funder. It was not changed.');
+        newRebate = amount;
+      }
+      const out = pairs.map(([k, v]) => [k, k === 'form[amount]' ? money.plain(amount) : k === 'form[rebate]' && newRebate !== null ? money.plain(newRebate) : v]);
       http.expectRefresh(await http.postForm('/invoice/line/' + lineId + '/edit', out), 'Saving the fee');
-      const inv = await invoice.fetch(invoiceId);
-      const line = inv.lines.find((l) => l.lineId === String(lineId));
-      if (!line || line.amount !== amount) throw new UPCError('Halaxy accepted the change, but the fee on ' + inv.number + ' does not show ' + money.fmt(amount) + '.');
+      const after = await lineForm(lineId);
+      const get = (k) => { const p = after.find(([x]) => x === k); return p ? p[1] : undefined; };
+      if (money.cents(get('form[amount]')) !== amount || (newRebate !== null && money.cents(get('form[rebate]')) !== newRebate)) {
+        throw new UPCError('Halaxy accepted the change, but the fee does not show ' + money.fmt(amount) + (newRebate !== null ? ' with a ' + money.fmt(newRebate) + ' rebate' : '') + '.');
+      }
     },
     // Finds an invoice by its number (UPC-12345). Returns the list row ({ id, invoiceNum, payerName, total, balance, ... }) or null.
     async findByNumber(number) {
