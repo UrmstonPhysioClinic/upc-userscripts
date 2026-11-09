@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.3
+// @version      1.1.4
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.3';
+  const VERSION = '1.1.4';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -349,11 +349,15 @@
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   const CSS = `
-    .upc-hc .upc-hc-wrap { position: fixed; left: var(--hx-health-left, 16px); bottom: 16px; z-index: 90; }
+    /* Bottom centre of the content area, just above Outstanding Actions' notice: clear of Halaxy's side
+       panels (patient notes list, patient side panel). While its panel is open it comes to the front,
+       still below Halaxy's own pop-ups (3000). */
+    .upc-hc .upc-hc-wrap { position: fixed; left: var(--hx-health-centre, 50%); transform: translateX(-50%); bottom: 48px; z-index: 90; }
+    .upc-hc .upc-hc-wrap.upc-hc-open { z-index: 2980; }
     /* White backing behind Halaxy's red button, which is unfilled on hover, so the page never shows through. */
     .upc-hc .upc-hc-back { display: inline-flex; background: #fff; border-radius: 4.8px; box-shadow: 0 4px 14px rgba(0,0,0,.25); }
     .upc-hc .upc-hc-back > .btn { margin: 0; }
-    .upc-hc .upc-hc-panel { position: absolute; left: 0; bottom: 40px; width: min(440px, calc(100vw - 32px)); max-height: 70vh; overflow: auto; margin: 0;
+    .upc-hc .upc-hc-panel { position: absolute; left: 50%; transform: translateX(-50%); bottom: 40px; width: min(440px, calc(100vw - 32px)); max-height: 70vh; overflow: auto; margin: 0;
       box-shadow: 0 8px 16px rgba(0,0,0,.2); }
     .upc-hc .card-header h2 { margin: 0; }
     .upc-hc .upc-hc-item { border-top: 1px solid var(--vs-card-border-color, #ced4da); padding: 8px 0; }
@@ -364,7 +368,7 @@
     .upc-hc .upc-hc-btns .btn { margin: 0; }
   `;
 
-  // Sit just to the right of Halaxy's side menu, which is drawn above our layer.
+  // Centre on the content area, between Halaxy's side menu and the right edge.
   function sidebarRight() {
     const menu = document.getElementById('mainMenu');
     if (!menu) return 0;
@@ -376,7 +380,7 @@
     return right;
   }
   function place() {
-    if (host) host.style.setProperty('--hx-health-left', Math.round(sidebarRight() + 16) + 'px');
+    if (host) host.style.setProperty('--hx-health-centre', Math.round((sidebarRight() + window.innerWidth) / 2) + 'px');
   }
   window.addEventListener('resize', place);
   let watchedMenu = null;
@@ -394,7 +398,7 @@
     const list = problems();
     const halaxy = store.get('halaxy', null);
     if (!list.length && !open) { sh.innerHTML = ''; return; }
-    let html = '<div class="upc-hc-wrap">';
+    let html = '<div class="upc-hc-wrap' + (open ? ' upc-hc-open' : '') + '">';
     if (open) {
       html += '<div class="card upc-hc-panel" role="dialog" aria-label="Clinic scripts health check"><div class="card-header"><h2>Clinic scripts health check</h2></div><div class="card-body">';
       if (!list.length) html += '<p class="upc-hc-ok">All checks passed.</p>';

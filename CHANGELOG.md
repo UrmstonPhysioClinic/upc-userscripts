@@ -85,6 +85,9 @@
 
 ## Health check
 
+### 1.1.4 (9 Nov 2026, beta)
+- Notice moved to the bottom centre, just above Outstanding Actions' notice, so Halaxy's side panels (such as the patient notes list) no longer hide it. Its panel comes to the front while open.
+
 ### 1.1.3 (9 Nov 2026, beta)
 - Same fix as Outstanding Actions 0.5.3 for its notice.
 

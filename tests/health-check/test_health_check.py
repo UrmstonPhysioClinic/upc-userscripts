@@ -35,7 +35,9 @@ GLOBALS = r"""
   BREAK
 </script>"""
 SIDEBAR = ("<nav id='sidebar' style='position:fixed;left:0;top:0;bottom:0;width:210px;z-index:1000;background:#222'>"
-           "<ul id='mainMenu'><li>Reports</li></ul></nav>")
+           "<ul id='mainMenu'><li>Reports</li></ul></nav>"
+           # Like Halaxy's patient notes list: a panel at the bottom left, above the page's own layer
+           "<div id='mockNotesList' style='position:fixed;left:210px;bottom:0;width:420px;height:520px;z-index:100;background:#eee'></div>")
 CAL_BODY = (SIDEBAR + "<div id='alerts'></div><span id='btn-chat-popover-open'></span>"
             "<div id='calToolbar'></div><button id='btnCalendarPreferences'></button><script type='text/template' id='tpl-event'></script>"
             "<div id='swapPracList'><input class='toggle-prac'></div><div id='calendarViewPort'><div class='cal'>"
@@ -146,7 +148,9 @@ async def main():
                     .every(([x, y]) => sh.contains(document.elementFromPoint(x, y)));
             });
         }""")
-        check('notice and panel are not hidden behind the side menu', clear == [True, True], clear)
+        check('notice and panel are not hidden behind the side menu or side panels', clear == [True, True], clear)
+        mid = await pg.evaluate("(() => { const r = document.querySelector('[data-hx-health] .upc-hc-pill').getBoundingClientRect(); return [r.left + r.width / 2, (210 + innerWidth) / 2]; })()")
+        check('notice at the bottom centre of the content area', abs(mid[0] - mid[1]) <= 2, mid)
         STATE['break'] = set()
         probs, pill = await load()
         check('fixed on next calendar visit', probs == [] and pill == '', probs)
