@@ -8,6 +8,10 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Bill funder
 
+### 0.6.2 (9 Nov 2026, beta)
+- Fix: Zero failed on live Halaxy because a fee on a claim carries its funder rebate before any billing. Zero now sets the fee and its funder rebate to £ 0.00 together (which also clears the funder's row in Payments), but only while the fee's invoice still shows Invoice Funder; a fee on a billed invoice is refused.
+- First live billing run (9 Nov): merged three fees, invoiced Bupa on a new organisation invoice, marked the patient invoice Issued.
+
 ### 0.6.1 (9 Nov 2026, beta)
 - Fix: on an invoice opened from the patient's Invoices tab (/patient/invoice/{patient}/{invoice}), Invoice Funder let Halaxy's own pop-up open instead of this flow. The invoice is now taken from the button itself.
 
@@ -72,6 +76,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Scanned invoice numbers can be corrected and re-checked on the review screen.
 
 ## Core library
+
+### 0.1.11 (9 Nov 2026, beta)
+- `UPC.invoice.setLineAmount(..., { lowerRebate: true })` lowers the funder rebate with the amount, only while the invoice still shows Invoice Funder; confirms by re-reading the fee's form.
 
 ### 0.1.10 (9 Nov 2026, beta)
 - Version label sits after a left-hand button in pop-up button rows.

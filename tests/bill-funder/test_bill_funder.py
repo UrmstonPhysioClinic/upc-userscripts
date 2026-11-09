@@ -131,11 +131,14 @@ async def halaxy(route):
         line = next(l for inv in S['invoices'].values() for l in inv['lines'] if l['lineId'] == lid)
         if req.method == 'GET':
             form = ("<form id='invoiceLineForm' method='post'><input name='form[date]' value='x'><input name='form[amount]' value='%.2f'>"
-                    "<input name='form[rebate]' value='0.00'><input name='form[tax]' value='0.00'><input name='form[notes]' value='keep me'>"
-                    "<input type='hidden' name='form[_token]' value='LT-%d'></form>") % (line['amount'] / 100, lid)
+                    "<input name='form[rebate]' value='%.2f'><input name='form[tax]' value='0.00'><input name='form[notes]' value='keep me'>"
+                    "<input type='hidden' name='form[_token]' value='LT-%d'></form>") % (line['amount'] / 100, line.get('rebate', line['amount']) / 100, lid)   # as live: claim fees carry their rebate
             return await js({'status': 'FORM', 'title': 'Edit fee', 'message': form})
         S['calls'].append(('zero', lid, {k: v[0] for k, v in form.items()}))
         line['amount'] = int(round(float(form['form[amount]'][0]) * 100))
+        line['rebate'] = int(round(float(form['form[rebate]'][0]) * 100))
+        if line['rebate'] > line['amount']:
+            return await js({'status': 'FORM', 'message': '<div class="text-danger form_errors">Rebate cannot exceed the amount</div>'})
         return await js({'status': 'REFRESH'})
     m = re.search(r'/appointment/(\d+)$', p)
     if m:
@@ -325,7 +328,7 @@ async def main():
         check('shows their comments', 'Late cancellation.' in txt and 'No show' in txt, txt[-500:])
         check('Zero button disabled until a fee is set to zero', await pg.evaluate(root + ".querySelector('[data-a=zeronext]').disabled"))
         before = len(S['calls'])
-        await pg.evaluate(root + ".querySelector('input[data-z=\"2002\"][value=zero]').click()")
+        await pg.evaluate("[...document.querySelectorAll('[data-upc-bill-funder] input[data-z][value=zero]')].find((r) => r.dataset.z === '2002').click()")
         await pg.evaluate(root + ".querySelector('[data-a=zeronext]').click()")
         conf = await pg.evaluate("([...document.querySelectorAll('[data-upc-bill-funder] .upc-log')].find((b) => b.innerText.startsWith('Confirm')) || {}).innerText || ''")
         check('confirmation names the fee to zero', 'Set 1 fee to £ 0.00' in conf and 'UPC-1002' in conf and 'UPC-1009' not in conf, conf)
@@ -335,12 +338,31 @@ async def main():
         zc = [c for c in S['calls'] if c[0] == 'zero']
         check('only the chosen fee is set to £0', [c[1] for c in zc] == [2002] and S['invoices'][1002]['lines'][0]['amount'] == 0, zc)
         sent = zc[0][2] if zc else {}
-        check('every other field of the fee sent unchanged', sent.get('form[amount]') == '0.00' and sent.get('form[notes]') == 'keep me' and sent.get('form[_token]') == 'LT-2002' and sent.get('form[date]') == 'x' and sent.get('form[rebate]') == '0.00', sent)
+        check('amount and funder rebate both set to £0, every other field unchanged', sent.get('form[amount]') == '0.00' and sent.get('form[rebate]') == '0.00' and sent.get('form[notes]') == 'keep me' and sent.get('form[_token]') == 'LT-2002' and sent.get('form[date]') == 'x', sent)
         kept = [l for l in S['invoices'][1009]['lines'] if l['lineId'] == 2099]
         check('kept fee left alone', kept and kept[0]['amount'] == 4000, kept)
         txt = await pg.evaluate(root + ".textContent")
         check('result shows the fee set to £0', 'Set to £ 0.00' in txt, txt[-400:])
         check('no page errors (zero step)', not errors, errors)
+        await ctx.close()
+
+        # A fee whose invoice has since been billed to the funder is not zeroed
+        S = fresh(extra_line_on_latest=True)
+        ctx, pg, root, btn, errors = await open_panel(browser, 1003)
+        await pg.evaluate("""(() => { for (let n = 0; n < 20; n++) {
+            const c = [...document.querySelectorAll('[data-upc-bill-funder] tbody input[type=checkbox]')].find((b) => {
+              const t = b.closest('tr').textContent; const want = !/did not attend/.test(t) && !/£ 0\\.00/.test(t); return b.checked !== want; });
+            if (!c) return; c.click(); } })()""")
+        await pg.evaluate(root + ".querySelector('[data-a=next]').click()")
+        await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
+        await pg.wait_for_function(root + ".querySelector('[data-a=zeronext]')", timeout=60000)
+        S['invoices'][1002]['billed'] = True   # someone billed it by hand meanwhile
+        await pg.evaluate("[...document.querySelectorAll('[data-upc-bill-funder] input[data-z][value=zero]')].find((r) => r.dataset.z === '2002').click()")
+        await pg.evaluate(root + ".querySelector('[data-a=zeronext]').click()")
+        await pg.evaluate(root + ".querySelector('[data-a=zerogo]').click()")
+        await pg.wait_for_function(root + ".querySelector('[data-a=reload]')", timeout=60000)
+        txt = await pg.evaluate(root + ".textContent")
+        check('billed fee refused, unchanged', not [c for c in S['calls'] if c[0] == 'zero'] and S['invoices'][1002]['lines'][0]['amount'] == 4000 and 'may have been billed' in txt, txt[-300:])
         await ctx.close()
 
         # "Use Halaxy's Invoice Funder" closes ours and opens Halaxy's own, changing nothing
