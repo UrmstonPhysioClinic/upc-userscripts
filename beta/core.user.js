@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.15
+// @version      0.1.16
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.15';
+  const VERSION = '0.1.16';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -539,6 +539,41 @@
     },
   };
 
+  // ------------------------------------------------------------------ tasks
+
+  // Halaxy's add-task pop-up for an invoice (the invoice page's add-task button, confirmed live 9 Nov 2026):
+  // GET /task/new/invoice/{id} returns form#form_task_edit; POST the same address with its fields.
+  // Halaxy answers { status: 'POPUP', url: '/task/list/invoice/{id}' } and lists the invoice's tasks at
+  // /task/invoice/{id}/list-data.
+  const tasks = {
+    async forInvoice(invoiceId) {
+      return http.json('/task/invoice/' + encodeURIComponent(invoiceId) + '/list-data');
+    },
+    // { title, assignee (name as in Assign to), priority 1 Low / 2 Medium / 3 High, due '09-Nov-2026', comment }.
+    // Returns false if a task with this title is already on the invoice.
+    async addToInvoice(invoiceId, task) {
+      const listed = (list) => JSON.stringify(list || '').includes(task.title.replace(/["\\]/g, ''));
+      if (listed(await tasks.forInvoice(invoiceId).catch(() => null))) return false;
+      const path = '/task/new/invoice/' + encodeURIComponent(invoiceId);
+      const { doc } = await http.popup(path + '?clicked=' + Date.now());
+      const form = doc.querySelector('form#form_task_edit');
+      const need = ['form[title]', 'form[linkPrGs][]', 'form[priority]', 'form[displayDueDate]', 'form[comment]', 'form[_token]'];
+      const missing = need.filter((k) => !form || !form.querySelector('[name="' + k + '"]'));
+      if (missing.length) throw new UPCError('The add-task pop-up has changed (' + missing.join(', ') + ' not found), so no task was added.');
+      const who = [...form.querySelectorAll('select[name="form[linkPrGs][]"] option')].find((o) => clean(o.textContent).toLowerCase() === String(task.assignee).toLowerCase());
+      if (!who) throw new UPCError('Could not find ' + task.assignee + ' in the task\'s Assign to list, so no task was added.');
+      const set = { 'form[title]': task.title, 'form[taskTemplates]': '', 'form[actionerType]': '1', 'form[priority]': String(task.priority || 2),
+        'form[displayDueDate]': task.due, 'form[displayDueTime][hour]': '0', 'form[displayDueTime][minute]': '0', 'form[isTimeSet]': 'false', 'form[comment]': task.comment || '' };
+      const pairs = serialize(form).filter(([k]) => k !== 'form[linkPrGs][]' && !(k in set));
+      Object.keys(set).forEach((k) => pairs.push([k, set[k]]));
+      pairs.push(['form[linkPrGs][]', who.value]);
+      const res = await http.postForm(path, pairs);
+      if (!res || !['POPUP', 'REFRESH', 'OK'].includes(res.status)) http.expectRefresh(res, 'Adding the task');
+      if (!listed(await tasks.forInvoice(invoiceId))) throw new UPCError('Halaxy accepted the task, but it does not show on the invoice\'s task list.');
+      return true;
+    },
+  };
+
   // ------------------------------------------------------------------ appointments
 
   const appointment = {
@@ -763,6 +798,6 @@
   };
 
   window.UPC = Object.freeze({
-    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, rebate, files, load, ui,
+    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, tasks, rebate, files, load, ui,
   });
 })();

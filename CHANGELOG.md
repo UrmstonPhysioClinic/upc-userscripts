@@ -70,6 +70,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Remittances
 
+### 0.3.0 (9 Nov 2026, beta)
+- After an excess fix, adds a task on the patient invoice to bill the patient: assigned to Carl Healy, due today, medium priority, titled "Bill excess: UPC-n (insurer remittance date, ref)", with what the patient owes and which fees moved. Not added twice for the same remittance. If it can't be added, the fix still stands and the log says to add the task by hand.
+
 ### 0.2.1 (9 Nov 2026, beta)
 - Lines already showing what the insurer paid (done earlier, or by hand) are skipped, so a remittance can be run again safely.
 - A remittance line matches a funder line a day or two out when there is no exact date, as Halaxy sometimes dates funder fees a day out and the date is then corrected.
@@ -84,6 +87,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Scanned invoice numbers can be corrected and re-checked on the review screen.
 
 ## Core library
+
+### 0.1.16 (9 Nov 2026, beta)
+- `UPC.tasks.addToInvoice(id, task)` and `UPC.tasks.forInvoice(id)`, through Halaxy's own add-task pop-up (`task/new/invoice/{id}`); confirms the task shows on the invoice's task list.
 
 ### 0.1.15 (9 Nov 2026, beta)
 - Fix: when the insurer paid nothing for a fee, the excess fix removed the fee from the funder invoice and then stopped on the £0.00 Halaxy left waiting to bill (live, UPC-37794 / UPC-37382). It now re-bills £0.00, so the fee stays on the funder invoice at £0.00, dated as the patient fee.
@@ -142,6 +148,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Arrival chime and chat alarm can be switched off per PC from the Tampermonkey menu.
 
 ## Health check
+
+### 1.1.8 (9 Nov 2026, beta)
+- Daily check of the add-task pop-up (fields, and Carl Healy in the Assign to list). Opening it adds nothing.
 
 ### 1.1.7 (9 Nov 2026, beta and stable)
 - Re-runs the data check as soon as a new version of the health check arrives, instead of showing the previous version's results until the next daily check. Moved to the clinic PCs at once, so the old check-response notice clears there without anyone pressing Check again.

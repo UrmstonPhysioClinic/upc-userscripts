@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.1
+// @version      0.3.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -31,7 +31,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.2.1';
+  const VERSION = '0.3.0';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -593,6 +593,11 @@
     });
   }
 
+  // Who bills the patient for an excess (Carl, 9 Nov 2026). Matched by name in the task's Assign to list.
+  const TASK_FOR = 'Carl Healy';
+  const MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const todayLabel = () => { const d = new Date(); return String(d.getDate()).padStart(2, '0') + '-' + MON3[d.getMonth()] + '-' + d.getFullYear(); };
+
   async function apply() {
     const list = state.results.filter((x) => x.status === 'fix' && x.selected !== false);
     if (!list.length || state.busy) return;
@@ -601,13 +606,31 @@
     const say = (t, err) => { state.log.push({ t, err }); render(); };
     for (const x of list) {
       say(x.item.invoice + ':');
+      const moved = {};   // per patient invoice: { number, lines, owes }
       try {
         for (const c of x.changes) {
           const plan = await UPC.rebate.plan(x.invoiceId, c.lineId, c.to);
-          await UPC.rebate.apply(plan, (t) => say('  ' + t));
+          const res = await UPC.rebate.apply(plan, (t) => say('  ' + t));
+          const m = moved[plan.patientInvoiceId] || (moved[plan.patientInvoiceId] = { number: plan.patientNumber, lines: [], owes: null });
+          m.lines.push((plan.patientDate || plan.date) + ' ' + fmt(c.from - c.to) + ' (' + (state.remit.insurer || 'insurer') + ' paid ' + fmt(c.to) + ')');
+          if (res && res.patientOutstanding !== null && res.patientOutstanding !== undefined) m.owes = res.patientOutstanding;
         }
         x.status = 'done';
         x.message = 'Moved ' + fmt(x.shortfall) + ' to the patient.';
+        // A task for Carl to bill the patient (Carl, 9 Nov 2026: always assigned to him, due today).
+        for (const id of Object.keys(moved)) {
+          const m = moved[id];
+          const remit = (state.remit.insurer || 'Insurer') + ' remittance' + (state.remit.date ? ' ' + state.remit.date : '') + (state.remit.reference ? ', ref ' + state.remit.reference : '');
+          try {
+            const added = await UPC.tasks.addToInvoice(id, {
+              title: 'Bill excess: ' + m.number + ' (' + remit + ')', assignee: TASK_FOR, priority: 2, due: todayLabel(),
+              comment: (m.owes !== null ? 'Patient owes ' + fmt(m.owes) + ' on ' + m.number + '. ' : '') + 'Moved to the patient: ' + m.lines.join(', ') + '. From the ' + remit + '.',
+            });
+            say('  ' + (added ? 'Task added for ' + TASK_FOR + ' to bill the patient on ' + m.number + '.' : 'A task to bill the patient is already on ' + m.number + '.'));
+          } catch (e) {
+            say('  The excess is moved, but the task to bill the patient was not added (' + (e.message || e) + '). Add it on ' + m.number + ' by hand.', true);
+          }
+        }
       } catch (e) {
         x.status = 'failed';
         x.error = e.message || String(e);

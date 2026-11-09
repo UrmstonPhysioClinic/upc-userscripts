@@ -31,7 +31,7 @@ PG = '555'
 # ------------------------------------------------------------------ mock Halaxy
 
 def fresh_state():
-    s = {'next_line': 900, 'funders': {}, 'patients': {}, 'attachments': {}, 'log': [], 'busy_once': False, 'slip': {}}
+    s = {'next_line': 900, 'funders': {}, 'patients': {}, 'attachments': {}, 'log': [], 'busy_once': False, 'slip': {}, 'tasks': {}}
     def add(fid, num, pid, pnum, dates, amount=6000):
         s['funders'][fid] = {'id': fid, 'number': num, 'lines': []}
         s['patients'][pid] = {'id': pid, 'number': pnum, 'lines': [], 'pending': []}
@@ -130,6 +130,25 @@ async def halaxy(route):
         assert form.get('form[_token]') == 'tok-attach' and form.get('form[files][0][fileEntity]') == '9001', form
         S['attachments'].setdefault(i, []).append({'title': form['form[files][0][title]'], 'category': form['form[files][0][invoiceCategory]'], 'comments': form['form[files][0][invoiceComments]']})
         return await js({'status': 'REFRESH'})
+    m = re.search(r'/task/invoice/(\d+)/list-data$', path)
+    if m:
+        return await js([{'id': i, 'title': t['form[title]'], 'status': 'Open'} for i, t in enumerate(S['tasks'].get(int(m.group(1)), []))])
+    m = re.search(r'/task/new/invoice/(\d+)$', path)
+    if m:
+        iid = int(m.group(1))
+        if req.method == 'GET':
+            staff = ''.join("<option value='%d'>%s</option>" % (v, n) for v, n in [(31, 'Carl Healy'), (32, 'Diana Satalova'), (36, 'Wendy Pritchard')])
+            form_html = ("<form id='form_task_edit' name='form' method='post'><input name='form[title]' value=''><select name='form[taskTemplates]'><option value=''></option><option>Check payment</option></select>"
+                         "<input type='radio' name='form[actionerType]' value='1' checked><select name='form[linkPrGs][]' multiple>%s</select>"
+                         "<input type='radio' name='form[priority]' value='1'><input type='radio' name='form[priority]' value='2' checked><input type='radio' name='form[priority]' value='3'>"
+                         "<input name='form[displayDueDate]' value=''><select name='form[displayDueTime][hour]'><option value='0' selected>00</option></select>"
+                         "<select name='form[displayDueTime][minute]'><option value='0' selected>00</option></select><input type='hidden' name='form[isTimeSet]' value='false'>"
+                         "<textarea name='form[comment]'></textarea><input type='hidden' name='form[_token]' value='tok-task'></form>") % staff
+            return await js({'status': 'FORM', 'title': 'Add task for invoice', 'message': form_html})
+        assert form.get('form[_token]') == 'tok-task', form
+        S['tasks'].setdefault(iid, []).append({k: form.get(k) for k in form})
+        S['task_posts'] = S.get('task_posts', 0) + 1
+        return await js({'status': 'POPUP', 'url': '/a/pr/%s/task/list/invoice/%d' % (PG, iid), 'modalSize': 'xl'})
     m = re.search(r'/invoice/(\d+)/?$', path)
     if m and req.method == 'GET':
         i = int(m.group(1))
@@ -283,6 +302,13 @@ async def main():
         newl = [l for l in S['funders'][102]['lines'] if l['amount'] == 2400]
         check('re-billed funder line dated as the patient fee (Halaxy\'s slip corrected)', [l['date'] for l in newl] == ['01-Oct-2026'] and S.get('linedates') == 1, newl)
         check('nothing left waiting to bill', not S['patients'][202]['pending'])
+        tk = S['tasks'].get(202, [])
+        today = datetime.date.today().strftime('%d-%b-%Y')
+        t0 = tk[0] if tk else {}
+        check('task added on the patient invoice to bill the excess', len(tk) == 1 and str(t0.get('form[title]', '')).startswith('Bill excess: UPC-30002 (WPA remittance 2026-10-08'), tk)
+        check('task assigned to Carl, due today, medium priority', t0.get('form[linkPrGs][]') == '31' and t0.get('form[displayDueDate]') == today and t0.get('form[priority]') == '2' and t0.get('form[actionerType]') == '1', t0)
+        check('task comment says what moved and what the patient owes', 'Moved to the patient: 01-Oct-2026 £ 36.00 (WPA paid £ 24.00)' in str(t0.get('form[comment]')) and 'Patient owes' in str(t0.get('form[comment]')), t0.get('form[comment]'))
+        check('no tasks on invoices without an excess', sorted(S['tasks']) == [202], sorted(S['tasks']))
         check('other invoices untouched', [l['amount'] for l in S['funders'][101]['lines']] == [6000] and [l['amount'] for l in S['funders'][103]['lines']] == [6000])
         atts = {k: v for k, v in S['attachments'].items()}
         check('remittance attached to every matched invoice', sorted(atts) == [101, 102, 103] and all(len(v) == 1 for v in atts.values()), atts)
@@ -301,6 +327,10 @@ async def main():
         check('fee the insurer paid nothing for stays on the funder invoice at £0.00, correctly dated',
               res == 'ok' and [l['amount'] for l in f3] == [0] and [l['date'] for l in f3] == ['02-Oct-2026'], (res, f3))
         check('patient owes the fee, nothing left waiting to bill', not p3['pending'] and [l['rebate'] for l in p3['lines']] == [0], p3)
+        posts = S.get('task_posts', 0)
+        again = await pg.evaluate("""(async () => { const t = await (await fetch('/a/pr/555/task/invoice/202/list-data')).json();
+            return UPC.tasks.addToInvoice('202', { title: t[0].title, assignee: 'Carl Healy', priority: 2, due: '09-Nov-2026', comment: 'x' }); })()""")
+        check('the same task is not added twice', again is False and S.get('task_posts') == posts and len(S['tasks'][202]) == 1, (again, S.get('task_posts'), posts))
 
         # Reading the other layouts
         async def read(name):
