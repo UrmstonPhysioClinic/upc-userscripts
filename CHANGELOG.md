@@ -1,3 +1,6 @@
+## Moved to the clinic PCs (stable), 9 Nov 2026
+Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outstanding Actions 0.5.3, calendar controls 2.10, Alerts 1.0.0, Custom Reports 0.7.0, HTML source for emails 0.4. Arrival chime and Chat alert retired from stable (replaced by Alerts). `tools/promote.py` added for promotions.
+
 # Changelog
 
 ## Bill funder
