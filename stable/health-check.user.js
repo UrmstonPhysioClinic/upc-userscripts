@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.4
+// @version      1.1.6
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.4';
+  const VERSION = '1.1.6';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -45,6 +45,7 @@
   };
   // Same rule as Outstanding Actions: these appointment statuses mean "not attended".
   const NOT_ATTENDED = /cancel|did-not-attend|dna|reject|declin|reschedul|wait|pending/;
+  const KNOWN_ATTENDED = /^(booked|confirmed|arrived|attended|check-response)$/;
 
   const store = {
     get(k, d) { try { const v = localStorage.getItem(KEY + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
@@ -235,8 +236,18 @@
             'appointmentStatus', 'noteStatusCss', 'invoiceStatus', 'isRequest', 'isGroupAppointment', 'title']).map((k) => 'field ' + k);
           if (appts.some((e) => typeof e.start !== 'number' || e.start > 1e11)) problems.push('start is no longer Unix seconds');
           const statuses = new Set(appts.map((e) => String(e.appointmentStatus || '').toLowerCase()).filter(Boolean));
-          const unknownStatus = [...statuses].filter((s) => !NOT_ATTENDED.test(s));
-          unknownStatus.forEach((s) => problems.push('new appointment status "' + s + '": Outstanding Actions treats it as attended'));
+          // Halaxy statuses we know and treat as attended once finished. "check-response" first seen on live
+          // data 9 Nov 2026; Halaxy's help ties it to text reminder replies, but the clinic sends no texts,
+          // so what sets it is not yet known.
+          const unknownStatus = [...statuses].filter((s) => !NOT_ATTENDED.test(s) && !KNOWN_ATTENDED.test(s));
+          unknownStatus.forEach((s) => {
+            const ex = appts.find((e) => String(e.appointmentStatus || '').toLowerCase() === s);
+            const when = ex && typeof ex.start === 'number' ? new Date(ex.start * 1000) : null;
+            const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const label = when ? ' (for example the appointment at ' + String(when.getHours()).padStart(2, '0') + ':' + String(when.getMinutes()).padStart(2, '0') + ' on ' +
+              String(when.getDate()).padStart(2, '0') + '-' + MON[when.getMonth()] + '-' + when.getFullYear() + ')' : '';
+            problems.push('new appointment status "' + s + '"' + label + ': Outstanding Actions treats it as attended');
+          });
           const notes = new Set(appts.map((e) => String(e.noteStatusCss || '')).filter(Boolean));
           [...notes].filter((s) => !/(empty|draft|published|locked)-clinical-note/.test(s))
             .forEach((s) => problems.push('new note status "' + s + '": Outstanding Actions will look it up note by note'));
@@ -253,6 +264,17 @@
         if (!Array.isArray(list)) put('data-invoices', 'Patient invoice list', OA, ['not a list']);
         else put('data-invoices', 'Patient invoice list', OA, list.length ? keysMissing(list, ['id', 'total', 'balance', 'status']).map((k) => 'field ' + k) : []);
       } catch (e) { put('data-invoices', 'Patient invoice list', OA, [e.message]); }
+    }
+
+    // Appointment details pop-up: Bill funder reads cancellation comments from its "Notes" box.
+    if (appts.length) {
+      try {
+        const res = await fetch('/a/pr/' + group() + '/appointment/' + encodeURIComponent(appts[0].id), { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        if (!res.ok) throw new Error('Halaxy returned ' + res.status + ' for /appointment');
+        const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+        const box = doc.querySelector('.appointment-details-popup');
+        put('data-appointment-details', 'Appointment details pop-up', ['Bill funder'], box ? [] : ['details layout missing (div.appointment-details-popup)']);
+      } catch (e) { put('data-appointment-details', 'Appointment details pop-up', ['Bill funder'], [e.message]); }
     }
 
     // Invoice settings (cogwheel): Bill funder reads and sets the status here.
