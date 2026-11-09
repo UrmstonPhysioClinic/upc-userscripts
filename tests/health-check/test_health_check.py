@@ -129,6 +129,18 @@ async def main():
         # 1. Healthy
         probs, pill = await load()
         check('healthy Halaxy: no problems, no notice', probs == [] and pill == '', (probs, pill))
+        # An older health check's saved result (a data problem, checked just now) is replaced at once by the new version
+        await pg.evaluate("""(() => {
+            const r = JSON.parse(localStorage.getItem('upc-health:results') || '{}');
+            r['data-calendar'] = { title: 'Calendar data', scripts: ['Outstanding Actions'], problems: ['old version complaint'], at: Date.now(), page: 'data' };
+            localStorage.setItem('upc-health:results', JSON.stringify(r));
+            localStorage.setItem('upc-health:dataAt', JSON.stringify(Date.now()));
+            localStorage.setItem('upc-health:dataBy', JSON.stringify('0.0.1'));
+        })()""")
+        probs2, pill2 = await load()
+        check('new health check version re-checks at once, clearing the old result', probs2 == [] and pill2 == '', (probs2, pill2))
+        probs3, pill3 = await load()
+        check('and then waits for the daily check again', await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:dataBy'))") != '0.0.1' and probs3 == [], probs3)
         stored = await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:halaxy'))")
         check('Halaxy version recorded', stored and stored['version'] == '4.12', stored)
         results = await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:results'))")

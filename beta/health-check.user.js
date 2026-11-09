@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.6
+// @version      1.1.7
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.6';
+  const VERSION = '1.1.7';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -478,7 +478,11 @@
       const changed = noteVersion();
       await runPageChecks();
       const due = Date.now() - store.get('dataAt', 0) > DATA_EVERY_HOURS * 3600e3;
-      if (forceData || changed || due) {
+      // A new version of this health check may judge Halaxy's data differently, so it re-checks
+      // straight away instead of showing the previous version's results until the next daily check.
+      const updated = store.get('dataBy', '') !== VERSION;
+      if (forceData || changed || due || updated) {
+        store.set('dataBy', VERSION);
         try {
           await runDataChecks();
           saveResult('data-run', { title: 'The data check', scripts: ['Health check'], problems: [], at: Date.now(), page: 'data' });

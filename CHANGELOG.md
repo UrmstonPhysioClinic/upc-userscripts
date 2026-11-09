@@ -1,7 +1,7 @@
 # Changelog
 
 ## Moved to the clinic PCs (stable), 9 Nov 2026 (afternoon)
-Health check 1.1.6, at Carl's request, so the clinic PCs stop reporting the check-response status as a problem.
+Health check 1.1.6, then 1.1.7, at Carl's request, so the clinic PCs stop reporting the check-response status as a problem.
 
 ## Moved to the clinic PCs (stable), 9 Nov 2026
 Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outstanding Actions 0.5.3, calendar controls 2.10, Alerts 1.0.0, Custom Reports 0.7.0, HTML source for emails 0.4. Arrival chime and Chat alert retired from stable (replaced by Alerts). `tools/promote.py` added for promotions.
@@ -116,6 +116,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Arrival chime and chat alarm can be switched off per PC from the Tampermonkey menu.
 
 ## Health check
+
+### 1.1.7 (9 Nov 2026, beta and stable)
+- Re-runs the data check as soon as a new version of the health check arrives, instead of showing the previous version's results until the next daily check. Moved to the clinic PCs at once, so the old check-response notice clears there without anyone pressing Check again.
 
 ### 1.1.6 (9 Nov 2026, beta)
 - "check-response" is a known appointment status (treated as attended, as before), so it is no longer reported.
