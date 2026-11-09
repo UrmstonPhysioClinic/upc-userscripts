@@ -125,6 +125,18 @@ async def halaxy(route):
     if p.endswith('/calendar/json'):
         ev = [{'id': l['appt'], 'type': 'appointment', 'appointmentStatus': l['status'], 'note': None} for inv in S['invoices'].values() for l in inv['lines']]   # as live: empty
         return await js({'status': 'OK', 'payload': {'events': ev}})
+    m = re.search(r'/invoice/line/(\d+)/edit$', p)
+    if m:
+        lid = int(m.group(1))
+        line = next(l for inv in S['invoices'].values() for l in inv['lines'] if l['lineId'] == lid)
+        if req.method == 'GET':
+            form = ("<form id='invoiceLineForm' method='post'><input name='form[date]' value='x'><input name='form[amount]' value='%.2f'>"
+                    "<input name='form[rebate]' value='0.00'><input name='form[tax]' value='0.00'><input name='form[notes]' value='keep me'>"
+                    "<input type='hidden' name='form[_token]' value='LT-%d'></form>") % (line['amount'] / 100, lid)
+            return await js({'status': 'FORM', 'title': 'Edit fee', 'message': form})
+        S['calls'].append(('zero', lid, {k: v[0] for k, v in form.items()}))
+        line['amount'] = int(round(float(form['form[amount]'][0]) * 100))
+        return await js({'status': 'REFRESH'})
     m = re.search(r'/appointment/(\d+)$', p)
     if m:
         appt = int(m.group(1))
@@ -245,7 +257,11 @@ async def main():
         check('£0 fee listed but not ticked', not by['UPC-1008']['ticked'] and '£0 fee' in by['UPC-1008']['text'])
         check('beyond the authorisation flagged', 'Appointment 6 of 5 authorised: beyond the authorisation' in by['UPC-1009']['text'], by['UPC-1009']['text'])
         note = await pg.evaluate(root + ".textContent")
-        check('says what was left out', 'Not shown: 1 future-dated, 1 older than 6 months, 1 already billed, 1 on Issued invoices, 1 for another claim or self-funded.' in note, re.findall(r'Not shown:[^.]*\.', note))
+        left = await pg.evaluate("[...document.querySelectorAll('[data-upc-bill-funder] .text-muted li')].map((li) => li.textContent)")
+        want = {'UPC-1004': 'future-dated', 'UPC-1005': 'older than 6 months', 'UPC-1006': 'another claim or self-funded', 'UPC-1007': 'already billed to the funder', 'UPC-1010': 'invoice is Issued'}
+        check('lists each left-out invoice with its date and reason', len(left) == 5 and all(any(li.startswith(k + ', ') and re.search(r'\d\d-[A-Z][a-z]{2}-\d{4}: ' + v + '$', li) for li in left) for k, v in want.items()), left)
+        check('fees on the open invoice say so', 'On this invoice' in by['UPC-1003']['text'] and 'On this invoice' not in by['UPC-1001']['text'], by['UPC-1003']['text'])
+        check('button says Merge and bill when fees come from several invoices', await pg.evaluate(root + ".querySelector('[data-a=next]').textContent") == 'Merge and bill')
         check('nothing changed before confirming', S['calls'] == [], S['calls'])
         check('Issued invoice left out', 'UPC-1010' not in by and S['invoices'][1010]['status'] == 'issued')
         await pg.evaluate(root + ".querySelector('[data-a=next]').click()")
@@ -268,8 +284,61 @@ async def main():
         check('cogwheel form sent with every other setting unchanged', all(sent.get(k) == v for k, v in want.items()), {k: (sent.get(k), v) for k, v in want.items() if sent.get(k) != v})
         check('other invoices keep their status', all(S['invoices'][i]['status'] == '' for i in (1002, 1008)))
         check('result says the invoice is marked Issued', 'UPC-1009 is marked Issued' in done, done[-300:])
-        check('reports the result with the new invoice number', 'Done.' in done and 'UPC-9001' in done and '£ 120.00'.replace(' ', '') in done.replace(' ', ''), done[-300:])
+        check('reports the result with the new invoice number', 'Billed.' in done and 'UPC-9001' in done and '£ 120.00'.replace(' ', '') in done.replace(' ', ''), done[-300:])
         check('no page errors', not errors, errors)
+        await ctx.close()
+
+        # Only the open invoice's own fee chosen: nothing to merge, and the pop-up says so
+        S = fresh()
+        ctx, pg, root, btn, errors = await open_panel(browser, 1003)
+        # Each tick redraws the table, so look the boxes up again after every click.
+        await pg.evaluate("""(() => { for (let n = 0; n < 20; n++) {
+            const c = [...document.querySelectorAll('[data-upc-bill-funder] tbody input[type=checkbox]')].find((b) => b.checked !== b.closest('tr').textContent.includes('UPC-1003'));
+            if (!c) return; c.click(); } })()""")
+        lbl = await pg.evaluate(root + ".querySelector('[data-a=next]').textContent")
+        check('button says Bill funder when nothing needs merging', lbl == 'Bill funder', lbl)
+        await pg.evaluate(root + ".querySelector('[data-a=next]').click()")
+        conf = await pg.evaluate(root + ".querySelector('.upc-log').innerText")
+        check('confirmation says there is nothing to merge', 'Nothing to merge' in conf and 'already on UPC-1003' in conf, conf)
+        await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
+        await pg.wait_for_function(root + ".querySelector('.upc-ok') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60000)
+        check('billed without a merge', [c[0] for c in S['calls']] == ['bill', 'status'], [c[0] for c in S['calls']])
+        await ctx.close()
+
+        # After billing: cancelled / did-not-attend fees left out can be kept or set to £0
+        S = fresh(extra_line_on_latest=True)   # 1002 did-not-attend on its own invoice; 2099 did-not-attend on 1009 (left on it)
+        ctx, pg, root, btn, errors = await open_panel(browser, 1003)
+        # tick everything except the two did-not-attend fees, so 1009's attended fee can be the target
+        await pg.evaluate("""(() => { for (let n = 0; n < 20; n++) {
+            const c = [...document.querySelectorAll('[data-upc-bill-funder] tbody input[type=checkbox]')].find((b) => {
+              const t = b.closest('tr').textContent; const want = !/did not attend/.test(t) && !/£ 0\.00/.test(t); return b.checked !== want; });
+            if (!c) return; c.click(); } })()""")
+        await pg.evaluate(root + ".querySelector('[data-a=next]').click()")
+        await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
+        await pg.wait_for_function(root + ".querySelector('[data-a=zeronext]') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60000)
+        txt = await pg.evaluate(root + ".textContent")
+        rows = await pg.evaluate("[...document.querySelectorAll('[data-upc-bill-funder] input[data-z]')].map((r) => r.dataset.z + ':' + r.value + ':' + r.checked)")
+        check('offers Keep or Zero for each left-out cancelled / did-not-attend fee, Keep by default',
+              sorted(rows) == ['2002:keep:true', '2002:zero:false', '2099:keep:true', '2099:zero:false'], rows)
+        check('shows their comments', 'Late cancellation.' in txt and 'No show' in txt, txt[-500:])
+        check('Zero button disabled until a fee is set to zero', await pg.evaluate(root + ".querySelector('[data-a=zeronext]').disabled"))
+        before = len(S['calls'])
+        await pg.evaluate(root + ".querySelector('input[data-z=\"2002\"][value=zero]').click()")
+        await pg.evaluate(root + ".querySelector('[data-a=zeronext]').click()")
+        conf = await pg.evaluate("([...document.querySelectorAll('[data-upc-bill-funder] .upc-log')].find((b) => b.innerText.startsWith('Confirm')) || {}).innerText || ''")
+        check('confirmation names the fee to zero', 'Set 1 fee to £ 0.00' in conf and 'UPC-1002' in conf and 'UPC-1009' not in conf, conf)
+        check('nothing zeroed before confirming', len(S['calls']) == before, S['calls'][before:])
+        await pg.evaluate(root + ".querySelector('[data-a=zerogo]').click()")
+        await pg.wait_for_function(root + ".querySelector('[data-a=zeronext]') || " + root + ".querySelector('[data-a=reload]')", timeout=60000)
+        zc = [c for c in S['calls'] if c[0] == 'zero']
+        check('only the chosen fee is set to £0', [c[1] for c in zc] == [2002] and S['invoices'][1002]['lines'][0]['amount'] == 0, zc)
+        sent = zc[0][2] if zc else {}
+        check('every other field of the fee sent unchanged', sent.get('form[amount]') == '0.00' and sent.get('form[notes]') == 'keep me' and sent.get('form[_token]') == 'LT-2002' and sent.get('form[date]') == 'x' and sent.get('form[rebate]') == '0.00', sent)
+        kept = [l for l in S['invoices'][1009]['lines'] if l['lineId'] == 2099]
+        check('kept fee left alone', kept and kept[0]['amount'] == 4000, kept)
+        txt = await pg.evaluate(root + ".textContent")
+        check('result shows the fee set to £0', 'Set to £ 0.00' in txt, txt[-400:])
+        check('no page errors (zero step)', not errors, errors)
         await ctx.close()
 
         # Escape closes it while nothing is running
@@ -298,7 +367,7 @@ async def main():
         await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
         await pg.wait_for_function(root + ".querySelector('.upc-ok') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60000)
         done = await pg.evaluate(root + ".textContent")
-        check('billing still reported when the status does not stick', 'Done.' in done and 'UPC-9001' in done, done[-300:])
+        check('billing still reported when the status does not stick', 'Billed.' in done and 'UPC-9001' in done, done[-300:])
         check('warns to set Issued with the cogwheel', 'could not be marked Issued' in done and 'Set it with the cogwheel' in done, done[-300:])
         check('no page errors (scenario 3)', not errors, errors)
         await ctx.close()
