@@ -3,7 +3,7 @@
     {
       "file": "health-check.user.js",
       "name": "Halaxy health check (beta)",
-      "version": "1.1.0"
+      "version": "1.1.1"
     },
     {
       "file": "core.user.js",
@@ -43,7 +43,7 @@
     {
       "file": "outstanding-actions.user.js",
       "name": "Halaxy Outstanding Actions (beta)",
-      "version": "0.5.0"
+      "version": "0.5.1"
     },
     {
       "file": "rebate-sync.user.js",

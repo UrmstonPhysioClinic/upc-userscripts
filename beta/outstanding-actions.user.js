@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy Outstanding Actions (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.5.0
+// @version      0.5.1
 // @description  Persistent notice of today's outstanding actions: attended appointments without a published note, and unpaid self-funded invoices.
 // @match        https://*.halaxy.com/a/*
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
@@ -47,7 +47,7 @@
   if (window.__hxOutstanding) return;
   window.__hxOutstanding = true;
 
-  const VERSION = '0.5.0';
+  const VERSION = '0.5.1';
   const m = location.pathname.match(/^\/a\/pr\/(\d+)\//);
   if (!m) return;
   const PG = m[1];
@@ -366,8 +366,11 @@
   // Halaxy's own classes (card, card-header, btn) style the panel; these rules only place it and
   // lay out its rows, scoped to our element, using Halaxy's colour variables.
   const CSS = `
-    .upc-oa { position: fixed; right: 16px; bottom: 16px; z-index: 90; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+    /* Bottom centre of the content area: clear of the patient side panel and the booking panel's Save. */
+    .upc-oa { position: fixed; left: var(--upc-oa-centre, 50%); transform: translateX(-50%); bottom: 12px; z-index: 90; display: flex; flex-direction: column; align-items: center; gap: 8px; }
     .upc-oa .upc-oa-pill { box-shadow: 0 4px 14px rgba(0,0,0,.25); }
+    /* Halaxy draws these buttons as an outline only; give ours a solid fill so the page does not show through. */
+    .upc-oa .upc-oa-pill:not(:hover):not(:focus):not(:active) { background-color: var(--vs-modal-bg-color, #fff); }
     .upc-oa .upc-oa-panel { width: 380px; max-width: calc(100vw - 32px); max-height: 60vh; display: flex; flex-direction: column; margin: 0;
       box-shadow: 0 8px 16px rgba(0,0,0,.2); overflow: hidden; }
     .upc-oa .card-header { display: flex; align-items: center; justify-content: space-between; }
@@ -409,6 +412,29 @@
     return e;
   }
 
+  // Centre of the content area, between Halaxy's side menu and the right edge.
+  function sidebarRight() {
+    const menu = document.getElementById('mainMenu');
+    if (!menu) return 0;
+    let right = 0;
+    for (let e = menu; e && e !== document.body; e = e.parentElement) {
+      const r = e.getBoundingClientRect();
+      if (r.width && r.left <= 1 && r.width < window.innerWidth / 2) right = Math.max(right, r.right);
+    }
+    return right;
+  }
+  function place() {
+    if (host) host.style.setProperty('--upc-oa-centre', Math.round((sidebarRight() + window.innerWidth) / 2) + 'px');
+  }
+  window.addEventListener('resize', place);
+  let watchedMenu = null;
+  function watchMenu() {
+    const menu = document.getElementById('mainMenu');
+    if (!menu || menu === watchedMenu || typeof ResizeObserver !== 'function') return;
+    watchedMenu = menu;
+    new ResizeObserver(place).observe(menu.parentElement || menu);   // menu collapsed or expanded
+  }
+
   function buildUi() {
     if (host || window.top !== window) return;
     if (!document.getElementById('upc-oa-css')) document.head.appendChild(el('style', { id: 'upc-oa-css', text: CSS }));
@@ -421,6 +447,8 @@
   function setBusy(b) { if (root) root.classList.toggle('upc-oa-busy', b); }
 
   function render() {
+    watchMenu();
+    place();
     if (!root) return;
     const wrap = root;
     wrap.textContent = '';

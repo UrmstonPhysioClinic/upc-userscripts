@@ -82,7 +82,7 @@ def invoices(pid):
     return rows
 
 
-PAGE = ("<!doctype html><html><body style='margin:0;height:900px'><h1>Mock Halaxy</h1>"
+PAGE = ("<!doctype html><html><body style='margin:0 0 0 230px;height:900px'><div style='position:fixed;left:0;top:0;bottom:0;width:218px'><nav id='mainMenu'></nav></div><h1>Mock Halaxy</h1>"
         "<button id='pay'>Pay</button><script>window.HkUser={linkPrG:USER,pracID:USER};"
         "document.getElementById('pay').onclick=()=>{const x=new XMLHttpRequest();"
         "x.open('POST','/a/pr/" + PG + "/invoicefunctions/501/pay/offline');x.send('a=1');};</script></body></html>")
@@ -151,6 +151,9 @@ async def main():
         check('shared colour reported as unclear', unchecked == [('Patient 08:00', 'Funder unclear: check invoice')], unchecked)
         pill = await pg.evaluate(shadow + ".querySelector('.upc-oa-pill').textContent")
         check('pill summary', pill == 'Outstanding today: 1 note · 1 unpaid · 1 to check', pill)
+        pos = await pg.evaluate("(() => { const b = " + shadow + ".querySelector('.upc-oa-pill'); const r = b.getBoundingClientRect(); return { mid: r.left + r.width / 2, bottom: innerHeight - r.bottom, bg: getComputedStyle(b).backgroundColor }; })()")
+        check('notice sits at the bottom centre of the content area', abs(pos['mid'] - (218 + 1280) / 2) <= 2 and pos['bottom'] <= 16, pos)
+        check('notice has a solid fill', pos['bg'] not in ('rgba(0, 0, 0, 0)', 'transparent'), pos['bg'])
         await pg.evaluate(shadow + ".querySelector('.upc-oa-pill').click()")
         links = await pg.evaluate("[..." + shadow + ".querySelectorAll('.upc-oa-acts a')].map(a => a.getAttribute('href'))")
         check('note link format', '/a/pr/555/patient/401/clinical/category/note/id/601' in links, links)
