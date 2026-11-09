@@ -153,7 +153,12 @@ async def main():
         check('pill summary', pill == 'Outstanding today: 1 note · 1 unpaid · 1 to check', pill)
         pos = await pg.evaluate("(() => { const b = " + shadow + ".querySelector('.upc-oa-pill'); const r = b.getBoundingClientRect(); return { mid: r.left + r.width / 2, bottom: innerHeight - r.bottom, bg: getComputedStyle(b).backgroundColor }; })()")
         check('notice sits at the bottom centre of the content area', abs(pos['mid'] - (218 + 1280) / 2) <= 2 and pos['bottom'] <= 16, pos)
-        check('notice has a solid fill', pos['bg'] not in ('rgba(0, 0, 0, 0)', 'transparent'), pos['bg'])
+        css = await pg.evaluate("document.getElementById('upc-oa-css').textContent")
+        check('resting notice left to Halaxy (filled red); only hover gets a solid fill',
+              '.upc-oa-pill:hover' in css and ':not(:hover)' not in css and pos['bg'] != 'rgb(255, 255, 255)', (pos['bg'], css.count('upc-oa-pill')))
+        await pg.hover(".upc-oa-pill")
+        hov = await pg.evaluate("getComputedStyle(" + shadow + ".querySelector('.upc-oa-pill')).backgroundColor")
+        check('hovered notice is solid', hov not in ('rgba(0, 0, 0, 0)', 'transparent'), hov)
         await pg.evaluate(shadow + ".querySelector('.upc-oa-pill').click()")
         links = await pg.evaluate("[..." + shadow + ".querySelectorAll('.upc-oa-acts a')].map(a => a.getAttribute('href'))")
         check('note link format', '/a/pr/555/patient/401/clinical/category/note/id/601' in links, links)

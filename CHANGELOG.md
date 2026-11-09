@@ -85,6 +85,9 @@
 
 ## Health check
 
+### 1.1.2 (9 Nov 2026, beta)
+- Same fix as Outstanding Actions 0.5.2 for its notice.
+
 ### 1.1.1 (9 Nov 2026, beta)
 - The notice has a solid fill, so the page no longer shows through it.
 
@@ -130,6 +133,9 @@ Existing scripts moved here from earlier chats, code unchanged. Only the header 
 - HTML source for emails 0.3
 
 ## Outstanding Actions
+
+### 0.5.2 (9 Nov 2026, beta)
+- Fix to 0.5.1: the notice is Halaxy's filled red again; only its hover state (an outline) gets a solid fill, so the page no longer shows through when you hover.
 
 ### 0.5.1 (9 Nov 2026, beta)
 - The notice sits at the bottom centre of the page, clear of the patient side panel and the booking panel's Save button. Its panel opens upwards from there.
