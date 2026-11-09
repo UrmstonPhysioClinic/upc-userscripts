@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.1
+// @version      1.1.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.1';
+  const VERSION = '1.1.2';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -351,7 +351,7 @@
   const CSS = `
     .upc-hc .upc-hc-wrap { position: fixed; left: var(--hx-health-left, 16px); bottom: 16px; z-index: 90; }
     .upc-hc .upc-hc-pill { box-shadow: 0 4px 14px rgba(0,0,0,.25); }
-    .upc-hc .upc-hc-pill:not(:hover):not(:focus):not(:active) { background-color: var(--vs-modal-bg-color, #fff); }   /* Halaxy's red button is outline only */
+    .upc-hc .upc-hc-pill:hover, .upc-hc .upc-hc-pill:active { background-color: var(--vs-modal-bg-color, #fff); }   /* Halaxy's red button is unfilled on hover */
     .upc-hc .upc-hc-panel { position: absolute; left: 0; bottom: 40px; width: min(440px, calc(100vw - 32px)); max-height: 70vh; overflow: auto; margin: 0;
       box-shadow: 0 8px 16px rgba(0,0,0,.2); }
     .upc-hc .card-header h2 { margin: 0; }
