@@ -5,6 +5,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Bill funder
 
+### 0.6.1 (9 Nov 2026, beta)
+- Fix: on an invoice opened from the patient's Invoices tab (/patient/invoice/{patient}/{invoice}), Invoice Funder let Halaxy's own pop-up open instead of this flow. The invoice is now taken from the button itself.
+
 ### 0.6.0 (9 Nov 2026, beta)
 - One button: Halaxy's own Invoice Funder now opens this flow (titled Invoice Funder), and the separate Bill funder button is gone. Use Halaxy's Invoice Funder, at the bottom left of the pop-up (and on any error), opens Halaxy's original pop-up instead. Without the clinic scripts the button works as Halaxy's.
 
@@ -110,6 +113,10 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Arrival chime and chat alarm can be switched off per PC from the Tampermonkey menu.
 
 ## Health check
+
+### 1.1.6 (9 Nov 2026, beta)
+- "check-response" is a known appointment status (treated as attended, as before), so it is no longer reported.
+- A genuinely new status is reported with the time and date of an example appointment, so it can be found.
 
 ### 1.1.5 (9 Nov 2026, beta)
 - Daily check of the appointment details pop-up that Bill funder reads comments from.

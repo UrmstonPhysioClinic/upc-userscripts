@@ -189,7 +189,7 @@ async def halaxy(route):
             org = int(choice); S['orgs'][org]['lines'] += inv['lines']
         inv['billed'], inv['org'] = True, org
         return await js({'status': 'REFRESH'})
-    m = re.search(r'/invoice/(\d+)/?$', p)
+    m = re.search(r'/invoice/(?:\d+/)?(\d+)/?$', p)   # /invoice/{id} or /patient/invoice/{patient}/{id}
     if m:
         iid = int(m.group(1))
         if iid in S['invoices']:
@@ -207,7 +207,7 @@ def check(name, ok, detail=''):
         FAILS.append(name)
 
 
-async def open_panel(browser, iid, wait='tbody'):
+async def open_panel(browser, iid, wait='tbody', path=None):
     ctx = await browser.new_context(viewport={'width': 1300, 'height': 900})
     await ctx.route('https://eu.halaxy.com/**', halaxy)
     await ctx.add_init_script(CORE)
@@ -215,7 +215,7 @@ async def open_panel(browser, iid, wait='tbody'):
     pg = await ctx.new_page()
     errors = []
     pg.on('pageerror', lambda e: errors.append(str(e)))
-    await pg.goto('https://eu.halaxy.com/a/pr/555/invoice/%d' % iid)
+    await pg.goto('https://eu.halaxy.com' + (path or '/a/pr/555/invoice/%d' % iid))
     await pg.wait_for_timeout(300)
     # Halaxy's own handler on its button (a delegated listener, as Halaxy's .ajax links use) records native opens
     await pg.evaluate("document.addEventListener('click', (e) => { if (e.target.closest('#invoiceFunderBtn')) window.__nativeOpens = (window.__nativeOpens || 0) + 1; })")
@@ -354,6 +354,14 @@ async def main():
         await pg.wait_for_function(root + ".querySelector('tbody')", timeout=60000)
         check('the next click opens ours again', await pg.evaluate("window.__nativeOpens") == 1)
         check('nothing changed', S['calls'] == [], S['calls'])
+        await ctx.close()
+
+        # Invoice opened from the patient's Invoices tab (/patient/invoice/{patient}/{invoice})
+        S = fresh()
+        ctx, pg, root, btn, errors = await open_panel(browser, 1003, path='/a/pr/555/patient/invoice/%d/1003' % PATIENT)
+        ok = await pg.evaluate(root + " !== null && !window.__nativeOpens")
+        rows = await pg.evaluate("document.querySelectorAll('[data-upc-bill-funder] tbody tr').length")
+        check('opens our flow from the patient Invoices tab address too', ok and rows > 0, (ok, rows))
         await ctx.close()
 
         # Escape closes it while nothing is running

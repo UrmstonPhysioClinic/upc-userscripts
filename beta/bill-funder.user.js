@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy bill funder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.6.0
+// @version      0.6.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
@@ -40,7 +40,7 @@
   if (window.__upcBillFunder) return;
   window.__upcBillFunder = true;
 
-  const VERSION = '0.6.0';
+  const VERSION = '0.6.1';
   const MAX_AGE_DAYS = 183;   // about 6 months
   const NOT_ATTENDED = /cancel|did-not-attend|dna|reject|declin|reschedul/i;
   const DAY = 86400e3;
@@ -399,7 +399,11 @@
     const btn = e.target && e.target.closest && e.target.closest('#invoiceFunderBtn');
     if (!btn) return;
     if (nativeNext) { nativeNext = false; return; }   // let Halaxy's own pop-up open
-    const id = (location.pathname.match(/\/invoice\/(\d+)\/?$/) || [])[1];
+    // The invoice is the one Halaxy's button bills (data-modal-href /invoicefunctions/{invoice}/claim/{claim}/),
+    // whichever address the page was opened at: /invoice/{id}, or /patient/invoice/{patient}/{id} from
+    // the patient's Invoices tab.
+    const href = btn.getAttribute('data-modal-href') || btn.getAttribute('href') || '';
+    const id = (href.match(/\/invoicefunctions\/(\d+)\//) || [])[1] || (location.pathname.match(/\/invoice\/(?:\d+\/)?(\d+)\/?$/) || [])[1];
     if (!id) return;
     e.preventDefault();
     e.stopImmediatePropagation();
