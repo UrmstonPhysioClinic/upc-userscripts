@@ -5,6 +5,11 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Bill funder
 
+### 0.4.0 (not yet released: waiting for Carl)
+- Fees already on the open invoice are marked "On this invoice".
+- When nothing needs merging, the button reads Bill funder and the confirmation says there is nothing to merge.
+- "Not shown" lists each left-out invoice with its date and reason, to match against Halaxy's merge menu.
+
 ### 0.3.2 (7 Nov 2026, beta)
 - Amounts use the core library's Halaxy format.
 
