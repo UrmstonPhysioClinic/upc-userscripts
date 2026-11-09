@@ -8,7 +8,7 @@
     {
       "file": "core.user.js",
       "name": "UPC core library (beta)",
-      "version": "0.1.14"
+      "version": "0.1.15"
     },
     {
       "file": "alerts.user.js",
@@ -53,7 +53,7 @@
     {
       "file": "remittances.user.js",
       "name": "Halaxy remittances (beta)",
-      "version": "0.2.0"
+      "version": "0.2.1"
     },
     {
       "file": "textarea-autogrow.user.js",

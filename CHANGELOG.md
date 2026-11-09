@@ -70,6 +70,10 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Remittances
 
+### 0.2.1 (9 Nov 2026, beta)
+- Lines already showing what the insurer paid (done earlier, or by hand) are skipped, so a remittance can be run again safely.
+- A remittance line matches a funder line a day or two out when there is no exact date, as Halaxy sometimes dates funder fees a day out and the date is then corrected.
+
 ### 0.2.0 (7 Nov 2026, beta)
 - Looks like Halaxy: page title, Halaxy cards, tables, buttons and text boxes, and Halaxy's pop-up to confirm. Amounts as £ 40.00.
 
@@ -80,6 +84,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Scanned invoice numbers can be corrected and re-checked on the review screen.
 
 ## Core library
+
+### 0.1.15 (9 Nov 2026, beta)
+- Fix: when the insurer paid nothing for a fee, the excess fix removed the fee from the funder invoice and then stopped on the £0.00 Halaxy left waiting to bill (live, UPC-37794 / UPC-37382). It now re-bills £0.00, so the fee stays on the funder invoice at £0.00, dated as the patient fee.
 
 ### 0.1.14 (9 Nov 2026, beta)
 - Excess fixes (Remittances): when Halaxy copied a fee onto the funder invoice a day or two out, the patient fee is still found (the one same-item fee within two days that no other funder line claims); anything ambiguous still stops. The error now lists the patient invoice's fee dates. Live failure 9 Nov: "Could not find the matching line on UPC-37382".

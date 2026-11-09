@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.14
+// @version      0.1.15
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.14';
+  const VERSION = '0.1.15';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -446,17 +446,17 @@
       throw e;
     }
 
-    if (newRebate > 0) {
-      say('Re-billing ' + money.fmt(newRebate) + ' to ' + plan.funderNumber);
-      await rebill(patientInvoiceId, funderInvoiceId, newRebate);
-    }
+    // Re-bill what the funder now owes, £0 included, so the fee stays on the funder invoice at that
+    // amount (Carl, 9 Nov 2026: a £0.00 line, never a missing one). Halaxy offers £0 to bill like any amount.
+    say('Re-billing ' + money.fmt(newRebate) + ' to ' + plan.funderNumber);
+    await rebill(patientInvoiceId, funderInvoiceId, newRebate);
 
     let fAfter = await invoice.fetch(funderInvoiceId);
     const before = new Set(funder.lines.map((l) => l.lineId));
     const added = fAfter.lines.filter((l) => !before.has(l.lineId) && l.patientInvoiceId === patientInvoiceId && l.item === plan.item);
     const problems = [];
     if (fAfter.lines.some((l) => l.lineId === funderLineId)) problems.push('the original line is still on ' + fAfter.number);
-    if (newRebate > 0) {
+    {
       const nl = added.filter((l) => l.amount === newRebate);
       if (nl.length !== 1) problems.push('no new ' + money.fmt(newRebate) + ' line found on ' + fAfter.number);
       else if (plan.patientDate && nl[0].date !== plan.patientDate) {
@@ -465,11 +465,11 @@
         try { await invoice.setLineDate(nl[0].lineId, plan.patientDate); fAfter = await invoice.fetch(funderInvoiceId); }
         catch (e) { problems.push('the re-billed line on ' + fAfter.number + ' is dated ' + nl[0].date + ' instead of ' + plan.patientDate + ' (' + (e.message || e) + ')'); }
       }
-    } else if (added.length) problems.push('a new line for this fee is on ' + fAfter.number);
+    }
     const pAfter = await invoice.fetch(patientInvoiceId);
     if (fAfter.total !== funder.total - origRebate + newRebate) problems.push(fAfter.number + ' total is ' + money.fmt(fAfter.total) + ', expected ' + money.fmt(funder.total - origRebate + newRebate));
     if (pAfter.pending.length) problems.push(pAfter.number + ' still has an amount waiting to bill');
-    if (problems.length) throw new UPCError('Changes were made but the result looks wrong: ' + problems.join('; ') + '.');
+    if (problems.length) throw new UPCError('Changes were made but the result looks wrong: ' + problems.join('; ') + '. Check ' + plan.patientNumber + ' and ' + fAfter.number + ' before trying again.');
     return { funderTotal: fAfter.total, patientOutstanding: pAfter.outstanding };
   }
 
