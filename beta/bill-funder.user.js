@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy bill funder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.5.0
+// @version      0.6.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
@@ -40,7 +40,7 @@
   if (window.__upcBillFunder) return;
   window.__upcBillFunder = true;
 
-  const VERSION = '0.5.0';
+  const VERSION = '0.6.0';
   const MAX_AGE_DAYS = 183;   // about 6 months
   const NOT_ATTENDED = /cancel|did-not-attend|dna|reject|declin|reschedul/i;
   const DAY = 86400e3;
@@ -225,7 +225,7 @@
 
   function openPanel(currentId) {
     const st = { phase: 'loading', status: 'Reading...', plan: null, log: [], result: null, error: '', confirm: false, zero: {}, zeroDone: {}, zeroConfirm: false };
-    const dlg = U().ui.dialog({ title: 'Bill funder', key: 'bill-funder', canClose: () => st.phase !== 'running' && st.phase !== 'zeroing' });
+    const dlg = U().ui.dialog({ title: 'Invoice Funder', key: 'bill-funder', canClose: () => st.phase !== 'running' && st.phase !== 'zeroing' });
     if (!dlg) return;
     dlg.root.setAttribute('data-upc-bill-funder', '');
     const sh = dlg.body;
@@ -237,7 +237,7 @@
 
     function render() {
       const p = st.plan;
-      dlg.setTitle('Bill funder' + (p && p.current.funderName ? ': ' + p.current.funderName : ''));
+      dlg.setTitle('Invoice Funder');
       let h = '<div class="text-muted">Merges the chosen fees onto one invoice, then invoices the funder once, so the patient\'s excess is charged once. Halaxy\'s own steps; nothing changes until you confirm.</div>';
       if (st.phase === 'loading') h += '<p>' + esc(st.status) + '</p>';
       if (st.error) h += '<p class="upc-warn upc-gap">' + esc(st.error) + '</p>';
@@ -311,7 +311,10 @@
             esc(z.map((f) => dateLabel(f.when) + ' on ' + f.invoiceNumber + ' (' + fmt(f.amount) + ')').join(', ')) + '. Each is changed in its fee edit pop-up, with every other field left as it is.</div>';
         }
       }
-      h += '<div class="upc-actions"><span class="text-muted upc-version">Bill funder ' + VERSION + '</span>';
+      // Halaxy's original, at the left like Halaxy's own Merge Invoices: before anything has changed only.
+      const nativeOk = (st.phase === 'loading' || st.phase === 'choose' || st.phase === 'error') && !st.confirm;
+      h += '<div class="upc-actions">' + (nativeOk ? '<button type="button" class="btn btn-outline-primary-light upc-native-funder" data-a="native" title="Halaxy\'s own Invoice Funder: bills this invoice only, without merging">Use Halaxy\'s Invoice Funder</button>' : '') +
+        '<span class="text-muted upc-version">Clinic version ' + VERSION + '</span>';
       if (st.phase === 'choose' && !st.confirm) h += '<button type="button" class="btn btn-outline-primary" data-a="close">Cancel</button><button type="button" class="btn btn-primary" data-a="next" ' + (chosen().length ? '' : 'disabled') + '>' + goLabel() + '</button>';
       else if (st.confirm) h += '<button type="button" class="btn btn-outline-primary" data-a="back">Back</button><button type="button" class="btn btn-primary" data-a="go">' + goLabel() + '</button>';
       else if (st.phase === 'running' || st.phase === 'zeroing') h += '<button type="button" class="btn btn-primary" disabled>Working...</button>';
@@ -333,6 +336,7 @@
       if (!a) return;
       const act = a.dataset.a;
       if (act === 'close') dlg.close();
+      else if (act === 'native') { dlg.close(); openNative(); }
       else if (act === 'reload') location.reload();
       else if (act === 'next') { st.confirm = true; render(); }
       else if (act === 'back') { st.confirm = false; render(); }
@@ -378,26 +382,33 @@
       .catch((err) => { st.phase = 'error'; st.error = err.message || String(err); render(); });
   }
 
-  // ------------------------------------------------------------------ button next to Invoice Funder
+  // ------------------------------------------------------------------ Halaxy's Invoice Funder button opens our flow
 
-  function addButton() {
-    const halaxyBtn = document.getElementById('invoiceFunderBtn');
+  // One button, as Halaxy draws it (Carl, 9 Nov 2026): clicking Halaxy's own Invoice Funder opens this
+  // flow instead. Halaxy's original is one click away inside our pop-up ("Use Halaxy's Invoice
+  // Funder"), for what this flow does not do (switching the payer, adding to an existing organisation
+  // invoice). If these scripts are not loaded, the button simply works as Halaxy's.
+  let nativeNext = false;
+  function openNative() {
+    const btn = document.getElementById('invoiceFunderBtn');
+    if (!btn) return;
+    nativeNext = true;
+    btn.click();
+  }
+  function onClick(e) {
+    const btn = e.target && e.target.closest && e.target.closest('#invoiceFunderBtn');
+    if (!btn) return;
+    if (nativeNext) { nativeNext = false; return; }   // let Halaxy's own pop-up open
     const id = (location.pathname.match(/\/invoice\/(\d+)\/?$/) || [])[1];
-    if (!halaxyBtn || !id || document.getElementById('upcBillFunderBtn')) return;
-    const b = document.createElement('a');
-    b.id = 'upcBillFunderBtn';
-    b.href = '#';
-    b.className = 'btn btn-outline-primary-light ml-1';
-    b.textContent = 'Bill funder';
-    b.title = 'Merge this patient\'s unbilled fees for this claim onto one invoice, then invoice the funder once';
-    b.addEventListener('click', (e) => { e.preventDefault(); openPanel(id); });
-    halaxyBtn.after(b);
+    if (!id) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    openPanel(id);
   }
 
   function start() {
     if (!window.UPC) { console.error('[UPC bill funder] needs the core library'); return; }
-    addButton();
-    new MutationObserver(addButton).observe(document.body, { childList: true, subtree: true });
+    window.addEventListener('click', onClick, true);   // capture: before Halaxy's own handlers
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
