@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy review requests (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.2
+// @version      0.4.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
@@ -27,7 +27,11 @@
  *    running", "goals met", "discharged" ...). Phrases such as "not 100%", "worse", "flare-up",
  *    "referred to GP" count against. Notes are read in the browser only: what's kept is the patient,
  *    the dates and which kinds of phrase matched, never the note text.
- *  - Send review request: Halaxy's Add Follow-Up with the Review Request template, by email, now.
+ *  - Send review request: Halaxy's Add Follow-Up with the Review Request template, by email, for the next
+ *    weekday at 10:30 (Carl, 10 Nov 2026: "whatever creates the least work and drives the most conversions";
+ *    review sellers' data favours weekday late mornings). If Halaxy has a follow-up template called
+ *    "Review Reminder" (with an email template of the same name), a reminder is added for a week later
+ *    at the same time; without one, nothing more is sent.
  *    Don't ask: adds the "No review request" label on the patient's Edit page. Both ask first.
  *  - Shown only to Carl (by Halaxy sign-in). The menu count is refreshed at most every 12 hours in the
  *    visible tab, shared across tabs, skipped while Halaxy has asked scripts to pause. Each patient's
@@ -38,11 +42,24 @@
   if (window.__hxReviewRequests) return;
   window.__hxReviewRequests = true;
 
-  const VERSION = '0.3.2';
+  const VERSION = '0.4.0';
   const ROUTE = 'upc-review-requests';
   const MENU_CLS = 'upc-rr-menu';
   const ALLOWED = ['Carl Healy'];          // Carl, 10 Nov 2026: just me for now
   const TEMPLATE = 'Review Request';       // follow-up template and email template
+  const REMINDER = 'Review Reminder';      // optional: used only if Carl sets it up in Halaxy
+  const SEND_AT = [10, 30];                // weekday late morning
+
+  // The next weekday 10:30 that's at least 15 minutes away.
+  function sendTime(from) {
+    const d = new Date(from || Date.now());
+    d.setHours(SEND_AT[0], SEND_AT[1], 0, 0);
+    if (d.getTime() < Date.now() + 15 * 60e3) d.setDate(d.getDate() + 1);
+    while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
+    return d;
+  }
+  const whenLabel = (d) => ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d.getDay()] + ' ' + label(d.getTime()) + ' at ' +
+    String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
   const LABEL = 'No review request';
   const DAY = 86400e3;
   const SAID_DAYS = 1, QUIET_DAYS = 14, MAX_DAYS = 28, MIN_AGE = 16;
@@ -284,7 +301,8 @@
     const d = done.get(r.id);
     const why = esc((r.good || []).concat(r.nice || []).join(', ')) + ((r.bad || []).length ? '<span class="upc-err">Against: ' + esc(r.bad.join(', ')) + '</span>' : '') +
       (r.verdict === 'error' ? '<span class="upc-err">Not read: ' + esc(r.why) + '</span>' : '');
-    const acts = d === 'sent' ? '<span class="upc-ok">Review request sent</span>' : d === 'labelled' ? '<span class="upc-ok">Labelled ' + esc(LABEL) + '</span>' : d === 'busy' ? '<span class="text-muted">Working...</span>'
+    const acts = d && d.sent ? '<span class="upc-ok">Review request scheduled for ' + esc(d.sent) + (d.reminder ? ', reminder ' + esc(d.reminder) : '') + '</span>' +
+      (d.reminderError ? '<br><span class="upc-err">Reminder not added: ' + esc(d.reminderError) + '</span>' : '') : d === 'labelled' ? '<span class="upc-ok">Labelled ' + esc(LABEL) + '</span>' : d === 'busy' ? '<span class="text-muted">Working...</span>'
       : (d && d.error ? '<span class="upc-err">' + esc(d.error) + '</span><br>' : '') +
         '<button type="button" class="btn btn-outline-primary-light" data-send="' + esc(r.id) + '">Send review request</button>' +
         '<button type="button" class="btn btn-outline-primary" data-skip="' + esc(r.id) + '">Don\'t ask</button>';
@@ -329,14 +347,28 @@
   async function act(kind, id) {
     const r = (store.get('result', { rows: [] }).rows || []).find((x) => x.id === id);
     if (!r || done.get(id) === 'busy') return;
+    const when = sendTime();
     const ok = kind === 'send'
-      ? await confirm('Send review request?', '<p>Add the ' + esc(TEMPLATE) + ' follow-up for ' + esc(r.name) + ', by email, in about 10 minutes?</p><p class="text-muted">It\'s added through Halaxy\'s Add Follow-Up with your ' + esc(TEMPLATE) + ' template, and shows in Tasks &amp; Follow-Ups.</p>', 'Send review request')
+      ? await confirm('Send review request?', '<p>Schedule the ' + esc(TEMPLATE) + ' email for ' + esc(r.name) + ' on ' + esc(whenLabel(when)) + '?</p><p class="text-muted">It\'s added through Halaxy\'s Add Follow-Up with your ' +
+        esc(TEMPLATE) + ' template and shows in Tasks &amp; Follow-Ups, where it can be cancelled before it goes. If you\'ve set up a ' + esc(REMINDER) + ' follow-up in Halaxy, a reminder is added for a week later.</p>', 'Send review request')
       : await confirm('Don\'t ask?', '<p>Add the label "' + esc(LABEL) + '" to ' + esc(r.name) + '?</p><p class="text-muted">It\'s added on their Edit page, with everything else left as it is, and they won\'t be suggested again.</p>', 'Add label');
     if (!ok) return;
     done.set(id, 'busy');
     render();
     try {
-      if (kind === 'send') { await U().followUps.add(id, { template: TEMPLATE }); done.set(id, 'sent'); }
+      if (kind === 'send') {
+        await U().followUps.add(id, { template: TEMPLATE, when });
+        const res = { sent: whenLabel(when) };
+        const later = new Date(when.getTime() + 7 * DAY);
+        try {
+          await U().followUps.add(id, { template: REMINDER, when: later });
+          res.reminder = whenLabel(later);
+        } catch (e) {
+          // No Review Reminder template in Halaxy: fine, no reminder. Anything else is reported (the request itself is scheduled).
+          if (!/is not in the Add Follow-Up/.test(e.message || '')) { res.reminderError = e.message || String(e); tellHealthCheck(e); }
+        }
+        done.set(id, res);
+      }
       else { await U().patient.addLabel(id, LABEL); done.set(id, 'labelled'); }
     } catch (e) {
       done.set(id, { error: e.message || String(e) });

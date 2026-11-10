@@ -17,6 +17,10 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Review requests
 
+### 0.4.0 (10 Nov 2026, beta)
+- Review requests are scheduled for the next weekday at 10:30 (at least 15 minutes ahead), the late-morning weekday slot review sellers' data favours (Carl: "whatever creates the least work and drives the most conversions"). The confirmation says when, and the row shows it.
+- Optional reminder: if Halaxy has a follow-up template and an email template called "Review Reminder", a reminder is added for a week later at the same time. Without them, nothing more is sent. Both can be cancelled in Tasks & Follow-Ups before they go.
+
 ### 0.3.2 (10 Nov 2026, beta, with core 0.1.21)
 - Send review request was refused live ("Scheduled date must be in the future"): the follow-up is now scheduled for the next 5 minutes from 10 minutes' time. When Halaxy refuses something, only its own reason is shown, not the form's list of required fields.
 
