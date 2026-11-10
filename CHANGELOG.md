@@ -12,6 +12,24 @@ Health check 1.1.6, then 1.1.7, at Carl's request, so the clinic PCs stop report
 ## Moved to the clinic PCs (stable), 9 Nov 2026
 Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outstanding Actions 0.5.3, calendar controls 2.10, Alerts 1.0.0, Custom Reports 0.7.0, HTML source for emails 0.4. Arrival chime and Chat alert retired from stable (replaced by Alerts). `tools/promote.py` added for promotions.
 
+## Review requests
+
+### 0.1.0 (10 Nov 2026, beta)
+- New: Patients > Review requests, for Carl only, with a count on the menu item. Patients last seen 2 to 8 weeks ago with nothing booked, whose latest Progress Update form (+4 or +5) or last two clinical notes show a good outcome ("100% better", "pain-free", "back to running", "goals met", "discharged" and so on). Mixed signs ("not 100%", "flare-up", "referred to GP", a scan or injection) are listed greyed under Worth a look.
+- Left out: anyone already sent a Review Request follow-up, labelled No review request, under 16, owing money on their own invoices, or whose last appointment was cancelled or missed.
+- Send review request: Halaxy's Add Follow-Up with the Review Request templates, by email, now, after confirming; checked in Tasks & Follow-Ups afterwards. Don't ask: adds the No review request label on the patient's Edit page, sending everything else back unchanged, and checks it afterwards.
+- Notes are read in the browser only; only the kinds of phrase found are kept, never the note text. Each patient's result is kept for a week; the count refreshes at most every 12 hours.
+
+## Core library
+
+### 0.1.20 (10 Nov 2026, beta)
+- `UPC.notes.items` and `UPC.notes.text` (a patient's notes list and a note's text), `UPC.followUps.list` and `UPC.followUps.add` (Tasks & Follow-Ups), `UPC.patient.details`, `UPC.patient.invoices` and `UPC.patient.addLabel`. Confirmed against live captures, 10 Nov 2026.
+
+## Health check
+
+### 1.1.15 (10 Nov 2026, beta)
+- Checks the follow-ups list daily (Review requests), and knows Review requests by name.
+
 ## Loader
 
 ### 1.1.0 (10 Nov 2026, all PCs)
