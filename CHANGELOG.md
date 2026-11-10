@@ -11,6 +11,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Ready to bill
 
+### 0.3.0 (10 Nov 2026, beta)
+- Excess hold reads the patient's answer to "Excess amount:" on their Bupa or AXA Initial Assessment Form (the form nearest the start of the claim) and holds a new claim until the unbilled fees cover it. Shown as "patient-reported excess £ 250.00 (unconfirmed)" and used only to time billing. "None" or 0 means no hold. Aviva and WPA forms don't ask, and a missing or unreadable answer falls back to 2 fees. Two requests per new Bupa or AXA claim, cached for a day.
+
 ### 0.2.1 (10 Nov 2026, beta)
 - Aviva can be billed mid-treatment too (Carl): month end, 3-month-old fees and the excess hold now apply to Bupa, AXA, WPA and Aviva.
 
@@ -120,6 +123,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Scanned invoice numbers can be corrected and re-checked on the review screen.
 
 ## Core library
+
+### 0.1.19 (10 Nov 2026, beta)
+- `UPC.forms.list(linkPaGId)` (a patient's filled forms, from their notes list) and `UPC.forms.answers(id)` (question and answer pairs), confirmed live 10 Nov 2026.
 
 ### 0.1.18 (10 Nov 2026, beta)
 - `UPC.reports.unpaidLines(start)`: Halaxy's Unpaid Invoices report as one row per fee line (columns confirmed live 10 Nov 2026), invoice-level cells carried to every line. `UPC.reports.pendingInvoiceIds()`: invoices Halaxy lists as Pending. `UPC.dayLabel` and `UPC.parseDay` for Halaxy's dates.

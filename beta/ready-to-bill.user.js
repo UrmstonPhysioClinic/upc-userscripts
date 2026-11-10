@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy ready to bill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.1
+// @version      0.3.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
@@ -27,9 +27,10 @@
  *    working day of the month, or fees 3 months old or more. Other funders (3rd Party Funded and so on)
  *    are billed only at the end.
  *  - Excess hold (Bupa, AXA, WPA): on a new claim (its first authorised appointment is among the unbilled
- *    fees) hold until the fees cover the excess. This version doesn't read the intake form's excess yet,
- *    so it uses the spec's fallback: hold until there are at least 2 fees. A used-up authorisation or old
- *    fees override.
+ *    fees) hold until the fees cover the excess. Bupa and AXA: the excess is the patient's answer to
+ *    "Excess amount:" on their Initial Assessment Form (patient-reported, unconfirmed, used only to time
+ *    the hold). Aviva and WPA forms don't ask, and a missing or unreadable answer falls back to: hold until
+ *    there are at least 2 fees. A used-up authorisation or old fees override.
  *  - Patients whose only unbilled fees are cancelled or did-not-attend: listed with each appointment's
  *    comments and Set to £ 0.00 (fee and funder rebate, after confirming), read when the page is open.
  *  - Shown only to Carl and Wendy, only inside Halaxy. The count on the menu is refreshed at most every
@@ -41,7 +42,7 @@
   if (window.__hxReadyToBill) return;
   window.__hxReadyToBill = true;
 
-  const VERSION = '0.2.1';
+  const VERSION = '0.3.0';
   const ROUTE = 'upc-ready-to-bill';
   const MENU_CLS = 'upc-rtb-menu';
   const ALLOWED = ['Carl Healy', 'Wendy Pritchard'];   // Carl, 7 Nov 2026: only the two of them
@@ -51,7 +52,9 @@
   const PAGE_FRESH = 10 * 60e3;        // the page re-checks when its results are older than this
   const KEY = 'upc-rtb:';
   const NOT_ATTENDED = /did not attend|did-not-attend|cancel/i;
-  const MID_TREATMENT = /bupa|axa|wpa|aviva/i;   // Carl, 10 Nov 2026: only these can be billed before treatment ends
+  const MID_TREATMENT = /bupa|axa|wpa|aviva/i;
+  const EXCESS_ON_FORM = /bupa|axa/i;      // only their intake forms ask for the excess
+  const MAX_EXCESS = 200000;               // over £ 2,000 is taken as a typing slip: use the fallback   // Carl, 10 Nov 2026: only these can be billed before treatment ends
 
   const U = () => window.UPC;
   const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -104,6 +107,37 @@
     if (keys.length > 400) keys.sort((a, b) => cache[a].at - cache[b].at).slice(0, keys.length - 400).forEach((k) => delete cache[k]);
     store.set('inv', cache);
     return facts;
+  }
+
+  // The patient-reported excess (pence) from the Initial Assessment Form for this funder, or null when
+  // there's no form near the start of the claim or the answer can't be read. Cached for a day.
+  const parseExcess = (text) => {
+    const t = String(text || '').trim();
+    if (!t) return null;
+    if (/^(none|nil|no|no excess|zero|£?\s*0+(\.0+)?)\.?$/i.test(t)) return 0;
+    const m = t.replace(/,/g, '').match(/(\d+(?:\.\d{1,2})?)/);
+    if (!m) return null;
+    const v = Math.round(parseFloat(m[1]) * 100);
+    return v > MAX_EXCESS ? null : v;
+  };
+  async function patientExcess(g, say) {
+    const key = g.patientId + '|' + g.invoices[0].id;
+    const cache = store.get('excess', {});
+    if (cache[key] && Date.now() - cache[key].at < DAY) return cache[key].pence;
+    say('Reading the intake form...');
+    const word = /bupa/i.test(g.funder) ? /bupa/i : /axa/i;
+    const from = (g.oldest || Date.now()) - 120 * DAY, to = (g.oldest || Date.now()) + 14 * DAY;
+    const form = (await U().forms.list(g.patientId))
+      .find((f) => /initial assessment form/i.test(f.label) && word.test(f.label) && (f.date === null || (f.date >= from && f.date <= to)));
+    let pence = null;
+    if (form) {
+      const q = (await U().forms.answers(form.id)).find((a) => /excess/i.test(a.question));
+      pence = q ? parseExcess(q.answer) : null;
+    }
+    cache[key] = { at: Date.now(), pence };
+    Object.keys(cache).forEach((k) => { if (Date.now() - cache[k].at > DAY) delete cache[k]; });
+    store.set('excess', cache);
+    return pence;
   }
 
   async function calendar(fromMs, toMs, say) {
@@ -177,7 +211,7 @@
 
     // Decide.
     const monthEnd = isLastWorkingDay(day0);
-    list.forEach((g) => {
+    for (const g of list) {
       const reasons = [];
       const ref = g.referral;
       const authUsed = !!(ref && ref.limit && ref.position >= ref.limit);
@@ -188,15 +222,24 @@
       const old = g.mid && g.oldest !== null && g.oldest <= addMonths(day0, -OLD_MONTHS);
       if (old) reasons.push('Fees from ' + label(g.oldest) + ', over ' + OLD_MONTHS + ' months old');
       if (g.mid && monthEnd) reasons.push('Last working day of the month');
-      const held = g.mid && g.newClaim && g.billable.length < MIN_FEES_NO_EXCESS && !authUsed && !old;
+      const mayHold = g.mid && g.newClaim && g.billable.length > 0 && !authUsed && !old;
+      let excess = null;
+      if (mayHold && EXCESS_ON_FORM.test(g.funder) && g.patientId) {
+        try { excess = await patientExcess(g, say); } catch (e) { tellHealthCheck(e); }   // fall back to 2 fees
+      }
+      const held = mayHold && (excess !== null ? g.total < excess : g.billable.length < MIN_FEES_NO_EXCESS);
       g.state = !g.billable.length ? 'check' : held ? 'held' : reasons.length ? 'due' : 'later';
       g.reasons = reasons;
       const when = g.nextBooked ? 'next booked ' + label(g.nextBooked) : g.lastSeen ? 'last seen ' + label(g.lastSeen) : '';
       g.note = g.state === 'check' ? 'Only cancelled or did-not-attend fees: check whether to bill them'
-        : g.state === 'held' ? 'Held for the excess: first invoice on a new claim, ' + g.billable.length + ' fee so far (excess not read yet, so waiting for ' + MIN_FEES_NO_EXCESS + ' fees)'
+        : g.state === 'held' ? (excess !== null
+          ? 'Held for the excess: patient-reported excess ' + fmt(excess) + ' (unconfirmed), fees so far ' + fmt(g.total)
+          : 'Held for the excess: first invoice on a new claim, ' + g.billable.length + ' fee so far (' +
+            (EXCESS_ON_FORM.test(g.funder) ? 'excess not found on the intake form' : g.funder + '\'s form doesn\'t ask for the excess') +
+            ', so waiting for ' + MIN_FEES_NO_EXCESS + ' fees)')
           : g.state === 'later' ? (g.mid ? 'Not due yet' + (when ? ': ' + when : '')
             : 'Billed at the end of treatment (' + g.funder + ' isn\'t billed mid-treatment)' + (when ? ': ' + when : '')) : '';
-    });
+    }
     const order = { due: 0, check: 1, held: 2, later: 3 };
     list.sort((a, b) => order[a.state] - order[b.state] || (a.oldest || 0) - (b.oldest || 0));
     const result = {
@@ -397,7 +440,7 @@
       }
       h += '<p class="text-muted">Unbilled means an insurer patient\'s fee on an Active invoice that Halaxy doesn\'t show as Pending. ' +
         'Fees older than ' + WINDOW_MONTHS + ' months are left out. Only Bupa, AXA, WPA and Aviva are billed mid-treatment; other funders are due when the authorisation is used up or treatment has finished. ' +
-        'The excess on new claims isn\'t read from the intake form yet, so their new claims wait for ' + MIN_FEES_NO_EXCESS + ' fees.</p>';
+        'New claims are held until the fees cover the excess the patient gave on their Bupa or AXA intake form (unconfirmed; used only to time billing), otherwise until there are ' + MIN_FEES_NO_EXCESS + ' fees.</p>';
     }
     h += '<div class="text-muted upc-version">Ready to bill ' + VERSION + '</div></div>';
     root.innerHTML = h;
