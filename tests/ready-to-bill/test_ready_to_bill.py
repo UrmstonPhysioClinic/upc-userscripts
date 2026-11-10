@@ -59,12 +59,18 @@ def fresh(today, drop_column=None):
     # D: Bupa fee 100 days old, booked again -> due (old fees)
     inv(531, 304, 'Patient D', 'Bupa', [att(-100)], ref=(2, 10))
     appt(304, -100); appt(304, 5)
-    # M: Aviva fee 100 days old, booked again -> not due: Aviva is billed only at the end
-    inv(621, 313, 'Patient M', 'Aviva', [att(-100)], ref=(2, 10))
+    # M: 3rd Party Funded fee 100 days old, booked again -> not due: billed only at the end
+    inv(621, 313, 'Patient M', '3rd Party Funded', [att(-100)], ref=(2, 10))
     appt(313, -100); appt(313, 5)
-    # N: Aviva new claim, one fee, seen 2 days ago, nothing booked -> no excess hold for Aviva, not due yet
-    inv(631, 314, 'Patient N', 'Aviva', [att(-2)], ref=(1, 10))
+    # N: 3rd Party Funded new claim, one fee, seen 2 days ago, nothing booked -> no excess hold, not due yet
+    inv(631, 314, 'Patient N', '3rd Party Funded', [att(-2)], ref=(1, 10))
     appt(314, -2)
+    # O: Aviva fee 100 days old, booked again -> due (Aviva is billed mid-treatment too)
+    inv(641, 315, 'Patient O', 'Aviva', [att(-100)], ref=(2, 10))
+    appt(315, -100); appt(315, 5)
+    # P: Aviva new claim, one fee, seen 2 days ago, nothing booked -> held for the excess
+    inv(651, 316, 'Patient P', 'Aviva', [att(-2)], ref=(1, 10))
+    appt(316, -2)
     # E: seen yesterday, booked next week -> not due yet
     inv(541, 305, 'Patient E', 'Bupa', [att(-1)], ref=(3, 8))
     appt(305, -1); appt(305, 7)
@@ -225,12 +231,14 @@ async def main():
         rows = await pg.evaluate(ROWS_JS)
         by = {r['who']: r for r in rows}
         due = [r['who'] for r in rows if not r['off']]
-        check('due: authorisation used up, 14 days quiet, old fees', sorted(due) == ['Patient A', 'Patient B', 'Patient D'], rows)
+        check('due: authorisation used up, 14 days quiet, old fees', sorted(due) == ['Patient A', 'Patient B', 'Patient D', 'Patient O'], rows)
         check('authorisation reason', 'Authorisation used up (5 of 5)' in by.get('Patient A', {}).get('why', ''), by.get('Patient A'))
         check('quiet reason names the last visit', 'No visit for 14 days (last 21-Oct-2026), nothing booked' in by.get('Patient B', {}).get('why', ''), by.get('Patient B'))
         check('old fees reason', 'Fees from 02-Aug-2026, over 3 months old' in by.get('Patient D', {}).get('why', ''), by.get('Patient D'))
-        check('Aviva: old fees are not due, billed at the end', by.get('Patient M', {}).get('off') and 'Billed at the end of treatment (Aviva' in by['Patient M']['why'], by.get('Patient M'))
-        check('Aviva: no excess hold on a new claim', by.get('Patient N', {}).get('off') and 'Held' not in by['Patient N']['why'], by.get('Patient N'))
+        check('3rd Party Funded: old fees are not due, billed at the end', by.get('Patient M', {}).get('off') and 'Billed at the end of treatment (3rd Party Funded' in by['Patient M']['why'], by.get('Patient M'))
+        check('3rd Party Funded: no excess hold on a new claim', by.get('Patient N', {}).get('off') and 'Held' not in by['Patient N']['why'], by.get('Patient N'))
+        check('Aviva: old fees are due', not by.get('Patient O', {}).get('off', True) and 'over 3 months old' in by['Patient O']['why'], by.get('Patient O'))
+        check('Aviva: new claim held for the excess', by.get('Patient P', {}).get('off') and 'Held for the excess' in by['Patient P']['why'], by.get('Patient P'))
         check('not the last working day, so no month-end reason', not any('Last working day' in r['why'] for r in rows), rows)
         check('fees from both of a patient\'s invoices are counted', by.get('Patient A', {}).get('unbilled') == '3 fees£ 120.00', by.get('Patient A'))
         check('Invoice Funder button opens the latest invoice with Invoice Funder', by.get('Patient A', {}).get('btn') == '/a/pr/555/invoice/502#upc-invoice-funder', by.get('Patient A'))
@@ -238,7 +246,7 @@ async def main():
         check('every invoice is linked', by.get('Patient A', {}).get('invs') == ['/a/pr/555/invoice/501', '/a/pr/555/invoice/502'], by.get('Patient A'))
         check('patient name links to the patient', by.get('Patient A', {}).get('patient') == '/a/pr/555/patient/301', by.get('Patient A'))
         off = [r['who'] for r in rows if r['off']]
-        check('greyed at the bottom: did-not-attend only, held, not due yet', off == ['Patient F', 'Patient C', 'Patient M', 'Patient L', 'Patient N', 'Patient E'] and rows[-6:] == [by[w] for w in off], [r['who'] for r in rows])
+        check('greyed at the bottom: did-not-attend only, held, not due yet', off == ['Patient F', 'Patient C', 'Patient P', 'Patient M', 'Patient L', 'Patient N', 'Patient E'] and rows[-7:] == [by[w] for w in off], [r['who'] for r in rows])
         check('held for the excess, explained', 'Held for the excess' in by.get('Patient C', {}).get('why', ''), by.get('Patient C'))
         check('greyed rows link to their invoices but have no button', by.get('Patient C', {}).get('invs') == ['/a/pr/555/invoice/521'] and not by.get('Patient C', {}).get('btn'), by.get('Patient C'))
         check('not due yet shows the next booking', 'next booked 17-Nov-2026' in by.get('Patient E', {}).get('why', ''), by.get('Patient E'))
@@ -268,7 +276,7 @@ async def main():
         cal = [x for x in reqs if x[1].endswith('/calendar/json')]
         check('one report and one calendar per check', len(reports) == 1 and len(cal) == 1, reqs)
         badge = await pg.evaluate("(document.querySelector('a.upc-rtb-menu .upc-rtb-badge') || {}).textContent")
-        check('count on the menu item', badge == '3', badge)
+        check('count on the menu item', badge == '4', badge)
         menu = await pg.evaluate("[...document.querySelectorAll('#mainMenu a.mainmenu-sublink')].map(a => a.getAttribute('href'))")
         check('menu item under Finances, over the Invoices page', '/a/pr/555/invoice/#upc-ready-to-bill' in menu and await pg.evaluate(
             "document.querySelector('.upc-rtb-menu').closest('.mainmenu-item').querySelector('.mainmenu-link-label').textContent") == 'Finances', menu)
@@ -282,7 +290,7 @@ async def main():
         await pg2.wait_for_selector('a.upc-rtb-menu', timeout=10000)
         await pg2.wait_for_timeout(3500)
         badge2 = await pg2.evaluate("(document.querySelector('a.upc-rtb-menu .upc-rtb-badge') || {}).textContent")
-        check('second tab shows the count without asking Halaxy', badge2 == '3' and [x for x in S['log'][n:] if not x[1].endswith('/invoice/')] == [], (badge2, S['log'][n:]))
+        check('second tab shows the count without asking Halaxy', badge2 == '4' and [x for x in S['log'][n:] if not x[1].endswith('/invoice/')] == [], (badge2, S['log'][n:]))
 
         # Check again: invoice details come from the cache
         n = len(S['log'])
@@ -303,7 +311,7 @@ async def main():
         check('Wendy sees it too', bool(rows), rows)
         check('last working day: not-due-yet patients are due', not by.get('Patient E', {}).get('off', True) and 'Last working day of the month' in by['Patient E']['why'], by.get('Patient E'))
         check('last working day: held and did-not-attend stay greyed', by.get('Patient C', {}).get('off') and by.get('Patient F', {}).get('off'), rows)
-        check('last working day: Aviva and 3rd Party Funded still wait for the end', by.get('Patient M', {}).get('off') and by.get('Patient L', {}).get('off'), rows)
+        check('last working day: 3rd Party Funded still waits for the end', by.get('Patient M', {}).get('off') and by.get('Patient L', {}).get('off'), rows)
         lwd = await pg.evaluate("[['2026-11-27', 0], ['2026-11-30', 1], ['2027-01-29', 1], ['2027-01-31', 0], ['2027-02-26', 1]].every(([d, want]) => window.upcReadyToBill.isLastWorkingDay(new Date(d + 'T12:00:00').getTime()) === !!want)")
         check('last working day skips weekends', lwd)
         check('no page errors (scenario 2)', not errors, errors)

@@ -11,6 +11,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Ready to bill
 
+### 0.2.1 (10 Nov 2026, beta)
+- Aviva can be billed mid-treatment too (Carl): month end, 3-month-old fees and the excess hold now apply to Bupa, AXA, WPA and Aviva.
+
 ### 0.2.0 (10 Nov 2026, beta)
 - Only Bupa, AXA and WPA are billed mid-treatment (Carl): the month-end and 3-month rules and the excess hold apply to them only. Other funders (Aviva, OPM, 3rd Party Funded and so on) are due when the authorisation is used up or treatment has finished, and otherwise show "Billed at the end of treatment".
 - Patients with only cancelled or did-not-attend fees: each fee is listed with its appointment comments and a Set to £ 0.00 button (fee and funder rebate together, after confirming). The Unbilled column shows those fees instead of "0 fees".

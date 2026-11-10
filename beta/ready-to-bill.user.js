@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy ready to bill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.0
+// @version      0.2.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
@@ -23,8 +23,8 @@
  *    "3rd of 5", claim, patient), cached per invoice; and one calendar request for everyone (last attended,
  *    next booked).
  *  - Due when: the authorisation is used up; or no attended appointment for 14 days and nothing booked.
- *    Bupa, AXA and WPA can also be billed mid-treatment (Carl, 10 Nov 2026), so for them also: the last
- *    working day of the month, or fees 3 months old or more. Other funders (Aviva, OPM, 3rd Party Funded...)
+ *    Bupa, AXA, WPA and Aviva can also be billed mid-treatment (Carl, 10 Nov 2026), so for them also: the last
+ *    working day of the month, or fees 3 months old or more. Other funders (3rd Party Funded and so on)
  *    are billed only at the end.
  *  - Excess hold (Bupa, AXA, WPA): on a new claim (its first authorised appointment is among the unbilled
  *    fees) hold until the fees cover the excess. This version doesn't read the intake form's excess yet,
@@ -41,7 +41,7 @@
   if (window.__hxReadyToBill) return;
   window.__hxReadyToBill = true;
 
-  const VERSION = '0.2.0';
+  const VERSION = '0.2.1';
   const ROUTE = 'upc-ready-to-bill';
   const MENU_CLS = 'upc-rtb-menu';
   const ALLOWED = ['Carl Healy', 'Wendy Pritchard'];   // Carl, 7 Nov 2026: only the two of them
@@ -51,7 +51,7 @@
   const PAGE_FRESH = 10 * 60e3;        // the page re-checks when its results are older than this
   const KEY = 'upc-rtb:';
   const NOT_ATTENDED = /did not attend|did-not-attend|cancel/i;
-  const MID_TREATMENT = /bupa|axa|wpa/i;   // Carl, 10 Nov 2026: only these can be billed before treatment ends
+  const MID_TREATMENT = /bupa|axa|wpa|aviva/i;   // Carl, 10 Nov 2026: only these can be billed before treatment ends
 
   const U = () => window.UPC;
   const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -184,7 +184,7 @@
       if (authUsed) reasons.push('Authorisation used up (' + ref.position + ' of ' + ref.limit + ')');
       const quiet = !g.nextBooked && (!g.lastSeen || g.lastSeen < now - QUIET_DAYS * DAY);
       if (quiet) reasons.push('No visit for ' + QUIET_DAYS + ' days' + (g.lastSeen ? ' (last ' + label(g.lastSeen) + ')' : '') + ', nothing booked');
-      // Mid-treatment billing (month end, old fees, the excess hold) is for Bupa, AXA and WPA only.
+      // Mid-treatment billing (month end, old fees, the excess hold) is for Bupa, AXA, WPA and Aviva only.
       const old = g.mid && g.oldest !== null && g.oldest <= addMonths(day0, -OLD_MONTHS);
       if (old) reasons.push('Fees from ' + label(g.oldest) + ', over ' + OLD_MONTHS + ' months old');
       if (g.mid && monthEnd) reasons.push('Last working day of the month');
@@ -396,8 +396,8 @@
           '<table class="table table-bordered w-100 m-0">' + head(false) + '<tbody>' + rest.map((x) => rowHtml(x, false)).join('') + '</tbody></table></div></div>';
       }
       h += '<p class="text-muted">Unbilled means an insurer patient\'s fee on an Active invoice that Halaxy doesn\'t show as Pending. ' +
-        'Fees older than ' + WINDOW_MONTHS + ' months are left out. Only Bupa, AXA and WPA are billed mid-treatment; other funders are due when the authorisation is used up or treatment has finished. ' +
-        'The excess on new claims isn\'t read from the intake form yet, so new Bupa, AXA and WPA claims wait for ' + MIN_FEES_NO_EXCESS + ' fees.</p>';
+        'Fees older than ' + WINDOW_MONTHS + ' months are left out. Only Bupa, AXA, WPA and Aviva are billed mid-treatment; other funders are due when the authorisation is used up or treatment has finished. ' +
+        'The excess on new claims isn\'t read from the intake form yet, so their new claims wait for ' + MIN_FEES_NO_EXCESS + ' fees.</p>';
     }
     h += '<div class="text-muted upc-version">Ready to bill ' + VERSION + '</div></div>';
     root.innerHTML = h;

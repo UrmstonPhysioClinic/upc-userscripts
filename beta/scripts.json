@@ -48,7 +48,7 @@
     {
       "file": "ready-to-bill.user.js",
       "name": "Halaxy ready to bill (beta)",
-      "version": "0.2.0"
+      "version": "0.2.1"
     },
     {
       "file": "rebate-sync.user.js",
