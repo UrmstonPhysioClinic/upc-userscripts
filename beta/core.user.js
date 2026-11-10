@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.18
+// @version      0.1.19
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.18';
+  const VERSION = '0.1.19';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -688,6 +688,51 @@
     },
   };
 
+  // ------------------------------------------------------------------ patient forms
+
+  // Forms patients fill in (intake forms), confirmed on live Halaxy 10 Nov 2026:
+  //  - The patient's notes list, GET /note/menu/linkPaG/{linkPaGId}/items, JSON payload.menuItems[]
+  //    (nested in items[]). A filled form is an item with category "form", entity "intake-form-invite",
+  //    id = the form's id, label = the template name ("Initial Assessment Form - Bupa"), date dd-Mon-yyyy.
+  //  - The form, GET /setting/clinical/patient/intake/{id}, JSON whose message is HTML. Each question is
+  //    a span.answerName inside p.answerContainer; its answer is the span.answer-wrap that follows.
+  // Answers are patient data: callers use them in the page and never store or send them anywhere.
+  const forms = {
+    async list(linkPaGId) {
+      const j = await http.json('/note/menu/linkPaG/' + encodeURIComponent(linkPaGId) + '/items');
+      const items = j && j.payload && j.payload.menuItems;
+      if (!Array.isArray(items)) throw new UPCError('The patient\'s notes list has changed, so their forms could not be found.');
+      const out = [];
+      const walk = (list) => (list || []).forEach((it) => {
+        if (it && it.category === 'form' && /intake-form/.test(it.entity || '')) {
+          out.push({ id: String(it.id), label: clean(it.label || it.title || ''), date: parseDay(it.date), status: it.status || '' });
+        }
+        if (it && Array.isArray(it.items)) walk(it.items);
+      });
+      walk(items);
+      return out.sort((a, b) => (b.date || 0) - (a.date || 0));
+    },
+    // [{ question, answer }] in the form's order; answer '' when left blank.
+    async answers(id) {
+      const j = await http.json('/setting/clinical/patient/intake/' + encodeURIComponent(id));
+      const doc = htmlDoc(j && j.message);
+      const qs = [...doc.querySelectorAll('.answerName')];
+      if (!qs.length) throw new UPCError('The intake form layout has changed, so its answers could not be read.');
+      const answerFor = (q) => {
+        const box = q.closest('.answerContainer') || q.parentElement;
+        const inside = box && box.querySelector('.answer-wrap');
+        if (inside) return inside;
+        for (let n = box && box.nextElementSibling; n; n = n.nextElementSibling) {
+          if (n.classList.contains('answer-wrap')) return n;
+          if (n.classList.contains('answerContainer') || n.querySelector('.answerName')) return null;   // next question: this one is blank
+        }
+        return null;
+      };
+      const out = qs.map((q) => { const a = answerFor(q); return { question: clean(q.textContent), answer: a ? clean(a.textContent) : '' }; });
+      return out;
+    },
+  };
+
   // ------------------------------------------------------------------ Halaxy page furniture
 
   // Our interface sits in Halaxy's page and uses Halaxy's own classes (btn, btn-primary,
@@ -897,6 +942,6 @@
   };
 
   window.UPC = Object.freeze({
-    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, tasks, reports, dayLabel, parseDay, rebate, files, load, ui,
+    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, forms, tasks, reports, dayLabel, parseDay, rebate, files, load, ui,
   });
 })();

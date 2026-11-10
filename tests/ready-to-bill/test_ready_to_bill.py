@@ -33,7 +33,10 @@ COLS = ['Invoice / Deposit', 'Date', 'Due Date', 'Practitioner', 'Payer ID', 'Pa
 def fresh(today, drop_column=None):
     T = today
     d = lambda n: T + datetime.timedelta(days=n)
-    S = {'today': T, 'invoices': {}, 'pending': set(), 'events': [], 'log': [], 'drop': drop_column}
+    S = {'today': T, 'invoices': {}, 'pending': set(), 'events': [], 'log': [], 'drop': drop_column, 'forms': {}}
+
+    def form(pid, fid, label, n, excess):
+        S['forms'].setdefault(pid, []).append({'id': fid, 'label': label, 'day': d(n), 'excess': excess})
 
     def inv(iid, pid, payer, funder, lines, ref=None, status='Active', payer_id=None):
         S['invoices'][iid] = {'id': iid, 'pid': pid, 'payer': payer, 'payerId': str(payer_id or pid), 'funder': funder, 'ref': ref,
@@ -83,6 +86,17 @@ def fresh(today, drop_column=None):
     inv(581, 309, 'Bupa Healthcare', 'Bupa', [att(-30)], payer_id='Bupa-1')
     inv(591, 310, 'Patient J', '', [att(-30)])
     inv(601, 311, 'Patient K', 'Bupa', [att(-200)], ref=(5, 5))
+    # Q: Bupa new claim, one fee, intake form says no excess -> not held (the 2-fee fallback would hold)
+    inv(661, 317, 'Patient Q', 'Bupa', [att(-2)], ref=(1, 5))
+    appt(317, -2)
+    form(317, 9001, 'Initial Assessment Form - Bupa', -9, 'None')
+    # R: Bupa new claim, two fees (£ 80.00), intake form says £250 -> held (the fallback would not hold).
+    #    An older Bupa form from a past claim (excess 50) and an AXA form must be ignored.
+    inv(671, 318, 'Patient R', 'Bupa', [att(-6), att(-2)], ref=(1, 5))
+    appt(318, -6); appt(318, -2)
+    form(318, 9002, 'Initial Assessment Form - Bupa', -10, '250')
+    form(318, 9003, 'Initial Assessment Form - AXA', -12, '10')
+    form(318, 9004, 'Initial Assessment Form - Bupa', -300, '50')
     # L: "3rd Party Funded" counts as a funder; seen 3 days ago, booked
     inv(611, 312, 'Patient L', '3rd Party Funded', [att(-3)])
     appt(312, -3); appt(312, 4)
@@ -156,6 +170,24 @@ async def halaxy(route):
         q = urllib.parse.parse_qs(urllib.parse.urlparse(req.url).query)
         lo, hi = int(q['start'][0]), int(q['end'][0])
         return await js({'status': 'OK', 'payload': {'events': [e for e in S['events'] if lo <= e['start'] < hi]}})
+    m = re.search(r'/note/menu/linkPaG/(\d+)/items$', p)
+    if m:
+        pid = int(m.group(1))
+        S.setdefault('formReads', []).append(('menu', pid))
+        items = [{'id': 'a1', 'category': 'appointment', 'entity': 'note', 'label': 'Appointment', 'date': hx(S['today']), 'items': []}]
+        for f in S['forms'].get(pid, []):
+            items.append({'id': str(f['id']), 'parentId': None, 'category': 'form', 'entity': 'intake-form-invite', 'label': f['label'], 'status': 'published',
+                          'date': hx(f['day']), 'items': [{'id': '7' + str(f['id']), 'parentId': str(f['id']), 'category': 'tool', 'entity': 'note', 'label': f['label'], 'items': None}]})
+        return await js({'status': 'OK', 'payload': {'menuItems': items, 'total': len(items), 'page': 0, 'pageSize': 250}})
+    m = re.search(r'/setting/clinical/patient/intake/(\d+)$', p)
+    if m:
+        f = next(f for fs in S['forms'].values() for f in fs if f['id'] == int(m.group(1)))
+        S.setdefault('formReads', []).append(('form', f['id']))
+        q = lambda name, ans: ("<div class='depth-level-1 published col-12'><p class='answerContainer mb-1'><span class='answerName font-weight-bold text-break'>%s</span></p>%s</div>"
+                               % (name, "<span class='answer-wrap'>%s</span>" % ans if ans is not None else ''))
+        html = ("<div class='viewRow'><div class='data full-data-width'><div class='metabox'><fieldset>" + q('What would you like to discuss during your appointment?', None)
+                + q('Excess amount:', f['excess']) + q('Please enter the number of sessions you have had authorised:', '6') + '</fieldset></div></div></div>')
+        return await js({'status': 'FORM', 'title': f['label'], 'message': html})
     m = re.search(r'/invoice/line/(\d+)/edit$', p)
     if m:
         lid = int(m.group(1))
@@ -246,10 +278,18 @@ async def main():
         check('every invoice is linked', by.get('Patient A', {}).get('invs') == ['/a/pr/555/invoice/501', '/a/pr/555/invoice/502'], by.get('Patient A'))
         check('patient name links to the patient', by.get('Patient A', {}).get('patient') == '/a/pr/555/patient/301', by.get('Patient A'))
         off = [r['who'] for r in rows if r['off']]
-        check('greyed at the bottom: did-not-attend only, held, not due yet', off == ['Patient F', 'Patient C', 'Patient P', 'Patient M', 'Patient L', 'Patient N', 'Patient E'] and rows[-7:] == [by[w] for w in off], [r['who'] for r in rows])
+        check('greyed at the bottom: did-not-attend only, held, not due yet', off[:4] == ['Patient F', 'Patient R', 'Patient C', 'Patient P'] and set(off) == {'Patient F', 'Patient C', 'Patient P', 'Patient R', 'Patient M', 'Patient L', 'Patient N', 'Patient Q', 'Patient E'} and rows[-9:] == [by[w] for w in off] == [by[w] for w in off], [r['who'] for r in rows])
         check('held for the excess, explained', 'Held for the excess' in by.get('Patient C', {}).get('why', ''), by.get('Patient C'))
         check('greyed rows link to their invoices but have no button', by.get('Patient C', {}).get('invs') == ['/a/pr/555/invoice/521'] and not by.get('Patient C', {}).get('btn'), by.get('Patient C'))
         check('not due yet shows the next booking', 'next booked 17-Nov-2026' in by.get('Patient E', {}).get('why', ''), by.get('Patient E'))
+        check('excess from the intake form: holds until the fees cover it', by.get('Patient R', {}).get('off') and
+              'patient-reported excess £ 250.00 (unconfirmed), fees so far £ 80.00' in by['Patient R']['why'], by.get('Patient R'))
+        check('excess "None" on the form: not held', 'Held' not in by.get('Patient Q', {}).get('why', 'Held'), by.get('Patient Q'))
+        check('no intake form: falls back to 2 fees', 'excess not found on the intake form, so waiting for 2 fees' in by.get('Patient C', {}).get('why', ''), by.get('Patient C'))
+        check('Aviva: its form doesn\'t ask, so 2 fees', 'Aviva\'s form doesn\'t ask for the excess' in by.get('Patient P', {}).get('why', ''), by.get('Patient P'))
+        reads = S.get('formReads', [])
+        check('forms read only for Bupa and AXA new claims, one form each', sorted(x for x in reads if x[0] == 'form') == [('form', 9001), ('form', 9002)]
+              and sorted(x[1] for x in reads if x[0] == 'menu') == [303, 317, 318], reads)
         check('did-not-attend only: asks to check', 'Only cancelled or did-not-attend' in by.get('Patient F', {}).get('why', ''), by.get('Patient F'))
         check('did-not-attend only: shows the not-attended fee, not "0 fees"', by.get('Patient F', {}).get('unbilled') == '1 not attended£ 40.00', by.get('Patient F'))
         await pg.wait_for_function("document.querySelector('[data-upc-ready-to-bill] [data-zero]')", timeout=60000)

@@ -8,7 +8,7 @@
     {
       "file": "core.user.js",
       "name": "UPC core library (beta)",
-      "version": "0.1.18"
+      "version": "0.1.19"
     },
     {
       "file": "alerts.user.js",
@@ -48,7 +48,7 @@
     {
       "file": "ready-to-bill.user.js",
       "name": "Halaxy ready to bill (beta)",
-      "version": "0.2.1"
+      "version": "0.3.0"
     },
     {
       "file": "rebate-sync.user.js",
