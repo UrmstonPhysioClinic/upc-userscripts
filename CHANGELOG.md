@@ -14,6 +14,10 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Review requests
 
+### 0.3.1 (10 Nov 2026, beta)
+- A tab closed or reloaded mid-check no longer holds the page on "Checking in another tab" for up to 10 minutes: the checking tab renews its claim as it goes, and a lapsed one is taken over after 2 minutes. Each patient's result is kept as soon as it's read, so a stopped check isn't wasted. The waiting tab shows the other tab's progress ("12 of about 60").
+- Against narrowed after the first live list (25 under Worth a look): only "referred to GP/consultant/for a scan...", "awaiting an MRI/surgery", "getting/feeling worse", "had a flare-up", "still painful", "not fully better", "no better". Plain mentions such as "worse on stairs", "no need for a scan" or "discussed injection options" no longer count, and "no flare-up" doesn't either. Patients are read again once with the new rules.
+
 ### 0.3.0 (10 Nov 2026, beta)
 - A "Check first" column with links to the notes and Progress Update form behind each suggestion (Last note, Previous note, Progress Update, with their dates), opening in a new tab, so they can be read before sending (Carl).
 
