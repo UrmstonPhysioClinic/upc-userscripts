@@ -122,13 +122,13 @@ async def halaxy(route):
             return await js({'status': 'FORM', 'title': 'Add Follow-Up', 'message': followup_form()})
         f = urllib.parse.parse_qs(req.post_data or '', keep_blank_values=True)
         d = datetime.datetime.strptime(f['form[scheduleAt][date]'][0], '%d-%b-%Y').replace(hour=int(f['form[scheduleAt][time][hour]'][0]),
-                                                                                       minute=int(f['form[scheduleAt][time][minute]'][0]), tzinfo=LON)
+                                                                                       minute=int(f['form[scheduleAt][time][minute]'][0]), tzinfo=ZoneInfo('Australia/Sydney'))   # Halaxy's quirk
         if d <= NOW or S.get('rejectFollowup'):   # as Halaxy: the form comes back with its hints and a list of errors
             return await js({'status': 'FORM', 'message': followup_form() + "<div class='invalid-feedback'>* Title is required</div><div class='text-danger'>* Method is required</div>",
                              'errors': ['Scheduled date must be in the future']})
         S['writes'].append(('followup', pid, f))
         # As live (10 Nov 2026): added from the patient's profile, so the patient is in assignedTo and Linked To is empty.
-        S['followups'].append({'id': len(S['followups']) + 1, 'title': f['form[title]'][0], 'status': 'Scheduled', 'assignedTo': S['patients'][pid]['name'],
+        S['followups'].append({'id': len(S['followups']) + 1, 'title': f['form[title]'][0], 'status': 'Scheduled', 'assignedTo': S['patients'][pid]['name'], 'scheduledOrSentDate': d.isoformat(),
                                'assignedToUrl': '/a/pr/555/patient/%d' % pid, 'linkedToId': None, 'linkedTo': '', 'linkedToUrl': '', 'method': 'Email'})
         return await js({'status': 'REFRESH'})
     m = re.search(r'/note/menu/linkPaG/(\d+)/items$', p)
@@ -230,9 +230,9 @@ async def main():
         await pg.wait_for_function("[...document.querySelectorAll('[data-upc-review-requests] tbody tr')].some(tr => tr.innerText.includes('Review request scheduled for Wednesday 11-Nov-2026 at 10:30'))", timeout=90000)
         w = [x for x in S['writes'] if x[0] == 'followup']
         f = w[0][2] if w else {}
-        check('follow-up sent with the Review Request email template (not the follow-up template), for the next weekday at 10:30', len(w) == 1 and w[0][1] == 101 and f.get('form[recallTemplate]') == [''] and f.get('form[emailTemplate]') == ['45']
+        check('follow-up for the next weekday 10:30 UK time, entered as Sydney time (21:30) for Halaxy, Review Request email template only', len(w) == 1 and w[0][1] == 101 and f.get('form[recallTemplate]') == [''] and f.get('form[emailTemplate]') == ['45']
               and f.get('form[title]') == ['Review Request'] and f.get('form[isEmailMethod]') == ['1'] and 'form[isSmsMethod]' not in f and f.get('form[scheduleAt][date]') == ['11-Nov-2026']
-              and f.get('form[scheduleAt][time][hour]') == ['10'] and f.get('form[scheduleAt][time][minute]') == ['30'] and f.get('form[_token]') == ['FT'], f)
+              and f.get('form[scheduleAt][time][hour]') == ['21'] and f.get('form[scheduleAt][time][minute]') == ['30'] and f.get('form[_token]') == ['FT'], f)
         check('count drops once sent', await pg.evaluate("(document.querySelector('a.upc-rr-menu .upc-rr-badge') || {}).textContent") == '1')
 
         # Halaxy refuses: only its own reason is shown, not the form's hints
