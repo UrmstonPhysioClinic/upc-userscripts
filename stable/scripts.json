@@ -36,6 +36,11 @@
       "version": "0.4"
     },
     {
+      "file": "forecourt-lights.user.js",
+      "name": "Halaxy forecourt lights reminder",
+      "version": "0.2.1"
+    },
+    {
       "file": "outstanding-actions.user.js",
       "name": "Halaxy Outstanding Actions",
       "version": "0.5.3"

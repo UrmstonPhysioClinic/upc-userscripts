@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy forecourt lights reminder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.0
+// @version      0.2.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/forecourt-lights.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/forecourt-lights.user.js
@@ -36,7 +36,7 @@
   if (window.__hxForecourtLights) return;
   window.__hxForecourtLights = true;
 
-  const VERSION = '0.2.0';
+  const VERSION = '0.2.1';
   const LAT = 53.45, LON = -2.35, TZ = 'Europe/London';
   const STEP = 15;                      // the timer's segments, minutes
   const SNOOZE = 60 * 60e3;
@@ -82,6 +82,19 @@
   const offsetOn = (day) => london(dayToUtc(day) + 12 * 3600e3).offset;     // at midday
   const label = (day) => { const [y, m, d] = day.split('-').map(Number); return String(d).padStart(2, '0') + '-' + MONTHS[m - 1] + '-' + y; };
   const longLabel = (day) => ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][weekday(day)] + ' ' + label(day);
+  // A typed date ('25-Dec-2026', '25/12/2026' or '2026-12-25') as 'YYYY-MM-DD', or null.
+  function parseDate(text) {
+    const t = String(text || '').trim();
+    let y, m, d, x;
+    if ((x = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(t))) [y, m, d] = [+x[1], +x[2], +x[3]];
+    else if ((x = /^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/.exec(t))) [d, m, y] = [+x[1], +x[2], +x[3]];
+    else if ((x = /^(\d{1,2})[\s-]+([A-Za-z]{3})[A-Za-z]*[\s-]+(\d{4})$/.exec(t))) {
+      m = MONTHS.findIndex((n) => n.toLowerCase() === x[2].toLowerCase()) + 1;
+      [d, y] = [+x[1], +x[3]];
+    } else return null;
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    return m >= 1 && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d ? dt.toISOString().slice(0, 10) : null;
+  }
   const hhmm = (min) => String(Math.floor(min / 60)).padStart(2, '0') + ':' + String(min % 60).padStart(2, '0');
   const toMin = (s) => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || '').trim()); return m ? +m[1] * 60 + +m[2] : null; };
 
@@ -278,9 +291,9 @@
       if (!(offset >= 0 && offset <= 120)) bad.push('Minutes before sunset needs a number from 0 to 120.');
       const skip = [];
       q('upc-fl-skip').value.split(/[\n,]+/).map((x) => x.trim()).filter(Boolean).forEach((x) => {
-        const ms = U().parseDay(x);
-        if (ms === null) bad.push('"' + x + '" isn\'t a date (use e.g. 25-Dec-2026).');
-        else skip.push(london(ms + 12 * 3600e3).day);
+        const day = parseDate(x);
+        if (day === null) bad.push('"' + x + '" isn\'t a date (use e.g. 25-Dec-2026).');
+        else skip.push(day);
       });
       if (bad.length) { d.body.querySelector('[data-err]').textContent = bad.join(' '); return; }
       set('settings', { enabled: q('upc-fl-on').checked, days: DAYS.map((_, i) => d.body.querySelector('[data-day="' + i + '"]').checked), offTime: off, offset, noticeTime: notice,

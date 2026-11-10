@@ -11,6 +11,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Forecourt lights
 
+### 0.2.1 (10 Nov 2026, stable and beta)
+- Reads typed skip dates itself (25-Dec-2026, 25/12/2026 or 2026-12-25), so it runs with the stable core library. Moved to the clinic PCs (Carl confirmed it on live Halaxy).
+
 ### 0.2.0 (10 Nov 2026, beta)
 - Settings choose who is reminded, by who is signed in to Halaxy on that PC (Carl). Nobody ticked means anyone.
 
