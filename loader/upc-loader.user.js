@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Halaxy scripts
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.0.0
+// @version      1.1.0
 // @description  Runs all of the clinic's Halaxy scripts from GitHub. Install once per PC: new and updated scripts arrive by themselves.
 // @match        https://*.halaxy.com/*
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
@@ -36,14 +36,19 @@
  *
  * Scripts run in the page, as they did when installed one by one. The few
  * Tampermonkey functions they use (GM_getValue, GM_setValue, GM_deleteValue,
- * GM_registerMenuCommand) are provided; menu items appear in the Tampermonkey
- * menu under this script.
+ * GM_registerMenuCommand) are provided. Scripts' menu items appear in Halaxy, under
+ * Script settings in the account menu (script-settings.user.js), which also shows
+ * and changes this loader's settings through the upc-loader-get / upc-loader-do
+ * events. Where Script settings isn't running, they appear in the Tampermonkey
+ * menu under this script, as before. The Tampermonkey menu keeps "UPC scripts:
+ * settings and updates": a self-contained panel that works even when no page
+ * script does, so it doesn't use Halaxy's look.
  */
 
 (function () {
   'use strict';
 
-  const VERSION = '1.0.0';
+  const VERSION = '1.1.0';
   const RAW = 'https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/';
   const CHECK_EVERY_MINUTES = 10;
   const RETRY_STALE_MINUTES = 2;   // GitHub can serve an old file for a few minutes after a change
@@ -121,14 +126,18 @@
   // Page-side helper: storage and menu for scripts, and error reporting back to the loader.
   const PAGE_HELPER = `(function () {
     if (window.__upcLoader) return;
-    var P = 'upc-gm:', cbs = {}, n = 0;
+    var P = 'upc-gm:', cbs = {}, n = 0, items = [];
     window.__upcLoader = {
+      items: items,
+      run: function (id) { var fn = cbs[id]; if (fn) { try { fn(); } catch (x) { console.error(x); } } },
       get: function (s, k, d) { try { var v = localStorage.getItem(P + s + ':' + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
       set: function (s, k, v) { try { localStorage.setItem(P + s + ':' + k, JSON.stringify(v)); } catch (e) {} },
       del: function (s, k) { try { localStorage.removeItem(P + s + ':' + k); } catch (e) {} },
       menu: function (s, label, fn) {
         var id = s + '#' + (++n); cbs[id] = fn;
+        items.push({ id: id, script: s, label: String(label) });
         document.dispatchEvent(new CustomEvent('upc-loader-menu', { detail: JSON.stringify({ id: id, label: String(label) }) }));
+        document.dispatchEvent(new CustomEvent('upc-menu-changed'));
         return id;
       },
       error: function (s, e) {
@@ -136,10 +145,7 @@
         document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: s, message: String(e && e.message || e) }) }));
       }
     };
-    document.addEventListener('upc-loader-menu-click', function (e) {
-      var fn = cbs[e.detail];
-      if (fn) { try { fn(); } catch (x) { console.error(x); } }
-    });
+    document.addEventListener('upc-loader-menu-click', function (e) { window.__upcLoader.run(e.detail); });
   })();`;
 
   function addScript(text) {
@@ -196,11 +202,25 @@
   }
 
   // Bridges for scripts' menu items and errors.
+  // Scripts' menu items go in Halaxy's Script settings when that's running on the page (it marks the
+  // page with data-upc-script-settings); otherwise, after the page has loaded, in the Tampermonkey menu.
+  const tmItems = [];
+  let tmDecided = false, tmUsed = false;
+  const toTampermonkey = (d) => GM_registerMenuCommand(d.label, () => document.dispatchEvent(new CustomEvent('upc-loader-menu-click', { detail: d.id })));
+  function decideMenu() {
+    if (tmDecided) return;
+    tmDecided = true;
+    tmUsed = !root.hasAttribute('data-upc-script-settings');
+    if (tmUsed) tmItems.forEach(toTampermonkey);
+  }
+  document.addEventListener('upc-script-settings-ready', () => { if (!tmDecided) { tmDecided = true; tmUsed = false; } });
+  window.addEventListener('load', () => setTimeout(decideMenu, 4000));
   document.addEventListener('upc-loader-menu', (e) => {
     if (!isTop) return;
     try {
       const d = JSON.parse(e.detail);
-      GM_registerMenuCommand(d.label, () => document.dispatchEvent(new CustomEvent('upc-loader-menu-click', { detail: d.id })));
+      if (!tmDecided) tmItems.push(d);
+      else if (tmUsed) toTampermonkey(d);
     } catch (x) { /* ignore */ }
   });
   document.addEventListener('upc-loader-error', (e) => {
@@ -293,6 +313,43 @@
       return result;
     })();
     return checking;
+  }
+
+  // ------------------------------------------------------------------ Script settings in Halaxy
+
+  // The page's Script settings asks for the loader's state (upc-loader-get) and changes it
+  // (upc-loader-do); the answer comes back as upc-loader-state.
+  function state(extra) {
+    const idx = readIndex();
+    const off = local.get('off', {});
+    return Object.assign({
+      version: VERSION, channel, chosen: local.get('channel', 'stable') === 'beta' ? 'beta' : 'stable',
+      lastCheck: local.get('lastCheck:' + channel, 0),
+      scripts: (idx ? idx.scripts : []).map((x) => ({ file: x.file, name: x.name, version: x.version, on: !off[x.file],
+        status: ran[x.file] ? 'running' : applies(x.meta, location.href) ? (off[x.file] ? 'off' : 'next') : 'unused' })),
+      problems: local.get('lastProblems:' + channel, []).concat(errors.map((x) => x.file + ' stopped with an error: ' + x.message)),
+    }, extra || {});
+  }
+  const reply = (extra) => document.dispatchEvent(new CustomEvent('upc-loader-state', { detail: JSON.stringify(state(extra)) }));
+  if (isTop) {
+    document.addEventListener('upc-loader-get', () => reply());
+    document.addEventListener('upc-loader-do', async (e) => {
+      let d;
+      try { d = JSON.parse(e.detail); } catch (x) { return; }
+      if (d.act === 'channel' && (d.value === 'stable' || d.value === 'beta')) local.set('channel', d.value);
+      else if (d.act === 'switch' && d.file) {
+        const off = local.get('off', {});
+        if (d.on) delete off[d.file]; else off[d.file] = true;
+        local.set('off', off);
+      } else if (d.act === 'panel') { openPanel(); return; }
+      else if (d.act === 'check') {
+        if (local.get('channel', 'stable') !== channel) { reply({ reloadNeeded: true }); return; }   // new channel: fetched on load
+        const r = await checkForUpdates();
+        reply({ checked: { updated: r.updated.length, added: r.added.length, removed: r.removed.length, problems: r.problems.length } });
+        return;
+      }
+      reply();
+    });
   }
 
   if (isTop) {

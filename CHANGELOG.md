@@ -12,6 +12,22 @@ Health check 1.1.6, then 1.1.7, at Carl's request, so the clinic PCs stop report
 ## Moved to the clinic PCs (stable), 9 Nov 2026
 Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outstanding Actions 0.5.3, calendar controls 2.10, Alerts 1.0.0, Custom Reports 0.7.0, HTML source for emails 0.4. Arrival chime and Chat alert retired from stable (replaced by Alerts). `tools/promote.py` added for promotions.
 
+## Loader
+
+### 1.1.0 (10 Nov 2026, all PCs)
+- Scripts' menu items are kept for Script settings in Halaxy (window.__upcLoader.items, run(id)); the Tampermonkey menu gets them only on pages where Script settings isn't running (checked 4 seconds after the page loads). The loader's own "UPC scripts: settings and updates" stays in the Tampermonkey menu.
+- Answers Script settings' upc-loader-get and upc-loader-do (switch a script, stable or beta, check for updates) with upc-loader-state.
+
+## Script settings
+
+### 0.1.0 (10 Nov 2026, beta)
+- New: "Script settings" in Halaxy's account menu (your name, top right), above Log Out (Carl). Its pop-up lists every script's options, grouped by script, and the scripts on this PC with their versions, switches, stable or beta, and Check for updates now. Replaces the Tampermonkey menu, which keeps only the loader's own entry as a way in.
+
+## Health check
+
+### 1.1.14 (10 Nov 2026, beta)
+- Checks Halaxy's account menu (#practitioner-select), where Script settings goes, and knows Script settings by name.
+
 ## Forecourt lights
 
 ### 0.2.1 (10 Nov 2026, stable and beta)
