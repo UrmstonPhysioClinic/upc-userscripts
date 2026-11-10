@@ -39,7 +39,7 @@ SIDEBAR = ("<nav id='sidebar' style='position:fixed;left:0;top:0;bottom:0;width:
            "<ul id='mainMenu'><li>Reports</li></ul></nav>"
            # Like Halaxy's patient notes list: a panel at the bottom left, above the page's own layer
            "<div id='mockNotesList' style='position:fixed;left:210px;bottom:0;width:420px;height:520px;z-index:100;background:#eee'></div>")
-CAL_BODY = (SIDEBAR + "<div id='alerts'></div><span id='btn-chat-popover-open'></span>"
+CAL_BODY = (SIDEBAR + "<div id='alerts'></div><span id='btn-chat-popover-open'></span><div id='practitioner-select'><div class='dropdown-menu'></div></div>"
             "<div id='calToolbar'></div><button id='btnCalendarPreferences'></button><script type='text/template' id='tpl-event'></script>"
             "<div id='swapPracList'><input class='toggle-prac'></div><div id='calendarViewPort'><div class='cal'>"
             "<div class='timeLabel'>08:00</div><div class='timeslot' ts='1'></div></div></div><div id='footer'></div>")

@@ -139,17 +139,49 @@ async def main():
         # 1. A PC with nothing saved yet: fetches everything and runs it on the same page.
         s = await load()
         check('fresh PC: runs every script on the first page', s['start'] == ['1.0'] and s['idle'] and s['appsOnly'] and s['count'] == 1 and s['last'], s)
-        check('fresh PC: settings menu and script menu items', 'UPC scripts: settings and updates' in s['menu'] and 'Fixture menu' in s['menu'], s['menu'])
+        check('fresh PC: loader settings in the Tampermonkey menu', 'UPC scripts: settings and updates' in s['menu'], s['menu'])
+        await pg.wait_for_timeout(4500)
+        tm = await pg.evaluate('window.__tmMenu.map(m => m[0])')
+        check('no Script settings on the page: script items go to the Tampermonkey menu after the page loads', 'Fixture menu' in tm, tm)
         check('a failing script is reported and does not stop the others', s['last'] and any(e['file'] == 'throws.user.js' for e in s['errs']), s['errs'])
 
         # 2. Next page: saved copies run, document-start ones before Halaxy's own scripts.
-        s = await load()
+        s = await load(wait=4500)
         check('saved copy runs before the page', s['start'] == ['1.0'] and s['startBefore'] is True, s)
         check('each script runs once per page', sorted(s['injected']) == sorted(set(s['injected'])), s['injected'])
         check('idle script waits for the page body', s['idle'] is True)
         check('script storage persists (GM_setValue)', s['count'] == 2, s['count'])
         await pg.evaluate("window.__tmMenu.find(m => m[0] === 'Fixture menu')[1]()")
         check('script menu items reach the script', await pg.evaluate('window.__menuClicked === true'))
+
+        # 2b. Script settings on the page: items stay in Halaxy, not in the Tampermonkey menu; the loader
+        #     answers Script settings' questions and changes.
+        await ctx.add_init_script("document.addEventListener('DOMContentLoaded', () => { document.documentElement.setAttribute('data-upc-script-settings', 'x');"
+                                  " document.dispatchEvent(new CustomEvent('upc-script-settings-ready')); });")
+        s = await load(wait=4500)
+        tm = await pg.evaluate('window.__tmMenu.map(m => m[0])')
+        its = await pg.evaluate('window.__upcLoader.items.map(i => i.script + ": " + i.label)')
+        check('Script settings on the page: items kept for Halaxy, not Tampermonkey', 'Fixture menu' not in tm and 'gm.user.js: Fixture menu' in its
+              and 'UPC scripts: settings and updates' in tm, (tm, its))
+        await pg.evaluate("window.__menuClicked = false; window.__upcLoader.run(window.__upcLoader.items.find(i => i.label === 'Fixture menu').id)")
+        check('an item run from Halaxy reaches the script', await pg.evaluate('window.__menuClicked === true'))
+        ASK = '''(t, d) => new Promise((res) => { document.addEventListener('upc-loader-state', (e) => res(JSON.parse(e.detail)), { once: true });
+                 document.dispatchEvent(new CustomEvent(t, { detail: d ? JSON.stringify(d) : '' })); })'''
+        st = await pg.evaluate('(' + ASK + ')("upc-loader-get")')
+        check('loader state for Script settings', st['version'] == '1.1.0' and st['channel'] == 'stable' and st['chosen'] == 'stable'
+              and any(x['file'] == 'start.user.js' and x['status'] == 'running' and x['on'] for x in st['scripts'])
+              and any(x['file'] == 'appsonly.user.js' for x in st['scripts']) and any('throws.user.js' in p for p in st['problems']), st)
+        st = await pg.evaluate('(' + ASK + ')("upc-loader-do", { act: "switch", file: "idle.user.js", on: false })')
+        off = await pg.evaluate("JSON.parse(localStorage.getItem('upc-loader:off'))")
+        check('Script settings switches a script off', off == {'idle.user.js': True} and any(x['file'] == 'idle.user.js' and not x['on'] for x in st['scripts']), (off, st))
+        await pg.evaluate('(' + ASK + ')("upc-loader-do", { act: "switch", file: "idle.user.js", on: true })')
+        st = await pg.evaluate('(' + ASK + ')("upc-loader-do", { act: "check" })')
+        check('Script settings checks for updates', st.get('checked') == {'updated': 0, 'added': 0, 'removed': 0, 'problems': 0}, st.get('checked'))
+        st = await pg.evaluate('(' + ASK + ')("upc-loader-do", { act: "channel", value: "beta" })')
+        check('Script settings changes the channel (from the next page)', st['chosen'] == 'beta' and st['channel'] == 'stable', st)
+        st = await pg.evaluate('(' + ASK + ')("upc-loader-do", { act: "check" })')
+        check('a new channel asks for a refresh instead of checking', st.get('reloadNeeded') is True, st)
+        await pg.evaluate("localStorage.setItem('upc-loader:channel', JSON.stringify('stable')); localStorage.removeItem('upc-loader:off')")
 
         # 3. @exclude honoured.
         s = await load('/book/abc')
