@@ -52,8 +52,8 @@ def fresh():
     patient(102, 'Patient B', [(-30, ''), (-21, '')], [(-21, 'Feels 100% better. Referred to GP for bloods.')])
     patient(103, 'Patient C', [(-20, '')], [(-20, 'Still sore. Continue exercises.')])
     patient(104, 'Patient D', [(-20, ''), (7, '')], [(-20, 'Discharged.')])
-    patient(105, 'Patient E', [(-5, '')], [(-5, 'Discharged.')])
-    patient(106, 'Patient F', [(-80, '')], [(-80, 'Discharged.')])
+    patient(105, 'Patient E', [(-5, ''), (3, '')], [(-5, 'Discharged.')])
+    patient(106, 'Patient F', [(-35, '')], [(-35, 'Discharged.')])
     patient(107, 'Patient G', [(-20, '')], [(-20, 'Discharged.')])
     S['followups'].append({'id': 1, 'title': 'Review Request', 'status': 'Sent', 'scheduledOrSentDate': '2026-11-01T09:00:00+00:00', 'linkedToId': 107,
                            'linkedTo': 'Patient G', 'linkedToUrl': '/a/pr/555/patient/107/', 'method': 'Email'})
@@ -63,6 +63,11 @@ def fresh():
     patient(111, 'Patient K', [(-20, '')], [(-20, 'Discharged, goals met.')], owes=True)
     patient(112, 'Patient L', [(-20, '')], [(-20, 'Not 100% better yet, continue exercises.')])
     patient(113, 'Patient M', [(-20, '')], [(-20, 'Continue exercises.')], progress=(-21, 1))
+    # N: seen 2 days ago, discharged: asked straight away. O: seen 3 days ago, much better but not discharged: waits.
+    patient(114, 'Patient N', [(-9, ''), (-2, '')], [(-2, 'Discharged, goals met. Pain free.')])
+    patient(115, 'Patient O', [(-3, '')], [(-3, 'Pain free, much better. Continue exercises.')])
+    # Seen today: not yet (from the day after).
+    patient(116, 'Patient P', [(0, '')], [(0, 'Discharged.')])
 
 
 PAGE = ("<!doctype html><html><head><title>Patients | Halaxy</title><script>window.HkUser = { pracName: %s }; window.Hk = { jwt: 'x' };</script></head>"
@@ -182,19 +187,20 @@ async def main():
         await pg.wait_for_function(ROOT_JS + " && " + ROOT_JS + ".querySelector('table') && !" + ROOT_JS + ".querySelector('[data-a=refresh]').disabled", timeout=90000)
         rows = await pg.evaluate(ROWS)
         by = {r['who']: r for r in rows}
-        check('good outcome: listed first, with the reasons', rows and rows[0]['who'] == 'Patient A' and not rows[0]['off']
-              and 'Progress Update +5' in rows[0]['why'] and 'discharged' in rows[0]['why'] and 'goals met' in rows[0]['why'] and 'back to sport or work' in rows[0]['why'], rows)
+        check('good outcome: listed first, with the reasons', by.get('Patient A') and not by['Patient A']['off'] and rows[1]['who'] == 'Patient A'
+              and 'Progress Update +5' in by['Patient A']['why'] and 'discharged' in by['Patient A']['why'] and 'goals met' in by['Patient A']['why'] and 'back to sport or work' in by['Patient A']['why'], rows)
         check('mixed signs: greyed under Worth a look, with what counts against', by.get('Patient B', {}).get('off') and 'Against: referred on' in by['Patient B']['why'], by.get('Patient B'))
-        check('only A and B listed', sorted(by) == ['Patient A', 'Patient B'], sorted(by))
+        check('only A, B and N listed', sorted(by) == ['Patient A', 'Patient B', 'Patient N'], sorted(by))
+        check('discharged 2 days ago: asked straight away', by.get('Patient N', {}).get('off') is False and 'discharged' in by['Patient N']['why'], by.get('Patient N'))
         foot = await pg.evaluate(ROOT_JS + ".querySelector('.upc-rr > p.text-muted').textContent")
-        check('left out and counted: asked, labelled/under 16/owing, cancelled, no good signs', 'Left out: 1 already sent a review request, 3 labelled No review request, under 16 or owing money, 1 whose last appointment was cancelled or missed, and 3 with no good-outcome signs' in foot, foot)
-        check('menu count', await pg.evaluate("(document.querySelector('a.upc-rr-menu .upc-rr-badge') || {}).textContent") == '1')
+        check('left out and counted: asked, labelled/under 16/owing, cancelled, no good signs', "Left out: 1 already sent a review request, 3 labelled No review request, under 16 or owing money, 1 whose last appointment was cancelled or missed, 1 seen in the last 2 weeks whose notes don't say they've finished, and 3 with no good-outcome signs" in foot, foot)
+        check('menu count', await pg.evaluate("(document.querySelector('a.upc-rr-menu .upc-rr-badge') || {}).textContent") == '2')
         menu = await pg.evaluate("[...document.querySelectorAll('#mainMenu a.mainmenu-sublink')].map(a => a.getAttribute('href'))")
         check('menu item under Patients, over the Patient List', '/a/pr/555/patient/#upc-review-requests' in menu, menu)
         notes_read = sorted({x[1] for x in S['log'] if x[1].startswith('/note/menu/')})
-        check('notes read only for finished patients not yet asked', notes_read == ['/note/menu/linkPaG/%d/items' % i for i in (101, 102, 103, 109, 110, 111, 112, 113)], notes_read)
+        check('notes read only for finished patients not yet asked', notes_read == ['/note/menu/linkPaG/%d/items' % i for i in (101, 102, 103, 109, 110, 111, 112, 113, 114, 115)], notes_read)
         details = sorted({x[1] for x in S['log'] if '/note/sidebar/' in x[1] or '/patient/invoice/' in x[1]})
-        check('labels, age and invoices read only for good-looking patients', all(re.search(r'/(101|102|109|110|111)(/|$)', x) for x in details) and len(details) >= 5, details)
+        check('labels, age and invoices read only for good-looking patients', all(re.search(r'/(101|102|109|110|111|114|115)(/|$)', x) for x in details) and len(details) >= 5, details)
         kept = await pg.evaluate("Object.keys(localStorage).filter(k => k.startsWith('upc-rr:')).map(k => localStorage.getItem(k)).join(' ')")
         check('note text never kept', not any(t in kept for t in ['Back to running', 'Referred to GP', 'Still sore', 'Knee pain']), kept[:300])
         look = await pg.evaluate("(() => { const r = " + ROOT_JS + "; return r.classList.contains('upc-native') && !r.shadowRoot && r.querySelector('table').className.startsWith('table table-striped table-bordered'); })()")
@@ -212,7 +218,7 @@ async def main():
         check('follow-up sent with the Review Request templates, by email, now', len(w) == 1 and w[0][1] == 101 and f.get('form[recallTemplate]') == ['31'] and f.get('form[emailTemplate]') == ['45']
               and f.get('form[title]') == ['Review Request'] and f.get('form[isEmailMethod]') == ['1'] and 'form[isSmsMethod]' not in f and f.get('form[scheduleAt][date]') == [hx(NOW)]
               and f.get('form[scheduleAt][time][hour]') == ['12'] and f.get('form[_token]') == ['FT'], f)
-        check('count drops once sent', await pg.evaluate("!document.querySelector('a.upc-rr-menu .upc-rr-badge')"))
+        check('count drops once sent', await pg.evaluate("(document.querySelector('a.upc-rr-menu .upc-rr-badge') || {}).textContent") == '1')
 
         # Don't ask for Patient B
         await pg.click("[data-skip='102']")

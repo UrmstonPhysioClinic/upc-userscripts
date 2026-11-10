@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy review requests (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.0
+// @version      0.2.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
@@ -15,8 +15,11 @@
 /*
  * Review requests (agreed with Carl, 10 Nov 2026).
  *
- *  - Finished: last attended appointment 2 to 8 weeks ago, nothing booked, and the last appointment
- *    wasn't cancelled or missed. One calendar request for everyone.
+ *  - Finished, asked while it's fresh (Carl, 10 Nov 2026: "2 to 8 weeks is a long time"): nothing
+ *    booked, the last appointment wasn't cancelled or missed, and either the last notes say treatment
+ *    has finished ("discharged", "goals met", "self-managing", "see as needed"), from the day after
+ *    that visit, or 2 weeks have passed with nothing booked. Nobody last seen over 4 weeks ago.
+ *    One calendar request for everyone.
  *  - Left out: anyone with a "Review Request" follow-up already (Tasks & Follow-Ups, one request),
  *    anyone labelled "No review request", under-16s, and anyone with an unpaid invoice of their own.
  *  - Good outcome: the latest Progress Update form ("How have your symptoms changed ... -5 to 5":
@@ -35,14 +38,15 @@
   if (window.__hxReviewRequests) return;
   window.__hxReviewRequests = true;
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.2.0';
   const ROUTE = 'upc-review-requests';
   const MENU_CLS = 'upc-rr-menu';
   const ALLOWED = ['Carl Healy'];          // Carl, 10 Nov 2026: just me for now
   const TEMPLATE = 'Review Request';       // follow-up template and email template
   const LABEL = 'No review request';
   const DAY = 86400e3;
-  const MIN_DAYS = 14, MAX_DAYS = 56, MIN_AGE = 16;
+  const SAID_DAYS = 1, QUIET_DAYS = 14, MAX_DAYS = 28, MIN_AGE = 16;
+  const FINISHED = ['discharged', 'goals met', 'self-managing'];   // phrase kinds that say treatment has finished
   const REFRESH_EVERY = 12 * 3600e3, PAGE_FRESH = 30 * 60e3, KEEP = 7 * DAY;
   const KEY = 'upc-rr:';
 
@@ -163,7 +167,7 @@
       if (!byPatient.has(id)) byPatient.set(id, []);
       byPatient.get(id).push(e);
     });
-    const counts = { asked: 0, left: 0, none: 0, ended: 0 };
+    const counts = { asked: 0, left: 0, none: 0, ended: 0, soon: 0 };
     const cache = store.get('cache', {});
     const rows = [];
     for (const [id, evs] of byPatient) {
@@ -172,7 +176,7 @@
       const booked = evs.some((e) => startMs(e) >= now && !/cancel|reject|declin|did-not-attend/i.test(e.appointmentStatus || ''));
       if (!attended.length || booked) continue;
       const lastSeen = startMs(attended[0]);
-      if (lastSeen > now - MIN_DAYS * DAY || lastSeen < now - MAX_DAYS * DAY) continue;
+      if (lastSeen > now - SAID_DAYS * DAY || lastSeen < now - MAX_DAYS * DAY) continue;
       if (past[0] && past[0].appointmentStatus) { counts.ended++; continue; }   // finished on a cancellation or missed appointment
       if (asked.has(id)) { counts.asked++; continue; }
       const name = U().clean(U().htmlDoc(attended[0].title || '').body.textContent).replace(/^[\s*★]+/, '') || 'Patient';
@@ -185,6 +189,8 @@
       }
       if (r.verdict === 'none') { counts.none++; continue; }
       if (r.verdict === 'left') { counts.left++; continue; }
+      // Seen in the last 2 weeks: only once the notes say treatment has finished (they may still book).
+      if (lastSeen > now - QUIET_DAYS * DAY && !(r.good || []).some((x) => FINISHED.includes(x))) { counts.soon++; continue; }
       rows.push(Object.assign({ id, name, lastSeen }, r));
     }
     Object.keys(cache).forEach((k) => { if (now - cache[k].at > KEEP) delete cache[k]; });
@@ -276,8 +282,10 @@
         (ready.length ? '<table class="table table-striped table-bordered w-100 m-0">' + head + '<tbody>' + ready.map(rowHtml).join('') + '</tbody></table>' : '<p class="text-muted m-3">Nobody to ask at the moment.</p>') + '</div></div>';
       if (rest.length) h += '<div class="card"><div class="card-header"><h2>Worth a look (' + rest.length + ')</h2></div><div class="card-body p-0"><table class="table table-bordered w-100 m-0">' + head + '<tbody>' + rest.map(rowHtml).join('') + '</tbody></table></div></div>';
       const c = r.counts;
-      h += '<p class="text-muted">Patients last seen ' + MIN_DAYS / 7 + ' to ' + MAX_DAYS / 7 + ' weeks ago with nothing booked. Left out: ' + c.asked + ' already sent a review request, ' +
-        c.left + ' labelled ' + esc(LABEL) + ', under ' + MIN_AGE + ' or owing money, ' + c.ended + ' whose last appointment was cancelled or missed, and ' + c.none + ' with no good-outcome signs in their last two notes or Progress Update form.</p>';
+      h += '<p class="text-muted">Patients with nothing booked, from the day after their last visit when the notes say treatment has finished (discharged, goals met, self-managing), ' +
+        'otherwise once ' + QUIET_DAYS / 7 + ' weeks have passed, and up to ' + MAX_DAYS / 7 + ' weeks after their last visit. Left out: ' + c.asked + ' already sent a review request, ' +
+        c.left + ' labelled ' + esc(LABEL) + ', under ' + MIN_AGE + ' or owing money, ' + c.ended + ' whose last appointment was cancelled or missed, ' +
+        (c.soon || 0) + ' seen in the last ' + QUIET_DAYS / 7 + ' weeks whose notes don\'t say they\'ve finished, and ' + c.none + ' with no good-outcome signs in their last two notes or Progress Update form.</p>';
     }
     h += '<div class="text-muted upc-version">Review requests ' + VERSION + '</div></div>';
     root.innerHTML = h;

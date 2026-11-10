@@ -14,6 +14,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Review requests
 
+### 0.2.0 (10 Nov 2026, beta)
+- Asks while it's fresh (Carl): from the day after the last visit when the notes say treatment has finished (discharged, goals met, self-managing, see as needed), otherwise once 2 weeks have passed with nothing booked. Nobody last seen over 4 weeks ago (was 2 to 8 weeks).
+
 ### 0.1.0 (10 Nov 2026, beta)
 - New: Patients > Review requests, for Carl only, with a count on the menu item. Patients last seen 2 to 8 weeks ago with nothing booked, whose latest Progress Update form (+4 or +5) or last two clinical notes show a good outcome ("100% better", "pain-free", "back to running", "goals met", "discharged" and so on). Mixed signs ("not 100%", "flare-up", "referred to GP", a scan or injection) are listed greyed under Worth a look.
 - Left out: anyone already sent a Review Request follow-up, labelled No review request, under 16, owing money on their own invoices, or whose last appointment was cancelled or missed.
