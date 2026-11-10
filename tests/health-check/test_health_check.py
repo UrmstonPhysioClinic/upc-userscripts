@@ -27,7 +27,7 @@ GLOBALS = r"""
   window.HkCalendar = {
     initForPrac: f, calendarModel: { get: f }, PathForEventJSON: '/a/pr/555/calendar/json', PathForNewEvent: 'x', PathForNewAppointment: 'y',
     preferences: {}, timeslotHeights: {}, Timeline: { position: f, tick: f }, Toolbar: { zoomIn: f, zoomOut: f },
-    updateSingleEvent: f, Grid: { getCalendarData: f }, getEventUrlQueryParams: f,
+    updateSingleEvent: f, Grid: { getCalendarData: f }, getEventUrlQueryParams: f, tEvent: f, eventsView: { render: f },
     RenderPrac: { toggleMultiPrac: f, renderMultiPracCalendar: f }, Render: { resizeCalendar: f }, calMenu: { refresh: f }
   };
   window.HealthKit = { swapPrac: f, getThemeFontSize: f };
@@ -67,7 +67,7 @@ def events():
             status = 'no-show'
         e = {'id': i, 'type': 'appointment', 'start': now - 3600 * i, 'end': now - 3600 * i + 1800, 'linkPaGId': 400 + i,
              'practitionerID': 11, 'invoiceID': 500 + i, 'noteID': 600 + i, 'colour': '#FEF2C0', 'appointmentStatus': status,
-             'noteStatusCss': note, 'invoiceStatus': 'Paid In Full', 'isRequest': False, 'isGroupAppointment': False,
+             'noteStatusCss': note, 'invoiceStatus': 'Paid In Full', 'invStatusCss': 'paid', 'isRequest': False, 'isGroupAppointment': False,
              'title': "<span class='name-text'>Patient 09:0%d</span>" % i}
         if 'field' in STATE['break']:
             del e['noteStatusCss']

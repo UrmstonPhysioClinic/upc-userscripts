@@ -85,6 +85,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Calendar controls
 
+### 2.11 (10 Nov 2026, beta)
+- Appointments whose invoice is £0 (package follow-ups, cancelled appointments) show the green paid £ instead of the black unpaid one (Carl). The amounts come from one invoice list request for the dates on screen, shared by all tabs and repeated at most every 30 minutes, through the core library's pacing. Display only.
+
 ### 2.10 (6 Nov 2026, beta)
 - The 30-second check for changes made on other PCs is skipped whenever the calendar was loaded in the last 30 seconds by anything else (Halaxy redrawing, changing date, or a refresh of its own), so the calendar is never loaded twice for nothing.
 - The check goes through the core library's pacing and waits while Halaxy has asked scripts to pause.
@@ -182,6 +185,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Arrival chime and chat alarm can be switched off per PC from the Tampermonkey menu.
 
 ## Health check
+
+### 1.1.12 (10 Nov 2026, beta)
+- Checks the calendar's appointment template and redraw, and the payment icon class in the calendar data (used by calendar controls 2.11).
 
 ### 1.1.11 (10 Nov 2026, beta)
 - Knows Ready to bill by name, and shows its message when Halaxy's Unpaid Invoices report changes.
