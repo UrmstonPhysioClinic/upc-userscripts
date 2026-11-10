@@ -78,13 +78,16 @@ PAGE = ("<!doctype html><html><head><title>Patients | Halaxy</title><script>wind
 
 
 def followup_form():
-    return ("<form id='form-recall-template'><select name='form[recallTemplate]'><option value=''>Select follow-up template</option><option value='31'>Review Request</option></select>"
+    rem_follow = "<option value='32'>Review Reminder</option>" if S.get('reminder') else ''
+    rem_email = "<option value='46'>Review Reminder</option>" if S.get('reminder') else ''
+    hours = ''.join("<option value='%d'>%02d</option>" % (h, h) for h in range(24))
+    minutes = ''.join("<option value='%d'>%02d</option>" % (m, m) for m in range(60))
+    return ("<form id='form-recall-template'><select name='form[recallTemplate]'><option value=''>Select follow-up template</option><option value='31'>Review Request</option>" + rem_follow + "</select>"
             "<input name='form[title]' value=''><input type='checkbox' name='form[isEmailMethod]' value='1' checked><input type='checkbox' name='form[isSmsMethod]' value='1'>"
-            "<input name='form[scheduleAt][date]' value='%s'><select name='form[scheduleAt][time][hour]'>%s</select><select name='form[scheduleAt][time][minute]'>%s</select>"
+            "<input name='form[scheduleAt][date]' value='" + hx(NOW) + "'><select name='form[scheduleAt][time][hour]'>" + hours + "</select><select name='form[scheduleAt][time][minute]'>" + minutes + "</select>"
             "<select name='form[intakeFormTemplate]'><option value=''>Select form</option><option value='7'>Progress Update</option></select>"
-            "<select name='form[emailTemplate]'><option value=''></option><option value='44'>Blank Email</option><option value='45'>Review Request</option></select>"
-            "<select name='form[smsTemplate]'><option value=''></option></select><input type='hidden' name='form[_token]' value='FT'><button class='btn-submit'>Save</button></form>"
-            % (hx(NOW), ''.join("<option value='%d'>%02d</option>" % (h, h) for h in range(24)), ''.join("<option value='%d'>%02d</option>" % (m, m) for m in range(60))))
+            "<select name='form[emailTemplate]'><option value=''></option><option value='44'>Blank Email</option><option value='45'>Review Request</option>" + rem_email + "</select>"
+            "<select name='form[smsTemplate]'><option value=''></option></select><input type='hidden' name='form[_token]' value='FT'><button class='btn-submit'>Save</button></form>")
 
 
 def edit_page(pid):
@@ -221,14 +224,14 @@ async def main():
         await pg.click("[data-send='101']")
         await pg.wait_for_selector('[data-upc-rr-confirm]')
         conf = await pg.evaluate("document.querySelector('[data-upc-rr-confirm]').innerText")
-        check('asks first', 'Add the Review Request follow-up for Patient A, by email, in about 10 minutes?' in conf and not S['writes'], conf)
+        check('asks first', 'Schedule the Review Request email for Patient A on Wednesday 11-Nov-2026 at 10:30?' in conf and not S['writes'], conf)
         await pg.click('[data-upc-rr-confirm] [data-c=yes]')
-        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-review-requests] tbody tr')].some(tr => tr.innerText.includes('Review request sent'))", timeout=90000)
+        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-review-requests] tbody tr')].some(tr => tr.innerText.includes('Review request scheduled for Wednesday 11-Nov-2026 at 10:30'))", timeout=90000)
         w = [x for x in S['writes'] if x[0] == 'followup']
         f = w[0][2] if w else {}
-        check('follow-up sent with the Review Request templates, by email, in the future (12:10)', len(w) == 1 and w[0][1] == 101 and f.get('form[recallTemplate]') == ['31'] and f.get('form[emailTemplate]') == ['45']
-              and f.get('form[title]') == ['Review Request'] and f.get('form[isEmailMethod]') == ['1'] and 'form[isSmsMethod]' not in f and f.get('form[scheduleAt][date]') == [hx(NOW)]
-              and f.get('form[scheduleAt][time][hour]') == ['12'] and f.get('form[scheduleAt][time][minute]') == ['10'] and f.get('form[_token]') == ['FT'], f)
+        check('follow-up sent with the Review Request templates, by email, for the next weekday at 10:30', len(w) == 1 and w[0][1] == 101 and f.get('form[recallTemplate]') == ['31'] and f.get('form[emailTemplate]') == ['45']
+              and f.get('form[title]') == ['Review Request'] and f.get('form[isEmailMethod]') == ['1'] and 'form[isSmsMethod]' not in f and f.get('form[scheduleAt][date]') == ['11-Nov-2026']
+              and f.get('form[scheduleAt][time][hour]') == ['10'] and f.get('form[scheduleAt][time][minute]') == ['30'] and f.get('form[_token]') == ['FT'], f)
         check('count drops once sent', await pg.evaluate("(document.querySelector('a.upc-rr-menu .upc-rr-badge') || {}).textContent") == '1')
 
         # Halaxy refuses: only its own reason is shown, not the form's hints
@@ -240,6 +243,17 @@ async def main():
         err = await pg.evaluate("[...document.querySelectorAll('[data-upc-review-requests] .upc-rr-acts .upc-err')].map(e => e.textContent).join(' | ')")
         check('a refusal shows Halaxy\'s reason only', err == 'Adding the follow-up was not accepted by Halaxy: Scheduled date must be in the future', err)
         S['rejectFollowup'] = False
+
+        # With a Review Reminder follow-up set up in Halaxy: a reminder a week later, same time
+        S['reminder'] = True
+        await pg.click("[data-send='114']")
+        await pg.wait_for_selector('[data-upc-rr-confirm]')
+        await pg.click('[data-upc-rr-confirm] [data-c=yes]')
+        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-review-requests] tbody tr')].some(tr => tr.innerText.includes('reminder Wednesday 18-Nov-2026 at 10:30'))", timeout=90000)
+        w = [x for x in S['writes'] if x[0] == 'followup' and x[1] == 114]
+        check('reminder added a week later from the Review Reminder templates', len(w) == 2 and w[1][2].get('form[recallTemplate]') == ['32'] and w[1][2].get('form[emailTemplate]') == ['46']
+              and w[1][2].get('form[scheduleAt][date]') == ['18-Nov-2026'] and w[1][2].get('form[title]') == ['Review Reminder'], [x[2] for x in w])
+        S['reminder'] = False
 
         # Don't ask for Patient B
         await pg.click("[data-skip='102']")
