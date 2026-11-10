@@ -1,5 +1,8 @@
 # Changelog
 
+## Moved to the clinic PCs (stable), 10 Nov 2026 (evening)
+Carl confirmed on live Halaxy: core library 0.1.19, Invoice Funder (bill-funder) 0.7.3, Remittances 0.3.1, Ready to bill 0.3.0, calendar controls 2.11, Rebate Sync 0.2.0 and health check 1.1.13.
+
 ## Moved to the clinic PCs (stable), 9 Nov 2026 (evening)
 Health check 1.1.9 (Carl), which also brings 1.1.8's add-task check and the table builder false alarm fix.
 
