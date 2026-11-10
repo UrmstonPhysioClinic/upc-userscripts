@@ -9,6 +9,12 @@ Health check 1.1.6, then 1.1.7, at Carl's request, so the clinic PCs stop report
 ## Moved to the clinic PCs (stable), 9 Nov 2026
 Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outstanding Actions 0.5.3, calendar controls 2.10, Alerts 1.0.0, Custom Reports 0.7.0, HTML source for emails 0.4. Arrival chime and Chat alert retired from stable (replaced by Alerts). `tools/promote.py` added for promotions.
 
+## Forecourt lights
+
+### 0.1.0 (10 Nov 2026, beta)
+- New: reminders for the forecourt and sign floodlights timer (Carl). On clinic evenings, from the reminder time: turn the timer on, with the times (sunset for Urmston minus 30 minutes, rounded down to the timer's 15-minute steps, off at 20:45); move the timer's on time when it changes; change the timer's clock after the clocks go forward or back, with a heads-up on the last clinic evening before. The day after a clinic evening, until done: turn the timer off (not when that day is a clinic evening too). In summer, when the lights aren't needed, it says so once, with the date they're next needed.
+- Off until switched on per PC from the Tampermonkey menu (Forecourt lights: settings): clinic evenings, off time, minutes before sunset, reminder time, the timer's current on time, dates to skip, and a two-week preview. Halaxy-style pop-up with Done and Remind me later (an hour). Sunset is worked out on the PC: nothing is fetched.
+
 ## Ready to bill
 
 ### 0.3.0 (10 Nov 2026, beta)
@@ -194,6 +200,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Arrival chime and chat alarm can be switched off per PC from the Tampermonkey menu.
 
 ## Health check
+
+### 1.1.13 (10 Nov 2026, beta)
+- Knows Forecourt lights by name.
 
 ### 1.1.12 (10 Nov 2026, beta)
 - Checks the calendar's appointment template and redraw, and the payment icon class in the calendar data (used by calendar controls 2.11).
