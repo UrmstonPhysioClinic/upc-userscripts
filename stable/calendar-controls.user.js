@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy: calendar controls
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      2.10
+// @version      2.11
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/calendar-controls.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/calendar-controls.user.js
@@ -24,6 +24,7 @@
   const ANIMATE_CHANGES = true;            // fade/grow appointments added or removed from elsewhere
   const FIX_DRAG_DROP = true;              // dragged appointments land where their top edge is
   const CURRENCY_SYMBOL = '£';             // replaces Halaxy's "$" invoice icon on appointments ('' = leave as $)
+  const ZERO_LOOKS_PAID = true;            // £0 invoices (package follow-ups, cancellations) get the green paid icon, not the black unpaid one
   const RESIZE_PERSONAL = true;            // drag handle on the bottom of personal appointments to change their length
   const DURATION_STEP_MINUTES = 15;        // up/down arrows on the sidebar's Duration box (0 = off)
   const DEFAULT_NEW_DURATION_MINUTES = 30; // starting duration for new appointments (0 = Halaxy's default)
@@ -234,6 +235,15 @@
         if (isCalendarJson(method, url) && !ownCheckRunning) {
           this.addEventListener('load', () => { if (this.status === 200) lastOtherCalendarLoad = Date.now(); }, { once: true });
         }
+        if (isCalendarJson(method, url)) {
+          this.addEventListener('load', () => {
+            try {
+              if (this.status !== 200) return;
+              const j = this.responseType === 'json' ? this.response : JSON.parse(this.responseText);
+              zeroLook.note(j && j.payload && j.payload.events, url);
+            } catch (e) { /* not ours to worry about */ }
+          }, { once: true });
+        }
       } catch (e) { /* never get in Halaxy's way */ }
       return open.apply(this, arguments);
     };
@@ -253,6 +263,144 @@
   })();
   let zoomApplied = false;
 
+  // ---------- 0a. £0 invoices look paid ----------
+  // Carl, 10 Nov 2026: an appointment whose invoice is £0 (package follow-ups, cancelled appointments)
+  // has nothing to pay, but Halaxy draws the black "unpaid" icon, which catches the eye. The calendar
+  // data has the payment status but not the amount, so the amounts come from Halaxy's invoice list:
+  // one request for the dates on screen, shared by all tabs, repeated at most every 30 minutes for those
+  // dates, through the core library's pacing. Those appointments are then drawn exactly as a paid one
+  // (the payment status and its icon class are taken from a paid appointment Halaxy sent). Display only:
+  // nothing in Halaxy changes.
+  const zeroLook = (() => {
+    const KEY = 'upc-cal-zero';
+    const RECHECK = 30 * 60e3, KEEP = 7 * 86400e3;
+    let memo = null, memoAt = 0;   // read at most once a second: the template asks once per appointment
+    const st = () => {
+      if (memo && Date.now() - memoAt < 1000) return JSON.parse(JSON.stringify(memo));
+      try { memo = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) { memo = {}; }
+      memoAt = Date.now();
+      return JSON.parse(JSON.stringify(memo));
+    };
+    const put = (s) => { memo = s; memoAt = Date.now(); try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) { /* storage blocked */ } };
+    const isPaid = (e) => /paid in full/i.test(e.invoiceStatus || '');
+    let running = false;
+    const diag = { patched: 0, lookups: 0, lastError: '' };
+
+    function isZero(id) {
+      const s = st();
+      const hit = id && s.inv && s.inv[id];
+      return !!(hit && hit[0] === 1 && s.paid && s.paid.css !== undefined);
+    }
+
+    // Every calendar download comes through here (Halaxy's own and our refresh).
+    function note(events, url) {
+      if (!ZERO_LOOKS_PAID || !Array.isArray(events)) return;
+      const s = st();
+      const paidOne = events.find((e) => isPaid(e) && e.invStatusCss !== undefined);
+      if (paidOne && (!s.paid || s.paid.css !== paidOne.invStatusCss || s.paid.status !== paidOne.invoiceStatus)) {
+        s.paid = { status: paidOne.invoiceStatus, css: paidOne.invStatusCss };
+        put(s);
+      }
+      const now = Date.now();
+      const unknown = events.filter((e) => (!e.type || e.type === 'appointment') && e.invoiceID && !isPaid(e))
+        .filter((e) => { const hit = s.inv && s.inv[e.invoiceID]; return !hit || now - hit[1] > RECHECK; });
+      if (!unknown.length) return;
+      let q = {};
+      try { q = Object.fromEntries(new URL(String(url), location.href).searchParams); } catch (e) { /* use the view */ }
+      const HC = window.HkCalendar;
+      if ((!q.start || !q.end) && HC && HC.getEventUrlQueryParams) q = HC.getEventUrlQueryParams();
+      const from = Number(q.start) * 1000, to = Number(q.end) * 1000;
+      if (!from || !to) return;
+      lookup(from, to, unknown.map((e) => String(e.invoiceID)));
+    }
+
+    async function lookup(from, to, ids) {
+      const U = window.UPC;
+      if (running || document.hidden || !U || !U.http || !U.http.list || (U.http.pausedFor && U.http.pausedFor() > 0)) return;
+      const rangeKey = Math.floor(from / 86400e3) + '-' + Math.floor(to / 86400e3);
+      const s0 = st();
+      if (s0.ranges && Date.now() - (s0.ranges[rangeKey] || 0) < 2 * 60e3) return;   // just looked (here or in another tab)
+      running = true;
+      s0.ranges = Object.assign({}, s0.ranges, { [rangeKey]: Date.now() });
+      put(s0);
+      const day = (ms) => { const d = new Date(ms); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + ' 00:00:00'; };
+      const found = {};
+      try {
+        diag.lookups++;
+        const fm = { invoiceDate: { filterType: 'date', type: 'inRange', dateFrom: day(from - 86400e3), dateTo: day(to + 86400e3) } };
+        const sort = [{ colId: 'invoiceDate', sort: 'desc' }];
+        for (let start = 0; start < 1000; start += 200) {
+          const j = await U.http.list('/invoice/list-data', fm, sort, start, start + 200);
+          const rows = (j && j.rowData) || [];
+          let older = false;
+          rows.forEach((r) => {
+            if (r && r.id !== undefined && r.total !== undefined && r.total !== null) found[String(r.id)] = Number(r.total) <= 0 ? 1 : 0;
+            const d = U.parseDay ? U.parseDay(r && r.invoiceDate) : null;
+            if (d !== null && d < from - 2 * 86400e3) older = true;   // in case Halaxy ignores the date filter
+          });
+          if (older || rows.length < 200 || (typeof j.lastRow === 'number' && j.lastRow >= 0 && start + 200 >= j.lastRow)) break;
+        }
+      } catch (e) {
+        diag.lastError = e.message || String(e);
+      } finally {
+        running = false;
+      }
+      const s = st(), now = Date.now();
+      s.inv = s.inv || {};
+      let newZero = false;
+      Object.keys(found).forEach((id) => { if (found[id] === 1 && !(s.inv[id] && s.inv[id][0] === 1)) newZero = true; s.inv[id] = [found[id], now]; });
+      ids.forEach((id) => { if (!(id in found) && !s.inv[id]) s.inv[id] = [0, now]; });   // not in the list: leave it as Halaxy draws it
+      Object.keys(s.inv).forEach((id) => { if (now - s.inv[id][1] > KEEP) delete s.inv[id]; });
+      Object.keys(s.ranges || {}).forEach((k) => { if (now - s.ranges[k] > KEEP) delete s.ranges[k]; });
+      put(s);
+      if (newZero && ids.some((id) => found[id] === 1)) redraw();
+    }
+
+    function redraw() {
+      const HC = window.HkCalendar;
+      try { if (HC && HC.eventsView) HC.eventsView.render(); } catch (e) { /* the next redraw shows it */ }
+    }
+
+    // Halaxy draws each appointment with its compiled template, HkCalendar.tEvent. A £0 invoice's
+    // appointment is handed to it with a paid appointment's payment status and icon class.
+    function paidCopy(d) {
+      const s = st();
+      diag.patched++;
+      return Object.assign({}, d, { invoiceStatus: s.paid.status, invStatusCss: s.paid.css });
+    }
+    function adjust(data) {
+      try {
+        if (!ZERO_LOOKS_PAID || !data || typeof data !== 'object') return data;
+        if (data.invoiceID !== undefined) return !isPaid(data) && isZero(data.invoiceID) ? paidCopy(data) : data;
+        if (data.attributes && data.attributes.invoiceID !== undefined) {
+          const a = data.attributes;
+          if (isPaid(a) || !isZero(a.invoiceID)) return data;
+          const copy = Object.create(Object.getPrototypeOf(data));
+          return Object.assign(copy, data, { attributes: paidCopy(a) });
+        }
+        const k = Object.keys(data).find((x) => data[x] && typeof data[x] === 'object' && data[x].invoiceID !== undefined);
+        if (k && !isPaid(data[k]) && isZero(data[k].invoiceID)) return Object.assign({}, data, { [k]: paidCopy(data[k]) });
+      } catch (e) { /* draw as Halaxy would */ }
+      return data;
+    }
+    function wrapTemplate(HC) {
+      if (!ZERO_LOOKS_PAID || !HC || HC.__upcZeroWrap) return;
+      HC.__upcZeroWrap = true;
+      let raw = HC.tEvent;
+      const wrap = (fn) => (typeof fn === 'function' ? function (data) { return fn.call(this, adjust(data), ...[].slice.call(arguments, 1)); } : fn);
+      let wrapped = wrap(raw);
+      try {
+        Object.defineProperty(HC, 'tEvent', {
+          configurable: true, enumerable: true,
+          get() { return wrapped; },
+          set(v) { raw = v; wrapped = wrap(v); },
+        });
+      } catch (e) { log('£0 paid look not available:', e); }
+    }
+    return { note, wrapTemplate, isZero, diag };
+  })();
+  window.upcCalendarZero = zeroLook;   // diagnostics
+
   // ---------- 1. Hook Halaxy's calendar start-up ----------
   // Our DOMContentLoaded listener is registered before jQuery's, so it runs after Halaxy's
   // scripts have loaded but before the calendar initialises.
@@ -261,6 +409,7 @@
     if (!HC || typeof HC.initForPrac !== 'function' || HC.initForPrac.__upc) return;
     patchRowHeights(HC);
     poundSigns();                  // before Halaxy reads its appointment template
+    zeroLook.wrapTemplate(HC);
     const orig = HC.initForPrac;
     HC.initForPrac = function (when, prefs, ...rest) {
       if (prefs && typeof prefs === 'object') {
@@ -498,6 +647,7 @@
   function lateSetup() {
     const HC = window.HkCalendar;
     if (!HC || !HC.calendarModel || HC.__upcDone || HC.isRoomCalendar?.()) return;
+    zeroLook.wrapTemplate(HC);
     if (poundSigns() && HC.eventsView) {   // calendar already started: recompile and redraw
       HC.tEvent = window._.template(window.jQuery('#tpl-event').html());
       try { HC.eventsView.render(); } catch (e) { /* next redraw will pick it up */ }
@@ -619,6 +769,7 @@
         .then((resp) => {
           if (key !== viewKey()) return;                       // view changed while loading
           const events = resp && resp.payload && resp.payload.events;
+          zeroLook.note(events, null);
           if (!Array.isArray(events)) return;
           const fresh = new Map(events.map((e) => [String(e.id), e]));
           const shown = onScreen();

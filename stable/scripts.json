@@ -3,17 +3,22 @@
     {
       "file": "health-check.user.js",
       "name": "Halaxy health check",
-      "version": "1.1.10"
+      "version": "1.1.13"
     },
     {
       "file": "core.user.js",
       "name": "UPC core library",
-      "version": "0.1.7"
+      "version": "0.1.19"
     },
     {
       "file": "alerts.user.js",
       "name": "Halaxy alerts",
       "version": "1.0.0"
+    },
+    {
+      "file": "bill-funder.user.js",
+      "name": "Halaxy bill funder",
+      "version": "0.7.3"
     },
     {
       "file": "branding.user.js",
@@ -23,7 +28,7 @@
     {
       "file": "calendar-controls.user.js",
       "name": "Halaxy: calendar controls",
-      "version": "2.10"
+      "version": "2.11"
     },
     {
       "file": "custom-reports.user.js",
@@ -46,9 +51,19 @@
       "version": "0.5.3"
     },
     {
+      "file": "ready-to-bill.user.js",
+      "name": "Halaxy ready to bill",
+      "version": "0.3.0"
+    },
+    {
       "file": "rebate-sync.user.js",
       "name": "UPC Halaxy Rebate Sync",
-      "version": "0.1.0"
+      "version": "0.2.0"
+    },
+    {
+      "file": "remittances.user.js",
+      "name": "Halaxy remittances",
+      "version": "0.3.1"
     },
     {
       "file": "textarea-autogrow.user.js",

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.7
+// @version      0.1.19
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.7';
+  const VERSION = '0.1.19';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -43,6 +43,10 @@
   const clean = (s) => String(s || '').replace(/\s+/g, ' ').trim();
   const esc = (s) => String(s === undefined || s === null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const htmlDoc = (html) => new DOMParser().parseFromString(html || '', 'text/html');
+  // Whole days between two Halaxy dates ('13-Oct-2026'); Infinity if either can't be read.
+  const MONTH_NO = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+  const halaxyDay = (s) => { const m = String(s || '').match(/(\d{1,2})-([A-Za-z]{3})-(\d{4})/); return m && m[2].toLowerCase() in MONTH_NO ? Date.UTC(+m[3], MONTH_NO[m[2].toLowerCase()], +m[1]) : null; };
+  const dayGap = (a, b) => { const x = halaxyDay(a), y = halaxyDay(b); return x === null || y === null ? Infinity : Math.round(Math.abs(x - y) / 86400e3); };
 
   // ------------------------------------------------------------------ money (pence)
 
@@ -141,6 +145,13 @@
       if (!res.ok) throw new UPCError('Halaxy returned ' + res.status + ' for ' + path.split('?')[0]);
       return htmlDoc(await res.text());
     },
+    // An HTML fragment as Halaxy's own pop-ups request it (with X-Requested-With). Some pages, such
+    // as an appointment's details, only include their content when asked this way.
+    async fragment(path) {
+      const res = await pacedFetch(url(path), { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+      if (!res.ok) throw new UPCError('Halaxy returned ' + res.status + ' for ' + path.split('?')[0]);
+      return htmlDoc(await res.text());
+    },
     // Halaxy pop-up: GET returns { status: 'FORM', message: '<form ...>' }.
     async popup(path) {
       const sep = path.includes('?') ? '&' : '?';
@@ -230,9 +241,11 @@
     }
     const att = doc.querySelector('#invoiceAttachments');
     if (att) {
+      // Each attachment as its whole row (created date, type, file name, comment): the first cell is
+      // the date, not the name.
       att.querySelectorAll('tbody tr').forEach((tr) => {
-        const name = clean((tr.querySelector('td') || {}).textContent);
-        if (name) inv.attachments.push(name);
+        const row = clean(tr.textContent);
+        if (row && tr.querySelector('td')) inv.attachments.push(row);
       });
     }
     inv.isFunder = inv.lines.some((l) => l.patientInvoiceId);
@@ -274,6 +287,21 @@
     },
     // Sets the status the way the cogwheel's Save does: the whole settings form as Halaxy filled
     // it, with only the status changed. Reads it back to confirm.
+    // Changes fields in the invoice settings (cogwheel) the way its Save does: the whole form as Halaxy
+    // filled it, with only the given fields changed (e.g. { 'form[displayDate]': '09-Nov-2026' }).
+    // Reads the pop-up again to confirm each one.
+    async setSettings(id, changes, what) {
+      const { doc } = await http.popup('/invoice/options/' + id);
+      const form = doc.querySelector('form#frmInvoiceType');
+      const missing = Object.keys(changes).filter((k) => !form || !form.querySelector('[name="' + k + '"]'));
+      if (missing.length) throw new UPCError('The invoice settings pop-up has changed (' + missing.join(', ') + ' not found), so ' + (what || 'the settings') + ' were not changed.');
+      const pairs = serialize(form).map(([k, v]) => [k, k in changes ? changes[k] : v]);
+      Object.keys(changes).forEach((k) => { if (!pairs.some(([x]) => x === k)) pairs.push([k, changes[k]]); });
+      http.expectRefresh(await http.postForm('/invoice/options/' + id, pairs), 'Saving ' + (what || 'the invoice settings'));
+      const again = (await http.popup('/invoice/options/' + id)).doc.querySelector('form#frmInvoiceType');
+      const wrong = Object.keys(changes).filter((k) => { const el = again && again.querySelector('[name="' + k + '"]'); return !el || String(el.value).trim() !== String(changes[k]); });
+      if (wrong.length) throw new UPCError('Halaxy accepted the change, but invoice ' + id + ' does not show the new ' + (what || 'settings') + '.');
+    },
     async setStatus(id, status) {
       const { doc } = await http.popup('/invoice/options/' + id);
       const form = doc.querySelector('form#frmInvoiceType');
@@ -283,6 +311,41 @@
       if (!pairs.some(([k]) => k === 'form[status]')) pairs.push(['form[status]', status]);
       http.expectRefresh(await http.postForm('/invoice/options/' + id, pairs), 'Setting the invoice status');
       if ((await invoice.status(id)) !== status) throw new UPCError('Halaxy accepted the change, but invoice ' + id + ' does not show the new status.');
+    },
+    // Sets a fee line's amount (pence) the way the fee edit pop-up's Save does: every other field as
+    // Halaxy filled it. A fee on a claim carries its funder rebate (the share the funder is expected to
+    // pay) from the start, before any billing. With { lowerRebate: true }, a rebate above the new amount
+    // is lowered with it, but only while the invoice still shows Invoice Funder (nothing billed yet);
+    // otherwise, and without the option, such a fee is refused. Re-reads the fee to confirm.
+    async setLineAmount(invoiceId, lineId, amount, opts) {
+      const o = opts || {};
+      const pairs = await lineForm(lineId);
+      const field = (k) => { const p = pairs.find(([x]) => x === k); return p ? p[1] : undefined; };
+      if (field('form[amount]') === undefined) throw new UPCError('The fee edit pop-up has changed, so the fee was not changed.');
+      const rebate = field('form[rebate]') === undefined ? null : money.cents(field('form[rebate]'));
+      let newRebate = null;
+      if (rebate !== null && rebate > amount) {
+        if (!o.lowerRebate) throw new UPCError('This fee has a funder rebate of ' + money.fmt(rebate) + ', so it was not changed.');
+        const inv = await invoice.fetch(invoiceId);
+        if (!inv.billFunderHref) throw new UPCError(inv.number + ' no longer shows Invoice Funder, so this fee may have been billed to the funder. It was not changed.');
+        newRebate = amount;
+      }
+      const out = pairs.map(([k, v]) => [k, k === 'form[amount]' ? money.plain(amount) : k === 'form[rebate]' && newRebate !== null ? money.plain(newRebate) : v]);
+      http.expectRefresh(await http.postForm('/invoice/line/' + lineId + '/edit', out), 'Saving the fee');
+      const after = await lineForm(lineId);
+      const get = (k) => { const p = after.find(([x]) => x === k); return p ? p[1] : undefined; };
+      if (money.cents(get('form[amount]')) !== amount || (newRebate !== null && money.cents(get('form[rebate]')) !== newRebate)) {
+        throw new UPCError('Halaxy accepted the change, but the fee does not show ' + money.fmt(amount) + (newRebate !== null ? ' with a ' + money.fmt(newRebate) + ' rebate' : '') + '.');
+      }
+    },
+    // Sets a fee line's date ('13-Oct-2026'), the field form[date] in the fee edit pop-up (confirmed live
+    // 9 Nov 2026), every other field as Halaxy filled it. Re-reads the fee to confirm.
+    async setLineDate(lineId, date) {
+      const pairs = await lineForm(lineId);
+      if (!pairs.some(([k]) => k === 'form[date]')) throw new UPCError('The fee edit pop-up has changed, so the fee date was not changed.');
+      http.expectRefresh(await http.postForm('/invoice/line/' + lineId + '/edit', pairs.map(([k, v]) => [k, k === 'form[date]' ? date : v])), 'Saving the fee date');
+      const after = (await lineForm(lineId)).find(([k]) => k === 'form[date]');
+      if (!after || String(after[1]).trim() !== date) throw new UPCError('Halaxy accepted the change, but the fee does not show ' + date + '.');
     },
     // Finds an invoice by its number (UPC-12345). Returns the list row ({ id, invoiceNum, payerName, total, balance, ... }) or null.
     async findByNumber(number) {
@@ -325,8 +388,19 @@
       throw new UPCError(funder.number + ' has more than one ' + line.item + ' line for that patient on ' + line.date + '. Do this one by hand.');
     }
     const patient = await invoice.fetch(line.patientInvoiceId);
-    const cands = patient.lines.filter((l) => l.date === line.date && l.item === line.item);
-    if (cands.length !== 1) throw new UPCError(cands.length ? patient.number + ' has more than one ' + line.item + ' line on ' + line.date + '. Do this one by hand.' : 'Could not find the matching line on ' + patient.number + '.');
+    let cands = patient.lines.filter((l) => l.date === line.date && l.item === line.item);
+    if (!cands.length) {
+      // Halaxy sometimes copies a fee onto the funder invoice a day or two out (13-Oct became 14-Oct,
+      // seen 9 Nov 2026). Accept the one same-item fee within two days that no other funder line claims.
+      const claimed = new Set(funder.lines.filter((l) => l !== line && l.patientInvoiceId === line.patientInvoiceId).map((l) => l.date + '|' + l.item));
+      cands = patient.lines.filter((l) => l.item === line.item && dayGap(l.date, line.date) <= 2 && !claimed.has(l.date + '|' + l.item));
+      if (cands.length > 1) throw new UPCError(patient.number + ' has more than one ' + line.item + ' fee near ' + line.date + ' (' + cands.map((l) => l.date).join(', ') + '). Do this one by hand.');
+    }
+    if (cands.length !== 1) {
+      const dates = patient.lines.filter((l) => l.item === line.item).map((l) => l.date);
+      throw new UPCError(cands.length ? patient.number + ' has more than one ' + line.item + ' line on ' + line.date + '. Do this one by hand.'
+        : 'Could not find the ' + line.date + ' ' + line.item + ' fee on ' + patient.number + (dates.length ? ' (its ' + line.item + ' fees are dated ' + dates.join(', ') + ')' : '') + '.');
+    }
     const pFields = Object.fromEntries(await lineForm(cands[0].lineId));
     const origRebate = money.cents(pFields['form[rebate]']);
     if (origRebate !== line.amount) throw new UPCError('The invoices already disagree (patient rebate ' + money.fmt(origRebate) + ', funder line ' + money.fmt(line.amount) + '). Sort that out by hand first.');
@@ -334,7 +408,7 @@
     if (newRebate < 0) throw new UPCError('The new funder amount cannot be negative.');
     if (fee !== null && newRebate > fee) throw new UPCError('The new funder amount (' + money.fmt(newRebate) + ') is more than the fee (' + money.fmt(fee) + ').');
     return { funderInvoiceId: funder.id, funderNumber: funder.number, funderLineId: line.lineId, patientInvoiceId: patient.id, patientNumber: patient.number,
-      patientLineId: cands[0].lineId, date: line.date, item: line.item, fee, origRebate, newRebate };
+      patientLineId: cands[0].lineId, date: line.date, patientDate: cands[0].date, item: line.item, fee, origRebate, newRebate };
   }
 
   // Carries out a plan from planMove: revert the funder line, change the rebate on the patient
@@ -374,20 +448,30 @@
       throw e;
     }
 
-    if (newRebate > 0) {
-      say('Re-billing ' + money.fmt(newRebate) + ' to ' + plan.funderNumber);
-      await rebill(patientInvoiceId, funderInvoiceId, newRebate);
-    }
+    // Re-bill what the funder now owes, £0 included, so the fee stays on the funder invoice at that
+    // amount (Carl, 9 Nov 2026: a £0.00 line, never a missing one). Halaxy offers £0 to bill like any amount.
+    say('Re-billing ' + money.fmt(newRebate) + ' to ' + plan.funderNumber);
+    await rebill(patientInvoiceId, funderInvoiceId, newRebate);
 
-    const fAfter = await invoice.fetch(funderInvoiceId);
-    const pAfter = await invoice.fetch(patientInvoiceId);
-    const lines = fAfter.lines.filter((l) => l.patientInvoiceId === patientInvoiceId && l.date === plan.date && l.item === plan.item);
+    let fAfter = await invoice.fetch(funderInvoiceId);
+    const before = new Set(funder.lines.map((l) => l.lineId));
+    const added = fAfter.lines.filter((l) => !before.has(l.lineId) && l.patientInvoiceId === patientInvoiceId && l.item === plan.item);
     const problems = [];
-    if (newRebate > 0 && !lines.some((l) => l.amount === newRebate)) problems.push('no ' + money.fmt(newRebate) + ' line found on ' + fAfter.number);
-    if (newRebate === 0 && lines.length) problems.push('a line for this fee is still on ' + fAfter.number);
+    if (fAfter.lines.some((l) => l.lineId === funderLineId)) problems.push('the original line is still on ' + fAfter.number);
+    {
+      const nl = added.filter((l) => l.amount === newRebate);
+      if (nl.length !== 1) problems.push('no new ' + money.fmt(newRebate) + ' line found on ' + fAfter.number);
+      else if (plan.patientDate && nl[0].date !== plan.patientDate) {
+        // Halaxy can give the re-billed line the wrong date too: set it to the patient fee's date.
+        say('Correcting the date Halaxy gave the re-billed line: ' + nl[0].date + ' to ' + plan.patientDate);
+        try { await invoice.setLineDate(nl[0].lineId, plan.patientDate); fAfter = await invoice.fetch(funderInvoiceId); }
+        catch (e) { problems.push('the re-billed line on ' + fAfter.number + ' is dated ' + nl[0].date + ' instead of ' + plan.patientDate + ' (' + (e.message || e) + ')'); }
+      }
+    }
+    const pAfter = await invoice.fetch(patientInvoiceId);
     if (fAfter.total !== funder.total - origRebate + newRebate) problems.push(fAfter.number + ' total is ' + money.fmt(fAfter.total) + ', expected ' + money.fmt(funder.total - origRebate + newRebate));
     if (pAfter.pending.length) problems.push(pAfter.number + ' still has an amount waiting to bill');
-    if (problems.length) throw new UPCError('Changes were made but the result looks wrong: ' + problems.join('; ') + '.');
+    if (problems.length) throw new UPCError('Changes were made but the result looks wrong: ' + problems.join('; ') + '. Check ' + plan.patientNumber + ' and ' + fAfter.number + ' before trying again.');
     return { funderTotal: fAfter.total, patientOutstanding: pAfter.outstanding };
   }
 
@@ -403,9 +487,12 @@
     // Attaches a file to an invoice the way the attach button does: open the pop-up, upload the
     // file to Halaxy's file store, then save it against the invoice with a title and category.
     // Checks the invoice lists one more attachment afterwards.
+    // Returns false, attaching nothing, when opts.skipIfAttached and a file with this title is already on the invoice.
     async attachToInvoice(invoiceId, file, opts) {
       opts = opts || {};
       const before = await invoice.fetch(invoiceId);
+      const wanted = String(opts.title || file.name || 'Attachment').replace(/\.pdf$/i, '');
+      if (opts.skipIfAttached && before.attachments.some((r) => r.includes(wanted))) return false;
       const { doc } = await http.popup('/file/upload/invoice/' + invoiceId);
       const form = doc.querySelector('form#fileupload, form.js-file-edit-form');
       const uploadUrl = form && form.getAttribute('data-upload-url');
@@ -457,6 +544,195 @@
     },
   };
 
+  // ------------------------------------------------------------------ reports
+
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // '05-Nov-2026' for a Date or milliseconds.
+  const dayLabel = (d) => { const x = new Date(d); return String(x.getDate()).padStart(2, '0') + '-' + MONTHS[x.getMonth()] + '-' + x.getFullYear(); };
+  // Milliseconds (local midnight) from '05-Nov-2026', '05/11/2026' or ISO; null if unreadable.
+  const parseDay = (s) => {
+    const t = String(s || '').trim();
+    let m = t.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})/);
+    if (m) { const i = MONTHS.findIndex((x) => x.toLowerCase() === m[2].toLowerCase()); return i < 0 ? null : new Date(+m[3], i, +m[1]).getTime(); }
+    m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m) return new Date(+m[3], +m[2] - 1, +m[1]).getTime();
+    m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? new Date(+m[1], +m[2] - 1, +m[3]).getTime() : null;
+  };
+  // A table's cells as a grid, following rowspan and colspan.
+  function cellGrid(rows) {
+    const grid = [], carry = [];
+    for (const tr of rows) {
+      const out = [];
+      let col = 0;
+      const fill = () => { while (carry[col] && carry[col].left > 0) { out[col] = carry[col].cell; carry[col].left--; col++; } };
+      for (const td of tr.cells) {
+        fill();
+        const cs = Math.max(1, td.colSpan || 1), rs = Math.max(1, td.rowSpan || 1);
+        for (let k = 0; k < cs; k++) { out[col] = td; carry[col] = rs > 1 ? { cell: td, left: rs - 1 } : null; col++; }
+      }
+      fill();
+      grid.push(out);
+    }
+    return grid;
+  }
+
+  const reports = {
+    // Halaxy's Unpaid Invoices report (Reports > Finance, type 5) from `start` ('09-May-2026'): one row per
+    // fee line of every unpaid invoice, active or issued. Columns confirmed live 10 Nov 2026. Invoice-level
+    // cells (date, status, balance) are only on an invoice's first line; they are carried to its other lines.
+    async unpaidLines(start) {
+      const p = new URLSearchParams([['type', '5'], ['start', start], ['unpaid', '0'], ['overdue', 'all'], ['showTotalMode', '0'],
+        ['incomeType', 'paymentMethods'], ['invoicestatuses', 'active'], ['invoicestatuses', 'issued'], ['displayNames', '1'],
+        ['plTaxTypeStatus', 'exclusive'], ['lineStatus', 'write-off'], ['lineStatus', 'voided'],
+        ['usedDepositOption', 'all'], ['creditSummaryOption', 'summary'], ['clicked', String(Date.now())]]);
+      const doc = await http.html('/report/finance/0?' + p.toString());
+      const table = doc.querySelector('table.table-report');
+      if (!table) throw new UPCError('Halaxy\'s Unpaid Invoices report has changed (its table was not found).');
+      const all = [...table.rows];
+      const head = table.tHead ? [...table.tHead.rows] : all.filter((r) => r.cells.length && [...r.cells].every((c) => c.tagName === 'TH'));
+      const body = all.filter((r) => !head.includes(r));
+      const hg = cellGrid(head);
+      const names = (hg[hg.length - 1] || []).map((c) => clean(c && c.textContent));
+      const col = (n) => names.indexOf(n);
+      const need = ['Invoice / Deposit', 'Date', 'Payer ID', 'Payer', 'Funder', 'Fee', 'Appointment Status', 'Invoice Status', 'Amount'];
+      const missing = need.filter((n) => col(n) < 0);
+      if (missing.length) throw new UPCError('Halaxy\'s Unpaid Invoices report has changed (' + missing.join(', ') + ' not found).');
+      const balanceCol = names.lastIndexOf('Balance');
+      const grid = cellGrid(body);
+      const out = [];
+      let last = null;
+      grid.forEach((row, ri) => {
+        if ([...body[ri].cells].some((td) => (td.colSpan || 1) > 3)) return;   // totals and headings
+        const cell = (n) => { const i = typeof n === 'number' ? n : col(n); return i < 0 ? '' : clean(row[i] && row[i].textContent); };
+        const link = row[col('Invoice / Deposit')] && row[col('Invoice / Deposit')].querySelector('a[href*="/invoice/"]');
+        const invoiceId = link ? (link.getAttribute('href').match(/\/invoice\/(\d+)/) || [])[1] || null : null;
+        const same = last && last.invoiceId === invoiceId && last.invoice === cell('Invoice / Deposit');
+        const line = {
+          invoiceId, invoice: cell('Invoice / Deposit'),
+          date: cell('Date') || (same ? last.date : ''), invoiceStatus: cell('Invoice Status') || (same ? last.invoiceStatus : ''),
+          balance: balanceCol >= 0 && cell(balanceCol) ? money.cents(cell(balanceCol)) : (same ? last.balance : null),
+          payerId: cell('Payer ID') || (same ? last.payerId : ''), payer: cell('Payer') || (same ? last.payer : ''),
+          funder: cell('Funder') || (same ? last.funder : ''), category: cell('Category'), fee: cell('Fee'),
+          apptStatus: cell('Appointment Status'), amount: money.cents(cell('Amount')),
+        };
+        out.push(line);
+        last = line;
+      });
+      return out;
+    },
+    // Ids of patient invoices Halaxy lists as Pending: billed to a funder, waiting for its payment.
+    async pendingInvoiceIds() {
+      const ids = new Set();
+      for (let start = 0; start < 2000; start += 100) {
+        const res = await http.list('/invoice/list-data', { status: { filterType: 'text', type: 'contains', filter: 'Pending' } }, [], start, start + 100);
+        const rows = (res && res.rowData) || [];   // ag-Grid answer: { rowData, lastRow }
+        rows.forEach((r) => { if (r && r.id !== undefined) ids.add(String(r.id)); });
+        if (rows.length < 100 || (typeof res.lastRow === 'number' && res.lastRow >= 0 && start + 100 >= res.lastRow)) break;
+      }
+      return ids;
+    },
+  };
+
+  // ------------------------------------------------------------------ tasks
+
+  // Halaxy's add-task pop-up for an invoice (the invoice page's add-task button, confirmed live 9 Nov 2026):
+  // GET /task/new/invoice/{id} returns form#form_task_edit; POST the same address with its fields.
+  // Halaxy answers { status: 'POPUP', url: '/task/list/invoice/{id}' } and lists the invoice's tasks at
+  // /task/invoice/{id}/list-data.
+  const tasks = {
+    async forInvoice(invoiceId) {
+      return http.json('/task/invoice/' + encodeURIComponent(invoiceId) + '/list-data');
+    },
+    // { title, assignee (name as in Assign to), priority 1 Low / 2 Medium / 3 High, due '09-Nov-2026', comment }.
+    // Returns false if a task with this title is already on the invoice.
+    async addToInvoice(invoiceId, task) {
+      const listed = (list) => JSON.stringify(list || '').includes(task.title.replace(/["\\]/g, ''));
+      if (listed(await tasks.forInvoice(invoiceId).catch(() => null))) return false;
+      const path = '/task/new/invoice/' + encodeURIComponent(invoiceId);
+      const { doc } = await http.popup(path + '?clicked=' + Date.now());
+      const form = doc.querySelector('form#form_task_edit');
+      const need = ['form[title]', 'form[linkPrGs][]', 'form[priority]', 'form[displayDueDate]', 'form[comment]', 'form[_token]'];
+      const missing = need.filter((k) => !form || !form.querySelector('[name="' + k + '"]'));
+      if (missing.length) throw new UPCError('The add-task pop-up has changed (' + missing.join(', ') + ' not found), so no task was added.');
+      const who = [...form.querySelectorAll('select[name="form[linkPrGs][]"] option')].find((o) => clean(o.textContent).toLowerCase() === String(task.assignee).toLowerCase());
+      if (!who) throw new UPCError('Could not find ' + task.assignee + ' in the task\'s Assign to list, so no task was added.');
+      const set = { 'form[title]': task.title, 'form[taskTemplates]': '', 'form[actionerType]': '1', 'form[priority]': String(task.priority || 2),
+        'form[displayDueDate]': task.due, 'form[displayDueTime][hour]': '0', 'form[displayDueTime][minute]': '0', 'form[isTimeSet]': 'false', 'form[comment]': task.comment || '' };
+      const pairs = serialize(form).filter(([k]) => k !== 'form[linkPrGs][]' && !(k in set));
+      Object.keys(set).forEach((k) => pairs.push([k, set[k]]));
+      pairs.push(['form[linkPrGs][]', who.value]);
+      const res = await http.postForm(path, pairs);
+      if (!res || !['POPUP', 'REFRESH', 'OK'].includes(res.status)) http.expectRefresh(res, 'Adding the task');
+      if (!listed(await tasks.forInvoice(invoiceId))) throw new UPCError('Halaxy accepted the task, but it does not show on the invoice\'s task list.');
+      return true;
+    },
+  };
+
+  // ------------------------------------------------------------------ appointments
+
+  const appointment = {
+    // The appointment's comments (the details pop-up's "Notes" box), as plain text with line breaks.
+    // '' when there are none. Confirmed on live Halaxy 9 Nov 2026: GET /appointment/{id} with
+    // X-Requested-With returns div.appointment-details-popup, where div.subTitle "Notes" is followed
+    // by the comment's div. The calendar's own `note` field is empty for these.
+    async notes(id) {
+      const doc = await http.fragment('/appointment/' + encodeURIComponent(id));
+      const box = doc.querySelector('.appointment-details-popup');
+      if (!box) throw new UPCError('The appointment details pop-up has changed, so its comments could not be read.');
+      const head = [...box.querySelectorAll('.subTitle')].find((h) => /^\s*notes\s*$/i.test(h.textContent));
+      const body = head && head.nextElementSibling;
+      if (!body) return '';
+      body.querySelectorAll('br').forEach((b) => b.replaceWith('\n'));
+      return body.textContent.split('\n').map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n');
+    },
+  };
+
+  // ------------------------------------------------------------------ patient forms
+
+  // Forms patients fill in (intake forms), confirmed on live Halaxy 10 Nov 2026:
+  //  - The patient's notes list, GET /note/menu/linkPaG/{linkPaGId}/items, JSON payload.menuItems[]
+  //    (nested in items[]). A filled form is an item with category "form", entity "intake-form-invite",
+  //    id = the form's id, label = the template name ("Initial Assessment Form - Bupa"), date dd-Mon-yyyy.
+  //  - The form, GET /setting/clinical/patient/intake/{id}, JSON whose message is HTML. Each question is
+  //    a span.answerName inside p.answerContainer; its answer is the span.answer-wrap that follows.
+  // Answers are patient data: callers use them in the page and never store or send them anywhere.
+  const forms = {
+    async list(linkPaGId) {
+      const j = await http.json('/note/menu/linkPaG/' + encodeURIComponent(linkPaGId) + '/items');
+      const items = j && j.payload && j.payload.menuItems;
+      if (!Array.isArray(items)) throw new UPCError('The patient\'s notes list has changed, so their forms could not be found.');
+      const out = [];
+      const walk = (list) => (list || []).forEach((it) => {
+        if (it && it.category === 'form' && /intake-form/.test(it.entity || '')) {
+          out.push({ id: String(it.id), label: clean(it.label || it.title || ''), date: parseDay(it.date), status: it.status || '' });
+        }
+        if (it && Array.isArray(it.items)) walk(it.items);
+      });
+      walk(items);
+      return out.sort((a, b) => (b.date || 0) - (a.date || 0));
+    },
+    // [{ question, answer }] in the form's order; answer '' when left blank.
+    async answers(id) {
+      const j = await http.json('/setting/clinical/patient/intake/' + encodeURIComponent(id));
+      const doc = htmlDoc(j && j.message);
+      const qs = [...doc.querySelectorAll('.answerName')];
+      if (!qs.length) throw new UPCError('The intake form layout has changed, so its answers could not be read.');
+      const answerFor = (q) => {
+        const box = q.closest('.answerContainer') || q.parentElement;
+        const inside = box && box.querySelector('.answer-wrap');
+        if (inside) return inside;
+        for (let n = box && box.nextElementSibling; n; n = n.nextElementSibling) {
+          if (n.classList.contains('answer-wrap')) return n;
+          if (n.classList.contains('answerContainer') || n.querySelector('.answerName')) return null;   // next question: this one is blank
+        }
+        return null;
+      };
+      const out = qs.map((q) => { const a = answerFor(q); return { question: clean(q.textContent), answer: a ? clean(a.textContent) : '' }; });
+      return out;
+    },
+  };
+
   // ------------------------------------------------------------------ Halaxy page furniture
 
   // Our interface sits in Halaxy's page and uses Halaxy's own classes (btn, btn-primary,
@@ -472,8 +748,9 @@
     .upc-native .upc-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4.8px; margin-top: 16px; }
     .upc-native .upc-actions .btn { margin: 0; }
     .upc-native .upc-version { margin-top: 8px; font-size: .86em; }
-    .upc-native .upc-actions .upc-version { margin: 0 auto 0 0; }
-    .upc-native .upc-note { background: var(--vs-card-standout-bg-color, #f0f0f5); border-radius: 4.8px; padding: 2px 8px; margin-top: 3px; }
+    .upc-native .upc-actions .upc-version { margin: 0 auto 0 8px; }
+    .upc-native .upc-actions > .upc-version:first-child { margin-left: 0; }
+    .upc-native .upc-note { white-space: pre-line; background: var(--vs-card-standout-bg-color, #f0f0f5); border-radius: 4.8px; padding: 2px 8px; margin-top: 3px; }
     .upc-native .upc-box { background: var(--vs-card-header-bg-color, #f0f0f5); border: 1px solid var(--vs-card-border-color, #ced4da); border-radius: 4.8px; padding: 8px 12px; margin-top: 12px; }
     .upc-native .upc-ok { color: var(--success, #28a745); font-weight: 600; }
     .upc-native .upc-warn, .upc-native .upc-err { color: var(--vs-balance-negative-color, #ec6b65); }
@@ -535,13 +812,17 @@
     // Halaxy button class names: 'primary' (filled), 'outline' (pop-up secondary), 'light' (small, on pages).
     btn: (kind) => 'btn ' + ({ primary: 'btn-primary', outline: 'btn-outline-primary', light: 'btn-outline-primary-light' }[kind] || 'btn-outline-primary'),
     // Adds a link under Reports in Halaxy's side menu (or as its own item). Returns true once added.
-    menuItem(label, href, cls) {
+    // Adds a menu item at the end of a section (default Reports; `section` is a pattern for its heading,
+    // e.g. /^finances?$/i). `href` may be a function given the section's element.
+    menuItem(label, href, cls, section) {
       const menu = document.getElementById('mainMenu');
       if (!menu) return false;
       if (menu.querySelector('.' + cls)) return true;
       const items = [...menu.querySelectorAll('.mainmenu-item')];
-      const reports = items.find((li) => /^reports?$/i.test(clean((li.querySelector('.mainmenu-link-label') || li.querySelector('.mainmenu-link') || {}).textContent)));
+      const want = section || /^reports?$/i;
+      const reports = items.find((li) => want.test(clean((li.querySelector('.mainmenu-link-label') || li.querySelector('.mainmenu-link') || {}).textContent)));
       const sub = reports && reports.querySelector('a.mainmenu-sublink');
+      if (typeof href === 'function') { href = href(reports || null); if (!href) return false; }
       if (sub) {
         const host = sub.parentElement && sub.parentElement.tagName === 'LI' ? sub.parentElement : sub;
         const copy = host.cloneNode(true);
@@ -569,10 +850,10 @@
       return false;
     },
     // Keeps trying to add the menu item while Halaxy draws its menu.
-    ensureMenuItem(label, href, cls) {
+    ensureMenuItem(label, href, cls, section) {
       const start = () => {
-        if (ui.menuItem(label, href, cls)) return;
-        const mo = new MutationObserver(() => { if (ui.menuItem(label, href, cls)) mo.disconnect(); });
+        if (ui.menuItem(label, href, cls, section)) return;
+        const mo = new MutationObserver(() => { if (ui.menuItem(label, href, cls, section)) mo.disconnect(); });
         mo.observe(document.body, { childList: true, subtree: true });
         setTimeout(() => mo.disconnect(), 15000);
       };
@@ -661,6 +942,6 @@
   };
 
   window.UPC = Object.freeze({
-    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, rebate, files, load, ui,
+    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, forms, tasks, reports, dayLabel, parseDay, rebate, files, load, ui,
   });
 })();
