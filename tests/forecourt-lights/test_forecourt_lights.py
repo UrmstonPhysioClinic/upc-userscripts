@@ -25,7 +25,8 @@ window.GM_getValue = function (k, d) { var v = localStorage.getItem('upc-gm:fl:'
 window.GM_setValue = function (k, v) { localStorage.setItem('upc-gm:fl:' + k, JSON.stringify(v)); };
 window.GM_registerMenuCommand = function () {};
 """
-PAGE = "<!doctype html><html><head><title>Calendar | Halaxy</title></head><body><ul id='mainMenu'></ul><h1>Calendar</h1></body></html>"
+PAGE = ("<!doctype html><html><head><title>Calendar | Halaxy</title><script>window.HkUser = { pracName: 'Wendy Pritchard' };</script></head>"
+        "<body><ul id='mainMenu'></ul><h1>Calendar</h1></body></html>")
 LON = ZoneInfo('Europe/London')
 URMSTON = LocationInfo('Urmston', 'England', 'Europe/London', 53.45, -2.35)
 
@@ -47,10 +48,10 @@ BASE = {'enabled': True, 'days': [False, True, False, False, False, False, False
 ST = {'lastOffset': 0, 'done': {}, 'snoozeUntil': 0, 'summerSaid': None}
 
 
-async def due(pg, when, s=None, st=None):
+async def due(pg, when, s=None, st=None, user='Wendy Pritchard'):
     s = dict(BASE, **(s or {}))
     st = dict(ST, **(st or {}))
-    return await pg.evaluate("([t, s, st]) => window.upcForecourtLights.due(t, s, st)", [at(when), s, st])
+    return await pg.evaluate("([t, s, st, u]) => window.upcForecourtLights.due(t, s, st, u)", [at(when), s, st, user])
 
 
 async def main():
@@ -81,6 +82,10 @@ async def main():
         check('clinic evening: turn on, with the times', r and r['kind'] == 'on' and 'Lights on 15:45 to 20:45.' in r['lines'][0] and len(r['lines']) == 1, r)
         r = await due(pg, '2026-11-10T10:00', {'enabled': False})
         check('nothing when switched off on this PC', r is None, r)
+        r = await due(pg, '2026-11-10T10:00', {'who': ['Wendy Pritchard']}, None, 'Stephen Sharples')
+        check('only the people ticked are reminded', r is None, r)
+        r = await due(pg, '2026-11-10T10:00', {'who': ['Wendy Pritchard']}, None, 'Wendy Pritchard')
+        check('a ticked person is reminded', r and r['kind'] == 'on', r)
         r = await due(pg, '2026-11-10T10:00', {'timerOn': '16:00'})
         check('adjust when the on time has moved', r and 'move the on time from 16:00 to 15:45' in ' '.join(r['lines']), r)
         r = await due(pg, '2026-11-10T10:00', {'timerOn': None})
@@ -147,6 +152,7 @@ async def main():
         rows = await pg.evaluate("document.querySelectorAll('[data-upc-dialog=\"upc-forecourt-settings\"] tbody tr').length")
         check('settings show the next two weeks', rows == 14, rows)
         await pg.check('[data-day="3"]')
+        await pg.check('[data-who="Wendy Pritchard"]')
         await pg.fill('#upc-fl-skip', '25-Dec-2026\nnot a date')
         await pg.click('[data-upc-dialog="upc-forecourt-settings"] [data-a=save]')
         err = await pg.evaluate("document.querySelector('[data-upc-dialog=\"upc-forecourt-settings\"] [data-err]').textContent")
@@ -155,7 +161,7 @@ async def main():
         await pg.select_option('#upc-fl-timer', '15:30')
         await pg.click('[data-upc-dialog="upc-forecourt-settings"] [data-a=save]')
         s = await pg.evaluate("GM_getValue('settings', {})")
-        check('settings saved', s['days'][3] and s['days'][1] and s['skip'] == ['2026-12-25', '2026-12-28'] and s['timerOn'] == '15:30' and s['enabled'], s)
+        check('settings saved', s['who'] == ['Wendy Pritchard'] and s['days'][3] and s['days'][1] and s['skip'] == ['2026-12-25', '2026-12-28'] and s['timerOn'] == '15:30' and s['enabled'], s)
         check('no requests to Halaxy beyond the page itself', all(u.startswith('https://eu.halaxy.com/a/pr/555/calendar') for u in REQS), REQS)
         check('no page errors', not errors, errors)
         await ctx.close()

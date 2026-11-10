@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy forecourt lights reminder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.0
+// @version      0.2.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/forecourt-lights.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/forecourt-lights.user.js
@@ -27,7 +27,8 @@
  *    unless that day is a clinic evening too, or the lights weren't needed.
  *  - When the on time reaches the off time (about May to July) the lights aren't needed: said once,
  *    with the date they're next needed, and no reminders until then.
- *  - Shown only on PCs where it's switched on, as a Halaxy-style pop-up in the tab being used.
+ *  - Shown only on PCs where it's switched on, and only to the people ticked (by who is signed in to
+ *    Halaxy; nobody ticked means anyone), as a Halaxy-style pop-up in the tab being used.
  *    "Remind me later" hides it for an hour. Settings and what's been done are kept on this PC.
  */
 (() => {
@@ -35,14 +36,15 @@
   if (window.__hxForecourtLights) return;
   window.__hxForecourtLights = true;
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.2.0';
   const LAT = 53.45, LON = -2.35, TZ = 'Europe/London';
   const STEP = 15;                      // the timer's segments, minutes
   const SNOOZE = 60 * 60e3;
   const DAY = 86400e3;
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const DEFAULTS = { enabled: false, days: [false, false, false, false, false, false, false], offTime: '20:45', offset: 30, noticeTime: '09:00', skip: [], timerOn: null };
+  const DEFAULTS = { enabled: false, days: [false, false, false, false, false, false, false], offTime: '20:45', offset: 30, noticeTime: '09:00', skip: [], timerOn: null, who: [] };
+  const STAFF = ['Carl Healy', 'Diana Satalova', 'Lottie Harold', 'Roxanna Healy', 'Stephen Sharples', 'Wendy Pritchard'];
 
   const U = () => window.UPC;
   const canStore = typeof GM_getValue === 'function' && typeof GM_setValue === 'function';
@@ -51,6 +53,17 @@
   const settings = () => Object.assign({}, DEFAULTS, get('settings', {}));
   const state = () => Object.assign({ lastOffset: null, done: {}, snoozeUntil: 0, summerSaid: null }, get('state', {}));
   const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  // Who is signed in to Halaxy on this page.
+  function userName() {
+    const h = window.HkUser || {};
+    const named = String(h.pracName || (h.CalendarDefault || {}).pracName || '').trim();
+    if (named) return named;
+    const el = [...document.querySelectorAll('header *, nav *, .navbar *, #top *')]
+      .find((e) => !e.children.length && STAFF.some((n) => n.toLowerCase() === e.textContent.trim().toLowerCase()));
+    return el ? el.textContent.trim() : '';
+  }
+  const isFor = (s, user) => !(s.who || []).length || (s.who || []).some((n) => n.toLowerCase() === String(user || '').toLowerCase());
 
   // ------------------------------------------------------------------ dates in Urmston
 
@@ -121,8 +134,8 @@
   }
 
   // The reminder for now, or null. kind 'on' | 'off' | 'summer'.
-  function due(nowMs, s, st) {
-    if (!s.enabled) return null;
+  function due(nowMs, s, st, user) {
+    if (!s.enabled || !isFor(s, user)) return null;
     const now = london(nowMs);
     const today = now.day;
     const noticeAt = toMin(s.noticeTime);
@@ -202,7 +215,7 @@
   function showReminder() {
     if (!U() || document.hidden) return;
     const s = settings(), st = state();
-    const r = due(Date.now(), s, st);
+    const r = due(Date.now(), s, st, userName());
     if (open && (!r || r.key !== open.key)) { const o = open; open = null; o.dialog.close(); }   // done in another tab
     if (!r || open || Date.now() < st.snoozeUntil) return;
     styles();
@@ -243,6 +256,9 @@
     d.body.innerHTML =
       '<div class="upc-fl-grid">' +
       '<label for="upc-fl-on">Reminders on this PC</label><div><label class="mb-0"><input type="checkbox" id="upc-fl-on"' + (s.enabled ? ' checked' : '') + '> Show forecourt light reminders here</label></div>' +
+      '<span>Remind</span><div class="upc-fl-days">' + [...new Set([...STAFF, ...(s.who || []), userName()].filter(Boolean))].map((n) =>
+        '<label><input type="checkbox" data-who="' + esc(n) + '"' + ((s.who || []).includes(n) ? ' checked' : '') + '> ' + esc(n) + '</label>').join('') +
+        '<div class="text-muted w-100">Whoever is signed in to Halaxy on this PC. None ticked: anyone.</div></div>' +
       '<span>Clinic evenings</span><div class="upc-fl-days">' + DAYS.map((n, i) => '<label><input type="checkbox" data-day="' + i + '"' + (s.days[i] ? ' checked' : '') + '> ' + n + '</label>').join('') + '</div>' +
       '<label for="upc-fl-off">Lights off at</label><input class="form-control" id="upc-fl-off" type="time" step="900" value="' + esc(s.offTime) + '">' +
       '<label for="upc-fl-offset">Lights on, minutes before sunset</label><input class="form-control" id="upc-fl-offset" type="number" min="0" max="120" step="5" value="' + esc(s.offset) + '">' +
@@ -268,7 +284,8 @@
       });
       if (bad.length) { d.body.querySelector('[data-err]').textContent = bad.join(' '); return; }
       set('settings', { enabled: q('upc-fl-on').checked, days: DAYS.map((_, i) => d.body.querySelector('[data-day="' + i + '"]').checked), offTime: off, offset, noticeTime: notice,
-        skip: [...new Set(skip)].sort(), timerOn: q('upc-fl-timer').value || null });
+        skip: [...new Set(skip)].sort(), timerOn: q('upc-fl-timer').value || null,
+        who: [...d.body.querySelectorAll('[data-who]')].filter((x) => x.checked).map((x) => x.dataset.who) });
       const st = state(); st.snoozeUntil = 0; set('state', st);
       d.close();
       setTimeout(showReminder, 300);
@@ -287,5 +304,5 @@
   else start();
 
   // For tests and diagnostics.
-  window.upcForecourtLights = { version: VERSION, sunsetMinutes, plan, due, lastChange, nextChange, london, settings, state, showSettings };
+  window.upcForecourtLights = { version: VERSION, userName, sunsetMinutes, plan, due, lastChange, nextChange, london, settings, state, showSettings };
 })();
