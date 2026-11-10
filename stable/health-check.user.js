@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.13
+// @version      1.1.15
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.13';
+  const VERSION = '1.1.15';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -39,7 +39,7 @@
   const NAMES = {
     'alerts.user.js': 'Alerts', 'bill-funder.user.js': 'Bill funder', 'arrival-chime.user.js': 'Arrival chime', 'chat-alert.user.js': 'Chat alert',
     'branding.user.js': 'Branding', 'calendar-controls.user.js': 'Calendar controls', 'core.user.js': 'Core library', 'custom-reports.user.js': 'Custom Reports',
-    'forecourt-lights.user.js': 'Forecourt lights', 'email-html-source.user.js': 'HTML source for emails', 'health-check.user.js': 'Health check',
+    'forecourt-lights.user.js': 'Forecourt lights', 'script-settings.user.js': 'Script settings', 'review-requests.user.js': 'Review requests', 'email-html-source.user.js': 'HTML source for emails', 'health-check.user.js': 'Health check',
     'outstanding-actions.user.js': 'Outstanding Actions', 'ready-to-bill.user.js': 'Ready to bill', 'rebate-sync.user.js': 'Rebate Sync', 'remittances.user.js': 'Remittances',
     'textarea-autogrow.user.js': 'Auto-expanding text boxes', 'toast-alerts.user.js': 'Toast alerts',
   };
@@ -121,9 +121,9 @@
     },
     {
       id: 'layout', title: "Halaxy's page layout",
-      scripts: ['Toast alerts', 'Custom Reports', 'Alerts', 'Branding'],
+      scripts: ['Toast alerts', 'Custom Reports', 'Alerts', 'Branding', 'Script settings'],
       applies: onCalendar,
-      test: () => missingEls(['#alerts', '#mainMenu', '#footer', '#btn-chat-popover-open'])
+      test: () => missingEls(['#alerts', '#mainMenu', '#footer', '#btn-chat-popover-open', '#practitioner-select .dropdown-menu'])
         .concat(document.body && document.body.classList.contains('vs-theme') ? [] : ['theme classes on the page (vs-theme)']),
     },
     {
@@ -292,6 +292,12 @@
         put('data-task-form', 'Add-task pop-up', ['Remittances'], problems);
       } catch (e) { put('data-task-form', 'Add-task pop-up', ['Remittances'], [e.message]); }
     }
+
+    // Follow-ups list: Review requests reads who has already had a Review Request.
+    try {
+      const fu = await getJSON('/task/task-followup/list/data');
+      put('data-followups', 'Follow-ups list', ['Review requests'], !Array.isArray(fu) ? ['not a list'] : fu.length ? keysMissing(fu, ['title', 'status', 'linkedToUrl']).map((k) => 'field ' + k) : []);
+    } catch (e) { put('data-followups', 'Follow-ups list', ['Review requests'], [e.message]); }
 
     // Invoice settings (cogwheel): Bill funder reads and sets the status here.
     const withInvoice = appts.find((e) => e.invoiceID);
