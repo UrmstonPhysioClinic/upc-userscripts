@@ -118,6 +118,11 @@ async def halaxy(route):
         if req.method == 'GET':
             return await js({'status': 'FORM', 'title': 'Add Follow-Up', 'message': followup_form()})
         f = urllib.parse.parse_qs(req.post_data or '', keep_blank_values=True)
+        d = datetime.datetime.strptime(f['form[scheduleAt][date]'][0], '%d-%b-%Y').replace(hour=int(f['form[scheduleAt][time][hour]'][0]),
+                                                                                       minute=int(f['form[scheduleAt][time][minute]'][0]), tzinfo=LON)
+        if d <= NOW or S.get('rejectFollowup'):   # as Halaxy: the form comes back with its hints and a list of errors
+            return await js({'status': 'FORM', 'message': followup_form() + "<div class='invalid-feedback'>* Title is required</div><div class='text-danger'>* Method is required</div>",
+                             'errors': ['Scheduled date must be in the future']})
         S['writes'].append(('followup', pid, f))
         S['followups'].append({'id': len(S['followups']) + 1, 'title': f['form[title]'][0], 'status': 'Scheduled', 'linkedToId': pid,
                                'linkedToUrl': '/a/pr/555/patient/%d/' % pid, 'method': 'Email'})
@@ -216,21 +221,32 @@ async def main():
         await pg.click("[data-send='101']")
         await pg.wait_for_selector('[data-upc-rr-confirm]')
         conf = await pg.evaluate("document.querySelector('[data-upc-rr-confirm]').innerText")
-        check('asks first', 'Add the Review Request follow-up for Patient A, by email, now?' in conf and not S['writes'], conf)
+        check('asks first', 'Add the Review Request follow-up for Patient A, by email, in about 10 minutes?' in conf and not S['writes'], conf)
         await pg.click('[data-upc-rr-confirm] [data-c=yes]')
-        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-review-requests] tbody tr')].some(tr => tr.innerText.includes('Review request sent'))", timeout=30000)
+        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-review-requests] tbody tr')].some(tr => tr.innerText.includes('Review request sent'))", timeout=90000)
         w = [x for x in S['writes'] if x[0] == 'followup']
         f = w[0][2] if w else {}
-        check('follow-up sent with the Review Request templates, by email, now', len(w) == 1 and w[0][1] == 101 and f.get('form[recallTemplate]') == ['31'] and f.get('form[emailTemplate]') == ['45']
+        check('follow-up sent with the Review Request templates, by email, in the future (12:10)', len(w) == 1 and w[0][1] == 101 and f.get('form[recallTemplate]') == ['31'] and f.get('form[emailTemplate]') == ['45']
               and f.get('form[title]') == ['Review Request'] and f.get('form[isEmailMethod]') == ['1'] and 'form[isSmsMethod]' not in f and f.get('form[scheduleAt][date]') == [hx(NOW)]
-              and f.get('form[scheduleAt][time][hour]') == ['12'] and f.get('form[_token]') == ['FT'], f)
+              and f.get('form[scheduleAt][time][hour]') == ['12'] and f.get('form[scheduleAt][time][minute]') == ['10'] and f.get('form[_token]') == ['FT'], f)
         check('count drops once sent', await pg.evaluate("(document.querySelector('a.upc-rr-menu .upc-rr-badge') || {}).textContent") == '1')
+
+        # Halaxy refuses: only its own reason is shown, not the form's hints
+        S['rejectFollowup'] = True
+        await pg.click("[data-send='114']")
+        await pg.wait_for_selector('[data-upc-rr-confirm]')
+        await pg.click('[data-upc-rr-confirm] [data-c=yes]')
+        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-review-requests] tbody tr')].some(tr => tr.innerText.includes('not accepted'))", timeout=90000)
+        err = await pg.evaluate("[...document.querySelectorAll('[data-upc-review-requests] .upc-rr-acts .upc-err')].map(e => e.textContent).join(' | ')")
+        check('a refusal shows Halaxy\'s reason only', err == 'Adding the follow-up was not accepted by Halaxy: Scheduled date must be in the future', err)
+        S['rejectFollowup'] = False
 
         # Don't ask for Patient B
         await pg.click("[data-skip='102']")
         await pg.wait_for_selector('[data-upc-rr-confirm]')
         await pg.click('[data-upc-rr-confirm] [data-c=yes]')
-        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-review-requests] tbody tr')].some(tr => tr.innerText.includes('Labelled No review request'))", timeout=30000)
+        # (up to a minute: by now the check has used this minute's 45 requests, and the pacing waits its turn)
+        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-review-requests] tbody tr')].some(tr => tr.innerText.includes('Labelled No review request'))", timeout=90000)
         w = [x for x in S['writes'] if x[0] == 'edit']
         f = w[0][2] if w else {}
         check('label added on the Edit page, everything else sent back as it was', len(w) == 1 and f.get('patientdetailmain[linkPaG][userLabels][]') == ['202']

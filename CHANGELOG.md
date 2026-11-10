@@ -14,6 +14,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Review requests
 
+### 0.3.2 (10 Nov 2026, beta, with core 0.1.21)
+- Send review request was refused live ("Scheduled date must be in the future"): the follow-up is now scheduled for the next 5 minutes from 10 minutes' time. When Halaxy refuses something, only its own reason is shown, not the form's list of required fields.
+
 ### 0.3.1 (10 Nov 2026, beta)
 - A tab closed or reloaded mid-check no longer holds the page on "Checking in another tab" for up to 10 minutes: the checking tab renews its claim as it goes, and a lapsed one is taken over after 2 minutes. Each patient's result is kept as soon as it's read, so a stopped check isn't wasted. The waiting tab shows the other tab's progress ("12 of about 60").
 - Against narrowed after the first live list (25 under Worth a look): only "referred to GP/consultant/for a scan...", "awaiting an MRI/surgery", "getting/feeling worse", "had a flare-up", "still painful", "not fully better", "no better". Plain mentions such as "worse on stairs", "no need for a scan" or "discussed injection options" no longer count, and "no flare-up" doesn't either. Patients are read again once with the new rules.
@@ -31,6 +34,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Notes are read in the browser only; only the kinds of phrase found are kept, never the note text. Each patient's result is kept for a week; the count refreshes at most every 12 hours.
 
 ## Core library
+
+### 0.1.21 (10 Nov 2026, beta)
+- `UPC.followUps.add` schedules 10 minutes ahead by default (Halaxy refuses a time that isn't in the future). `expectRefresh` reports Halaxy's own error list when there is one.
 
 ### 0.1.20 (10 Nov 2026, beta)
 - `UPC.notes.items` and `UPC.notes.text` (a patient's notes list and a note's text), `UPC.followUps.list` and `UPC.followUps.add` (Tasks & Follow-Ups), `UPC.patient.details`, `UPC.patient.invoices` and `UPC.patient.addLabel`. Confirmed against live captures, 10 Nov 2026.

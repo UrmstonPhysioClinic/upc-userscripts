@@ -8,7 +8,7 @@
     {
       "file": "core.user.js",
       "name": "UPC core library (beta)",
-      "version": "0.1.20"
+      "version": "0.1.21"
     },
     {
       "file": "alerts.user.js",
@@ -68,7 +68,7 @@
     {
       "file": "review-requests.user.js",
       "name": "Halaxy review requests (beta)",
-      "version": "0.3.1"
+      "version": "0.3.2"
     },
     {
       "file": "script-settings.user.js",

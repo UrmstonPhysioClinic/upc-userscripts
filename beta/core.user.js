@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.20
+// @version      0.1.21
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.20';
+  const VERSION = '0.1.21';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -179,6 +179,10 @@
     expectRefresh(json, what) {
       if (json && (json.status === 'REFRESH' || json.status === 'OK')) return json;
       let detail = '';
+      // Halaxy's own list of what was wrong, when it sends one. The form HTML also carries a hint for every
+      // required field ("* Title is required"), shown or not, so it's only used when there's no list.
+      const listed = json && Array.isArray(json.errors) ? json.errors.map((x) => clean(typeof x === 'string' ? x : JSON.stringify(x))).filter(Boolean) : [];
+      if (listed.length) throw new UPCError(what + ' was not accepted by Halaxy: ' + listed.join('; '));
       if (json && json.message) {
         detail = clean(Array.from(htmlDoc(json.message).querySelectorAll('.text-danger, .form-error, .alert-danger, .invalid-feedback')).map((e) => e.textContent).join(' '));
       }
@@ -737,7 +741,8 @@
       return rows.map((r) => Object.assign({}, r, { linkPaGId: (String(r.linkedToUrl || '').match(/\/patient\/(\d+)/) || [])[1] || (r.linkedToId !== undefined && r.linkedToId !== null ? String(r.linkedToId) : '') }));
     },
     // Adds an email follow-up from a follow-up template and email template (matched by name), scheduled for `when`
-    // (a Date; now if left out). Checks the follow-ups list afterwards.
+    // (a Date; if left out, the next 5 minutes from 10 minutes' time, as Halaxy refuses a time that isn't in the
+    // future: live, 10 Nov 2026). Checks the follow-ups list afterwards.
     async add(linkPaGId, o) {
       const path = '/task/patient/' + encodeURIComponent(linkPaGId) + '/task-followup/create';
       const { doc } = await http.popup(path);
@@ -750,7 +755,7 @@
         if (!opt) throw new UPCError('"' + text + '" is not in the Add Follow-Up pop-up\'s list, so nothing was sent.');
         return opt.value;
       };
-      const when = o.when || new Date();
+      const when = o.when || (() => { const d = new Date(Date.now() + 10 * 60e3); d.setSeconds(0, 0); d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5); return d; })();
       const two = (n) => String(n).padStart(2, '0');
       const timeOpt = (name, n) => { const x = [...form.querySelectorAll('select[name="' + name + '"] option')].find((op) => Number(clean(op.textContent)) === n); return x ? x.value : two(n); };
       const email = form.querySelector('[name="form[isEmailMethod]"]');
