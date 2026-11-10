@@ -11,12 +11,20 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Ready to bill
 
+### 0.2.0 (10 Nov 2026, beta)
+- Only Bupa, AXA and WPA are billed mid-treatment (Carl): the month-end and 3-month rules and the excess hold apply to them only. Other funders (Aviva, OPM, 3rd Party Funded and so on) are due when the authorisation is used up or treatment has finished, and otherwise show "Billed at the end of treatment".
+- Patients with only cancelled or did-not-attend fees: each fee is listed with its appointment comments and a Set to £ 0.00 button (fee and funder rebate together, after confirming). The Unbilled column shows those fees instead of "0 fees".
+- The empty column on the right of the Not due yet table is gone, and dates no longer wrap.
+
 ### 0.1.0 (10 Nov 2026, beta)
 - New: Finances > Ready to bill, for Carl and Wendy only. Lists insurer patients with unbilled fees (on an Active patient invoice that Halaxy doesn't show as Pending, last 6 months) and says which are due to bill and why: authorisation used up, no visit for 14 days with nothing booked, the last working day of the month, or fees 3 months old or more. Each due patient has an Invoice Funder button that opens their latest invoice with Invoice Funder.
 - Not due yet, held for the excess (a new claim with fewer than 2 fees, until the intake form's excess can be read) and did-not-attend-only patients are greyed at the bottom, with links to their invoices.
 - A count of due patients on the menu item, refreshed at most every 2 hours in the visible tab and shared by all tabs. One report, one list and one calendar request per check, plus each patient's first and latest invoice (cached for a week). Read-only.
 
 ## Bill funder
+
+### 0.7.3 (10 Nov 2026, beta)
+- "Zero" is now worded "Set to £ 0.00" throughout (Carl).
 
 ### 0.7.2 (10 Nov 2026, beta)
 - Opens by itself on an invoice opened from Ready to bill (address ending #upc-invoice-funder), once.

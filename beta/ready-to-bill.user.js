@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         Halaxy ready to bill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.0
+// @version      0.2.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
-// @description  Finances > Ready to bill (Carl and Wendy only): insurer patients whose unbilled fees are due to be billed, with the reason and an Invoice Funder button, and a count on the menu. Read-only.
+// @description  Finances > Ready to bill (Carl and Wendy only): insurer patients whose unbilled fees are due to be billed, with the reason and an Invoice Funder button, and a count on the menu. Reads only, except Set to £ 0.00 on a cancelled or did-not-attend fee after confirming.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
 // @grant        none
@@ -22,21 +22,26 @@
  *  - Per patient (only those with unbilled fees): the earliest and latest unbilled invoices (authorisation
  *    "3rd of 5", claim, patient), cached per invoice; and one calendar request for everyone (last attended,
  *    next booked).
- *  - Due when: the authorisation is used up; no attended appointment for 14 days and nothing booked;
- *    the last working day of the month; or fees 3 months old or more.
- *  - Excess hold: on a new claim (its first authorised appointment is among the unbilled fees) hold until
- *    the fees cover the excess. This version doesn't read the intake form's excess yet, so it uses the
- *    spec's fallback: hold until there are at least 2 fees. A used-up authorisation or old fees override.
+ *  - Due when: the authorisation is used up; or no attended appointment for 14 days and nothing booked.
+ *    Bupa, AXA and WPA can also be billed mid-treatment (Carl, 10 Nov 2026), so for them also: the last
+ *    working day of the month, or fees 3 months old or more. Other funders (Aviva, OPM, 3rd Party Funded...)
+ *    are billed only at the end.
+ *  - Excess hold (Bupa, AXA, WPA): on a new claim (its first authorised appointment is among the unbilled
+ *    fees) hold until the fees cover the excess. This version doesn't read the intake form's excess yet,
+ *    so it uses the spec's fallback: hold until there are at least 2 fees. A used-up authorisation or old
+ *    fees override.
+ *  - Patients whose only unbilled fees are cancelled or did-not-attend: listed with each appointment's
+ *    comments and Set to £ 0.00 (fee and funder rebate, after confirming), read when the page is open.
  *  - Shown only to Carl and Wendy, only inside Halaxy. The count on the menu is refreshed at most every
  *    2 hours, in the visible tab only, shared across tabs, never while Halaxy has asked us to pause.
- *  - Reads only. Billing is Invoice Funder's job: the button opens the invoice with Invoice Funder.
+ *  - Billing is Invoice Funder's job: the button opens the invoice with Invoice Funder.
  */
 (() => {
   'use strict';
   if (window.__hxReadyToBill) return;
   window.__hxReadyToBill = true;
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.2.0';
   const ROUTE = 'upc-ready-to-bill';
   const MENU_CLS = 'upc-rtb-menu';
   const ALLOWED = ['Carl Healy', 'Wendy Pritchard'];   // Carl, 7 Nov 2026: only the two of them
@@ -46,6 +51,7 @@
   const PAGE_FRESH = 10 * 60e3;        // the page re-checks when its results are older than this
   const KEY = 'upc-rtb:';
   const NOT_ATTENDED = /did not attend|did-not-attend|cancel/i;
+  const MID_TREATMENT = /bupa|axa|wpa/i;   // Carl, 10 Nov 2026: only these can be billed before treatment ends
 
   const U = () => window.UPC;
   const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -150,8 +156,11 @@
       g.newClaim = !!(fFirst.referral && fFirst.referral.position === 1);
       g.allLines = g.invoices.flatMap((i) => i.lines.map((l) => Object.assign({ when: i.when }, l)));
       g.billable = g.allLines.filter((l) => !NOT_ATTENDED.test(l.status) && l.amount > 0);
+      g.notAttended = g.allLines.filter((l) => NOT_ATTENDED.test(l.status) && l.amount > 0);
+      if (!g.billable.length && !g.notAttended.length) continue;   // only £0 fees: nothing to do
       g.total = g.billable.reduce((s, l) => s + l.amount, 0);
       g.oldest = first.when;
+      g.mid = MID_TREATMENT.test(g.funder);
       list.push(g);
     }
 
@@ -175,15 +184,18 @@
       if (authUsed) reasons.push('Authorisation used up (' + ref.position + ' of ' + ref.limit + ')');
       const quiet = !g.nextBooked && (!g.lastSeen || g.lastSeen < now - QUIET_DAYS * DAY);
       if (quiet) reasons.push('No visit for ' + QUIET_DAYS + ' days' + (g.lastSeen ? ' (last ' + label(g.lastSeen) + ')' : '') + ', nothing booked');
-      const old = g.oldest !== null && g.oldest <= addMonths(day0, -OLD_MONTHS);
+      // Mid-treatment billing (month end, old fees, the excess hold) is for Bupa, AXA and WPA only.
+      const old = g.mid && g.oldest !== null && g.oldest <= addMonths(day0, -OLD_MONTHS);
       if (old) reasons.push('Fees from ' + label(g.oldest) + ', over ' + OLD_MONTHS + ' months old');
-      if (monthEnd) reasons.push('Last working day of the month');
-      const held = g.newClaim && g.billable.length < MIN_FEES_NO_EXCESS && !authUsed && !old;
+      if (g.mid && monthEnd) reasons.push('Last working day of the month');
+      const held = g.mid && g.newClaim && g.billable.length < MIN_FEES_NO_EXCESS && !authUsed && !old;
       g.state = !g.billable.length ? 'check' : held ? 'held' : reasons.length ? 'due' : 'later';
       g.reasons = reasons;
-      g.note = g.state === 'check' ? 'Only cancelled, did-not-attend or £0 fees: check whether to bill them'
+      const when = g.nextBooked ? 'next booked ' + label(g.nextBooked) : g.lastSeen ? 'last seen ' + label(g.lastSeen) : '';
+      g.note = g.state === 'check' ? 'Only cancelled or did-not-attend fees: check whether to bill them'
         : g.state === 'held' ? 'Held for the excess: first invoice on a new claim, ' + g.billable.length + ' fee so far (excess not read yet, so waiting for ' + MIN_FEES_NO_EXCESS + ' fees)'
-          : g.state === 'later' ? 'Not due yet' + (g.nextBooked ? ': next booked ' + label(g.nextBooked) : g.lastSeen ? ': last seen ' + label(g.lastSeen) : '') : '';
+          : g.state === 'later' ? (g.mid ? 'Not due yet' + (when ? ': ' + when : '')
+            : 'Billed at the end of treatment (' + g.funder + ' isn\'t billed mid-treatment)' + (when ? ': ' + when : '')) : '';
     });
     const order = { due: 0, check: 1, held: 2, later: 3 };
     list.sort((a, b) => order[a.state] - order[b.state] || (a.oldest || 0) - (b.oldest || 0));
@@ -193,6 +205,7 @@
       rows: list.map((g) => ({
         payer: g.payer, funder: g.funder, patientId: g.patientId, state: g.state, reasons: g.reasons, note: g.note,
         fees: g.billable.length, total: g.total, oldest: g.oldest, lastInvoiceId: g.lastInvoice.id,
+        notAttended: g.notAttended.length, notAttendedTotal: g.notAttended.reduce((s, l) => s + l.amount, 0),
         invoices: g.invoices.map((i) => ({ id: i.id, number: i.number, when: i.when, total: i.lines.reduce((s, l) => s + l.amount, 0) })),
       })),
     };
@@ -256,26 +269,119 @@
     .upc-rtb ul.upc-rtb-why { margin: 0; padding-left: 16px; }
     .upc-rtb tr.upc-off td, .upc-rtb tr.upc-off a { color: var(--vs-viewData-label-color, #6c757d); }
     .upc-rtb .upc-rtb-invs a { margin-right: 8px; white-space: nowrap; }
+    .upc-rtb td.upc-rtb-date { white-space: nowrap; }
+    .upc-rtb .upc-rtb-fee { margin-top: 8px; }
+    .upc-rtb .upc-rtb-fee .btn { margin: 4px 0 0; }
+    .upc-rtb tr.upc-off .upc-rtb-fee .btn { color: inherit; }
   `;
 
   const state = { unmount: null, running: false, status: '', error: '' };
   let root = null;
 
-  function rowHtml(r) {
+  // Cancelled and did-not-attend fees of patients with nothing else to bill: each fee with its appointment
+  // comments, read when the page is open (kept for this tab only, never stored). By invoice id.
+  const details = new Map();
+  const zeroed = new Map();   // line id -> { ok, error }
+  let detailsRunning = false;
+  async function loadDetails() {
+    if (detailsRunning) return;
+    detailsRunning = true;
+    try {
+      const r = store.get('result', null);
+      const invs = r ? r.rows.filter((x) => x.state === 'check').flatMap((x) => x.invoices) : [];
+      for (const i of invs) {
+        if (!root) return;
+        if (details.has(i.id)) continue;
+        details.set(i.id, { state: 'loading' });
+        render();
+        try {
+          const inv = await U().invoice.fetch(i.id);
+          const fees = [];
+          for (const l of inv.lines.filter((x) => x.amount > 0)) {
+            let comment = '', commentError = '';
+            if (l.appointmentId) { try { comment = await U().appointment.notes(l.appointmentId); } catch (e) { commentError = e.message || String(e); } }
+            fees.push({ invoiceId: i.id, invoiceNumber: inv.number, lineId: l.lineId, date: l.date, item: l.item, amount: l.amount, comment, commentError });
+          }
+          details.set(i.id, { state: 'ok', fees });
+        } catch (e) {
+          details.set(i.id, { state: 'error', error: e.message || String(e) });
+        }
+        render();
+      }
+    } finally {
+      detailsRunning = false;
+    }
+  }
+
+  function feesHtml(r) {
+    return r.invoices.map((i) => {
+      const d = details.get(i.id);
+      if (!d || d.state === 'loading') return '<div class="upc-rtb-fee text-muted">Reading ' + esc(i.number) + '...</div>';
+      if (d.state === 'error') return '<div class="upc-rtb-fee upc-err">' + esc(i.number) + ': ' + esc(d.error) + '</div>';
+      return d.fees.map((f) => {
+        const z = zeroed.get(f.lineId);
+        const btn = '<button type="button" class="' + U().ui.btn('light') + '" data-zero="' + esc(f.lineId) + '" data-inv="' + esc(f.invoiceId) + '">Set to £ 0.00</button>';
+        const act = !z ? btn : z.busy ? '<span class="text-muted">Working...</span>' : z.ok ? '<span class="upc-ok">Set to £ 0.00</span>'
+          : '<span class="upc-err">Not changed: ' + esc(z.error) + '</span> ' + btn;
+        return '<div class="upc-rtb-fee"><b>' + esc(f.date) + '</b> ' + esc(f.item) + ', ' + fmt(f.amount) + ' (' + esc(f.invoiceNumber) + ')' +
+          (f.comment ? '<div class="upc-note">' + esc(f.comment) + '</div>' : '<div class="text-muted">' + (f.commentError ? 'Comments not read: ' + esc(f.commentError) : 'No comments') + '</div>') +
+          '<div>' + act + '</div></div>';
+      }).join('');
+    }).join('');
+  }
+
+  function rowHtml(r, withAction) {
     const base = U().base();
     const invs = r.invoices.map((i) => '<a href="' + esc(base + '/invoice/' + i.id) + '" target="_blank" rel="noopener">' + esc(i.number) + '</a>').join('');
     const who = r.patientId ? '<a href="' + esc(base + '/patient/' + r.patientId) + '" target="_blank" rel="noopener">' + esc(r.payer) + '</a>' : esc(r.payer);
-    const why = r.state === 'due' ? '<ul class="upc-rtb-why">' + r.reasons.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ul>' : esc(r.note);
+    const why = r.state === 'due' ? '<ul class="upc-rtb-why">' + r.reasons.map((x) => '<li>' + esc(x) + '</li>').join('') + '</ul>'
+      : esc(r.note) + (r.state === 'check' ? feesHtml(r) : '');
+    const na = r.notAttended ? r.notAttended + ' not attended<br>' + fmt(r.notAttendedTotal) : '';
+    const unbilled = r.fees ? r.fees + ' fee' + (r.fees === 1 ? '' : 's') + '<br>' + fmt(r.total) + (na ? '<div class="text-muted">+ ' + na + '</div>' : '') : na;
     const act = r.state === 'due' ? '<a class="btn btn-outline-primary-light" href="' + esc(base + '/invoice/' + r.lastInvoiceId + '#upc-invoice-funder') + '">Invoice Funder</a>' : '';
     return '<tr class="' + (r.state === 'due' ? '' : 'upc-off') + '"><td>' + who + '</td><td>' + esc(r.funder) + '</td>' +
-      '<td class="number">' + r.fees + ' fee' + (r.fees === 1 ? '' : 's') + '<br>' + fmt(r.total) + '</td><td>' + (r.oldest ? esc(label(r.oldest)) : '') + '</td>' +
-      '<td>' + why + '</td><td class="upc-rtb-invs">' + invs + '</td><td>' + act + '</td></tr>';
+      '<td class="number">' + unbilled + '</td><td class="upc-rtb-date">' + (r.oldest ? esc(label(r.oldest)) : '') + '</td>' +
+      '<td>' + why + '</td><td class="upc-rtb-invs">' + invs + '</td>' + (withAction ? '<td>' + act + '</td>' : '') + '</tr>';
+  }
+
+  function confirmZero(f) {
+    return new Promise((resolve) => {
+      let answered = false;
+      const done = (v) => { if (!answered) { answered = true; resolve(v); } };
+      const dlg = U().ui.dialog({ title: 'Set to £ 0.00?', small: true, onClose: () => done(false) });
+      dlg.root.setAttribute('data-upc-rtb-confirm', '');
+      dlg.body.innerHTML = '<p>Set the ' + esc(f.date) + ' fee on ' + esc(f.invoiceNumber) + ' (' + fmt(f.amount) + ') to £ 0.00?</p>' +
+        '<p class="text-muted">The fee and its funder rebate are set to £ 0.00 in its fee edit pop-up, with every other field left as it is.</p>' +
+        '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-a="no">Cancel</button><button type="button" class="btn btn-primary" data-a="yes">Set to £ 0.00</button></div>';
+      dlg.body.addEventListener('click', (e) => {
+        const a = e.target.closest('[data-a]');
+        if (!a) return;
+        done(a.dataset.a === 'yes');
+        dlg.close();
+      });
+    });
+  }
+
+  async function zero(lineId, invoiceId) {
+    const d = details.get(invoiceId);
+    const f = d && d.fees && d.fees.find((x) => String(x.lineId) === String(lineId));
+    const z = f && zeroed.get(f.lineId);
+    if (!f || (z && (z.busy || z.ok)) || !(await confirmZero(f))) return;
+    zeroed.set(f.lineId, { busy: true });
+    render();
+    try {
+      await U().invoice.setLineAmount(f.invoiceId, f.lineId, 0, { lowerRebate: true });   // amount and funder rebate together
+      zeroed.set(f.lineId, { ok: true });
+    } catch (e) {
+      zeroed.set(f.lineId, { ok: false, error: e.message || String(e) });
+    }
+    render();
   }
 
   function render() {
     if (!root) return;
     const r = store.get('result', null);
-    const head = '<thead><tr><th>Patient</th><th>Funder</th><th class="number">Unbilled</th><th>Oldest fee</th><th>Why</th><th>Invoices</th><th></th></tr></thead>';
+    const head = (withAction) => '<thead><tr><th>Patient</th><th>Funder</th><th class="number">Unbilled</th><th>Oldest fee</th><th>Why</th><th>Invoices</th>' + (withAction ? '<th></th>' : '') + '</tr></thead>';
     let h = '<div class="upc-rtb"><h1>Ready to bill</h1><div class="upc-rtb-bar">' +
       '<button type="button" class="btn btn-outline-primary-light" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check again') + '</button>' +
       '<span class="text-muted">' + esc(state.running ? state.status : r ? 'Checked at ' + new Date(r.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + label(r.at) + '.' : '') + '</span></div>';
@@ -283,14 +389,15 @@
     if (r) {
       const due = r.rows.filter((x) => x.state === 'due'), rest = r.rows.filter((x) => x.state !== 'due');
       h += '<div class="card"><div class="card-header"><h2>Due to bill (' + due.length + ')</h2></div><div class="card-body p-0">' +
-        (due.length ? '<table class="table table-striped table-bordered w-100 m-0">' + head + '<tbody>' + due.map(rowHtml).join('') + '</tbody></table>'
+        (due.length ? '<table class="table table-striped table-bordered w-100 m-0">' + head(true) + '<tbody>' + due.map((x) => rowHtml(x, true)).join('') + '</tbody></table>'
           : '<p class="text-muted m-3">Nothing is due to bill.</p>') + '</div></div>';
       if (rest.length) {
         h += '<div class="card"><div class="card-header"><h2>Not due yet (' + rest.length + ')</h2></div><div class="card-body p-0">' +
-          '<table class="table table-bordered w-100 m-0">' + head + '<tbody>' + rest.map(rowHtml).join('') + '</tbody></table></div></div>';
+          '<table class="table table-bordered w-100 m-0">' + head(false) + '<tbody>' + rest.map((x) => rowHtml(x, false)).join('') + '</tbody></table></div></div>';
       }
       h += '<p class="text-muted">Unbilled means an insurer patient\'s fee on an Active invoice that Halaxy doesn\'t show as Pending. ' +
-        'Fees older than ' + WINDOW_MONTHS + ' months are left out. The excess on new claims isn\'t read from the intake form yet, so new claims wait for ' + MIN_FEES_NO_EXCESS + ' fees.</p>';
+        'Fees older than ' + WINDOW_MONTHS + ' months are left out. Only Bupa, AXA and WPA are billed mid-treatment; other funders are due when the authorisation is used up or treatment has finished. ' +
+        'The excess on new claims isn\'t read from the intake form yet, so new Bupa, AXA and WPA claims wait for ' + MIN_FEES_NO_EXCESS + ' fees.</p>';
     }
     h += '<div class="text-muted upc-version">Ready to bill ' + VERSION + '</div></div>';
     root.innerHTML = h;
@@ -320,6 +427,7 @@
     state.running = false;
     render();
     paintBadge();
+    loadDetails();
   }
 
   function mount() {
@@ -329,11 +437,16 @@
     root = document.createElement('div');
     root.className = 'upc-native';
     root.setAttribute('data-upc-ready-to-bill', '');
-    root.addEventListener('click', (e) => { if (e.target.closest('[data-a=refresh]')) run(); });
+    root.addEventListener('click', (e) => {
+      if (e.target.closest('[data-a=refresh]')) run();
+      const z = e.target.closest('[data-zero]');
+      if (z) zero(z.dataset.zero, z.dataset.inv);
+    });
     state.unmount = U().ui.mountPage('Ready to bill', root, MENU_CLS);
     render();
     const r = store.get('result', null);
     if (!r || Date.now() - r.at > PAGE_FRESH || r.by !== VERSION) run();
+    else loadDetails();
   }
   function unmount() {
     if (!state.unmount) return;

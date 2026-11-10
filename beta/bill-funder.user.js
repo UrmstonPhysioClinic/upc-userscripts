@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy bill funder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.7.2
+// @version      0.7.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
@@ -40,7 +40,7 @@
   if (window.__upcBillFunder) return;
   window.__upcBillFunder = true;
 
-  const VERSION = '0.7.2';
+  const VERSION = '0.7.3';
   const MAX_AGE_DAYS = 183;   // about 6 months
   const NOT_ATTENDED = /cancel|did-not-attend|dna|reject|declin|reschedul/i;
   const DAY = 86400e3;
@@ -332,14 +332,14 @@
       if (st.result && left.length) {
         h += '<div class="upc-gap"><b>Not billed to ' + esc(p.current.funderName || 'the funder') + '</b>' +
           '<div class="text-muted">These cancelled or did-not-attend fees were left out. Keep any you will charge another way; set the rest to £ 0.00. Nothing changes until you confirm.</div>' +
-          '<table class="table w-100"><thead><tr><th>Date</th><th>Fee</th><th>Invoice</th><th class="number">Amount</th><th>Comments</th><th>Keep or zero</th></tr></thead><tbody>';
+          '<table class="table w-100"><thead><tr><th>Date</th><th>Fee</th><th>Invoice</th><th class="number">Amount</th><th>Comments</th><th>Keep or set to £ 0.00</th></tr></thead><tbody>';
         left.forEach((f) => {
           const key = String(f.lineId);
           const choice = st.zero[key] || 'keep';
           const done = st.zeroDone[key];
           const pick = done ? (done.ok ? '<span class="upc-ok">Set to £ 0.00</span>' : '<span class="upc-err">Not changed: ' + esc(done.error) + '</span>')
             : ['keep', 'zero'].map((v) => '<label class="mr-2 mb-0"><input type="radio" name="upc-z-' + key + '" data-z="' + key + '" value="' + v + '"' + (choice === v ? ' checked' : '') +
-              (st.phase !== 'done' || st.zeroConfirm ? ' disabled' : '') + '> ' + (v === 'keep' ? 'Keep' : 'Zero') + '</label>').join('');
+              (st.phase !== 'done' || st.zeroConfirm ? ' disabled' : '') + '> ' + (v === 'keep' ? 'Keep' : 'Set to £ 0.00') + '</label>').join('');
           h += '<tr><td>' + esc(dateLabel(f.when)) + '</td><td>' + esc(f.name) + '<div class="text-muted">' + esc(f.apptStatus.replace(/-/g, ' ')) + '</div></td>' +
             '<td><a href="' + esc(U().base() + '/invoice/' + f.invoiceId) + '" target="_blank" rel="noopener">' + esc(f.invoiceNumber) + '</a></td><td class="number">' + fmt(f.amount) + '</td>' +
             '<td>' + (f.comment ? '<div class="upc-note">' + esc(f.comment) + '</div>' : '<span class="text-muted">None</span>') + '</td><td>' + pick + '</td></tr>';
@@ -359,7 +359,7 @@
       else if (st.confirm) h += '<button type="button" class="btn btn-outline-primary" data-a="back">Back</button><button type="button" class="btn btn-primary" data-a="go">' + goLabel() + '</button>';
       else if (st.phase === 'running' || st.phase === 'zeroing') h += '<button type="button" class="btn btn-primary" disabled>Working...</button>';
       else if (st.phase === 'done' && st.zeroConfirm) h += '<button type="button" class="btn btn-outline-primary" data-a="zeroback">Back</button><button type="button" class="btn btn-primary" data-a="zerogo">Set ' + toZero().length + ' to £ 0.00</button>';
-      else if (st.phase === 'done' && left.length) h += '<button type="button" class="btn btn-outline-primary" data-a="reload">Close and reload</button><button type="button" class="btn btn-primary" data-a="zeronext" ' + (toZero().length ? '' : 'disabled') + '>Zero chosen fees</button>';
+      else if (st.phase === 'done' && left.length) h += '<button type="button" class="btn btn-outline-primary" data-a="reload">Close and reload</button><button type="button" class="btn btn-primary" data-a="zeronext" ' + (toZero().length ? '' : 'disabled') + '>Set chosen fees to £ 0.00</button>';
       else h += '<button type="button" class="btn btn-primary" data-a="' + (st.result || st.phase === 'failed' ? 'reload' : 'close') + '">' + (st.result || st.phase === 'failed' ? 'Close and reload' : 'Close') + '</button>';
       h += '</div>';
       sh.innerHTML = h;

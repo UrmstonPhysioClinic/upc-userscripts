@@ -18,7 +18,7 @@
     {
       "file": "bill-funder.user.js",
       "name": "Halaxy bill funder (beta)",
-      "version": "0.7.2"
+      "version": "0.7.3"
     },
     {
       "file": "branding.user.js",
@@ -48,7 +48,7 @@
     {
       "file": "ready-to-bill.user.js",
       "name": "Halaxy ready to bill (beta)",
-      "version": "0.1.0"
+      "version": "0.2.0"
     },
     {
       "file": "rebate-sync.user.js",
