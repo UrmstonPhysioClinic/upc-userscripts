@@ -17,6 +17,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Review requests
 
+### 0.4.2 (10 Nov 2026, beta, with core 0.1.23)
+- Review requests now go at 10:30 UK time. Halaxy reads a follow-up's date and time as Sydney time, whatever the practice's time zone: 11-Nov 10:30 entered went out at 23:30 UK time on 10-Nov (Carl confirmed they go at the time the list shows). The time is now entered as Sydney's clock reads at 10:30 UK time (21:30 in winter), and the time on the list is checked afterwards: if it isn't 10:30 UK time, the page says so.
+
 ### 0.4.1 (10 Nov 2026, beta, with core 0.1.22)
 - A sent request said "Halaxy accepted the follow-up, but it does not show in Tasks & Follow-Ups" although it did: follow-ups added from the patient's profile have no "Linked To" note, and the patient is in Assigned To. The patient now comes from assignedToUrl, so the check passes and anyone already sent one is left out.
 - The follow-up template is no longer imported, only the Review Request email template: with the template, Halaxy set its own send time (a request sent at 21:30 was scheduled for 23:30). The reminder now needs only a "Review Reminder" email template.
@@ -45,6 +48,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Notes are read in the browser only; only the kinds of phrase found are kept, never the note text. Each patient's result is kept for a week; the count refreshes at most every 12 hours.
 
 ## Core library
+
+### 0.1.23 (10 Nov 2026, beta)
+- `UPC.followUps.add` enters the time as Sydney time (Halaxy's follow-up quirk) and checks the listed time against the one asked for.
 
 ### 0.1.21 (10 Nov 2026, beta)
 - `UPC.followUps.add` schedules 10 minutes ahead by default (Halaxy refuses a time that isn't in the future). `expectRefresh` reports Halaxy's own error list when there is one.

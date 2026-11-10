@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.22
+// @version      0.1.23
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.22';
+  const VERSION = '0.1.23';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -735,6 +735,7 @@
   //  - Add: the Add Follow-Up pop-up, GET/POST /task/patient/{linkPaGId}/task-followup/create: form[recallTemplate]
   //    (follow-up template), form[title], form[isEmailMethod], form[isSmsMethod], form[scheduleAt][date],
   //    form[scheduleAt][time][hour|minute], form[intakeFormTemplate], form[emailTemplate], form[smsTemplate], form[_token].
+  const FOLLOWUP_TZ = 'Australia/Sydney';
   const followUps = {
     async list() {
       const j = await http.json('/task/task-followup/list/data');
@@ -760,14 +761,22 @@
       };
       const when = o.when || (() => { const d = new Date(Date.now() + 10 * 60e3); d.setSeconds(0, 0); d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5); return d; })();
       const two = (n) => String(n).padStart(2, '0');
+      // Halaxy's follow-ups read the date and time typed in as Sydney time, whatever the practice's time zone:
+      // 11-Nov 10:30 entered went on the list, and out, at 23:30 UK time on 10-Nov (live, 10 Nov 2026; Carl:
+      // "they actually go out at the evening time displayed"). So the time is entered as Sydney's clock reads
+      // at the moment it should go, and checked against the list afterwards.
+      const p = {};
+      new Intl.DateTimeFormat('en-GB', { timeZone: FOLLOWUP_TZ, year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', hourCycle: 'h23' })
+        .formatToParts(when).forEach((x) => { p[x.type] = Number(x.value); });
+      const typed = new Date(p.year, p.month - 1, p.day, p.hour, p.minute);
       const timeOpt = (name, n) => { const x = [...form.querySelectorAll('select[name="' + name + '"] option')].find((op) => Number(clean(op.textContent)) === n); return x ? x.value : two(n); };
       const email = form.querySelector('[name="form[isEmailMethod]"]');
       const set = {
         // The follow-up template isn't imported: Halaxy then sets its own send time from the template (a review request
         // sent at 21:30 went on the list for 23:30: live, 10 Nov 2026). The title, email and time are set here instead.
         'form[recallTemplate]': '', 'form[title]': o.title || o.template, 'form[isEmailMethod]': email.value || '1',
-        'form[scheduleAt][date]': dayLabel(when.getTime()), 'form[scheduleAt][time][hour]': timeOpt('form[scheduleAt][time][hour]', when.getHours()),
-        'form[scheduleAt][time][minute]': timeOpt('form[scheduleAt][time][minute]', when.getMinutes()), 'form[emailTemplate]': pick('form[emailTemplate]', o.emailTemplate || o.template),
+        'form[scheduleAt][date]': dayLabel(typed.getTime()), 'form[scheduleAt][time][hour]': timeOpt('form[scheduleAt][time][hour]', typed.getHours()),
+        'form[scheduleAt][time][minute]': timeOpt('form[scheduleAt][time][minute]', typed.getMinutes()), 'form[emailTemplate]': pick('form[emailTemplate]', o.emailTemplate || o.template),
       };
       const pairs = serialize(form).filter(([k]) => !(k in set) && k !== 'form[isSmsMethod]');
       Object.keys(set).forEach((k) => pairs.push([k, set[k]]));
@@ -776,6 +785,11 @@
       if (!res || !['POPUP', 'REFRESH', 'OK'].includes(res.status)) http.expectRefresh(res, 'Adding the follow-up');
       const added = (await followUps.list()).find((r) => r.linkPaGId === String(linkPaGId) && !before.includes(String(r.id)) && clean(r.title).toLowerCase() === String(set['form[title]']).toLowerCase());
       if (!added) throw new UPCError('Halaxy accepted the follow-up, but it does not show in Tasks & Follow-Ups.');
+      const listed = Date.parse(added.scheduledOrSentDate);
+      if (!isNaN(listed) && Math.abs(listed - when.getTime()) > 5 * 60e3) {
+        const t = (ms) => dayLabel(ms) + ' ' + new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        throw new UPCError('The follow-up is in Tasks & Follow-Ups for ' + t(listed) + ', not ' + t(when.getTime()) + ': Halaxy\'s follow-up times may have changed. Please check it there.');
+      }
       return added;
     },
   };
