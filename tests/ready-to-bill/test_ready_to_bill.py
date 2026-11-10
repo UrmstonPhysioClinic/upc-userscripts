@@ -43,7 +43,9 @@ def fresh(today, drop_column=None):
         S['events'].append({'id': len(S['events']) + 1, 'type': 'appointment', 'linkPaGId': pid, 'appointmentStatus': status,
                             'start': int(datetime.datetime.combine(d(n), datetime.time(10)).timestamp())})
 
-    att = lambda n, amt=4000, st='Attended': {'day': d(n), 'amount': amt, 'status': st}
+    def att(n, amt=4000, st='Attended', note=''):
+        S['nextLine'] = S.get('nextLine', 7000) + 1
+        return {'day': d(n), 'amount': amt, 'rebate': amt, 'status': st, 'lineId': S['nextLine'], 'appt': S['nextLine'] + 1000, 'note': note}
     # A: authorisation used up (5 of 5), two invoices, the second with two fees; booked next week
     inv(501, 301, 'Patient A', 'Bupa', [att(-20)], ref=(4, 5))
     inv(502, 301, 'Patient A', 'Bupa', [att(-6), att(-3)], ref=(5, 5))
@@ -54,14 +56,20 @@ def fresh(today, drop_column=None):
     # C: new claim, one fee so far, seen 2 days ago, nothing booked -> held for the excess
     inv(521, 303, 'Patient C', 'Bupa', [att(-2)], ref=(1, 5))
     appt(303, -2)
-    # D: fee 100 days old, booked again
-    inv(531, 304, 'Patient D', 'Aviva', [att(-100)], ref=(2, 10))
+    # D: Bupa fee 100 days old, booked again -> due (old fees)
+    inv(531, 304, 'Patient D', 'Bupa', [att(-100)], ref=(2, 10))
     appt(304, -100); appt(304, 5)
+    # M: Aviva fee 100 days old, booked again -> not due: Aviva is billed only at the end
+    inv(621, 313, 'Patient M', 'Aviva', [att(-100)], ref=(2, 10))
+    appt(313, -100); appt(313, 5)
+    # N: Aviva new claim, one fee, seen 2 days ago, nothing booked -> no excess hold for Aviva, not due yet
+    inv(631, 314, 'Patient N', 'Aviva', [att(-2)], ref=(1, 10))
+    appt(314, -2)
     # E: seen yesterday, booked next week -> not due yet
     inv(541, 305, 'Patient E', 'Bupa', [att(-1)], ref=(3, 8))
     appt(305, -1); appt(305, 7)
     # F: only a did-not-attend fee
-    inv(551, 306, 'Patient F', 'Bupa', [att(-5, st='Did not attend')], ref=(2, 5))
+    inv(551, 306, 'Patient F', 'Bupa', [att(-5, st='Did not attend', note='No show. | Do not bill.')], ref=(2, 5))
     appt(306, -5, 'did-not-attend'); appt(306, 3)
     # Left out: billed (Pending), Issued, the insurer's own invoice, self-funded, older than 6 months
     inv(561, 307, 'Patient G', 'Bupa', [att(-30)], ref=(5, 5)); S['pending'].add(561)
@@ -102,12 +110,15 @@ def invoice_html(iid):
     if inv['ref']:
         n = inv['ref'][0]
         ref = "<span data-referral='1'>%s (%d%s of %d appts)</span>" % (hx(inv['lines'][0]['day']), n, 'th' if n > 3 else ['st', 'nd', 'rd'][n - 1], inv['ref'][1])
+    lines = ''.join("<tr><td data-property='date'><a href='/a/pr/555/appointment/%d'>%s 09:00</a></td><td data-property='itemNumber'>Bup-FU</td>"
+                    "<td data-property='amount' class='money number'>%s</td><td><a class='btn icon ajax' href='/a/pr/555/invoice/line/%d/edit'>e</a></td></tr>"
+                    % (l['appt'], hx(l['day']), gbp(l['amount']), l['lineId']) for l in inv['lines'])
     btn = "<a class='ajax btn' id='invoiceFunderBtn' data-modal-href='/a/pr/555/invoicefunctions/%d/claim/77/'>Invoice Funder</a>" % iid
     return ("<html><head><title>Invoice UPC-%d | Halaxy</title></head><body><div id='card-invoice-view-patient'>"
             "<a href='/a/magic/add/patient/%d/invoice'>Edit</a><a href='/a/pr/555/patient/%d'>%s</a></div>"
             "<div id='card-invoice-parts-claim-view'><a href='/a/pr/555/organisation/1'>%s</a>%s</div>"
-            "<table id='invoiceLines'><tbody></tbody></table><table id='invoicePayments'><tbody><tr><td>%s</td></tr></tbody></table></body></html>"
-            % (iid, inv['pid'], inv['pid'], inv['payer'], inv['funder'], ref, btn))
+            "<table id='invoiceLines'><tbody>%s</tbody></table><table id='invoicePayments'><tbody><tr><td>%s</td></tr></tbody></table></body></html>"
+            % (iid, inv['pid'], inv['pid'], inv['payer'], inv['funder'], ref, lines, btn))
 
 
 def page_html(user):
@@ -139,6 +150,25 @@ async def halaxy(route):
         q = urllib.parse.parse_qs(urllib.parse.urlparse(req.url).query)
         lo, hi = int(q['start'][0]), int(q['end'][0])
         return await js({'status': 'OK', 'payload': {'events': [e for e in S['events'] if lo <= e['start'] < hi]}})
+    m = re.search(r'/invoice/line/(\d+)/edit$', p)
+    if m:
+        lid = int(m.group(1))
+        line = next(l for inv in S['invoices'].values() for l in inv['lines'] if l['lineId'] == lid)
+        if req.method == 'GET':
+            form = ("<form id='invoiceLineForm' method='post'><input name='form[date]' value='%s'><input name='form[amount]' value='%.2f'>"
+                    "<input name='form[rebate]' value='%.2f'><input type='hidden' name='form[_token]' value='LT-%d'></form>") % (hx(line['day']), line['amount'] / 100, line['rebate'] / 100, lid)
+            return await js({'status': 'FORM', 'title': 'Edit fee', 'message': form})
+        f = urllib.parse.parse_qs(req.post_data or '', keep_blank_values=True)
+        S.setdefault('writes', []).append((lid, f['form[amount]'][0], f['form[rebate]'][0]))
+        line['amount'] = int(round(float(f['form[amount]'][0]) * 100)); line['rebate'] = int(round(float(f['form[rebate]'][0]) * 100))
+        return await js({'status': 'REFRESH'})
+    m = re.search(r'/appointment/(\d+)$', p)
+    if m:
+        line = next((l for inv in S['invoices'].values() for l in inv['lines'] if l['appt'] == int(m.group(1))), None)
+        if req.headers.get('x-requested-with') != 'XMLHttpRequest':
+            return await route.fulfill(body='<html><body></body></html>', content_type='text/html')
+        notes = ''.join('%s<br>' % x for x in (line['note'].split(' | ') if line and line['note'] else []))
+        return await route.fulfill(body="<div class='appointment-details-popup'><div class='subTitle'>Notes</div><div>%s</div></div>" % notes, content_type='text/html')
     m = re.search(r'/invoice/(\d+)/?$', p)
     if m and int(m.group(1)) in S['invoices']:
         return await route.fulfill(body=invoice_html(int(m.group(1))), content_type='text/html')
@@ -176,8 +206,8 @@ ROOT_JS = "document.querySelector('[data-upc-ready-to-bill]')"
 ROWS_JS = """[...document.querySelectorAll('[data-upc-ready-to-bill] tbody tr')].map((tr) => ({
   off: tr.classList.contains('upc-off'), who: tr.cells[0].textContent, funder: tr.cells[1].textContent, unbilled: tr.cells[2].textContent,
   why: tr.cells[4].textContent, invs: [...tr.cells[5].querySelectorAll('a')].map((a) => a.getAttribute('href')),
-  btn: tr.cells[6].querySelector('a') ? tr.cells[6].querySelector('a').getAttribute('href') : null,
-  btnCls: tr.cells[6].querySelector('a') ? tr.cells[6].querySelector('a').className : null,
+  btn: tr.cells[6] && tr.cells[6].querySelector('a') ? tr.cells[6].querySelector('a').getAttribute('href') : null,
+  btnCls: tr.cells[6] && tr.cells[6].querySelector('a') ? tr.cells[6].querySelector('a').className : null,
   patient: tr.cells[0].querySelector('a') ? tr.cells[0].querySelector('a').getAttribute('href') : null }))"""
 
 
@@ -199,6 +229,8 @@ async def main():
         check('authorisation reason', 'Authorisation used up (5 of 5)' in by.get('Patient A', {}).get('why', ''), by.get('Patient A'))
         check('quiet reason names the last visit', 'No visit for 14 days (last 21-Oct-2026), nothing booked' in by.get('Patient B', {}).get('why', ''), by.get('Patient B'))
         check('old fees reason', 'Fees from 02-Aug-2026, over 3 months old' in by.get('Patient D', {}).get('why', ''), by.get('Patient D'))
+        check('Aviva: old fees are not due, billed at the end', by.get('Patient M', {}).get('off') and 'Billed at the end of treatment (Aviva' in by['Patient M']['why'], by.get('Patient M'))
+        check('Aviva: no excess hold on a new claim', by.get('Patient N', {}).get('off') and 'Held' not in by['Patient N']['why'], by.get('Patient N'))
         check('not the last working day, so no month-end reason', not any('Last working day' in r['why'] for r in rows), rows)
         check('fees from both of a patient\'s invoices are counted', by.get('Patient A', {}).get('unbilled') == '3 fees£ 120.00', by.get('Patient A'))
         check('Invoice Funder button opens the latest invoice with Invoice Funder', by.get('Patient A', {}).get('btn') == '/a/pr/555/invoice/502#upc-invoice-funder', by.get('Patient A'))
@@ -206,19 +238,35 @@ async def main():
         check('every invoice is linked', by.get('Patient A', {}).get('invs') == ['/a/pr/555/invoice/501', '/a/pr/555/invoice/502'], by.get('Patient A'))
         check('patient name links to the patient', by.get('Patient A', {}).get('patient') == '/a/pr/555/patient/301', by.get('Patient A'))
         off = [r['who'] for r in rows if r['off']]
-        check('greyed at the bottom: did-not-attend only, held, not due yet', off == ['Patient F', 'Patient C', 'Patient L', 'Patient E'] and rows[-4:] == [by[w] for w in off], [r['who'] for r in rows])
+        check('greyed at the bottom: did-not-attend only, held, not due yet', off == ['Patient F', 'Patient C', 'Patient M', 'Patient L', 'Patient N', 'Patient E'] and rows[-6:] == [by[w] for w in off], [r['who'] for r in rows])
         check('held for the excess, explained', 'Held for the excess' in by.get('Patient C', {}).get('why', ''), by.get('Patient C'))
         check('greyed rows link to their invoices but have no button', by.get('Patient C', {}).get('invs') == ['/a/pr/555/invoice/521'] and not by.get('Patient C', {}).get('btn'), by.get('Patient C'))
         check('not due yet shows the next booking', 'next booked 17-Nov-2026' in by.get('Patient E', {}).get('why', ''), by.get('Patient E'))
-        check('did-not-attend only: asks to check', 'Only cancelled, did-not-attend' in by.get('Patient F', {}).get('why', ''), by.get('Patient F'))
+        check('did-not-attend only: asks to check', 'Only cancelled or did-not-attend' in by.get('Patient F', {}).get('why', ''), by.get('Patient F'))
+        check('did-not-attend only: shows the not-attended fee, not "0 fees"', by.get('Patient F', {}).get('unbilled') == '1 not attended£ 40.00', by.get('Patient F'))
+        await pg.wait_for_function("document.querySelector('[data-upc-ready-to-bill] [data-zero]')", timeout=60000)
+        ftxt = await pg.evaluate("[...document.querySelectorAll('[data-upc-ready-to-bill] tbody tr')].find((tr) => tr.cells[0].textContent === 'Patient F').cells[4].innerText")
+        check('did-not-attend fee shown with its appointment comments', 'No show.' in ftxt and 'Do not bill.' in ftxt and '05-Nov-2026' in ftxt, ftxt)
+        heads = await pg.evaluate("[...document.querySelectorAll('[data-upc-ready-to-bill] table')].map((t) => t.tHead.rows[0].cells.length)")
+        check('no empty column on the not-due table', heads == [7, 6], heads)
         check('"3rd Party Funded" counts as a funder', 'Patient L' in by, rows)
         check('left out: billed, Issued, insurer\'s own, self-funded, over 6 months', not any(w in by for w in ['Patient G', 'Patient H', 'Bupa Healthcare', 'Patient J', 'Patient K']), list(by))
         check('Pending list asked with Halaxy\'s status filter', S.get('listBody', {}).get('filterModel', {}).get('status', {}).get('filter') == 'Pending', S.get('listBody'))
+        # Set to £ 0.00: confirm first, then fee and rebate together
+        await pg.click('[data-upc-ready-to-bill] [data-zero]')
+        await pg.wait_for_selector('[data-upc-rtb-confirm]')
+        conf = await pg.evaluate("document.querySelector('[data-upc-rtb-confirm]').innerText")
+        check('Set to £ 0.00 asks first, naming the fee', 'Set the 05-Nov-2026 fee on UPC-551' in conf and not S.get('writes'), conf)
+        await pg.click('[data-upc-rtb-confirm] [data-a=yes]')
+        await pg.wait_for_function("document.querySelector('[data-upc-ready-to-bill] .upc-rtb-fee .upc-ok')", timeout=60000)
+        check('fee and its funder rebate set to £ 0.00', S.get('writes') == [(S['invoices'][551]['lines'][0]['lineId'], '0.00', '0.00')], S.get('writes'))
+        zero_words = await pg.evaluate("/\\bzero\\b/i.test(document.querySelector('[data-upc-ready-to-bill]').innerText)")
+        check('worded "Set to £ 0.00", never "zero"', not zero_words)
         reqs = [x for x in S['log'] if not x[1].endswith('/invoice/')]
         reports = [x for x in reqs if x[1].endswith('/report/finance/0')]
         invs = [x for x in reqs if re.search(r'/invoice/\d+$', x[1])]
         cal = [x for x in reqs if x[1].endswith('/calendar/json')]
-        check('one report, one calendar, two invoice pages at most per patient', len(reports) == 1 and len(cal) == 1 and len(invs) <= 2 * 7, reqs)
+        check('one report and one calendar per check', len(reports) == 1 and len(cal) == 1, reqs)
         badge = await pg.evaluate("(document.querySelector('a.upc-rtb-menu .upc-rtb-badge') || {}).textContent")
         check('count on the menu item', badge == '3', badge)
         menu = await pg.evaluate("[...document.querySelectorAll('#mainMenu a.mainmenu-sublink')].map(a => a.getAttribute('href'))")
@@ -255,6 +303,7 @@ async def main():
         check('Wendy sees it too', bool(rows), rows)
         check('last working day: not-due-yet patients are due', not by.get('Patient E', {}).get('off', True) and 'Last working day of the month' in by['Patient E']['why'], by.get('Patient E'))
         check('last working day: held and did-not-attend stay greyed', by.get('Patient C', {}).get('off') and by.get('Patient F', {}).get('off'), rows)
+        check('last working day: Aviva and 3rd Party Funded still wait for the end', by.get('Patient M', {}).get('off') and by.get('Patient L', {}).get('off'), rows)
         lwd = await pg.evaluate("[['2026-11-27', 0], ['2026-11-30', 1], ['2027-01-29', 1], ['2027-01-31', 0], ['2027-02-26', 1]].every(([d, want]) => window.upcReadyToBill.isLastWorkingDay(new Date(d + 'T12:00:00').getTime()) === !!want)")
         check('last working day skips weekends', lwd)
         check('no page errors (scenario 2)', not errors, errors)
