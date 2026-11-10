@@ -9,7 +9,17 @@ Health check 1.1.6, then 1.1.7, at Carl's request, so the clinic PCs stop report
 ## Moved to the clinic PCs (stable), 9 Nov 2026
 Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outstanding Actions 0.5.3, calendar controls 2.10, Alerts 1.0.0, Custom Reports 0.7.0, HTML source for emails 0.4. Arrival chime and Chat alert retired from stable (replaced by Alerts). `tools/promote.py` added for promotions.
 
+## Ready to bill
+
+### 0.1.0 (10 Nov 2026, beta)
+- New: Finances > Ready to bill, for Carl and Wendy only. Lists insurer patients with unbilled fees (on an Active patient invoice that Halaxy doesn't show as Pending, last 6 months) and says which are due to bill and why: authorisation used up, no visit for 14 days with nothing booked, the last working day of the month, or fees 3 months old or more. Each due patient has an Invoice Funder button that opens their latest invoice with Invoice Funder.
+- Not due yet, held for the excess (a new claim with fewer than 2 fees, until the intake form's excess can be read) and did-not-attend-only patients are greyed at the bottom, with links to their invoices.
+- A count of due patients on the menu item, refreshed at most every 2 hours in the visible tab and shared by all tabs. One report, one list and one calendar request per check, plus each patient's first and latest invoice (cached for a week). Read-only.
+
 ## Bill funder
+
+### 0.7.2 (10 Nov 2026, beta)
+- Opens by itself on an invoice opened from Ready to bill (address ending #upc-invoice-funder), once.
 
 ### 0.7.1 (9 Nov 2026, beta)
 - After invoicing the funder: checks each fee's date on the new funder invoice against the patient fee it came from and corrects dates a day or two out (Halaxy copied 13-Oct as 14-Oct on a live run). Fees it can't pair, or further out, are reported for a manual check.
@@ -97,6 +107,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Core library
 
+### 0.1.18 (10 Nov 2026, beta)
+- `UPC.reports.unpaidLines(start)`: Halaxy's Unpaid Invoices report as one row per fee line (columns confirmed live 10 Nov 2026), invoice-level cells carried to every line. `UPC.reports.pendingInvoiceIds()`: invoices Halaxy lists as Pending. `UPC.dayLabel` and `UPC.parseDay` for Halaxy's dates.
+
 ### 0.1.17 (9 Nov 2026, beta)
 - The invoice reader keeps each attachment's whole row (the first cell is the date, not the file name). `files.attachToInvoice(..., { skipIfAttached })`.
 - `ui.menuItem` / `ensureMenuItem` take a section (default Reports) and an href function.
@@ -161,6 +174,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Arrival chime and chat alarm can be switched off per PC from the Tampermonkey menu.
 
 ## Health check
+
+### 1.1.11 (10 Nov 2026, beta)
+- Knows Ready to bill by name, and shows its message when Halaxy's Unpaid Invoices report changes.
 
 ### 1.1.10 (10 Nov 2026, beta and stable)
 - A new version clears all of the previous version's results, page checks included. Before, a page result (such as 1.1.8's table builder false alarm on a referral report page) stayed until that kind of page was opened again.
