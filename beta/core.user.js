@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.17
+// @version      0.1.18
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.17';
+  const VERSION = '0.1.18';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -544,6 +544,96 @@
     },
   };
 
+  // ------------------------------------------------------------------ reports
+
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // '05-Nov-2026' for a Date or milliseconds.
+  const dayLabel = (d) => { const x = new Date(d); return String(x.getDate()).padStart(2, '0') + '-' + MONTHS[x.getMonth()] + '-' + x.getFullYear(); };
+  // Milliseconds (local midnight) from '05-Nov-2026', '05/11/2026' or ISO; null if unreadable.
+  const parseDay = (s) => {
+    const t = String(s || '').trim();
+    let m = t.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})/);
+    if (m) { const i = MONTHS.findIndex((x) => x.toLowerCase() === m[2].toLowerCase()); return i < 0 ? null : new Date(+m[3], i, +m[1]).getTime(); }
+    m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m) return new Date(+m[3], +m[2] - 1, +m[1]).getTime();
+    m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? new Date(+m[1], +m[2] - 1, +m[3]).getTime() : null;
+  };
+  // A table's cells as a grid, following rowspan and colspan.
+  function cellGrid(rows) {
+    const grid = [], carry = [];
+    for (const tr of rows) {
+      const out = [];
+      let col = 0;
+      const fill = () => { while (carry[col] && carry[col].left > 0) { out[col] = carry[col].cell; carry[col].left--; col++; } };
+      for (const td of tr.cells) {
+        fill();
+        const cs = Math.max(1, td.colSpan || 1), rs = Math.max(1, td.rowSpan || 1);
+        for (let k = 0; k < cs; k++) { out[col] = td; carry[col] = rs > 1 ? { cell: td, left: rs - 1 } : null; col++; }
+      }
+      fill();
+      grid.push(out);
+    }
+    return grid;
+  }
+
+  const reports = {
+    // Halaxy's Unpaid Invoices report (Reports > Finance, type 5) from `start` ('09-May-2026'): one row per
+    // fee line of every unpaid invoice, active or issued. Columns confirmed live 10 Nov 2026. Invoice-level
+    // cells (date, status, balance) are only on an invoice's first line; they are carried to its other lines.
+    async unpaidLines(start) {
+      const p = new URLSearchParams([['type', '5'], ['start', start], ['unpaid', '0'], ['overdue', 'all'], ['showTotalMode', '0'],
+        ['incomeType', 'paymentMethods'], ['invoicestatuses', 'active'], ['invoicestatuses', 'issued'], ['displayNames', '1'],
+        ['plTaxTypeStatus', 'exclusive'], ['lineStatus', 'write-off'], ['lineStatus', 'voided'],
+        ['usedDepositOption', 'all'], ['creditSummaryOption', 'summary'], ['clicked', String(Date.now())]]);
+      const doc = await http.html('/report/finance/0?' + p.toString());
+      const table = doc.querySelector('table.table-report');
+      if (!table) throw new UPCError('Halaxy\'s Unpaid Invoices report has changed (its table was not found).');
+      const all = [...table.rows];
+      const head = table.tHead ? [...table.tHead.rows] : all.filter((r) => r.cells.length && [...r.cells].every((c) => c.tagName === 'TH'));
+      const body = all.filter((r) => !head.includes(r));
+      const hg = cellGrid(head);
+      const names = (hg[hg.length - 1] || []).map((c) => clean(c && c.textContent));
+      const col = (n) => names.indexOf(n);
+      const need = ['Invoice / Deposit', 'Date', 'Payer ID', 'Payer', 'Funder', 'Fee', 'Appointment Status', 'Invoice Status', 'Amount'];
+      const missing = need.filter((n) => col(n) < 0);
+      if (missing.length) throw new UPCError('Halaxy\'s Unpaid Invoices report has changed (' + missing.join(', ') + ' not found).');
+      const balanceCol = names.lastIndexOf('Balance');
+      const grid = cellGrid(body);
+      const out = [];
+      let last = null;
+      grid.forEach((row, ri) => {
+        if ([...body[ri].cells].some((td) => (td.colSpan || 1) > 3)) return;   // totals and headings
+        const cell = (n) => { const i = typeof n === 'number' ? n : col(n); return i < 0 ? '' : clean(row[i] && row[i].textContent); };
+        const link = row[col('Invoice / Deposit')] && row[col('Invoice / Deposit')].querySelector('a[href*="/invoice/"]');
+        const invoiceId = link ? (link.getAttribute('href').match(/\/invoice\/(\d+)/) || [])[1] || null : null;
+        const same = last && last.invoiceId === invoiceId && last.invoice === cell('Invoice / Deposit');
+        const line = {
+          invoiceId, invoice: cell('Invoice / Deposit'),
+          date: cell('Date') || (same ? last.date : ''), invoiceStatus: cell('Invoice Status') || (same ? last.invoiceStatus : ''),
+          balance: balanceCol >= 0 && cell(balanceCol) ? money.cents(cell(balanceCol)) : (same ? last.balance : null),
+          payerId: cell('Payer ID') || (same ? last.payerId : ''), payer: cell('Payer') || (same ? last.payer : ''),
+          funder: cell('Funder') || (same ? last.funder : ''), category: cell('Category'), fee: cell('Fee'),
+          apptStatus: cell('Appointment Status'), amount: money.cents(cell('Amount')),
+        };
+        out.push(line);
+        last = line;
+      });
+      return out;
+    },
+    // Ids of patient invoices Halaxy lists as Pending: billed to a funder, waiting for its payment.
+    async pendingInvoiceIds() {
+      const ids = new Set();
+      for (let start = 0; start < 2000; start += 100) {
+        const res = await http.list('/invoice/list-data', { status: { filterType: 'text', type: 'contains', filter: 'Pending' } }, [], start, start + 100);
+        const rows = (res && res.rowData) || [];   // ag-Grid answer: { rowData, lastRow }
+        rows.forEach((r) => { if (r && r.id !== undefined) ids.add(String(r.id)); });
+        if (rows.length < 100 || (typeof res.lastRow === 'number' && res.lastRow >= 0 && start + 100 >= res.lastRow)) break;
+      }
+      return ids;
+    },
+  };
+
   // ------------------------------------------------------------------ tasks
 
   // Halaxy's add-task pop-up for an invoice (the invoice page's add-task button, confirmed live 9 Nov 2026):
@@ -807,6 +897,6 @@
   };
 
   window.UPC = Object.freeze({
-    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, tasks, rebate, files, load, ui,
+    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, tasks, reports, dayLabel, parseDay, rebate, files, load, ui,
   });
 })();

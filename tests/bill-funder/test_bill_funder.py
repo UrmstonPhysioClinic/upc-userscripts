@@ -469,6 +469,22 @@ async def main():
         check('nothing changed after a safety stop', S['calls'] == [], S['calls'])
         check('safety stop offers Halaxy\'s own Invoice Funder', await pg.evaluate(root + ".querySelector('[data-a=native]') !== null"))
         await ctx.close()
+
+        # Scenario 5: Ready to bill's link (#upc-invoice-funder) opens Invoice Funder by itself, once
+        S = fresh()
+        ctx = await browser.new_context(viewport={'width': 1300, 'height': 900})
+        await ctx.route('https://eu.halaxy.com/**', halaxy)
+        await ctx.add_init_script(CORE)
+        await ctx.add_init_script("document.addEventListener('DOMContentLoaded', function () {\n" + BILL + "\n});")
+        pg = await ctx.new_page()
+        errors = []
+        pg.on('pageerror', lambda e: errors.append(str(e)))
+        await pg.goto('https://eu.halaxy.com/a/pr/555/invoice/1003#upc-invoice-funder')
+        await pg.wait_for_function("document.querySelector('[data-upc-bill-funder] tbody')", timeout=60000)
+        check('Ready to bill link opens Invoice Funder', await pg.evaluate("document.querySelector('[data-upc-bill-funder] .modal-title').textContent") == 'Invoice Funder')
+        check('the link is cleared, so a reload does not open it again', await pg.evaluate("location.hash") == '', await pg.evaluate("location.href"))
+        check('no page errors (scenario 5)', not errors, errors)
+        await ctx.close()
         await browser.close()
 
     print('\n%d failed' % len(FAILS) if FAILS else '\nAll passed')

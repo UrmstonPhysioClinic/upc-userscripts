@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy bill funder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.7.1
+// @version      0.7.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
@@ -40,7 +40,7 @@
   if (window.__upcBillFunder) return;
   window.__upcBillFunder = true;
 
-  const VERSION = '0.7.1';
+  const VERSION = '0.7.2';
   const MAX_AGE_DAYS = 183;   // about 6 months
   const NOT_ATTENDED = /cancel|did-not-attend|dna|reject|declin|reschedul/i;
   const DAY = 86400e3;
@@ -453,6 +453,23 @@
   function start() {
     if (!window.UPC) { console.error('[UPC bill funder] needs the core library'); return; }
     window.addEventListener('click', onClick, true);   // capture: before Halaxy's own handlers
+    if (location.hash === '#upc-invoice-funder') autoOpen();
+  }
+
+  // Ready to bill links to an invoice with #upc-invoice-funder: open Invoice Funder once Halaxy has drawn its button.
+  function autoOpen() {
+    history.replaceState(null, '', location.pathname + location.search);   // a reload doesn't open it again
+    const t0 = Date.now();
+    const tick = () => {
+      const btn = document.getElementById('invoiceFunderBtn');
+      const id = btn && ((btn.getAttribute('data-modal-href') || '').match(/\/invoicefunctions\/(\d+)\//) || [])[1];
+      if (id) { openPanel(id); return; }
+      if (Date.now() - t0 < 10000) { setTimeout(tick, 250); return; }
+      const d = window.UPC.ui.dialog({ title: 'Invoice Funder', key: 'upc-bf-auto', small: true });
+      d.body.innerHTML = '<p>This invoice doesn\'t show Invoice Funder, so its fees may already have been billed to the funder.</p>' +
+        '<div class="text-right"><button type="button" class="' + window.UPC.ui.btn('outline') + '" data-upc-close>Close</button></div>';
+    };
+    tick();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
