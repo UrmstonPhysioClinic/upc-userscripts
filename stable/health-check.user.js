@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.9
+// @version      1.1.10
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.9';
+  const VERSION = '1.1.10';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -492,6 +492,13 @@
     if (runningAll) return runningAll;
     runningAll = (async () => {
       const changed = noteVersion();
+      // A new version of this health check starts from a clean slate: the previous version's results
+      // (some from checks it no longer makes, or makes on other pages) would otherwise linger until
+      // their page is visited again. Page checks re-run as pages are opened; data checks re-run below.
+      if (store.get('resultsBy', '') !== VERSION) {
+        store.set('results', {});
+        store.set('resultsBy', VERSION);
+      }
       await runPageChecks();
       const due = Date.now() - store.get('dataAt', 0) > DATA_EVERY_HOURS * 3600e3;
       // A new version of this health check may judge Halaxy's data differently, so it re-checks

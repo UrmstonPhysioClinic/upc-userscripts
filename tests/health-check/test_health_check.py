@@ -137,12 +137,14 @@ async def main():
         await pg.evaluate("""(() => {
             const r = JSON.parse(localStorage.getItem('upc-health:results') || '{}');
             r['data-calendar'] = { title: 'Calendar data', scripts: ['Outstanding Actions'], problems: ['old version complaint'], at: Date.now(), page: 'data' };
+            r['reports'] = { title: "Halaxy's table builder", scripts: ['Custom Reports', 'Remittances'], problems: ['HxGridTable()'], at: Date.now(), page: '/a/pr/:n/report/referral/:n' };
+            localStorage.setItem('upc-health:resultsBy', JSON.stringify('0.0.1'));
             localStorage.setItem('upc-health:results', JSON.stringify(r));
             localStorage.setItem('upc-health:dataAt', JSON.stringify(Date.now()));
             localStorage.setItem('upc-health:dataBy', JSON.stringify('0.0.1'));
         })()""")
         probs2, pill2 = await load()
-        check('new health check version re-checks at once, clearing the old result', probs2 == [] and pill2 == '', (probs2, pill2))
+        check('new health check version re-checks at once, clearing the old results (data and page)', probs2 == [] and pill2 == '', (probs2, pill2))
         probs3, pill3 = await load()
         check('and then waits for the daily check again', await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:dataBy'))") != '0.0.1' and probs3 == [], probs3)
         stored = await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:halaxy'))")
