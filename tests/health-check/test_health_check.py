@@ -89,6 +89,8 @@ async def halaxy(route):
         return await j({'status': 'OK', 'payload': {'events': events()}})
     if '/patient/invoice/' in p and p.endswith('/list-data'):
         return await j([{'id': 501, 'total': 45, 'balance': 0, 'status': 'Paid In Full'}])
+    if p.endswith('/task/task-followup/list/data'):
+        return await j([{'id': 1, 'title': 'Review Request', 'status': 'Sent', 'linkedToUrl': '/a/pr/555/patient/1/'}])
     if re.search(r'/task/new/invoice/\d+$', p):
         f = "<form id='form_task_edit'><input name='form[title]'><select name='form[linkPrGs][]'><option value='31'>Carl Healy</option></select><input type='radio' name='form[priority]' value='2'>"
         f += ("" if 'task' in STATE['break'] else "<input name='form[displayDueDate]'>") + "<textarea name='form[comment]'></textarea><input type='hidden' name='form[_token]' value='t'></form>"

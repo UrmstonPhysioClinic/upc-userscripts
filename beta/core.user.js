@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.19
+// @version      0.1.20
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.19';
+  const VERSION = '0.1.20';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -688,6 +688,140 @@
     },
   };
 
+  // ------------------------------------------------------------------ clinical notes
+
+  // Confirmed on live Halaxy 10 Nov 2026. The notes list (GET /note/menu/linkPaG/{linkPaGId}/items,
+  // payload.menuItems, nested in items[]) holds appointment notes ("appointment" / "note"), other
+  // notes ("note" / "note"), forms ("form" / "intake-form-invite") and tools ("tool" / "note").
+  // A note's text: GET /note/{id}, JSON with HTML in content (and contentQuestions for template answers).
+  // Note text is patient data: callers use it in the page and never store or send it anywhere.
+  const notes = {
+    // [{ id, noteId, category, entity, label, date (ms or null), status }], newest first.
+    async items(linkPaGId) {
+      const j = await http.json('/note/menu/linkPaG/' + encodeURIComponent(linkPaGId) + '/items');
+      const list = j && j.payload && j.payload.menuItems;
+      if (!Array.isArray(list)) throw new UPCError('The patient\'s notes list has changed, so their notes could not be read.');
+      const out = [];
+      const walk = (items) => (items || []).forEach((it) => {
+        if (!it) return;
+        const digits = [it.id, it.linkId, it.key].map((v) => String(v === null || v === undefined ? '' : v)).map((v) => (/^\d+$/.test(v) ? v : (v.match(/(\d{4,})$/) || [])[1])).find(Boolean);
+        out.push({ id: String(it.id), noteId: digits || null, category: it.category || '', entity: it.entity || '', label: clean(it.label || it.title || ''),
+          date: typeof it.sortDate === 'number' && it.sortDate > 0 ? (it.sortDate > 1e12 ? it.sortDate : it.sortDate * 1000) : parseDay(it.date), status: it.status || '' });
+        walk(it.items);
+      });
+      walk(list);
+      return out.sort((a, b) => (b.date || 0) - (a.date || 0));
+    },
+    async text(noteId) {
+      const j = await http.json('/note/' + encodeURIComponent(noteId));
+      if (!j || (typeof j.content !== 'string' && typeof j.final !== 'string')) throw new UPCError('Clinical notes have changed, so a note could not be read.');
+      const doc = htmlDoc('<div>' + (j.content || j.final || '') + '</div><div>' + (j.contentQuestions || '') + '</div>');
+      doc.querySelectorAll('br, p, div, li, tr, h1, h2, h3, h4, h5, h6').forEach((e) => e.append(' '));
+      return clean(doc.body.textContent);
+    },
+  };
+
+  // ------------------------------------------------------------------ follow-ups
+
+  // Halaxy's Tasks & Follow-Ups (confirmed live 10 Nov 2026).
+  //  - List: GET /task/task-followup/list/data, an array of { id, title, status ('Sent', 'Scheduled'),
+  //    scheduledOrSentDate (ISO), linkedToId, linkedTo, linkedToUrl (/a/pr/{pg}/patient/{linkPaGId}/), method, ... }.
+  //  - Add: the Add Follow-Up pop-up, GET/POST /task/patient/{linkPaGId}/task-followup/create: form[recallTemplate]
+  //    (follow-up template), form[title], form[isEmailMethod], form[isSmsMethod], form[scheduleAt][date],
+  //    form[scheduleAt][time][hour|minute], form[intakeFormTemplate], form[emailTemplate], form[smsTemplate], form[_token].
+  const followUps = {
+    async list() {
+      const j = await http.json('/task/task-followup/list/data');
+      const rows = Array.isArray(j) ? j : (j && (j.rowData || j.data));
+      if (!Array.isArray(rows)) throw new UPCError('The follow-ups list has changed, so follow-ups could not be read.');
+      return rows.map((r) => Object.assign({}, r, { linkPaGId: (String(r.linkedToUrl || '').match(/\/patient\/(\d+)/) || [])[1] || (r.linkedToId !== undefined && r.linkedToId !== null ? String(r.linkedToId) : '') }));
+    },
+    // Adds an email follow-up from a follow-up template and email template (matched by name), scheduled for `when`
+    // (a Date; now if left out). Checks the follow-ups list afterwards.
+    async add(linkPaGId, o) {
+      const path = '/task/patient/' + encodeURIComponent(linkPaGId) + '/task-followup/create';
+      const { doc } = await http.popup(path);
+      const form = doc.querySelector('form#form-recall-template') || [...doc.querySelectorAll('form')].find((f) => f.querySelector('[name="form[title]"]'));
+      const need = ['form[recallTemplate]', 'form[title]', 'form[isEmailMethod]', 'form[scheduleAt][date]', 'form[scheduleAt][time][hour]', 'form[scheduleAt][time][minute]', 'form[emailTemplate]', 'form[_token]'];
+      const missing = need.filter((k) => !form || !form.querySelector('[name="' + k + '"]'));
+      if (missing.length) throw new UPCError('The Add Follow-Up pop-up has changed (' + missing.join(', ') + ' not found), so nothing was sent.');
+      const pick = (name, text) => {
+        const opt = [...form.querySelectorAll('select[name="' + name + '"] option')].find((x) => clean(x.textContent).toLowerCase() === String(text).toLowerCase());
+        if (!opt) throw new UPCError('"' + text + '" is not in the Add Follow-Up pop-up\'s list, so nothing was sent.');
+        return opt.value;
+      };
+      const when = o.when || new Date();
+      const two = (n) => String(n).padStart(2, '0');
+      const timeOpt = (name, n) => { const x = [...form.querySelectorAll('select[name="' + name + '"] option')].find((op) => Number(clean(op.textContent)) === n); return x ? x.value : two(n); };
+      const email = form.querySelector('[name="form[isEmailMethod]"]');
+      const set = {
+        'form[recallTemplate]': pick('form[recallTemplate]', o.template), 'form[title]': o.title || o.template, 'form[isEmailMethod]': email.value || '1',
+        'form[scheduleAt][date]': dayLabel(when.getTime()), 'form[scheduleAt][time][hour]': timeOpt('form[scheduleAt][time][hour]', when.getHours()),
+        'form[scheduleAt][time][minute]': timeOpt('form[scheduleAt][time][minute]', when.getMinutes()), 'form[emailTemplate]': pick('form[emailTemplate]', o.emailTemplate || o.template),
+      };
+      const pairs = serialize(form).filter(([k]) => !(k in set) && k !== 'form[isSmsMethod]');
+      Object.keys(set).forEach((k) => pairs.push([k, set[k]]));
+      const before = (await followUps.list()).filter((r) => r.linkPaGId === String(linkPaGId)).map((r) => String(r.id));
+      const res = await http.postForm(path, pairs);
+      if (!res || !['POPUP', 'REFRESH', 'OK'].includes(res.status)) http.expectRefresh(res, 'Adding the follow-up');
+      const added = (await followUps.list()).find((r) => r.linkPaGId === String(linkPaGId) && !before.includes(String(r.id)) && clean(r.title).toLowerCase() === String(set['form[title]']).toLowerCase());
+      if (!added) throw new UPCError('Halaxy accepted the follow-up, but it does not show in Tasks & Follow-Ups.');
+      return added;
+    },
+  };
+
+  // ------------------------------------------------------------------ patients
+
+  const patient = {
+    // The notes sidebar's patient details (GET /note/sidebar/linkPaG/{linkPaGId}): fullName, status, dob, userLabels, ...
+    async details(linkPaGId) {
+      const j = await http.json('/note/sidebar/linkPaG/' + encodeURIComponent(linkPaGId));
+      if (!j || !j.patientDetails) throw new UPCError('The patient details have changed, so they could not be read.');
+      return j.patientDetails;
+    },
+    // Unpaid patient invoices (GET /patient/invoice/{linkPaGId}/list-data: id, total, balance, status).
+    async invoices(linkPaGId) {
+      const j = await http.json('/patient/invoice/' + encodeURIComponent(linkPaGId) + '/list-data');
+      const rows = Array.isArray(j) ? j : (j && (j.rowData || j.data));
+      if (!Array.isArray(rows)) throw new UPCError('The patient\'s invoice list has changed, so it could not be read.');
+      return rows;
+    },
+    // Adds a label (by name) on the patient's Edit page (form#patientGeneralEditForm, confirmed live 10 Nov 2026),
+    // sending the form exactly as Halaxy filled it with only the label added, then reads the page again to check
+    // that the label is there and nothing else changed. False if the patient already has it.
+    async addLabel(linkPaGId, name) {
+      const path = '/patient/' + encodeURIComponent(linkPaGId) + '/edit';
+      const FIELD = 'patientdetailmain[linkPaG][userLabels][]';
+      const read = async () => {
+        const doc = await http.html(path);
+        const form = doc.querySelector('form#patientGeneralEditForm');
+        const sel = form && form.querySelector('select[name="' + FIELD + '"]');
+        if (!sel || !form.querySelector('[name="patientdetailmain[_token]"]')) throw new UPCError('The patient Edit page has changed, so the label was not added.');
+        const opt = [...sel.options].find((x) => clean(x.textContent).toLowerCase() === String(name).toLowerCase());
+        if (!opt) throw new UPCError('There is no "' + name + '" label in Halaxy yet (practice profile, Manage labels), so it was not added.');
+        return { form, opt };
+      };
+      const { form, opt } = await read();
+      if (opt.selected) return false;
+      const was = serialize(form).filter(([k]) => k !== 'patientdetailmain[_token]');
+      opt.selected = true;
+      const pairs = serialize(form);
+      const save = form.querySelector('[name="save_patient"]');
+      if (save && !pairs.some(([k]) => k === 'save_patient')) pairs.push(['save_patient', save.value || '']);
+      const body = new URLSearchParams();
+      pairs.forEach(([k, v]) => body.append(k, v));
+      const res = await pacedFetch(url(path), { method: 'POST', credentials: 'same-origin', body: body.toString(),
+        headers: Object.assign({ 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, JSON_HEADERS) });
+      if (!res.ok) throw new UPCError('Halaxy returned ' + res.status + ' when saving the patient.');
+      const after = await read();
+      if (!after.opt.selected) throw new UPCError('Halaxy did not keep the "' + name + '" label. Add it on the patient\'s Edit page instead.');
+      const now = serialize(after.form).filter(([k]) => k !== 'patientdetailmain[_token]' && k !== FIELD).map((x) => x.join('='));
+      const changed = was.filter(([k]) => k !== FIELD).map((x) => x.join('=')).filter((x) => !now.includes(x));
+      if (changed.length) throw new UPCError('The label was added, but these details now read differently on the Edit page: ' + changed.map((x) => x.split('=')[0]).join(', ') + '. Please check the patient.');
+      return true;
+    },
+  };
+
   // ------------------------------------------------------------------ patient forms
 
   // Forms patients fill in (intake forms), confirmed on live Halaxy 10 Nov 2026:
@@ -942,6 +1076,6 @@
   };
 
   window.UPC = Object.freeze({
-    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, forms, tasks, reports, dayLabel, parseDay, rebate, files, load, ui,
+    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, forms, notes, followUps, patient, tasks, reports, dayLabel, parseDay, rebate, files, load, ui,
   });
 })();
