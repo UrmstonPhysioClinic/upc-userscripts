@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy review requests (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.0
+// @version      0.3.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
@@ -38,7 +38,7 @@
   if (window.__hxReviewRequests) return;
   window.__hxReviewRequests = true;
 
-  const VERSION = '0.3.0';
+  const VERSION = '0.3.1';
   const ROUTE = 'upc-review-requests';
   const MENU_CLS = 'upc-rr-menu';
   const ALLOWED = ['Carl Healy'];          // Carl, 10 Nov 2026: just me for now
@@ -86,10 +86,13 @@
     ['thanks', /\bthank(s| you)\b/i],
     ['low pain score', /\b[01]\s*\/\s*10\b|\bnprs:?\s*[01]\b|\bvas:?\s*[01]\b/i],
   ];
+  // Against: only what says this course went badly or isn't over. Notes describe symptoms all the time
+  // ("worse on stairs", "no need for a scan"), so plain mentions don't count (live list, 10 Nov 2026).
+  const RULES = 2;   // bump when the phrase lists change, so patients are read again
   const BAD = [
-    ['not fully better', /\bnot (yet )?(100\s*%|fully\b|completely\b|quite\b)|\bno (better|improvement|change)\b|\bslow progress\b/i],
-    ['worse or flare-up', /\bworse\b|\bflare[- ]?up\b|\baggravat|\bstill (painful|sore|struggling|symptomatic)\b|\bdeteriorat/i],
-    ['referred on', /\brefer(red|ral)? (back |on(ward)? )?(to|for)\b|\bonward referral\b|\b(mri|x-?ray|scan|injection|consultant|orthopaedic|surgeon)\b/i],
+    ['not fully better', /\bnot (yet )?(100\s*%|fully|completely|quite)\s*(better|recovered|resolved|right|there|improved|pain[- ]?free)\b|\bno (better|improvement)\b|\bslow progress\b|\bminimal (change|improvement)\b/i],
+    ['worse or flare-up', /\b(getting|feeling|feels|felt|been|is|was|now|much|slightly) worse\b|\b(has|have) (got|gotten|become) worse\b|\bworsen(ed|ing)\b|\b(had|having|has had|another) (a )?flare[- ]?up\b|\bflared( up)?\b|\bstill (painful|sore|struggling|symptomatic)\b|\bdeteriorat/i],
+    ['referred on', /\b(re-?)?refer(red|ral)? (back )?(on(ward)? )?(to|for) (the |a |an |his |her |their )?(gp|doctor|consultant|orthopaedic|ortho|surgeon|specialist|msk|cats|mri|scan|x-?ray|ultrasound|injection|a&e|hospital|rheumatolog\w*|podiatr\w*)\b|\bonward referral\b|\bawaiting (an? |his |her |their )?(mri|scan|x-?ray|surgery|operation|consultant|injection|results)\b/i],
     ['unhappy or cost', /\bunhappy\b|\bdissatisfied\b|\bcomplain|\bcan(no|')t afford\b|\btoo expensive\b/i],
   ];
   const NEGATION = /\b(not|no longer|never|isn'?t|wasn'?t|hasn'?t|without|unable to)\b[^.]{0,20}$/i;
@@ -106,7 +109,7 @@
     });
     scan(GOOD, found.good, true);
     scan(NICE, found.nice, true);
-    scan(BAD, found.bad, false);
+    scan(BAD, found.bad, true);
     return found;
   }
   const scoreFrom = (answer) => { const m = /^\s*([+-]?\d+)/.exec(String(answer || '')); return m ? +m[1] : null; };
@@ -159,6 +162,7 @@
   async function check(say) {
     say = say || (() => {});
     const now = Date.now(), day0 = today();
+    const cache = store.get('cache', {});
     say('Reading Tasks & Follow-Ups...');
     const asked = new Set((await U().followUps.list()).filter((r) => new RegExp('^' + TEMPLATE + '$', 'i').test(U().clean(r.title))).map((r) => r.linkPaGId));
     const events = await calendar(day0 - (MAX_DAYS + 120) * DAY, day0 + 120 * DAY, say);
@@ -170,8 +174,10 @@
       byPatient.get(id).push(e);
     });
     const counts = { asked: 0, left: 0, none: 0, ended: 0, soon: 0 };
-    const cache = store.get('cache', {});
     const rows = [];
+    const fresh = (r) => r && now - r.at <= KEEP && r.links && r.rules === RULES;
+    const toRead = [...byPatient.values()].filter((evs) => { const last = evs.filter((e) => startMs(e) < now && !e.appointmentStatus).map(startMs); return last.length && Math.max(...last) >= now - MAX_DAYS * DAY; }).length;
+    let read = 0;
     for (const [id, evs] of byPatient) {
       const past = evs.filter((e) => startMs(e) < now).sort((a, b) => startMs(b) - startMs(a));
       const attended = past.filter((e) => !e.appointmentStatus);
@@ -185,9 +191,11 @@
       const p = { id, name, lastSeen, firstSeen: startMs(attended[attended.length - 1]) };
       const ck = id + '|' + lastSeen;
       let r = cache[ck];
-      if (!r || now - r.at > KEEP || !r.links) {
-        try { r = Object.assign({ at: now }, await assess(p, say)); } catch (e) { r = { at: now, verdict: 'error', why: e.message || String(e), good: [], nice: [], bad: [] }; if (/has changed/.test(r.why)) tellHealthCheck(e); }
-        if (r.verdict !== 'error') cache[ck] = r;
+      read++;
+      if (!fresh(r)) {
+        const tell = (t) => say(t.replace(/\.\.\.$/, '') + ' (' + read + ' of about ' + toRead + ')...');
+        try { r = Object.assign({ at: now, rules: RULES }, await assess(p, tell)); } catch (e) { r = { at: now, verdict: 'error', why: e.message || String(e), good: [], nice: [], bad: [] }; if (/has changed/.test(r.why)) tellHealthCheck(e); }
+        if (r.verdict !== 'error') { cache[ck] = r; store.set('cache', cache); }   // kept as it goes, so a check that's stopped isn't wasted
       }
       if (r.verdict === 'none') { counts.none++; continue; }
       if (r.verdict === 'left') { counts.left++; continue; }
@@ -212,10 +220,13 @@
 
   // ------------------------------------------------------------------ menu count
 
-  const locked = () => Date.now() - store.get('running', 0) < 10 * 60e3;
+  // One check at a time across tabs. The checking tab renews its claim as it goes, so a tab that was
+  // closed or reloaded mid-check only holds things up for 2 minutes.
+  const locked = () => Date.now() - store.get('running', 0) < 2 * 60e3;
   async function checkLocked(say) {
     store.set('running', Date.now());
-    try { return await check(say); } finally { store.set('running', 0); }
+    const beat = (t) => { store.set('running', Date.now()); store.set('progress', t); if (say) say(t); };
+    try { return await check(beat); } finally { store.set('running', 0); store.set('progress', ''); }
   }
   async function refreshCount() {
     if (!allowed() || document.visibilityState !== 'visible' || !U() || U().http.pausedFor() > 0 || locked()) return;
@@ -342,10 +353,12 @@
     render();
     try {
       if (locked()) {
-        state.status = 'Checking in another tab...';
-        render();
         const t0 = Date.now();
-        while (locked() && Date.now() - t0 < 10 * 60e3) await U().sleep(1000);
+        while (locked() && Date.now() - t0 < 30 * 60e3) {
+          state.status = 'Checking in another tab: ' + (store.get('progress', '') || 'starting...');
+          render();
+          await U().sleep(1500);
+        }
         const r = store.get('result', null);
         if (!r || Date.now() - r.at > PAGE_FRESH) await checkLocked((t) => { state.status = t; render(); });
       } else {

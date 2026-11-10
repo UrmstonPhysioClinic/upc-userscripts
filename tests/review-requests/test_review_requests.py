@@ -273,7 +273,8 @@ async def main():
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/')
         cases = await pg.evaluate("""[
           'Patient reports 100% improvement, fully recovered.', 'Not 100% better yet.', 'No longer pain free after the weekend.', 'Pain free. Ran the Manchester half marathon.',
-          'Has returned to full training. NPRS 1/10. Really pleased.', 'Flare-up after gardening.', 'Self-managing with home exercises; see as needed.'
+          'Has returned to full training. NPRS 1/10. Really pleased.', 'Had a flare-up after gardening.', 'Self-managing with home exercises; see as needed.',
+          'Pain worse on stairs at first assessment. No need for a scan. Discussed injection options. Discharged.', 'Referred to GP for bloods.', 'No flare-up since last session.'
         ].map((t) => window.upcReviewRequests.phrases(t))""")
         check('"100% improvement, fully recovered" counts', '100% better' in cases[0]['good'], cases[0])
         check('"not 100% better" counts against, not for', not cases[1]['good'] and 'not fully better' in cases[1]['bad'], cases[1])
@@ -282,6 +283,9 @@ async def main():
         check('back to training, low pain score, pleased', 'back to sport or work' in cases[4]['good'] and 'low pain score' in cases[4]['nice'] and 'very happy' in cases[4]['nice'], cases[4])
         check('flare-up counts against', 'worse or flare-up' in cases[5]['bad'], cases[5])
         check('self-managing, see as needed', 'self-managing' in cases[6]['good'] and 'discharged' in cases[6]['good'], cases[6])
+        check('plain mentions (worse on stairs, a scan, injection options) don\'t count against', not cases[7]['bad'] and 'discharged' in cases[7]['good'], cases[7])
+        check('referred to GP counts against', 'referred on' in cases[8]['bad'], cases[8])
+        check('"no flare-up" doesn\'t count against', not cases[9]['bad'], cases[9])
         await ctx.close()
         await browser.close()
 
