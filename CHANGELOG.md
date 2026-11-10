@@ -17,6 +17,10 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Review requests
 
+### 0.4.1 (10 Nov 2026, beta, with core 0.1.22)
+- A sent request said "Halaxy accepted the follow-up, but it does not show in Tasks & Follow-Ups" although it did: follow-ups added from the patient's profile have no "Linked To" note, and the patient is in Assigned To. The patient now comes from assignedToUrl, so the check passes and anyone already sent one is left out.
+- The follow-up template is no longer imported, only the Review Request email template: with the template, Halaxy set its own send time (a request sent at 21:30 was scheduled for 23:30). The reminder now needs only a "Review Reminder" email template.
+
 ### 0.4.0 (10 Nov 2026, beta)
 - Review requests are scheduled for the next weekday at 10:30 (at least 15 minutes ahead), the late-morning weekday slot review sellers' data favours (Carl: "whatever creates the least work and drives the most conversions"). The confirmation says when, and the row shows it.
 - Optional reminder: if Halaxy has a follow-up template and an email template called "Review Reminder", a reminder is added for a week later at the same time. Without them, nothing more is sent. Both can be cancelled in Tasks & Follow-Ups before they go.
@@ -49,6 +53,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - `UPC.notes.items` and `UPC.notes.text` (a patient's notes list and a note's text), `UPC.followUps.list` and `UPC.followUps.add` (Tasks & Follow-Ups), `UPC.patient.details`, `UPC.patient.invoices` and `UPC.patient.addLabel`. Confirmed against live captures, 10 Nov 2026.
 
 ## Health check
+
+### 1.1.16 (10 Nov 2026, beta)
+- The follow-ups check looks for assignedToUrl (the patient), which Review requests now reads.
 
 ### 1.1.15 (10 Nov 2026, beta)
 - Checks the follow-ups list daily (Review requests), and knows Review requests by name.

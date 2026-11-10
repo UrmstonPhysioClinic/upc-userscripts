@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.21
+// @version      0.1.22
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.21';
+  const VERSION = '0.1.22';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -729,7 +729,9 @@
 
   // Halaxy's Tasks & Follow-Ups (confirmed live 10 Nov 2026).
   //  - List: GET /task/task-followup/list/data, an array of { id, title, status ('Sent', 'Scheduled'),
-  //    scheduledOrSentDate (ISO), linkedToId, linkedTo, linkedToUrl (/a/pr/{pg}/patient/{linkPaGId}/), method, ... }.
+  //    scheduledOrSentDate (ISO), assignedTo (the patient's name), assignedToUrl (/a/pr/{pg}/patient/{linkPaGId}),
+  //    linkedTo / linkedToUrl / linkedToId (the clinical note it was added from; empty when added from the
+  //    patient's profile, as ours are: live, 10 Nov 2026), method, ... }. The patient comes from assignedToUrl.
   //  - Add: the Add Follow-Up pop-up, GET/POST /task/patient/{linkPaGId}/task-followup/create: form[recallTemplate]
   //    (follow-up template), form[title], form[isEmailMethod], form[isSmsMethod], form[scheduleAt][date],
   //    form[scheduleAt][time][hour|minute], form[intakeFormTemplate], form[emailTemplate], form[smsTemplate], form[_token].
@@ -738,7 +740,8 @@
       const j = await http.json('/task/task-followup/list/data');
       const rows = Array.isArray(j) ? j : (j && (j.rowData || j.data));
       if (!Array.isArray(rows)) throw new UPCError('The follow-ups list has changed, so follow-ups could not be read.');
-      return rows.map((r) => Object.assign({}, r, { linkPaGId: (String(r.linkedToUrl || '').match(/\/patient\/(\d+)/) || [])[1] || (r.linkedToId !== undefined && r.linkedToId !== null ? String(r.linkedToId) : '') }));
+      const pat = (u) => (String(u || '').match(/\/patient\/(\d+)/) || [])[1];
+      return rows.map((r) => Object.assign({}, r, { linkPaGId: pat(r.assignedToUrl) || pat(r.linkedToUrl) || '' }));
     },
     // Adds an email follow-up from a follow-up template and email template (matched by name), scheduled for `when`
     // (a Date; if left out, the next 5 minutes from 10 minutes' time, as Halaxy refuses a time that isn't in the
@@ -760,7 +763,9 @@
       const timeOpt = (name, n) => { const x = [...form.querySelectorAll('select[name="' + name + '"] option')].find((op) => Number(clean(op.textContent)) === n); return x ? x.value : two(n); };
       const email = form.querySelector('[name="form[isEmailMethod]"]');
       const set = {
-        'form[recallTemplate]': pick('form[recallTemplate]', o.template), 'form[title]': o.title || o.template, 'form[isEmailMethod]': email.value || '1',
+        // The follow-up template isn't imported: Halaxy then sets its own send time from the template (a review request
+        // sent at 21:30 went on the list for 23:30: live, 10 Nov 2026). The title, email and time are set here instead.
+        'form[recallTemplate]': '', 'form[title]': o.title || o.template, 'form[isEmailMethod]': email.value || '1',
         'form[scheduleAt][date]': dayLabel(when.getTime()), 'form[scheduleAt][time][hour]': timeOpt('form[scheduleAt][time][hour]', when.getHours()),
         'form[scheduleAt][time][minute]': timeOpt('form[scheduleAt][time][minute]', when.getMinutes()), 'form[emailTemplate]': pick('form[emailTemplate]', o.emailTemplate || o.template),
       };
