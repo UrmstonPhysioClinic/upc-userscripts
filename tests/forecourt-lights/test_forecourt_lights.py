@@ -7,7 +7,7 @@ off the next day and until done, nothing on a following clinic evening, summer s
 dates, nothing before the reminder time, nothing when switched off); the pop-up (Done records the
 timer's on time, Remind me later hides it for an hour); the settings pop-up; no requests to Halaxy.
 
-Run:  python3 tests/forecourt-lights/test_forecourt_lights.py
+Run:  python3 tests/forecourt-lights/test_forecourt_lights.py [beta|stable]
 Needs: Python 3 with Playwright (Chromium) and astral (pip install astral).
 """
 import asyncio, datetime, json, sys
@@ -18,8 +18,9 @@ from astral.sun import sun
 from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
-CORE = (ROOT / 'beta' / 'core.user.js').read_text()
-SCRIPT = (ROOT / 'beta' / 'forecourt-lights.user.js').read_text()
+CHANNEL = sys.argv[1] if len(sys.argv) > 1 else 'beta'   # 'stable' tests the stable copy with stable core
+CORE = (ROOT / CHANNEL / 'core.user.js').read_text()
+SCRIPT = (ROOT / CHANNEL / 'forecourt-lights.user.js').read_text()
 GM = """
 window.GM_getValue = function (k, d) { var v = localStorage.getItem('upc-gm:fl:' + k); return v === null ? d : JSON.parse(v); };
 window.GM_setValue = function (k, v) { localStorage.setItem('upc-gm:fl:' + k, JSON.stringify(v)); };
@@ -157,11 +158,11 @@ async def main():
         await pg.click('[data-upc-dialog="upc-forecourt-settings"] [data-a=save]')
         err = await pg.evaluate("document.querySelector('[data-upc-dialog=\"upc-forecourt-settings\"] [data-err]').textContent")
         check('a wrong date is explained, not saved', 'not a date' in err, err)
-        await pg.fill('#upc-fl-skip', '25-Dec-2026\n2026-12-28')
+        await pg.fill('#upc-fl-skip', '25-Dec-2026\n2026-12-28\n01/01/2027')
         await pg.select_option('#upc-fl-timer', '15:30')
         await pg.click('[data-upc-dialog="upc-forecourt-settings"] [data-a=save]')
         s = await pg.evaluate("GM_getValue('settings', {})")
-        check('settings saved', s['who'] == ['Wendy Pritchard'] and s['days'][3] and s['days'][1] and s['skip'] == ['2026-12-25', '2026-12-28'] and s['timerOn'] == '15:30' and s['enabled'], s)
+        check('settings saved', s['who'] == ['Wendy Pritchard'] and s['days'][3] and s['days'][1] and s['skip'] == ['2026-12-25', '2026-12-28', '2027-01-01'] and s['timerOn'] == '15:30' and s['enabled'], s)
         check('no requests to Halaxy beyond the page itself', all(u.startswith('https://eu.halaxy.com/a/pr/555/calendar') for u in REQS), REQS)
         check('no page errors', not errors, errors)
         await ctx.close()
