@@ -56,7 +56,7 @@ def fresh():
     patient(106, 'Patient F', [(-35, '')], [(-35, 'Discharged.')])
     patient(107, 'Patient G', [(-20, '')], [(-20, 'Discharged.')])
     S['followups'].append({'id': 1, 'title': 'Review Request', 'status': 'Sent', 'scheduledOrSentDate': '2026-11-01T09:00:00+00:00', 'linkedToId': 107,
-                           'linkedTo': 'Patient G', 'linkedToUrl': '/a/pr/555/patient/107/', 'method': 'Email'})
+                           'assignedTo': 'Patient G', 'assignedToUrl': '/a/pr/555/patient/107', 'linkedTo': 'Clinical Note', 'linkedToUrl': '/a/pr/555/patient/107/', 'method': 'Email'})
     patient(108, 'Patient H', [(-25, ''), (-10, 'cancelled')], [(-25, 'Discharged.')])
     patient(109, 'Patient I', [(-20, '')], [(-20, 'Discharged, goals met.')], labels=['No review request'])
     patient(110, 'Patient J', [(-20, '')], [(-20, 'Discharged, goals met.')], dob='01/06/2014')
@@ -127,8 +127,9 @@ async def halaxy(route):
             return await js({'status': 'FORM', 'message': followup_form() + "<div class='invalid-feedback'>* Title is required</div><div class='text-danger'>* Method is required</div>",
                              'errors': ['Scheduled date must be in the future']})
         S['writes'].append(('followup', pid, f))
-        S['followups'].append({'id': len(S['followups']) + 1, 'title': f['form[title]'][0], 'status': 'Scheduled', 'linkedToId': pid,
-                               'linkedToUrl': '/a/pr/555/patient/%d/' % pid, 'method': 'Email'})
+        # As live (10 Nov 2026): added from the patient's profile, so the patient is in assignedTo and Linked To is empty.
+        S['followups'].append({'id': len(S['followups']) + 1, 'title': f['form[title]'][0], 'status': 'Scheduled', 'assignedTo': S['patients'][pid]['name'],
+                               'assignedToUrl': '/a/pr/555/patient/%d' % pid, 'linkedToId': None, 'linkedTo': '', 'linkedToUrl': '', 'method': 'Email'})
         return await js({'status': 'REFRESH'})
     m = re.search(r'/note/menu/linkPaG/(\d+)/items$', p)
     if m:
@@ -229,7 +230,7 @@ async def main():
         await pg.wait_for_function("[...document.querySelectorAll('[data-upc-review-requests] tbody tr')].some(tr => tr.innerText.includes('Review request scheduled for Wednesday 11-Nov-2026 at 10:30'))", timeout=90000)
         w = [x for x in S['writes'] if x[0] == 'followup']
         f = w[0][2] if w else {}
-        check('follow-up sent with the Review Request templates, by email, for the next weekday at 10:30', len(w) == 1 and w[0][1] == 101 and f.get('form[recallTemplate]') == ['31'] and f.get('form[emailTemplate]') == ['45']
+        check('follow-up sent with the Review Request email template (not the follow-up template), for the next weekday at 10:30', len(w) == 1 and w[0][1] == 101 and f.get('form[recallTemplate]') == [''] and f.get('form[emailTemplate]') == ['45']
               and f.get('form[title]') == ['Review Request'] and f.get('form[isEmailMethod]') == ['1'] and 'form[isSmsMethod]' not in f and f.get('form[scheduleAt][date]') == ['11-Nov-2026']
               and f.get('form[scheduleAt][time][hour]') == ['10'] and f.get('form[scheduleAt][time][minute]') == ['30'] and f.get('form[_token]') == ['FT'], f)
         check('count drops once sent', await pg.evaluate("(document.querySelector('a.upc-rr-menu .upc-rr-badge') || {}).textContent") == '1')
@@ -251,7 +252,7 @@ async def main():
         await pg.click('[data-upc-rr-confirm] [data-c=yes]')
         await pg.wait_for_function("[...document.querySelectorAll('[data-upc-review-requests] tbody tr')].some(tr => tr.innerText.includes('reminder Wednesday 18-Nov-2026 at 10:30'))", timeout=90000)
         w = [x for x in S['writes'] if x[0] == 'followup' and x[1] == 114]
-        check('reminder added a week later from the Review Reminder templates', len(w) == 2 and w[1][2].get('form[recallTemplate]') == ['32'] and w[1][2].get('form[emailTemplate]') == ['46']
+        check('reminder added a week later from the Review Reminder templates', len(w) == 2 and w[1][2].get('form[recallTemplate]') == [''] and w[1][2].get('form[emailTemplate]') == ['46']
               and w[1][2].get('form[scheduleAt][date]') == ['18-Nov-2026'] and w[1][2].get('form[title]') == ['Review Reminder'], [x[2] for x in w])
         S['reminder'] = False
 

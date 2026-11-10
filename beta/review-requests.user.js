@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy review requests (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.0
+// @version      0.4.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
@@ -29,9 +29,9 @@
  *    the dates and which kinds of phrase matched, never the note text.
  *  - Send review request: Halaxy's Add Follow-Up with the Review Request template, by email, for the next
  *    weekday at 10:30 (Carl, 10 Nov 2026: "whatever creates the least work and drives the most conversions";
- *    review sellers' data favours weekday late mornings). If Halaxy has a follow-up template called
- *    "Review Reminder" (with an email template of the same name), a reminder is added for a week later
- *    at the same time; without one, nothing more is sent.
+ *    review sellers' data favours weekday late mornings). Only the email template is used, not the
+ *    follow-up template, which would set its own time. If Halaxy has an email template called
+ *    "Review Reminder", a reminder is added for a week later at the same time; without one, nothing more.
  *    Don't ask: adds the "No review request" label on the patient's Edit page. Both ask first.
  *  - Shown only to Carl (by Halaxy sign-in). The menu count is refreshed at most every 12 hours in the
  *    visible tab, shared across tabs, skipped while Halaxy has asked scripts to pause. Each patient's
@@ -42,7 +42,7 @@
   if (window.__hxReviewRequests) return;
   window.__hxReviewRequests = true;
 
-  const VERSION = '0.4.0';
+  const VERSION = '0.4.1';
   const ROUTE = 'upc-review-requests';
   const MENU_CLS = 'upc-rr-menu';
   const ALLOWED = ['Carl Healy'];          // Carl, 10 Nov 2026: just me for now
@@ -350,7 +350,7 @@
     const when = sendTime();
     const ok = kind === 'send'
       ? await confirm('Send review request?', '<p>Schedule the ' + esc(TEMPLATE) + ' email for ' + esc(r.name) + ' on ' + esc(whenLabel(when)) + '?</p><p class="text-muted">It\'s added through Halaxy\'s Add Follow-Up with your ' +
-        esc(TEMPLATE) + ' template and shows in Tasks &amp; Follow-Ups, where it can be cancelled before it goes. If you\'ve set up a ' + esc(REMINDER) + ' follow-up in Halaxy, a reminder is added for a week later.</p>', 'Send review request')
+        esc(TEMPLATE) + ' email template and shows in Tasks &amp; Follow-Ups, where it can be changed or cancelled before it goes. If you\'ve set up a ' + esc(REMINDER) + ' email template in Halaxy, a reminder is added for a week later.</p>', 'Send review request')
       : await confirm('Don\'t ask?', '<p>Add the label "' + esc(LABEL) + '" to ' + esc(r.name) + '?</p><p class="text-muted">It\'s added on their Edit page, with everything else left as it is, and they won\'t be suggested again.</p>', 'Add label');
     if (!ok) return;
     done.set(id, 'busy');
