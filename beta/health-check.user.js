@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.11
+// @version      1.1.12
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.11';
+  const VERSION = '1.1.12';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -135,7 +135,7 @@
         'HkCalendar.initForPrac()', 'HkCalendar.calendarModel.get()', 'HkCalendar.PathForEventJSON', 'HkCalendar.PathForNewEvent',
         'HkCalendar.PathForNewAppointment', 'HkCalendar.preferences', 'HkCalendar.timeslotHeights', 'HkCalendar.Timeline.position()',
         'HkCalendar.Timeline.tick()', 'HkCalendar.Toolbar.zoomIn()', 'HkCalendar.Toolbar.zoomOut()', 'HkCalendar.updateSingleEvent()',
-        'HkCalendar.Grid.getCalendarData()', 'HkCalendar.getEventUrlQueryParams()', 'HkCalendar.RenderPrac.toggleMultiPrac()',
+        'HkCalendar.Grid.getCalendarData()', 'HkCalendar.getEventUrlQueryParams()', 'HkCalendar.tEvent()', 'HkCalendar.eventsView.render()', 'HkCalendar.RenderPrac.toggleMultiPrac()',
         'HkCalendar.RenderPrac.renderMultiPracCalendar()', 'HkCalendar.Render.resizeCalendar()', 'HkCalendar.calMenu.refresh()',
         'HealthKit.swapPrac()', 'HealthKit.getThemeFontSize()', 'CalendarSettingsPrac.setModePracts()', 'CalendarSettingsPrac.savePracState()',
         'jQuery.ui.intersect()', 'jQuery.hkTypes.Date()', 'HkUtils.appendURL()', 'HkUI.flash.show()',
@@ -235,7 +235,7 @@
           put('data-calendar', 'Calendar data', OA, [], 'No appointments in the last or next week, so fields could not be checked.');
         } else {
           const problems = keysMissing(appts, ['start', 'end', 'linkPaGId', 'practitionerID', 'invoiceID', 'noteID', 'colour',
-            'appointmentStatus', 'noteStatusCss', 'invoiceStatus', 'isRequest', 'isGroupAppointment', 'title']).map((k) => 'field ' + k);
+            'appointmentStatus', 'noteStatusCss', 'invoiceStatus', 'invStatusCss', 'isRequest', 'isGroupAppointment', 'title']).map((k) => 'field ' + k);
           if (appts.some((e) => typeof e.start !== 'number' || e.start > 1e11)) problems.push('start is no longer Unix seconds');
           const statuses = new Set(appts.map((e) => String(e.appointmentStatus || '').toLowerCase()).filter(Boolean));
           // Halaxy statuses we know and treat as attended once finished. "check-response" first seen on live

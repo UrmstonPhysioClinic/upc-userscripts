@@ -3,7 +3,7 @@
     {
       "file": "health-check.user.js",
       "name": "Halaxy health check (beta)",
-      "version": "1.1.11"
+      "version": "1.1.12"
     },
     {
       "file": "core.user.js",
@@ -28,7 +28,7 @@
     {
       "file": "calendar-controls.user.js",
       "name": "Halaxy: calendar controls (beta)",
-      "version": "2.10"
+      "version": "2.11"
     },
     {
       "file": "custom-reports.user.js",
