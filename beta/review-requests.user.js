@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy review requests (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.1
+// @version      0.3.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
@@ -38,7 +38,7 @@
   if (window.__hxReviewRequests) return;
   window.__hxReviewRequests = true;
 
-  const VERSION = '0.3.1';
+  const VERSION = '0.3.2';
   const ROUTE = 'upc-review-requests';
   const MENU_CLS = 'upc-rr-menu';
   const ALLOWED = ['Carl Healy'];          // Carl, 10 Nov 2026: just me for now
@@ -259,6 +259,7 @@
     .upc-rr .upc-rr-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
     .upc-rr .upc-rr-bar .btn, .upc-rr td .btn { margin: 0; }
     .upc-rr td.upc-rr-acts { white-space: nowrap; }
+    .upc-rr td.upc-rr-acts .upc-err { display: inline-block; white-space: normal; max-width: 340px; }
     .upc-rr td.upc-rr-acts .btn + .btn { margin-left: 6px; }
     .upc-rr td.upc-rr-date, .upc-rr td.upc-rr-links { white-space: nowrap; }
     .upc-rr tr.upc-off td, .upc-rr tr.upc-off a { color: var(--vs-viewData-label-color, #6c757d); }
@@ -329,7 +330,7 @@
     const r = (store.get('result', { rows: [] }).rows || []).find((x) => x.id === id);
     if (!r || done.get(id) === 'busy') return;
     const ok = kind === 'send'
-      ? await confirm('Send review request?', '<p>Add the ' + esc(TEMPLATE) + ' follow-up for ' + esc(r.name) + ', by email, now?</p><p class="text-muted">It\'s added through Halaxy\'s Add Follow-Up with your ' + esc(TEMPLATE) + ' template, and shows in Tasks &amp; Follow-Ups.</p>', 'Send review request')
+      ? await confirm('Send review request?', '<p>Add the ' + esc(TEMPLATE) + ' follow-up for ' + esc(r.name) + ', by email, in about 10 minutes?</p><p class="text-muted">It\'s added through Halaxy\'s Add Follow-Up with your ' + esc(TEMPLATE) + ' template, and shows in Tasks &amp; Follow-Ups.</p>', 'Send review request')
       : await confirm('Don\'t ask?', '<p>Add the label "' + esc(LABEL) + '" to ' + esc(r.name) + '?</p><p class="text-muted">It\'s added on their Edit page, with everything else left as it is, and they won\'t be suggested again.</p>', 'Add label');
     if (!ok) return;
     done.set(id, 'busy');
