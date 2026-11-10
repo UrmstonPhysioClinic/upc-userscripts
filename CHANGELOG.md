@@ -14,6 +14,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Review requests
 
+### 0.3.0 (10 Nov 2026, beta)
+- A "Check first" column with links to the notes and Progress Update form behind each suggestion (Last note, Previous note, Progress Update, with their dates), opening in a new tab, so they can be read before sending (Carl).
+
 ### 0.2.0 (10 Nov 2026, beta)
 - Asks while it's fresh (Carl): from the day after the last visit when the notes say treatment has finished (discharged, goals met, self-managing, see as needed), otherwise once 2 weeks have passed with nothing booked. Nobody last seen over 4 weeks ago (was 2 to 8 weeks).
 
