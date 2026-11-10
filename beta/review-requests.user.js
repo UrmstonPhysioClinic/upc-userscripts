@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy review requests (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.0
+// @version      0.3.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
@@ -38,7 +38,7 @@
   if (window.__hxReviewRequests) return;
   window.__hxReviewRequests = true;
 
-  const VERSION = '0.2.0';
+  const VERSION = '0.3.0';
   const ROUTE = 'upc-review-requests';
   const MENU_CLS = 'upc-rr-menu';
   const ALLOWED = ['Carl Healy'];          // Carl, 10 Nov 2026: just me for now
@@ -127,13 +127,15 @@
     say('Reading ' + p.name + '\'s notes...');
     const items = await U().notes.items(p.id);
     const since = p.firstSeen - 7 * DAY;
-    const out = { good: [], nice: [], bad: [], progress: null, why: '' };
+    const out = { good: [], nice: [], bad: [], progress: null, why: '', links: [] };   // links: the notes and form read, to check before sending
     const form = items.find((x) => x.category === 'form' && /progress update/i.test(x.label) && (x.date === null || x.date >= since));
     if (form) {
       const q = (await U().forms.answers(form.id)).find((a) => /symptoms changed/i.test(a.question));
       out.progress = q ? scoreFrom(q.answer) : null;
+      out.links.push({ kind: 'form', id: form.id, date: form.date });
     }
     const recent = items.filter((x) => x.noteId && x.entity === 'note' && (x.category === 'appointment' || x.category === 'note') && (x.date === null || x.date >= since)).slice(0, 2);
+    recent.forEach((n) => out.links.unshift({ kind: 'note', id: n.noteId, date: n.date }));
     for (const n of recent) {
       const f = phrases(await U().notes.text(n.noteId));
       ['good', 'nice', 'bad'].forEach((k) => f[k].forEach((x) => { if (!out[k].includes(x)) out[k].push(x); }));
@@ -183,7 +185,7 @@
       const p = { id, name, lastSeen, firstSeen: startMs(attended[attended.length - 1]) };
       const ck = id + '|' + lastSeen;
       let r = cache[ck];
-      if (!r || now - r.at > KEEP) {
+      if (!r || now - r.at > KEEP || !r.links) {
         try { r = Object.assign({ at: now }, await assess(p, say)); } catch (e) { r = { at: now, verdict: 'error', why: e.message || String(e), good: [], nice: [], bad: [] }; if (/has changed/.test(r.why)) tellHealthCheck(e); }
         if (r.verdict !== 'error') cache[ck] = r;
       }
@@ -247,13 +249,23 @@
     .upc-rr .upc-rr-bar .btn, .upc-rr td .btn { margin: 0; }
     .upc-rr td.upc-rr-acts { white-space: nowrap; }
     .upc-rr td.upc-rr-acts .btn + .btn { margin-left: 6px; }
-    .upc-rr td.upc-rr-date { white-space: nowrap; }
+    .upc-rr td.upc-rr-date, .upc-rr td.upc-rr-links { white-space: nowrap; }
     .upc-rr tr.upc-off td, .upc-rr tr.upc-off a { color: var(--vs-viewData-label-color, #6c757d); }
     .upc-rr .upc-rr-why .upc-err { display: block; }
   `;
   const state = { unmount: null, running: false, status: '', error: '' };
   const done = new Map();   // patient id -> 'sent' | 'labelled' | { error }
   let root = null;
+
+  // Links to the notes and Progress Update form behind the suggestion, newest first, to read before sending.
+  function linksHtml(r) {
+    const base = U().base() + '/patient/' + encodeURIComponent(r.id) + '/clinical/category/';
+    const notes = (r.links || []).filter((x) => x.kind === 'note').sort((a, b) => (b.date || 0) - (a.date || 0));
+    const forms = (r.links || []).filter((x) => x.kind === 'form');
+    return notes.map((x, i) => '<a href="' + esc(base + 'note/id/' + x.id) + '" target="_blank" rel="noopener">' + (i ? 'Previous note' : 'Last note') + (x.date ? ' (' + esc(label(x.date)) + ')' : '') + '</a>')
+      .concat(forms.map((x) => '<a href="' + esc(base + 'intake-form-invite/id/' + x.id) + '" target="_blank" rel="noopener">Progress Update' + (x.date ? ' (' + esc(label(x.date)) + ')' : '') + '</a>'))
+      .join('<br>') || '<span class="text-muted">None found</span>';
+  }
 
   function rowHtml(r) {
     const base = U().base();
@@ -265,13 +277,13 @@
         '<button type="button" class="btn btn-outline-primary-light" data-send="' + esc(r.id) + '">Send review request</button>' +
         '<button type="button" class="btn btn-outline-primary" data-skip="' + esc(r.id) + '">Don\'t ask</button>';
     return '<tr class="' + (r.verdict === 'ready' ? '' : 'upc-off') + '"><td><a href="' + esc(base + '/patient/' + r.id) + '" target="_blank" rel="noopener">' + esc(r.name) + '</a></td>' +
-      '<td class="upc-rr-date">' + esc(label(r.lastSeen)) + '</td><td class="upc-rr-why">' + why + '</td><td class="upc-rr-acts">' + acts + '</td></tr>';
+      '<td class="upc-rr-date">' + esc(label(r.lastSeen)) + '</td><td class="upc-rr-why">' + why + '</td><td class="upc-rr-links">' + linksHtml(r) + '</td><td class="upc-rr-acts">' + acts + '</td></tr>';
   }
 
   function render() {
     if (!root) return;
     const r = store.get('result', null);
-    const head = '<thead><tr><th>Patient</th><th>Last visit</th><th>Why</th><th></th></tr></thead>';
+    const head = '<thead><tr><th>Patient</th><th>Last visit</th><th>Why</th><th>Check first</th><th></th></tr></thead>';
     let h = '<div class="upc-rr"><h1>Review requests</h1><div class="upc-rr-bar">' +
       '<button type="button" class="btn btn-outline-primary-light" data-a="refresh"' + (state.running ? ' disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check again') + '</button>' +
       '<span class="text-muted">' + esc(state.running ? state.status : r ? 'Checked at ' + new Date(r.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + label(r.at) + '.' : '') + '</span></div>';

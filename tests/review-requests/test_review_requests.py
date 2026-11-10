@@ -168,7 +168,8 @@ def check(name, ok, detail=''):
 
 ROOT_JS = "document.querySelector('[data-upc-review-requests]')"
 ROWS = """[...document.querySelectorAll('[data-upc-review-requests] tbody tr')].map((tr) => ({ who: tr.cells[0].textContent, off: tr.classList.contains('upc-off'),
-  when: tr.cells[1].textContent, why: tr.cells[2].innerText, acts: tr.cells[3].innerText }))"""
+  when: tr.cells[1].textContent, why: tr.cells[2].innerText, acts: tr.cells[4].innerText,
+  links: [...tr.cells[3].querySelectorAll('a')].map((a) => a.textContent + ' ' + a.getAttribute('href') + ' ' + a.target) }))"""
 
 
 async def main():
@@ -189,6 +190,11 @@ async def main():
         by = {r['who']: r for r in rows}
         check('good outcome: listed first, with the reasons', by.get('Patient A') and not by['Patient A']['off'] and rows[1]['who'] == 'Patient A'
               and 'Progress Update +5' in by['Patient A']['why'] and 'discharged' in by['Patient A']['why'] and 'goals met' in by['Patient A']['why'] and 'back to sport or work' in by['Patient A']['why'], rows)
+        a = S['patients'][101]['items']
+        check('links to the notes and Progress Update form behind it, newest first, in a new tab', by.get('Patient A', {}).get('links') == [
+            'Last note (%s) /a/pr/555/patient/101/clinical/category/note/id/%s _blank' % (a[1]['date'], a[1]['id']),
+            'Previous note (%s) /a/pr/555/patient/101/clinical/category/note/id/%s _blank' % (a[0]['date'], a[0]['id']),
+            'Progress Update (%s) /a/pr/555/patient/101/clinical/category/intake-form-invite/id/%s _blank' % (a[2]['date'], a[2]['id'])], by.get('Patient A'))
         check('mixed signs: greyed under Worth a look, with what counts against', by.get('Patient B', {}).get('off') and 'Against: referred on' in by['Patient B']['why'], by.get('Patient B'))
         check('only A, B and N listed', sorted(by) == ['Patient A', 'Patient B', 'Patient N'], sorted(by))
         check('discharged 2 days ago: asked straight away', by.get('Patient N', {}).get('off') is False and 'discharged' in by['Patient N']['why'], by.get('Patient N'))

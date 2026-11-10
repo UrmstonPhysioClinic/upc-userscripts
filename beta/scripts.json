@@ -68,7 +68,7 @@
     {
       "file": "review-requests.user.js",
       "name": "Halaxy review requests (beta)",
-      "version": "0.2.0"
+      "version": "0.3.0"
     },
     {
       "file": "script-settings.user.js",
