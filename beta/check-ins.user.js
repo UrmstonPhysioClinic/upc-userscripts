@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy check-ins (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.0
+// @version      0.1.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/check-ins.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/check-ins.user.js
@@ -20,8 +20,8 @@
  *  - For each, their latest clinical note is read (two requests the first time; kept for a week per patient and visit) for
  *    open-ended wording: "open return", "open appointment", "book again if needed", "see how things go",
  *    "come back if needed" and similar. "Not", "no longer" and so on just before a phrase cancel it.
- *  - Shown: the patient, last seen, which wording was found, a link to the note, and whether a Review Request
- *    follow-up has been sent (Review requests is unchanged; Carl, 11 Nov 2026).
+ *  - Shown: the patient, last seen, which wording was found and a link to the note.
+ *  - Separate from Review requests: neither reads or affects the other (Carl, 11 Nov 2026).
  *  - Note text is read when checking and never kept: only which wording was found.
  */
 (() => {
@@ -29,7 +29,7 @@
   if (window.__hxCheckIns) return;
   window.__hxCheckIns = true;
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
   const ROUTE = 'upc-check-ins';
   const MENU_CLS = 'upc-ci-menu';
   const ALLOWED = ['Carl Healy'];
@@ -38,7 +38,6 @@
   const UP_TO_DAYS = 91;       // not further back than about 3 months
   const REFRESH_EVERY = 12 * 3600e3, PAGE_FRESH = 30 * 60e3, KEEP = 7 * DAY;
   const KEY = 'upc-ci:';
-  const REVIEW_TEMPLATE = 'Review Request';
   const RULES = 1;   // bump when the wording list changes, so patients are read again
 
   const U = () => window.UPC;
@@ -100,11 +99,6 @@
     say = say || (() => {});
     const now = Date.now(), day0 = today();
     const cache = store.get('cache', {});
-    say('Reading Tasks & Follow-Ups...');
-    let reviewed = new Set();
-    try {
-      reviewed = new Set((await U().followUps.list()).filter((r) => new RegExp('^' + REVIEW_TEMPLATE + '$', 'i').test(U().clean(r.title))).map((r) => String(r.linkPaGId)));
-    } catch (e) { tellHealthCheck(e); }
     const events = await calendar(day0 - (UP_TO_DAYS + 30) * DAY, day0 + 120 * DAY, say);
     const startMs = (e) => (typeof e.start === 'number' ? e.start * 1000 : Date.parse(e.start));
     const byPatient = new Map();
@@ -148,7 +142,7 @@
       }
       if (r.error) { counts.error++; rows.push(Object.assign({}, p, { error: r.error, found: [] })); continue; }
       if (!r.found.length) { counts.none++; continue; }
-      rows.push(Object.assign({}, p, { found: r.found, noteId: r.noteId, noteDate: r.noteDate, reviewed: reviewed.has(p.id) }));
+      rows.push(Object.assign({}, p, { found: r.found, noteId: r.noteId, noteDate: r.noteDate }));
     }
     Object.keys(cache).forEach((k) => { if (now - cache[k].at > KEEP) delete cache[k]; });
     store.set('cache', cache);
@@ -220,11 +214,10 @@
     if (r) {
       const ok = r.rows.filter((x) => !x.error), bad = r.rows.filter((x) => x.error);
       h += '<div class="card"><div class="card-header"><h2>Left open-ended (' + ok.length + ')</h2></div><div class="card-body p-0">' +
-        (ok.length ? '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th>Patient</th><th>Last seen</th><th class="number">Days</th><th>Last note says</th><th>Review request</th></tr></thead><tbody>' +
+        (ok.length ? '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th>Patient</th><th>Last seen</th><th class="number">Days</th><th>Last note says</th></tr></thead><tbody>' +
           ok.map((x) => '<tr><td><a href="' + esc(base + '/patient/' + x.id) + '" target="_blank" rel="noopener">' + esc(x.name) + '</a></td>' +
             '<td class="upc-ci-date">' + esc(label(x.lastSeen)) + '</td><td class="number">' + Math.round((today() - new Date(x.lastSeen).setHours(0, 0, 0, 0)) / DAY) + '</td>' +
-            '<td>' + esc(x.found.join(', ')) + (x.noteId ? ' (<a href="' + esc(base + '/patient/' + x.id + '/clinical/category/note/id/' + x.noteId) + '" target="_blank" rel="noopener">note' + (x.noteDate ? ' ' + esc(label(x.noteDate)) : '') + '</a>)' : '') + '</td>' +
-            '<td>' + (x.reviewed ? 'Sent' : '') + '</td></tr>').join('') + '</tbody></table>'
+            '<td>' + esc(x.found.join(', ')) + (x.noteId ? ' (<a href="' + esc(base + '/patient/' + x.id + '/clinical/category/note/id/' + x.noteId) + '" target="_blank" rel="noopener">note' + (x.noteDate ? ' ' + esc(label(x.noteDate)) : '') + '</a>)' : '') + '</td></tr>').join('') + '</tbody></table>'
           : '<p class="text-muted m-3">Nobody left open-ended is due a check-in.</p>') + '</div></div>';
       if (bad.length) h += '<p class="upc-err">Notes not read for ' + bad.map((x) => esc(x.name) + ' (' + esc(x.error) + ')').join(', ') + '.</p>';
       const c = r.counts || {};

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.25
+// @version      1.1.26
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.25';
+  const VERSION = '1.1.26';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -315,8 +315,8 @@
     // Follow-ups list: Review requests reads who has already had a Review Request.
     try {
       const fu = await getJSON('/task/task-followup/list/data');
-      put('data-followups', 'Follow-ups list', ['Review requests', 'Check-ins'], !Array.isArray(fu) ? ['not a list'] : fu.length ? keysMissing(fu, ['title', 'status', 'assignedToUrl']).map((k) => 'field ' + k) : []);
-    } catch (e) { put('data-followups', 'Follow-ups list', ['Review requests', 'Check-ins'], [e.message]); }
+      put('data-followups', 'Follow-ups list', ['Review requests'], !Array.isArray(fu) ? ['not a list'] : fu.length ? keysMissing(fu, ['title', 'status', 'assignedToUrl']).map((k) => 'field ' + k) : []);
+    } catch (e) { put('data-followups', 'Follow-ups list', ['Review requests'], [e.message]); }
 
     // Survey responses: Feedback alerts and Review requests read the list and each response's score.
     const FB = ['Feedback alerts', 'Review requests'];

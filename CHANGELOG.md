@@ -7,8 +7,11 @@
 
 ## Check-ins
 
+### 0.1.1 (11 Nov 2026, beta)
+- No link with Review requests (Carl, 11 Nov 2026): the Review request column is gone and follow-ups aren't read.
+
 ### 0.1.0 (11 Nov 2026, beta)
-- New (Carl, 11 Nov 2026), the list only: Patients > Check-ins, Carl only for now. Patients last seen 3 weeks to 3 months ago, with nothing booked and their last appointment not cancelled or missed, whose latest note leaves treatment open-ended ("open return", "open appointment", "book again if needed", "see how things go", "come back if needed", "see as needed" and similar; negations cancel). Shows the wording found, a link to the note, and whether a Review Request was sent. Count on the menu. Note text is never kept, only which wording was found (kept a week). Sends nothing.
+- New (Carl, 11 Nov 2026), the list only: Patients > Check-ins, Carl only for now. Patients last seen 3 weeks to 3 months ago, with nothing booked and their last appointment not cancelled or missed, whose latest note leaves treatment open-ended ("open return", "open appointment", "book again if needed", "see how things go", "come back if needed", "see as needed" and similar; negations cancel). Shows the wording found and a link to the note. Count on the menu. Note text is never kept, only which wording was found (kept a week). Sends nothing.
 
 ## Mobile layout
 
@@ -188,6 +191,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - `UPC.notes.items` and `UPC.notes.text` (a patient's notes list and a note's text), `UPC.followUps.list` and `UPC.followUps.add` (Tasks & Follow-Ups), `UPC.patient.details`, `UPC.patient.invoices` and `UPC.patient.addLabel`. Confirmed against live captures, 10 Nov 2026.
 
 ## Health check
+
+### 1.1.26 (11 Nov 2026, beta)
+- Check-ins no longer uses the follow-ups list.
 
 ### 1.1.25 (11 Nov 2026, beta)
 - Funder chaser and Check-ins added to the script names; the follow-ups list check lists Check-ins too.
