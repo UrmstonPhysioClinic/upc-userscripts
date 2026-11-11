@@ -15,7 +15,17 @@ Health check 1.1.6, then 1.1.7, at Carl's request, so the clinic PCs stop report
 ## Moved to the clinic PCs (stable), 9 Nov 2026
 Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outstanding Actions 0.5.3, calendar controls 2.10, Alerts 1.0.0, Custom Reports 0.7.0, HTML source for emails 0.4. Arrival chime and Chat alert retired from stable (replaced by Alerts). `tools/promote.py` added for promotions.
 
+## Feedback alerts
+
+### 0.1.0 (11 Nov 2026, beta, with core 0.1.24)
+- New (Carl, 11 Nov 2026: "less than positive Feedback Request survey submissions flagged to me"). Every 2 hours on Carl's sign-in, new responses to the Feedback Request survey ("How Was Your Appointment?") from the last 14 days are read. Below expected (25 or less), or Satisfactory (26 to 31) with a comment, becomes a task for Carl on the patient's profile, added without asking: titled with the level and score, High for Below expected, due that day, with the answers (as 1 to 5), the comment and the response number. Completing the task marks it dealt with, on every PC.
+- The patient is found with Halaxy's patient search by name, and the response's date of birth picks the right one. If that isn't certain, no task is added; the response is counted on Reports > Surveys and listed in Script settings > Feedback alerts: show results, with a link to the Responses page.
+- Never twice: the patient's tasks are checked for the response number first. Only the response number, score band and outcome are kept on the PC; names and answers are read from Halaxy when needed.
+
 ## Review requests
+
+### 0.5.0 (11 Nov 2026, beta, with core 0.1.24)
+- Feedback Request survey (Carl, 11 Nov 2026): the patient's latest response from this course of treatment, matched by name and checked against their date of birth. Excellent (32 to 35) counts for a review request; Below expected (25 or less) counts against. Shown in the reasons, with a Feedback survey link under Check first. Everyone is read again once, as the signs have changed.
 
 ### 0.4.2 (10 Nov 2026, beta, with core 0.1.23)
 - Review requests now go at 10:30 UK time. Halaxy reads a follow-up's date and time as Sydney time, whatever the practice's time zone: 11-Nov 10:30 entered went out at 23:30 UK time on 10-Nov (Carl confirmed they go at the time the list shows). The time is now entered as Sydney's clock reads at 10:30 UK time (21:30 in winter), and the time on the list is checked afterwards: if it isn't 10:30 UK time, the page says so.
@@ -49,6 +59,11 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Core library
 
+### 0.1.24 (11 Nov 2026, beta)
+- UPC.surveys: list() (Reports > Surveys > Responses: /report/survey/feedback-data), response(id) (/report/survey/view/{id}: total, level, date of birth, answers) and band() (Excellent, Satisfactory, Below expected).
+- UPC.patient.find(name, dob): Halaxy's patient search (/a/magic/lookup/patient); the date of birth picks between patients with the same name; null unless certain. UPC.patient.nameKey().
+- UPC.tasks.forPatient() and addToPatient() (the profile's Add Task: /task/new/linkPaG/{id}, tasks at /task/linkPaG/{id}/list-data), sharing addToInvoice's steps; a task can carry a `key` it is recognised by.
+
 ### 0.1.23 (10 Nov 2026, beta)
 - `UPC.followUps.add` enters the time as Sydney time (Halaxy's follow-up quirk) and checks the listed time against the one asked for.
 
@@ -59,6 +74,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - `UPC.notes.items` and `UPC.notes.text` (a patient's notes list and a note's text), `UPC.followUps.list` and `UPC.followUps.add` (Tasks & Follow-Ups), `UPC.patient.details`, `UPC.patient.invoices` and `UPC.patient.addLabel`. Confirmed against live captures, 10 Nov 2026.
 
 ## Health check
+
+### 1.1.18 (11 Nov 2026, beta)
+- Daily data checks for Feedback alerts: the survey responses list and a response's total, level and questions; Halaxy's patient search; a patient's add-task pop-up and task list. Feedback alerts added to the script names.
 
 ### 1.1.17 (11 Nov 2026, beta)
 - Shown only to Carl Healy (Carl: "just show health check on my account"): the notice and "Health check: show results" in Script settings appear only on his sign-in. The checks and script errors are still collected on every sign-in and kept on that PC, so they show when Carl next signs in there. If the page doesn't say who is signed in (Halaxy may have changed), it shows rather than hides.

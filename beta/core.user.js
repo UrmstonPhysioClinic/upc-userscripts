@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.23
+// @version      0.1.24
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.23';
+  const VERSION = '0.1.24';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -644,34 +644,51 @@
   // GET /task/new/invoice/{id} returns form#form_task_edit; POST the same address with its fields.
   // Halaxy answers { status: 'POPUP', url: '/task/list/invoice/{id}' } and lists the invoice's tasks at
   // /task/invoice/{id}/list-data.
+  // A patient's tasks (the profile's Tasks box, confirmed live 11 Nov 2026): GET /task/linkPaG/{linkPaGId}/list-data,
+  // an array of { id, title, assignees, comment, priority, status, dueDate, editRoute, action }; its Add Task button
+  // opens GET /task/new/linkPaG/{linkPaGId}, the same form#form_task_edit as an invoice's.
   const tasks = {
     async forInvoice(invoiceId) {
       return http.json('/task/invoice/' + encodeURIComponent(invoiceId) + '/list-data');
     },
+    async forPatient(linkPaGId) {
+      const j = await http.json('/task/linkPaG/' + encodeURIComponent(linkPaGId) + '/list-data');
+      const rows = Array.isArray(j) ? j : (j && (j.rowData || j.data));
+      if (!Array.isArray(rows)) throw new UPCError('The patient\'s task list has changed, so their tasks could not be read.');
+      return rows;
+    },
     // { title, assignee (name as in Assign to), priority 1 Low / 2 Medium / 3 High, due '09-Nov-2026', comment }.
     // Returns false if a task with this title is already on the invoice.
     async addToInvoice(invoiceId, task) {
-      const listed = (list) => JSON.stringify(list || '').includes(task.title.replace(/["\\]/g, ''));
-      if (listed(await tasks.forInvoice(invoiceId).catch(() => null))) return false;
-      const path = '/task/new/invoice/' + encodeURIComponent(invoiceId);
-      const { doc } = await http.popup(path + '?clicked=' + Date.now());
-      const form = doc.querySelector('form#form_task_edit');
-      const need = ['form[title]', 'form[linkPrGs][]', 'form[priority]', 'form[displayDueDate]', 'form[comment]', 'form[_token]'];
-      const missing = need.filter((k) => !form || !form.querySelector('[name="' + k + '"]'));
-      if (missing.length) throw new UPCError('The add-task pop-up has changed (' + missing.join(', ') + ' not found), so no task was added.');
-      const who = [...form.querySelectorAll('select[name="form[linkPrGs][]"] option')].find((o) => clean(o.textContent).toLowerCase() === String(task.assignee).toLowerCase());
-      if (!who) throw new UPCError('Could not find ' + task.assignee + ' in the task\'s Assign to list, so no task was added.');
-      const set = { 'form[title]': task.title, 'form[taskTemplates]': '', 'form[actionerType]': '1', 'form[priority]': String(task.priority || 2),
-        'form[displayDueDate]': task.due, 'form[displayDueTime][hour]': '0', 'form[displayDueTime][minute]': '0', 'form[isTimeSet]': 'false', 'form[comment]': task.comment || '' };
-      const pairs = serialize(form).filter(([k]) => k !== 'form[linkPrGs][]' && !(k in set));
-      Object.keys(set).forEach((k) => pairs.push([k, set[k]]));
-      pairs.push(['form[linkPrGs][]', who.value]);
-      const res = await http.postForm(path, pairs);
-      if (!res || !['POPUP', 'REFRESH', 'OK'].includes(res.status)) http.expectRefresh(res, 'Adding the task');
-      if (!listed(await tasks.forInvoice(invoiceId))) throw new UPCError('Halaxy accepted the task, but it does not show on the invoice\'s task list.');
-      return true;
+      return addTask('/task/new/invoice/' + encodeURIComponent(invoiceId), () => tasks.forInvoice(invoiceId), task, 'on the invoice\'s task list');
+    },
+    // As addToInvoice, on the patient's profile. `task.key` (optional) is text the task's title or comment carries
+    // so it is recognised later; without it the title is used. Returns false if the patient already has it.
+    async addToPatient(linkPaGId, task) {
+      return addTask('/task/new/linkPaG/' + encodeURIComponent(linkPaGId), () => tasks.forPatient(linkPaGId), task, 'in the patient\'s tasks');
     },
   };
+  async function addTask(path, list, task, where) {
+    const mark = String(task.key || task.title).replace(/["\\]/g, '');
+    const listed = (rows) => JSON.stringify(rows || '').includes(mark);
+    if (listed(await list().catch(() => null))) return false;
+    const { doc } = await http.popup(path + '?clicked=' + Date.now());
+    const form = doc.querySelector('form#form_task_edit');
+    const need = ['form[title]', 'form[linkPrGs][]', 'form[priority]', 'form[displayDueDate]', 'form[comment]', 'form[_token]'];
+    const missing = need.filter((k) => !form || !form.querySelector('[name="' + k + '"]'));
+    if (missing.length) throw new UPCError('The add-task pop-up has changed (' + missing.join(', ') + ' not found), so no task was added.');
+    const who = [...form.querySelectorAll('select[name="form[linkPrGs][]"] option')].find((o) => clean(o.textContent).toLowerCase() === String(task.assignee).toLowerCase());
+    if (!who) throw new UPCError('Could not find ' + task.assignee + ' in the task\'s Assign to list, so no task was added.');
+    const set = { 'form[title]': task.title, 'form[taskTemplates]': '', 'form[actionerType]': '1', 'form[priority]': String(task.priority || 2),
+      'form[displayDueDate]': task.due, 'form[displayDueTime][hour]': '0', 'form[displayDueTime][minute]': '0', 'form[isTimeSet]': 'false', 'form[comment]': task.comment || '' };
+    const pairs = serialize(form).filter(([k]) => k !== 'form[linkPrGs][]' && !(k in set));
+    Object.keys(set).forEach((k) => pairs.push([k, set[k]]));
+    pairs.push(['form[linkPrGs][]', who.value]);
+    const res = await http.postForm(path, pairs);
+    if (!res || !['POPUP', 'REFRESH', 'OK'].includes(res.status)) http.expectRefresh(res, 'Adding the task');
+    if (!listed(await list())) throw new UPCError('Halaxy accepted the task, but it does not show ' + where + '.');
+    return true;
+  }
 
   // ------------------------------------------------------------------ appointments
 
@@ -796,7 +813,44 @@
 
   // ------------------------------------------------------------------ patients
 
+  // Halaxy's patient search box (confirmed live 11 Nov 2026): GET /a/magic/lookup/patient?includeContacts=1&term=...&_locale=...
+  // returns { lookup: [{ id, title, payload: { pag: { id = linkPaGId, ... }, detail: { dob: { uDate 'yyyy-mm-dd', ... } }, ... } }] }.
+  const nameKey = (s) => clean(String(s || '').replace(/\([^)]*\)/g, ' ').replace(/^(mr|mrs|ms|miss|mx|dr|master|prof)\.?\s+/i, '')).toLowerCase();
+  let lookupLocale;
   const patient = {
+    nameKey,
+    // The linkPaGId of the patient with this name and date of birth (ms, as parseDay gives), or null when there's
+    // no such patient or more than one could be meant. Without a date of birth, only a single match counts.
+    async find(name, dob) {
+      const term = nameKey(name);
+      if (!term) return null;
+      if (lookupLocale === undefined) { try { lookupLocale = JSON.parse(localStorage.getItem('upc-core:lookupLocale')); } catch (e) { lookupLocale = null; } }
+      const tries = [lookupLocale, window.HkUser && window.HkUser.linkPrG, pg(), ''].filter((x, i, a) => x !== null && x !== undefined && a.indexOf(x) === i);
+      let hits = null;
+      for (const loc of tries) {
+        const q = new URLSearchParams({ includeContacts: '1', term });
+        if (loc !== '') q.set('_locale', String(loc));
+        const j = await http.json('/a/magic/lookup/patient?' + q.toString()).catch(() => null);
+        if (j && Array.isArray(j.lookup)) {
+          hits = j.lookup;
+          if (lookupLocale !== loc) { lookupLocale = loc; try { localStorage.setItem('upc-core:lookupLocale', JSON.stringify(loc)); } catch (e) { /* storage blocked */ } }
+          break;
+        }
+      }
+      if (!hits) throw new UPCError('Halaxy\'s patient search has changed, so the patient could not be found.');
+      const people = hits.map((h) => {
+        const p = (h && h.payload) || {};
+        const d = p.detail && p.detail.dob;
+        return { id: p.pag && p.pag.id ? String(p.pag.id) : null, name: nameKey(p.quickAddValue || h.title || ''), dob: d ? parseDay(d.uDate || d.date || '') : null };
+      }).filter((x) => x.id);
+      const named = people.filter((x) => x.name === term || x.name.startsWith(term + ' '));
+      const pool = named.length ? named : people;
+      if (dob) {
+        const same = pool.filter((x) => x.dob === dob);
+        return same.length === 1 ? same[0].id : null;
+      }
+      return pool.length === 1 ? pool[0].id : null;
+    },
     // The notes sidebar's patient details (GET /note/sidebar/linkPaG/{linkPaGId}): fullName, status, dob, userLabels, ...
     async details(linkPaGId) {
       const j = await http.json('/note/sidebar/linkPaG/' + encodeURIComponent(linkPaGId));
@@ -888,6 +942,51 @@
       };
       const out = qs.map((q) => { const a = answerFor(q); return { question: clean(q.textContent), answer: a ? clean(a.textContent) : '' }; });
       return out;
+    },
+  };
+
+  // ------------------------------------------------------------------ surveys
+
+  // Survey responses (Reports > Surveys > Responses), confirmed live 11 Nov 2026:
+  //  - List: GET /report/survey/feedback-data, an array of { id, template, patientName ("Mr ..."), answeredDate and
+  //    appointmentDateAndTime ("18-Aug-2026 14:35") }. No patient id: the patient is found by name and date of birth.
+  //  - A response: GET /report/survey/view/{id}, JSON whose message is HTML: patient details (div.viewRow with div.label
+  //    "Date of Birth" and div.data), the total (span#note_total_score), the level (span.score-level-name), and each
+  //    question (span.answerName) followed by its answer (span.answer-wrap; none when skipped).
+  // Responses are patient data: callers use them in the page and never store them.
+  const whenOf = (s) => { const day = parseDay(s); const m = String(s || '').match(/(\d{1,2}):(\d{2})\s*$/); return day === null ? null : day + (m ? (+m[1] * 60 + +m[2]) * 60e3 : 0); };
+  const surveys = {
+    async list() {
+      const j = await http.json('/report/survey/feedback-data');
+      if (!Array.isArray(j)) throw new UPCError('The survey responses list has changed, so responses could not be read.');
+      return j.map((r) => ({ id: String(r.id), template: clean(r.template), name: clean(r.patientName), answered: whenOf(r.answeredDate), appointment: whenOf(r.appointmentDateAndTime) }));
+    },
+    // { total (number), level ('Excellent' ...), dob (ms or null), answers: [{ question, answer }] }.
+    async response(id) {
+      const j = await http.json('/report/survey/view/' + encodeURIComponent(id));
+      const doc = htmlDoc(j && j.message);
+      const totalEl = doc.querySelector('#note_total_score');
+      const total = totalEl ? parseInt(clean(totalEl.textContent), 10) : NaN;
+      if (isNaN(total)) throw new UPCError('The survey response layout has changed, so its score could not be read.');
+      const levelEl = doc.querySelector('.score-level-name');
+      const level = levelEl ? clean(levelEl.textContent).replace(/^[-\s]+/, '') : '';
+      const dobRow = [...doc.querySelectorAll('.viewRow')].find((r) => /^date of birth$/i.test(clean((r.querySelector('.label') || {}).textContent)));
+      const dob = dobRow ? parseDay(clean((dobRow.querySelector('.data') || {}).textContent)) : null;
+      const answers = [];
+      doc.querySelectorAll('.answerName, .answer-wrap').forEach((el) => {   // in page order: each answer follows its question
+        if (el.classList.contains('answerName')) answers.push({ question: clean(el.textContent), answer: '' });
+        else if (answers.length && !answers[answers.length - 1].answer) answers[answers.length - 1].answer = clean(el.textContent);
+      });
+      return { id: String(id), total, level, dob, answers };
+    },
+    // 'excellent', 'satisfactory' or 'below', from the response's level (the clinic's Feedback Request levels:
+    // Excellent 32 to 35, Satisfactory 26 to 31, Below expected 0 to 25), or its total if the level is missing.
+    band(r) {
+      const l = String((r && r.level) || '').toLowerCase();
+      if (/excellent/.test(l)) return 'excellent';
+      if (/satisf/.test(l)) return 'satisfactory';
+      if (/below|poor/.test(l)) return 'below';
+      return r && r.total >= 32 ? 'excellent' : r && r.total >= 26 ? 'satisfactory' : 'below';
     },
   };
 
@@ -1100,6 +1199,6 @@
   };
 
   window.UPC = Object.freeze({
-    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, forms, notes, followUps, patient, tasks, reports, dayLabel, parseDay, rebate, files, load, ui,
+    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, forms, notes, followUps, patient, tasks, surveys, reports, dayLabel, parseDay, rebate, files, load, ui,
   });
 })();

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.17
+// @version      1.1.18
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.17';
+  const VERSION = '1.1.18';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -39,7 +39,7 @@
   const NAMES = {
     'alerts.user.js': 'Alerts', 'bill-funder.user.js': 'Bill funder', 'arrival-chime.user.js': 'Arrival chime', 'chat-alert.user.js': 'Chat alert',
     'branding.user.js': 'Branding', 'calendar-controls.user.js': 'Calendar controls', 'core.user.js': 'Core library', 'custom-reports.user.js': 'Custom Reports',
-    'forecourt-lights.user.js': 'Forecourt lights', 'script-settings.user.js': 'Script settings', 'review-requests.user.js': 'Review requests', 'email-html-source.user.js': 'HTML source for emails', 'health-check.user.js': 'Health check',
+    'forecourt-lights.user.js': 'Forecourt lights', 'script-settings.user.js': 'Script settings', 'review-requests.user.js': 'Review requests', 'survey-feedback.user.js': 'Feedback alerts', 'email-html-source.user.js': 'HTML source for emails', 'health-check.user.js': 'Health check',
     'outstanding-actions.user.js': 'Outstanding Actions', 'ready-to-bill.user.js': 'Ready to bill', 'rebate-sync.user.js': 'Rebate Sync', 'remittances.user.js': 'Remittances',
     'textarea-autogrow.user.js': 'Auto-expanding text boxes', 'toast-alerts.user.js': 'Toast alerts',
   };
@@ -316,6 +316,46 @@
       const fu = await getJSON('/task/task-followup/list/data');
       put('data-followups', 'Follow-ups list', ['Review requests'], !Array.isArray(fu) ? ['not a list'] : fu.length ? keysMissing(fu, ['title', 'status', 'assignedToUrl']).map((k) => 'field ' + k) : []);
     } catch (e) { put('data-followups', 'Follow-ups list', ['Review requests'], [e.message]); }
+
+    // Survey responses: Feedback alerts and Review requests read the list and each response's score.
+    const FB = ['Feedback alerts', 'Review requests'];
+    try {
+      const list = await getJSON('/report/survey/feedback-data');
+      if (!Array.isArray(list)) put('data-surveys', 'Survey responses list', FB, ['not a list']);
+      else {
+        const problems = list.length ? keysMissing(list, ['id', 'template', 'patientName', 'answeredDate']).map((k) => 'field ' + k) : [];
+        const newest = list.slice().sort((a, b) => b.id - a.id)[0];
+        if (newest) {
+          const v = await getJSON('/report/survey/view/' + encodeURIComponent(newest.id));
+          const doc = new DOMParser().parseFromString(String((v && v.message) || ''), 'text/html');
+          if (!doc.querySelector('#note_total_score')) problems.push('a response no longer shows its total (span#note_total_score)');
+          if (!doc.querySelector('.score-level-name')) problems.push('a response no longer shows its level (span.score-level-name)');
+          if (!doc.querySelector('.answerName')) problems.push('a response no longer shows its questions (span.answerName)');
+        }
+        put('data-surveys', 'Survey responses', FB, problems);
+      }
+    } catch (e) { put('data-surveys', 'Survey responses', FB, [e.message]); }
+    // Patient search (Feedback alerts finds the patient by name) and a patient's tasks (where it adds them).
+    try {
+      const q = new URLSearchParams({ includeContacts: '1', term: 'zzqx' });
+      if (window.HkUser && window.HkUser.linkPrG) q.set('_locale', String(window.HkUser.linkPrG));
+      const res = await fetch('/a/magic/lookup/patient?' + q.toString(), { credentials: 'same-origin', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+      const j = res.ok ? await res.json().catch(() => null) : null;
+      put('data-patient-search', 'Patient search', ['Feedback alerts'], j && Array.isArray(j.lookup) ? [] : ['the search no longer answers with a lookup list' + (res.ok ? '' : ' (' + res.status + ')')]);
+    } catch (e) { put('data-patient-search', 'Patient search', ['Feedback alerts'], [e.message]); }
+    if (withPatient) {
+      try {
+        const res = await getJSON('/task/new/linkPaG/' + encodeURIComponent(withPatient.linkPaGId) + '?clicked=' + Date.now());
+        const doc = new DOMParser().parseFromString(String((res && res.message) || ''), 'text/html');
+        const form = doc.querySelector('form#form_task_edit');
+        const need = ['form[title]', 'form[linkPrGs][]', 'form[priority]', 'form[displayDueDate]', 'form[comment]', 'form[_token]'];
+        const problems = !form ? ['add-task form missing'] : need.filter((k) => !form.querySelector('[name="' + k + '"]')).map((k) => 'field ' + k + ' missing');
+        const list = await getJSON('/task/linkPaG/' + encodeURIComponent(withPatient.linkPaGId) + '/list-data');
+        if (!Array.isArray(list)) problems.push('the patient\'s task list is not a list');
+        else if (list.length) keysMissing(list, ['title', 'comment', 'status']).forEach((k) => problems.push('task list field ' + k));
+        put('data-patient-tasks', 'Patient tasks', ['Feedback alerts'], problems);
+      } catch (e) { put('data-patient-tasks', 'Patient tasks', ['Feedback alerts'], [e.message]); }
+    }
 
     // Invoice settings (cogwheel): Bill funder reads and sets the status here.
     const withInvoice = appts.find((e) => e.invoiceID);

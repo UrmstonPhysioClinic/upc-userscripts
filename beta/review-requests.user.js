@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         Halaxy review requests (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.2
+// @version      0.5.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
-// @description  Patients > Review requests (Carl only): patients who have finished treatment with a good outcome in their notes or Progress Update form, ready to be sent the Review Request follow-up. Send it or mark "No review request" from the list, after confirming.
+// @description  Patients > Review requests (Carl only): patients who have finished treatment with a good outcome in their notes, Progress Update form or Feedback Request survey, ready to be sent the Review Request follow-up. Send it or mark "No review request" from the list, after confirming.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
 // @grant        none
@@ -22,6 +22,8 @@
  *    One calendar request for everyone.
  *  - Left out: anyone with a "Review Request" follow-up already (Tasks & Follow-Ups, one request),
  *    anyone labelled "No review request", under-16s, and anyone with an unpaid invoice of their own.
+ *  - Feedback Request survey (11 Nov 2026): the latest response from this course of treatment (matched by name, checked
+ *    against the date of birth): Excellent counts for, Below expected against.
  *  - Good outcome: the latest Progress Update form ("How have your symptoms changed ... -5 to 5":
  *    +4 or +5) and phrases in the last two clinical notes ("100% better", "pain-free", "back to
  *    running", "goals met", "discharged" ...). Phrases such as "not 100%", "worse", "flare-up",
@@ -42,7 +44,7 @@
   if (window.__hxReviewRequests) return;
   window.__hxReviewRequests = true;
 
-  const VERSION = '0.4.2';
+  const VERSION = '0.5.0';
   const ROUTE = 'upc-review-requests';
   const MENU_CLS = 'upc-rr-menu';
   const ALLOWED = ['Carl Healy'];          // Carl, 10 Nov 2026: just me for now
@@ -105,7 +107,7 @@
   ];
   // Against: only what says this course went badly or isn't over. Notes describe symptoms all the time
   // ("worse on stairs", "no need for a scan"), so plain mentions don't count (live list, 10 Nov 2026).
-  const RULES = 2;   // bump when the phrase lists change, so patients are read again
+  const RULES = 3;   // bump when the phrase lists or other signs change, so patients are read again
   const BAD = [
     ['not fully better', /\bnot (yet )?(100\s*%|fully|completely|quite)\s*(better|recovered|resolved|right|there|improved|pain[- ]?free)\b|\bno (better|improvement)\b|\bslow progress\b|\bminimal (change|improvement)\b/i],
     ['worse or flare-up', /\b(getting|feeling|feels|felt|been|is|was|now|much|slightly) worse\b|\b(has|have) (got|gotten|become) worse\b|\bworsen(ed|ing)\b|\b(had|having|has had|another) (a )?flare[- ]?up\b|\bflared( up)?\b|\bstill (painful|sore|struggling|symptomatic)\b|\bdeteriorat/i],
@@ -142,12 +144,15 @@
     return ((cal && cal.payload && cal.payload.events) || []).filter((e) => e.type === 'appointment' && e.linkPaGId);
   }
 
-  // One patient: read notes and the latest Progress Update form; then (only if it looks good) labels, age and invoices.
-  async function assess(p, say) {
+  // One patient: read notes, the latest Progress Update form and their latest Feedback Request survey; then (only if
+  // it looks good) labels, age and invoices.
+  async function assess(p, say, responses) {
     say('Reading ' + p.name + '\'s notes...');
     const items = await U().notes.items(p.id);
     const since = p.firstSeen - 7 * DAY;
     const out = { good: [], nice: [], bad: [], progress: null, why: '', links: [] };   // links: the notes and form read, to check before sending
+    let details = null;
+    const getDetails = async () => details || (details = await U().patient.details(p.id));
     const form = items.find((x) => x.category === 'form' && /progress update/i.test(x.label) && (x.date === null || x.date >= since));
     if (form) {
       const q = (await U().forms.answers(form.id)).find((a) => /symptoms changed/i.test(a.question));
@@ -164,10 +169,26 @@
       if (out.progress >= 4) out.good.unshift('Progress Update +' + out.progress);
       else if (out.progress <= 1) out.bad.unshift('Progress Update ' + (out.progress > 0 ? '+' : '') + out.progress);
     }
+    // Feedback Request survey (Carl, 11 Nov 2026): the latest response from this course of treatment, matched by name
+    // and checked against the date of birth. Excellent counts for; Below expected counts against.
+    const key = U().patient.nameKey(p.name);
+    const mine = (responses || []).filter((x) => x.answered && x.answered >= since && U().patient.nameKey(x.name) === key).sort((a, b) => b.answered - a.answered);
+    if (mine.length) {
+      const r = await U().surveys.response(mine[0].id);
+      const d = await getDetails();
+      const dob = U().parseDay(d.dob) !== null ? U().parseDay(d.dob) : Date.parse(d.dob);
+      if (!r.dob || !dob || isNaN(dob) || r.dob === dob) {
+        const band = U().surveys.band(r);
+        const text = 'Feedback survey ' + (r.level || band) + ' (' + r.total + ' of 35)';
+        if (band === 'excellent') out.good.unshift(text);
+        else if (band === 'below') out.bad.unshift(text);
+        out.links.push({ kind: 'survey', date: mine[0].answered });
+      }
+    }
     out.verdict = out.good.length && !out.bad.length ? 'ready' : (out.good.length || out.nice.length) ? 'maybe' : 'none';
     if (out.verdict === 'none') return out;
     // Worth asking: check the label, age and money owed.
-    const d = await U().patient.details(p.id);
+    const d = await getDetails();
     if (JSON.stringify(d.userLabels || []).toLowerCase().includes(LABEL.toLowerCase())) { out.verdict = 'left'; out.why = 'labelled ' + LABEL; return out; }
     const dob = U().parseDay(d.dob) !== null ? U().parseDay(d.dob) : Date.parse(d.dob);
     if (dob && !isNaN(dob) && Date.now() - dob < MIN_AGE * 365.25 * DAY) { out.verdict = 'left'; out.why = 'under ' + MIN_AGE; return out; }
@@ -180,6 +201,8 @@
     say = say || (() => {});
     const now = Date.now(), day0 = today();
     const cache = store.get('cache', {});
+    say('Reading the survey responses...');
+    const responses = await U().surveys.list().catch((e) => { tellHealthCheck(e); return []; });
     say('Reading Tasks & Follow-Ups...');
     const asked = new Set((await U().followUps.list()).filter((r) => new RegExp('^' + TEMPLATE + '$', 'i').test(U().clean(r.title))).map((r) => r.linkPaGId));
     const events = await calendar(day0 - (MAX_DAYS + 120) * DAY, day0 + 120 * DAY, say);
@@ -211,7 +234,7 @@
       read++;
       if (!fresh(r)) {
         const tell = (t) => say(t.replace(/\.\.\.$/, '') + ' (' + read + ' of about ' + toRead + ')...');
-        try { r = Object.assign({ at: now, rules: RULES }, await assess(p, tell)); } catch (e) { r = { at: now, verdict: 'error', why: e.message || String(e), good: [], nice: [], bad: [] }; if (/has changed/.test(r.why)) tellHealthCheck(e); }
+        try { r = Object.assign({ at: now, rules: RULES }, await assess(p, tell, responses)); } catch (e) { r = { at: now, verdict: 'error', why: e.message || String(e), good: [], nice: [], bad: [] }; if (/has changed/.test(r.why)) tellHealthCheck(e); }
         if (r.verdict !== 'error') { cache[ck] = r; store.set('cache', cache); }   // kept as it goes, so a check that's stopped isn't wasted
       }
       if (r.verdict === 'none') { counts.none++; continue; }
@@ -291,8 +314,10 @@
     const base = U().base() + '/patient/' + encodeURIComponent(r.id) + '/clinical/category/';
     const notes = (r.links || []).filter((x) => x.kind === 'note').sort((a, b) => (b.date || 0) - (a.date || 0));
     const forms = (r.links || []).filter((x) => x.kind === 'form');
+    const surveys = (r.links || []).filter((x) => x.kind === 'survey');
     return notes.map((x, i) => '<a href="' + esc(base + 'note/id/' + x.id) + '" target="_blank" rel="noopener">' + (i ? 'Previous note' : 'Last note') + (x.date ? ' (' + esc(label(x.date)) + ')' : '') + '</a>')
       .concat(forms.map((x) => '<a href="' + esc(base + 'intake-form-invite/id/' + x.id) + '" target="_blank" rel="noopener">Progress Update' + (x.date ? ' (' + esc(label(x.date)) + ')' : '') + '</a>'))
+      .concat(surveys.map((x) => '<a href="' + esc(U().base() + '/report/survey/feedback') + '" target="_blank" rel="noopener">Feedback survey' + (x.date ? ' (' + esc(label(x.date)) + ')' : '') + '</a>'))
       .join('<br>') || '<span class="text-muted">None found</span>';
   }
 
