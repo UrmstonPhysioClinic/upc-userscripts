@@ -1,0 +1,8 @@
+{
+  "name": "upc-bank-statement-test-libs",
+  "private": true,
+  "description": "The pdf.js version the bank statement script loads from the CDN, served locally by the test.",
+  "dependencies": {
+    "pdfjs-dist": "3.11.174"
+  }
+}

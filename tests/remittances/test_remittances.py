@@ -318,6 +318,7 @@ async def main():
         atts = {k: v for k, v in S['attachments'].items()}
         check('remittance attached to every matched invoice', sorted(atts) == [101, 102, 103] and all(len(v) == 1 for v in atts.values()), atts)
         check('attached as Payment with a clear title', all(a['category'] == '2' and a['title'] == 'WPA remittance 2026-10-08' for v in atts.values() for a in v), atts)
+        check('comment for Bank statement: reference, remittance total, invoice count', all(re.fullmatch(r'(Insurer reference \S+; r|R)emittance total £ \d+\.\d\d over 3 invoices', a['comments']) for v in atts.values() for a in v), atts)
         check('no payment recorded', not any(m == 'PAYMENT' for _, m, _ in S['log']))
         api = [t for t, m, pth in S['log'] if '/a/pr/' in pth or '/api/' in pth]
         gaps = [round(b - a, 3) for a, b in zip(api, api[1:])]

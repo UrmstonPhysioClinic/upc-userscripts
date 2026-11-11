@@ -68,7 +68,7 @@ def events():
             status = 'no-show'
         e = {'id': i, 'type': 'appointment', 'start': now - 3600 * i, 'end': now - 3600 * i + 1800, 'linkPaGId': 400 + i,
              'practitionerID': 11, 'invoiceID': 500 + i, 'noteID': 600 + i, 'colour': '#FEF2C0', 'appointmentStatus': status,
-             'noteStatusCss': note, 'invoiceStatus': 'Paid In Full', 'invStatusCss': 'paid', 'isRequest': False, 'isGroupAppointment': False,
+             'noteStatusCss': note, 'invoiceStatus': 'Unpaid' if i == 3 else 'Paid In Full', 'invStatusCss': 'paid', 'isRequest': False, 'isGroupAppointment': False,
              'title': "<span class='name-text'>Patient 09:0%d</span>" % i}
         if 'field' in STATE['break']:
             del e['noteStatusCss']
@@ -88,6 +88,11 @@ async def halaxy(route):
         return await j([{'id': 1, 'title': 'Type', 'backgroundColor': '#FF0000', 'status': 'Active'}])
     if p.endswith('/funder/fee/data'):
         return await j([{'funder': 'Self-Funded', 'feeColour': '#FEF2C0', 'status': 'current', 'feeNumber': 'IA-IA'}])
+    if re.search(r'/invoicefunctions/\d+/pay/offline$', p):
+        STATE.setdefault('payReads', []).append(route.request.method)
+        dd = '' if 'payform' in STATE['break'] else "<option value='9'>Direct Deposit</option>"
+        return await j({'status': 'FORM', 'message': "<form id='paymentForm'><select name='form[paymentMethod]'><option value='592'>Card</option>%s</select>"
+                        "<input name='form[paymentDate]'><input name='form[amount]'><input name='form[note]'><input type='hidden' name='form[_token]' value='t'></form>" % dd})
     if p.endswith('/calendar/json'):
         return await j({'status': 'OK', 'payload': {'events': events()}})
     if '/patient/invoice/' in p and p.endswith('/list-data'):
@@ -174,7 +179,8 @@ async def main():
         stored = await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:halaxy'))")
         check('Halaxy version recorded', stored and stored['version'] == '4.12', stored)
         results = await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:results'))")
-        check('data checks ran', all(k in results for k in ('data-calendar', 'data-fees', 'data-practitioners', 'data-invoices')), list(results))
+        check('data checks ran', all(k in results for k in ('data-calendar', 'data-fees', 'data-practitioners', 'data-invoices', 'data-pay-offline')), list(results))
+        check('Mark as Paid pop-up only read', set(STATE.get('payReads', [])) == {'GET'}, STATE.get('payReads'))
         await pg.evaluate("window.__menu.find(m => m[0] === 'Health check: show results')[1]()")
         txt = await pg.evaluate("document.querySelector('[data-hx-health]').textContent")
         check('menu opens results: all passed', 'All checks passed' in txt and 'Halaxy version 4.12' in txt, txt[:200])
@@ -216,7 +222,7 @@ async def main():
 
         # 4. Halaxy update: data checks run straight away and catch data changes
         STATE['version'] = '4.13'
-        STATE['break'] = {'field', 'status', 'settings', 'details', 'task', 'survey'}
+        STATE['break'] = {'field', 'status', 'settings', 'details', 'task', 'survey', 'payform'}
         probs, pill = await load()
         stored = await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:halaxy'))")
         check('Halaxy update noted', stored['version'] == '4.13' and stored['previous'] == '4.12', stored)
@@ -232,6 +238,8 @@ async def main():
         sv = [x for x in probs if x['title'] == 'Survey responses has changed']
         check('survey response layout change reported for Feedback alerts and Review requests', sv and 'Feedback alerts' in sv[0]['scripts'] and any('note_total_score' in l for l in sv[0]['lines']), sv)
         sett = [x for x in probs if x['title'] == 'Invoice settings (cogwheel) has changed']
+        pay = [x for x in probs if x['title'] == 'Mark as Paid pop-up has changed']
+        check('no Direct Deposit in Mark as Paid reported for Bank statement', pay and pay[0]['lines'] == ['no Direct Deposit payment method'] and 'Bank statement' in pay[0]['scripts'], (pay, [x['title'] for x in probs]))
         check('cogwheel status change reported for Bill funder', sett and sett[0]['lines'] == ['no Issued status'] and 'Bill funder' in sett[0]['scripts'], sett)
         STATE['break'] = set()
         await pg.evaluate('hxHealth.run(true)')

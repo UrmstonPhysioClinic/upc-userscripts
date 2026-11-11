@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.32
+// @version      1.1.33
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.32';
+  const VERSION = '1.1.33';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -39,7 +39,7 @@
   const NAMES = {
     'alerts.user.js': 'Alerts', 'bill-funder.user.js': 'Bill funder', 'arrival-chime.user.js': 'Arrival chime', 'chat-alert.user.js': 'Chat alert',
     'branding.user.js': 'Branding', 'calendar-controls.user.js': 'Calendar controls', 'core.user.js': 'Core library', 'custom-reports.user.js': 'Custom Reports',
-    'forecourt-lights.user.js': 'Forecourt lights', 'script-settings.user.js': 'Script settings', 'review-requests.user.js': 'Review requests', 'survey-feedback.user.js': 'Feedback alerts', 'portal-fill.user.js': 'Portal fill', 'task-stamps.user.js': 'Task stamps', 'halaxy-mobile.user.js': 'Mobile layout', 'funder-chaser.user.js': 'Insurer payments due', 'check-ins.user.js': 'Open-ended patients', 'patient-statuses.user.js': 'Patient statuses', 'email-html-source.user.js': 'HTML source for emails', 'health-check.user.js': 'Health check',
+    'forecourt-lights.user.js': 'Forecourt lights', 'script-settings.user.js': 'Script settings', 'review-requests.user.js': 'Review requests', 'survey-feedback.user.js': 'Feedback alerts', 'portal-fill.user.js': 'Portal fill', 'task-stamps.user.js': 'Task stamps', 'halaxy-mobile.user.js': 'Mobile layout', 'funder-chaser.user.js': 'Insurer payments due', 'check-ins.user.js': 'Open-ended patients', 'patient-statuses.user.js': 'Patient statuses', 'bank-statement.user.js': 'Bank statement', 'email-html-source.user.js': 'HTML source for emails', 'health-check.user.js': 'Health check',
     'outstanding-actions.user.js': 'Outstanding Actions', 'ready-to-bill.user.js': 'Ready to bill', 'rebate-sync.user.js': 'Rebate Sync', 'remittances.user.js': 'Remittances',
     'textarea-autogrow.user.js': 'Auto-expanding text boxes', 'toast-alerts.user.js': 'Toast alerts',
   };
@@ -375,6 +375,21 @@
           .concat(form.querySelector('[name="form[_token]"]') ? [] : ['form token missing']);
         put('data-invoice-settings', 'Invoice settings (cogwheel)', ['Bill funder'], problems);
       } catch (e) { put('data-invoice-settings', 'Invoice settings (cogwheel)', ['Bill funder'], [e.message]); }
+    }
+
+    // The "Mark as Paid" pop-up (read only; Bank statement records insurer payments with it). An unpaid invoice's.
+    const unpaid = appts.find((e) => e.invoiceID && !/paid in full/i.test(String(e.invoiceStatus || '')));
+    if (unpaid) {
+      try {
+        const res = await getJSON('/invoicefunctions/' + encodeURIComponent(unpaid.invoiceID) + '/pay/offline');
+        const doc = new DOMParser().parseFromString(String((res && res.message) || ''), 'text/html');
+        const form = doc.querySelector('form#paymentForm') || doc.querySelector('form');
+        const methods = [...doc.querySelectorAll('select[name="form[paymentMethod]"] option')].map((o) => o.textContent.trim().toLowerCase());
+        const problems = !form ? ['payment form missing'] : ['form[paymentMethod]', 'form[paymentDate]', 'form[amount]', 'form[note]', 'form[_token]']
+          .filter((n) => !form.querySelector('[name="' + n + '"]')).map((n) => 'field ' + n + ' missing')
+          .concat(methods.length && !methods.includes('direct deposit') ? ['no Direct Deposit payment method'] : []);
+        put('data-pay-offline', 'Mark as Paid pop-up', ['Bank statement'], problems);
+      } catch (e) { put('data-pay-offline', 'Mark as Paid pop-up', ['Bank statement'], [e.message]); }
     }
 
     // Appointment types (Patient statuses tells funded bookings by them; capture 11 Nov 2026).
