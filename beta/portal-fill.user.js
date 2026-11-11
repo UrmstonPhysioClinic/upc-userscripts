@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy insurer portal fill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.3
+// @version      0.1.4
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
@@ -45,7 +45,7 @@
   if (window.__hxPortalFill) return;
   window.__hxPortalFill = true;
 
-  const VERSION = '0.1.3';
+  const VERSION = '0.1.4';
   const KEY = 'portal-claim';
   const MAX_AGE = 4 * 3600e3;
   const PORTALS = {
@@ -155,7 +155,7 @@
         membership, authorisation, condition,
         patient: { name: nameOnly(det.fullName), dob: dob ? slash(dob) : '', address: [addr('firstline'), addr('secondline'), addr('postcode')].filter(Boolean).join(', '),
           hasPostcode: !!addr('postcode') },
-        lines: lines.map((l, i) => ({ date: slash(days[i]), description: clean(l.description).replace(funderPrefix, ''), amount: pounds(l.amount) })),
+        lines: lines.map((l, i) => ({ date: slash(days[i]), code: clean(l.item), description: clean(l.description).replace(funderPrefix, ''), amount: pounds(l.amount) })),
         payee: { name: s.payee, providerCode: s.providerCode, email: s.email, phone: s.phone },
       };
       const missing = [];
@@ -518,18 +518,20 @@
         setValue(to, l.date);
         setValue(count, '1');
         setValue(charge, l.amount);
-        // The procedure is the fee (Carl, 11 Nov 2026): Bupa's initial or follow-up consultation, matched to the Halaxy fee.
+        // The procedure is the fee (Carl, 11 Nov 2026): the Halaxy fee's Item Code is Bupa's procedure code (AA360 ...),
+        // which starts each procedure in Bupa's list ("AA360-...").
         if (proc) {
-          const want = /initial|assessment|new patient/i.test(l.description) ? /initial|assessment|new patient/i : /follow|review|subsequent/i.test(l.description) ? /follow|review|subsequent/i : null;
-          const fits = want ? [...proc.options].filter((o) => o.index > 0 && want.test(clean(o.textContent))) : [];
+          const code = String(l.code || '').toUpperCase();
+          const fits = code ? [...proc.options].filter((o) => o.index > 0 && clean(o.textContent).toUpperCase().split(/[\s-]/)[0] === code) : [];
           if (fits.length === 1) setValue(proc, fits[0].value);
-          else if (proc.selectedIndex > 0 && !(want && want.test(clean(proc.options[proc.selectedIndex].textContent)))) setValue(proc, proc.options[0].value);   // pre-selected for another fee
+          else if (proc.selectedIndex > 0) setValue(proc, proc.options[0].value);   // pre-selected, but not this fee's code
         }
         const missing = [[imp, 'impairment'], [proc, 'procedure']].filter(([x]) => x && x.selectedIndex <= 0);
         if (missing.length) {
           pr.stage = 'saving'; await save();
           missing.forEach(([x]) => x.classList.add('upc-pf-check'));
-          return say('Choose the ' + missing.map((x) => x[1]).join(' and ') + ' for this fee (' + l.description + ', ' + l.date + ', £ ' + l.amount + '; highlighted), then press Save. The fill carries on.');
+          return say('Choose the ' + missing.map((x) => x[1]).join(' and ') + ' for this fee (' + (l.code ? l.code + ' ' : '') + l.description + ', ' + l.date + ', £ ' + l.amount + '; highlighted' +
+            (missing.some((x) => x[1] === 'procedure') && l.code ? ': ' + l.code + ' isn\'t in Bupa\'s list' : '') + '), then press Save. The fill carries on.');
         }
         pr.stage = 'saving'; await save();
         say('Adding treatment ' + ((pr.added || 0) + 1) + ' of ' + claim.lines.length + '...');
