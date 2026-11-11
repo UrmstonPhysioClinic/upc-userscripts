@@ -43,12 +43,50 @@ async def main():
         await pg.evaluate("popup('')")
         await pg.wait_for_timeout(200)
         v = await val()
-        check('new task: comment starts with the date, time and initials, then a new line', re.fullmatch(STAMP + r'\n', v) is not None, repr(v))
+        check('new task: comment starts with the date, time and initials, then a "- " line', re.fullmatch(STAMP + r'\n- ', v) is not None, repr(v))
         await pg.click('textarea')
         await pg.keyboard.type('Rang the patient')
         await pg.click('.btn-submit')
         s = (await pg.evaluate('saved'))[-1]
-        check('typed after the stamp, at the end', re.fullmatch(STAMP + r'\nRang the patient', s) is not None, repr(s))
+        check('typed after the stamp, at the end', re.fullmatch(STAMP + r'\n- Rang the patient', s) is not None, repr(s))
+
+        # Bullets: Enter continues the list, Enter on an empty bullet ends it, Shift+Enter is a plain line, Backspace takes an empty bullet off
+        await pg.evaluate("popup('')")
+        await pg.wait_for_timeout(200)
+        await pg.click('textarea')
+        for k in ['First', 'Enter', 'Second', 'Enter', 'Enter', 'Plain line', 'Shift+Enter', 'Still plain']:
+            if k in ('Enter', 'Shift+Enter'): await pg.keyboard.press(k)
+            else: await pg.keyboard.type(k)
+        v = await val()
+        check('Enter gives a new "- "; Enter on an empty "- " ends the list; Shift+Enter is a plain new line', re.fullmatch(STAMP + r'\n- First\n- Second\nPlain line\nStill plain', v) is not None, repr(v))
+        await pg.keyboard.press('Enter')
+        await pg.keyboard.type('2026-11-11 16-30 CH:')
+        await pg.keyboard.press('Enter')
+        await pg.keyboard.type('After my own stamp')
+        await pg.keyboard.press('Enter')
+        await pg.keyboard.press('Backspace')
+        await pg.keyboard.type('x')
+        v = await val()
+        check('Enter after a typed stamp starts a "- " line; Backspace on an empty "- " takes it off', v.endswith('\n2026-11-11 16-30 CH:\n- After my own stamp\nx'), repr(v))
+        await pg.keyboard.press('Control+z')
+        check('Undo still works', not (await val()).endswith('\nx'), repr(await val()))
+        await pg.evaluate("popup('')")
+        await pg.wait_for_timeout(200)
+        await pg.click('textarea')
+        await pg.keyboard.type('One')
+        await pg.keyboard.press('Enter')
+        await pg.click('.btn-submit')
+        s = (await pg.evaluate('saved'))[-1]
+        check('an empty "- " left at the end is taken off on Save', re.fullmatch(STAMP + r'\n- One', s) is not None, repr(s))
+        # Splitting a bullet in the middle
+        await pg.evaluate("popup('')")
+        await pg.wait_for_timeout(200)
+        await pg.click('textarea')
+        await pg.keyboard.type('AlphaBeta')
+        for _ in range(4): await pg.keyboard.press('ArrowLeft')
+        await pg.keyboard.press('Enter')
+        v = await val()
+        check('Enter in the middle of a bullet splits it into two bullets', v.endswith('\n- Alpha\n- Beta'), repr(v))
 
         # Saved with nothing typed: the empty stamp is taken off
         await pg.evaluate("popup('')")
@@ -58,22 +96,22 @@ async def main():
         check('saved without typing: no empty stamp left', s == '', repr(s))
 
         # Adding to a task: a blank line and a new stamp under what's there
-        await pg.evaluate("popup('2026-11-01 WS: Letter sent')")
+        await pg.evaluate("popup('2026-11-01 AB: Letter sent')")
         await pg.wait_for_timeout(200)
         v = await val()
-        check('existing task: new stamp under the old comment', re.fullmatch(r'2026-11-01 WS: Letter sent\n\n' + STAMP + r'\n', v) is not None, repr(v))
+        check('existing task: new stamp under the old comment', re.fullmatch(r'2026-11-01 AB: Letter sent\n\n' + STAMP + r'\n- ', v) is not None, repr(v))
         await pg.click('textarea')
         await pg.keyboard.type('Reply received')
         await pg.click('.btn-submit')
         s = (await pg.evaluate('saved'))[-1]
-        check('existing task: the new entry saved under the old one', re.fullmatch(r'2026-11-01 WS: Letter sent\n\n' + STAMP + r'\nReply received', s) is not None, repr(s))
+        check('existing task: the new entry saved under the old one', re.fullmatch(r'2026-11-01 AB: Letter sent\n\n' + STAMP + r'\n- Reply received', s) is not None, repr(s))
 
         # Status change only on an existing task: comment unchanged
-        await pg.evaluate("popup('2026-11-01 WS: Letter sent')")
+        await pg.evaluate("popup('2026-11-01 AB: Letter sent')")
         await pg.wait_for_timeout(200)
         await pg.click('.btn-submit')
         s = (await pg.evaluate('saved'))[-1]
-        check('existing task saved without typing: comment as it was', s == '2026-11-01 WS: Letter sent', repr(s))
+        check('existing task saved without typing: comment as it was', s == '2026-11-01 AB: Letter sent', repr(s))
 
         # Halaxy redraws the pop-up with what was typed (or a quick second edit): not stamped twice
         await pg.evaluate("popup(arguments[0])".replace('arguments[0]', repr(s + '\n\n' + await pg.evaluate("upcTaskStamps.stamp('CH')") + '\nJust now')))

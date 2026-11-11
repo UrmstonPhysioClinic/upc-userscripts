@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy task stamps (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.0
+// @version      0.1.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/task-stamps.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/task-stamps.user.js
@@ -18,7 +18,7 @@
  *
  *  - Halaxy's add-task and edit-task pop-ups are form#form_task_edit, with a plain text box form[comment]
  *    (line breaks kept; capture, 11 Nov 2026).
- *  - A new task's comment starts "2026-11-11 15-49 CH:" and a new line. On an existing task, a blank line and a new
+ *  - A new task's comment starts "2026-11-11 15-49 CH:" and a new line starting "- ". On an existing task, a blank line and a new
  *    stamp go under what's there. The cursor goes to the end when the box is first clicked.
  *  - Saved without anything typed after the stamp (say only the status changed): the empty stamp is taken off first.
  *  - Not stamped again if the comment already ends with this person's stamp from the last 5 minutes (Halaxy
@@ -32,7 +32,7 @@
   if (window.__hxTaskStamps) return;
   window.__hxTaskStamps = true;
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
   const RECENT = 5 * 60e3;
   const FIELD = 'form#form_task_edit textarea[name="form[comment]"]';
 
@@ -66,15 +66,50 @@
   }
   const fire = (el) => el.dispatchEvent(new Event('input', { bubbles: true }));
 
+  // Bullets, like a rich text list (Carl, 11 Nov 2026): Enter on a "- " line starts a new "- " line; Enter on an
+  // empty "- " line ends the list (the "- " goes, leaving a plain new line); Enter after a stamp starts the list;
+  // Shift+Enter is a plain new line; Backspace on an empty "- " takes the "- " off.
+  const BULLET = /^-[ \t]?/;
+  const STAMP_LINE = /^\d{4}-\d{2}-\d{2} \d{2}-\d{2} [^:\n]{1,40}:\s*$/;
+  function insert(box, text, from, to) {
+    box.focus();
+    box.setSelectionRange(from, to);
+    let ok = false;
+    try { ok = text ? document.execCommand('insertText', false, text) : (from === to || document.execCommand('delete')); } catch (e) { ok = false; }   // keeps Undo working
+    if (ok && box.value.slice(from, from + text.length) !== text) ok = false;
+    if (!ok) { box.setRangeText(text, from, to, 'end'); fire(box); }
+  }
+  function bullets(box) {
+    box.addEventListener('keydown', (e) => {
+      if (e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return;
+      const v = box.value, at = box.selectionStart, end = box.selectionEnd;
+      const lineStart = v.lastIndexOf('\n', at - 1) + 1;
+      const lineEnd = v.indexOf('\n', at) < 0 ? v.length : v.indexOf('\n', at);
+      const line = v.slice(lineStart, lineEnd);
+      if (e.key === 'Enter' && !e.shiftKey) {
+        if (BULLET.test(line)) {
+          e.preventDefault();
+          if (/^-[ \t]*$/.test(line) && at === end) return insert(box, '', lineStart, lineEnd);   // empty bullet: end the list
+          return insert(box, '\n- ', at, end);
+        }
+        if (STAMP_LINE.test(v.slice(lineStart, at)) && at === end && at === lineEnd) { e.preventDefault(); return insert(box, '\n- ', at, end); }
+      } else if (e.key === 'Backspace' && at === end && /^-[ \t]?$/.test(v.slice(lineStart, at)) && /^-[ \t]*$/.test(line)) {
+        e.preventDefault();
+        insert(box, '', lineStart, lineEnd);
+      }
+    });
+  }
+
   function prepare(box) {
     box.setAttribute('data-upc-stamp-done', '1');
+    bullets(box);
     const who = initials(userName());
     if (!who) return;
     const text = box.value || '';
     const before = lastStampBy(text, who);
     if (before !== null && Date.now() - before < RECENT && Date.now() >= before - 60e3) return;
     const s = stamp(who);
-    box.value = text.replace(/\s+$/, '') ? text.replace(/\s+$/, '') + '\n\n' + s + '\n' : s + '\n';
+    box.value = (text.replace(/\s+$/, '') ? text.replace(/\s+$/, '') + '\n\n' : '') + s + '\n- ';
     box.setAttribute('data-upc-stamp', s);
     fire(box);
     // The first click (or tab) into the box puts the cursor at the end, under the stamp; later clicks work as usual.
@@ -86,13 +121,14 @@
     box.addEventListener('keydown', done);
   }
 
-  // Saving with nothing typed after the stamp: take the empty stamp off first (before Halaxy reads the form).
+  // Before Halaxy reads the form on Save: empty "- " lines at the end go, and so does a stamp with nothing after it.
   function tidy(form) {
-    const box = form && form.querySelector('textarea[name="form[comment]"][data-upc-stamp]');
+    const box = form && form.querySelector('textarea[name="form[comment]"]');
     if (!box) return;
     const s = box.getAttribute('data-upc-stamp');
-    const v = box.value.replace(/\s+$/, '');
-    if (v.endsWith(s)) { box.value = v.slice(0, v.length - s.length).replace(/\s+$/, ''); fire(box); }
+    let v = box.value.replace(/(\n[ \t]*-?[ \t]*)+$/, '').replace(/\s+$/, '');
+    if (s && v.endsWith(s)) v = v.slice(0, v.length - s.length).replace(/\s+$/, '');
+    if (v !== box.value) { box.value = v; fire(box); }
   }
   document.addEventListener('click', (e) => {
     const b = e.target && e.target.closest && e.target.closest('button, input[type=submit], a');

@@ -17,6 +17,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Task stamps
 
+### 0.1.1 (11 Nov 2026, beta)
+- Bullets in the task comment box, like a rich text list (Carl, 11 Nov 2026): the stamp is followed by a "- " line; Enter on a "- " line starts a new one (in the middle of a line it splits it); Enter on an empty "- " ends the list; Enter straight after a stamp you type starts a list; Shift+Enter is a plain new line; Backspace on an empty "- " takes it off. Undo works as normal. Empty "- " lines left at the end are taken off on Save.
+
 ### 0.1.0 (11 Nov 2026, beta)
 - New (Carl, 11 Nov 2026): in Halaxy's add-task and edit-task pop-ups, the comment gets a stamp with the date, time and the signed-in person's initials ("2026-11-11 15-49 CH:") and a new line, under what's already there (after a blank line). The first click into the box puts the cursor under the stamp. Saved without typing after it, the empty stamp is taken off. Not stamped twice if the comment already ends with your stamp from the last 5 minutes.
 
