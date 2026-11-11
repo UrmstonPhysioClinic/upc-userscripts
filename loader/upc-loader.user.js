@@ -1,9 +1,11 @@
 // ==UserScript==
 // @name         UPC Halaxy scripts
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.0
-// @description  Runs all of the clinic's Halaxy scripts from GitHub. Install once per PC: new and updated scripts arrive by themselves.
+// @version      1.2.0
+// @description  Runs all of the clinic's Halaxy scripts from GitHub (and the insurer portal fill on the Bupa and AXA provider sites). Install once per PC: new and updated scripts arrive by themselves.
 // @match        https://*.halaxy.com/*
+// @match        https://provider.axahealth.co.uk/*
+// @match        https://providersonline.bupa.co.uk/*
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/loader/upc-loader.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/loader/upc-loader.user.js
@@ -43,18 +45,25 @@
  * menu under this script, as before. The Tampermonkey menu keeps "UPC scripts:
  * settings and updates": a self-contained panel that works even when no page
  * script does, so it doesn't use Halaxy's look.
+ *
+ * Insurer portals (1.2.0): the loader also runs on the Bupa and AXA provider sites, where only scripts whose
+ * own @match names those sites run (Portal fill). There, the PC's channel and switched-off scripts come from a
+ * copy the loader keeps whenever Halaxy is open, and it doesn't check for updates. Scripts pass a claim from
+ * Halaxy to the portal through window.__upcLoader.shared(op, key, value) (op 'get', 'set' or 'del'), kept in
+ * the loader's own storage on this PC: a value set with forHost is only given back on Halaxy and that site.
  */
 
 (function () {
   'use strict';
 
-  const VERSION = '1.1.0';
+  const VERSION = '1.2.0';
   const RAW = 'https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/';
   const CHECK_EVERY_MINUTES = 10;
   const RETRY_STALE_MINUTES = 2;   // GitHub can serve an old file for a few minutes after a change
   const LS = 'upc-loader:';
   const TAG = '[UPC loader]';
   const isTop = window.top === window;
+  const onHalaxy = /(^|\.)halaxy\.com$/.test(location.hostname);
 
   // At document-start the page may not have its <html> element yet. Wait for it: the observer
   // fires as soon as it is created, before any of the page's own scripts run.
@@ -81,8 +90,12 @@
       try { localStorage.setItem(LS + k, JSON.stringify(v)); } catch (e) { /* storage blocked */ }
     },
   };
-  const channel = local.get('channel', 'stable') === 'beta' ? 'beta' : 'stable';
-  const isOff = (file) => !!local.get('off', {})[file];
+  // Off Halaxy (the insurer portals) the PC's settings come from the copy kept while Halaxy is open.
+  const pcCopy = () => { try { GM_setValue('pc', { channel: local.get('channel', 'stable'), off: local.get('off', {}) }); } catch (e) { /* ignore */ } };
+  const pc = onHalaxy ? null : GM_getValue('pc', { channel: 'stable', off: {} });
+  if (onHalaxy) pcCopy();
+  const channel = (pc ? pc.channel : local.get('channel', 'stable')) === 'beta' ? 'beta' : 'stable';
+  const isOff = (file) => !!(pc ? pc.off || {} : local.get('off', {}))[file];
 
   // ------------------------------------------------------------------ saved copies
 
@@ -139,6 +152,16 @@
         document.dispatchEvent(new CustomEvent('upc-loader-menu', { detail: JSON.stringify({ id: id, label: String(label) }) }));
         document.dispatchEvent(new CustomEvent('upc-menu-changed'));
         return id;
+      },
+      shared: function (op, key, value) {
+        return new Promise(function (resolve) {
+          var id = 'x' + (++n) + Math.random().toString(36).slice(2);
+          var done = false;
+          var h = function (e) { var d; try { d = JSON.parse(e.detail); } catch (x) { return; } if (d.id !== id) return; done = true; document.removeEventListener('upc-loader-shared-reply', h); resolve(d.value === undefined ? null : d.value); };
+          document.addEventListener('upc-loader-shared-reply', h);
+          document.dispatchEvent(new CustomEvent('upc-loader-shared', { detail: JSON.stringify({ id: id, op: op, key: key, value: value === undefined ? null : value }) }));
+          setTimeout(function () { if (!done) { document.removeEventListener('upc-loader-shared-reply', h); resolve(null); } }, 3000);
+        });
       },
       error: function (s, e) {
         console.error('[UPC loader] ' + s + ' failed:', e);
@@ -225,6 +248,22 @@
   });
   document.addEventListener('upc-loader-error', (e) => {
     try { errors.push(JSON.parse(e.detail)); } catch (x) { /* ignore */ }
+  });
+  // Shared values (Halaxy to an insurer portal on this PC). A value with forHost goes back only to Halaxy and that site.
+  document.addEventListener('upc-loader-shared', (e) => {
+    let d;
+    try { d = JSON.parse(e.detail); } catch (x) { return; }
+    if (!d || typeof d.key !== 'string' || !/^[a-z0-9:-]{1,60}$/.test(d.key)) return;
+    const key = 'shared:' + d.key;
+    const mayRead = (v) => !v || !v.forHost || onHalaxy || v.forHost === location.hostname;
+    let value = null;
+    try {
+      const was = GM_getValue(key, null);
+      if (d.op === 'get') value = mayRead(was) ? was : null;
+      else if (d.op === 'set' && mayRead(was)) { GM_setValue(key, d.value); value = d.value; }
+      else if (d.op === 'del' && mayRead(was)) GM_deleteValue(key);
+    } catch (x) { /* storage unavailable */ }
+    document.dispatchEvent(new CustomEvent('upc-loader-shared-reply', { detail: JSON.stringify({ id: d.id, value }) }));
   });
 
   // ------------------------------------------------------------------ start: run the saved copies
@@ -336,11 +375,12 @@
     document.addEventListener('upc-loader-do', async (e) => {
       let d;
       try { d = JSON.parse(e.detail); } catch (x) { return; }
-      if (d.act === 'channel' && (d.value === 'stable' || d.value === 'beta')) local.set('channel', d.value);
+      if (d.act === 'channel' && (d.value === 'stable' || d.value === 'beta')) { local.set('channel', d.value); pcCopy(); }
       else if (d.act === 'switch' && d.file) {
         const off = local.get('off', {});
         if (d.on) delete off[d.file]; else off[d.file] = true;
         local.set('off', off);
+        pcCopy();
       } else if (d.act === 'panel') { openPanel(); return; }
       else if (d.act === 'check') {
         if (local.get('channel', 'stable') !== channel) { reply({ reloadNeeded: true }); return; }   // new channel: fetched on load
@@ -352,7 +392,7 @@
     });
   }
 
-  if (isTop) {
+  if (isTop && onHalaxy) {
     const last = local.get('lastCheck:' + channel, 0);
     if (!readIndex() || Date.now() - last > CHECK_EVERY_MINUTES * 60000) checkForUpdates();
     GM_registerMenuCommand('UPC scripts: settings and updates', openPanel);
@@ -428,11 +468,13 @@
       const t = e.target;
       if (t.name === 'ch') {
         local.set('channel', t.value);
+        pcCopy();
         needRefresh();
       } else if (t.dataset.file) {
         const off = local.get('off', {});
         if (t.checked) delete off[t.dataset.file]; else off[t.dataset.file] = true;
         local.set('off', off);
+        pcCopy();
         needRefresh();
       }
     });

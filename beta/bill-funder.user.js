@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy bill funder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.7.3
+// @version      0.8.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
@@ -40,7 +40,7 @@
   if (window.__upcBillFunder) return;
   window.__upcBillFunder = true;
 
-  const VERSION = '0.7.3';
+  const VERSION = '0.8.0';
   const MAX_AGE_DAYS = 183;   // about 6 months
   const NOT_ATTENDED = /cancel|did-not-attend|dna|reject|declin|reschedul/i;
   const DAY = 86400e3;
@@ -326,6 +326,9 @@
           : '<p class="text-muted">' + esc(r.orgInvoiceNumber || 'The funder invoice') + ': invoice date ' + esc(r.invDate) + ', due ' + esc(r.dueDate) + '.</p>';
         if (r.dateFixes && r.dateFixes.length) h += '<p class="text-muted">Fee date' + (r.dateFixes.length === 1 ? '' : 's') + ' corrected on ' + esc(r.orgInvoiceNumber || 'the funder invoice') + ' (Halaxy copied ' + (r.dateFixes.length === 1 ? 'it' : 'them') + ' wrongly): ' + esc(r.dateFixes.map((f) => f.from + ' to ' + f.to).join(', ')) + '.</p>';
         if (r.feeDateError) h += '<p class="upc-warn">Check the fee dates on ' + esc(r.orgInvoiceNumber || 'the funder invoice') + ': ' + esc(r.feeDateError) + '.</p>';
+        // Bupa and AXA claims: the next step is the insurer's portal (Portal fill, on the funder invoice).
+        const portal = /bupa/i.test(p.current.funderName || '') ? 'Bupa' : /axa/i.test(p.current.funderName || '') ? 'AXA' : '';
+        if (portal && r.orgInvoiceId) h += '<p><a class="btn btn-outline-primary-light" href="' + esc(U().base() + '/invoice/' + r.orgInvoiceId + '#upc-portal-fill') + '" target="_blank" rel="noopener">Fill on the ' + portal + ' portal</a></p>';
       }
       // After billing: cancelled or did-not-attend fees left out, to keep or set to £0.
       const left = leftover();

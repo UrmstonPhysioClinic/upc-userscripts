@@ -3,12 +3,12 @@
     {
       "file": "health-check.user.js",
       "name": "Halaxy health check (beta)",
-      "version": "1.1.19"
+      "version": "1.1.20"
     },
     {
       "file": "core.user.js",
       "name": "UPC core library (beta)",
-      "version": "0.1.25"
+      "version": "0.1.26"
     },
     {
       "file": "alerts.user.js",
@@ -18,7 +18,7 @@
     {
       "file": "bill-funder.user.js",
       "name": "Halaxy bill funder (beta)",
-      "version": "0.7.3"
+      "version": "0.8.0"
     },
     {
       "file": "branding.user.js",
@@ -49,6 +49,11 @@
       "file": "outstanding-actions.user.js",
       "name": "Halaxy Outstanding Actions (beta)",
       "version": "0.5.3"
+    },
+    {
+      "file": "portal-fill.user.js",
+      "name": "Halaxy insurer portal fill (beta)",
+      "version": "0.1.0"
     },
     {
       "file": "ready-to-bill.user.js",

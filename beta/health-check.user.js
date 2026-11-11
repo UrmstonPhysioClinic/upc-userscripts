@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.19
+// @version      1.1.20
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.19';
+  const VERSION = '1.1.20';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -39,7 +39,7 @@
   const NAMES = {
     'alerts.user.js': 'Alerts', 'bill-funder.user.js': 'Bill funder', 'arrival-chime.user.js': 'Arrival chime', 'chat-alert.user.js': 'Chat alert',
     'branding.user.js': 'Branding', 'calendar-controls.user.js': 'Calendar controls', 'core.user.js': 'Core library', 'custom-reports.user.js': 'Custom Reports',
-    'forecourt-lights.user.js': 'Forecourt lights', 'script-settings.user.js': 'Script settings', 'review-requests.user.js': 'Review requests', 'survey-feedback.user.js': 'Feedback alerts', 'email-html-source.user.js': 'HTML source for emails', 'health-check.user.js': 'Health check',
+    'forecourt-lights.user.js': 'Forecourt lights', 'script-settings.user.js': 'Script settings', 'review-requests.user.js': 'Review requests', 'survey-feedback.user.js': 'Feedback alerts', 'portal-fill.user.js': 'Portal fill', 'email-html-source.user.js': 'HTML source for emails', 'health-check.user.js': 'Health check',
     'outstanding-actions.user.js': 'Outstanding Actions', 'ready-to-bill.user.js': 'Ready to bill', 'rebate-sync.user.js': 'Rebate Sync', 'remittances.user.js': 'Remittances',
     'textarea-autogrow.user.js': 'Auto-expanding text boxes', 'toast-alerts.user.js': 'Toast alerts',
   };
@@ -355,6 +355,14 @@
         else if (list.length) keysMissing(list, ['title', 'comment', 'status']).forEach((k) => problems.push('task list field ' + k));
         put('data-patient-tasks', 'Patient tasks', ['Feedback alerts'], problems);
       } catch (e) { put('data-patient-tasks', 'Patient tasks', ['Feedback alerts'], [e.message]); }
+      // The patient's Edit page (read only): Portal fill takes the address and postcode from it.
+      try {
+        const res = await fetch('/a/pr/' + group() + '/patient/' + encodeURIComponent(withPatient.linkPaGId) + '/edit', { credentials: 'same-origin' });
+        if (!res.ok) throw new Error('Halaxy returned ' + res.status + ' for the patient Edit page');
+        const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+        const need = ['firstline', 'postcode'].map((k) => 'patientdetailmain[linkPaG][linkpagaddresses][0][address][' + k + ']');
+        put('data-patient-edit', 'Patient Edit page', ['Portal fill', 'Review requests'], need.filter((n) => !doc.querySelector('[name="' + n + '"]')).map((n) => 'field ' + n + ' missing'));
+      } catch (e) { put('data-patient-edit', 'Patient Edit page', ['Portal fill', 'Review requests'], [e.message]); }
     }
 
     // Invoice settings (cogwheel): Bill funder reads and sets the status here.

@@ -15,6 +15,14 @@ Health check 1.1.6, then 1.1.7, at Carl's request, so the clinic PCs stop report
 ## Moved to the clinic PCs (stable), 9 Nov 2026
 Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outstanding Actions 0.5.3, calendar controls 2.10, Alerts 1.0.0, Custom Reports 0.7.0, HTML source for emails 0.4. Arrival chime and Chat alert retired from stable (replaced by Alerts). `tools/promote.py` added for promotions.
 
+## Portal fill
+
+### 0.1.0 (11 Nov 2026, beta, with core 0.1.26 and loader 1.2.0)
+- New (Carl's steps, 11 Nov 2026). "Fill on the AXA portal" / "Fill on the Bupa portal" in the Bill To box of a Bupa or AXA funder invoice, and at the end of Invoice Funder. Reads the claim from Halaxy (the funder invoice's fees, number without the leading 0 and date; the claim's membership and authorisation numbers; the patient's name without title, date of birth, and address with postcode from the Edit page, read only; for AXA a condition from the first line under "Subjective:" in the notes for that claim), passes it to the portal tab through the loader on this PC, and opens the portal.
+- AXA: membership number, Submit invoice, then the form: Therapist, payee details (Script settings > Portal fill: settings, asked for the first time), ICS code NA, one fee per treatment line (Outpatient, 1 unit), "add another treatment line" for each further fee. The condition is highlighted to check.
+- Bupa: waits for the log-in, Reject all on the cookie box, Create an invoice, set-up (invoice number, first treatment date, pre-auth number), Pre-Auth Summary, checks Urmston Physio Clinic is the provider, removes pre-populated treatments, adds one fee per treatment (Consultant rooms, 1 session) leaving Bupa's impairment and procedure code, and stops on Confirm and Submit (warning if Bupa's total differs).
+- Never presses Submit. Stops, saying what, at anything it doesn't expect. Once the portal shows its "submitted" message, Halaxy asks whether to mark the funder invoice Issued; the claim is then cleared from the PC (and after 4 hours in any case).
+
 ## Feedback alerts
 
 ### 0.1.0 (11 Nov 2026, beta, with core 0.1.24)
@@ -59,6 +67,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Core library
 
+### 0.1.26 (11 Nov 2026, beta)
+- UPC.invoice.parse: each fee's description (on an organisation invoice, the last description cell, without the Patient column's script) and `billToName` (the funder in an organisation invoice's Bill To box).
+
 ### 0.1.25 (11 Nov 2026, beta)
 - Patient search sends the practice number from the page address, as Halaxy's search box does (live check: the number tried first before got an HTML page back, costing a wasted request).
 
@@ -78,6 +89,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Health check
 
+### 1.1.20 (11 Nov 2026, beta)
+- Daily check of the patient Edit page's address and postcode fields (Portal fill). Portal fill added to the script names.
+
 ### 1.1.19 (11 Nov 2026, beta)
 - The patient search check asks as Halaxy's search box does (with the page's practice number). 1.1.18 reported "Patient search has changed" wrongly.
 
@@ -94,6 +108,10 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Checks the follow-ups list daily (Review requests), and knows Review requests by name.
 
 ## Loader
+
+### 1.2.0 (11 Nov 2026)
+- Also runs on the Bupa and AXA provider sites, for Portal fill. Only scripts whose own @match names those sites run there; the PC's channel and switched-off scripts come from a copy kept while Halaxy is open, and no update checks are made there.
+- `window.__upcLoader.shared(op, key, value)`: passes a value between Halaxy and a portal on this PC through the loader's storage. A value with `forHost` is given back only on Halaxy and that site.
 
 ### 1.1.0 (10 Nov 2026, all PCs)
 - Scripts' menu items are kept for Script settings in Halaxy (window.__upcLoader.items, run(id)); the Tampermonkey menu gets them only on pages where Script settings isn't running (checked 4 seconds after the page loads). The loader's own "UPC scripts: settings and updates" stays in the Tampermonkey menu.
@@ -140,6 +158,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - A count of due patients on the menu item, refreshed at most every 2 hours in the visible tab and shared by all tabs. One report, one list and one calendar request per check, plus each patient's first and latest invoice (cached for a week). Read-only.
 
 ## Bill funder
+
+### 0.8.0 (11 Nov 2026, beta)
+- After billing Bupa or AXA: a "Fill on the Bupa portal" / "Fill on the AXA portal" button opens the new funder invoice, where Portal fill does the rest.
 
 ### 0.7.3 (10 Nov 2026, beta)
 - "Zero" is now worded "Set to £ 0.00" throughout (Carl).
