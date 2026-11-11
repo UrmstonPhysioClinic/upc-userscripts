@@ -119,10 +119,10 @@ async def main():
         names = [r[0] for r in rows]
         check('open-ended, 3 weeks to 3 months, nothing booked: oldest visit first', names == ['Patient C', 'Patient B', 'Patient L', 'Patient A', 'Patient D'], rows)
         by = {r[0]: r for r in rows}
-        check('the wording found is named', by.get('Patient A', [''] * 5)[3].startswith('open return') and by.get('Patient B', [''] * 5)[3].startswith('book again if needed')
-              and by.get('Patient C', [''] * 5)[3].startswith('see how things go') and by.get('Patient D', [''] * 5)[3].startswith('come back if needed'), rows)
+        check('the wording found is named', by.get('Patient A', [''] * 4)[3].startswith('open return') and by.get('Patient B', [''] * 4)[3].startswith('book again if needed')
+              and by.get('Patient C', [''] * 4)[3].startswith('see how things go') and by.get('Patient D', [''] * 4)[3].startswith('come back if needed'), rows)
         check('last seen and days', by.get('Patient A', [])[1:3] == ['17-Oct-2026', '25'], by.get('Patient A'))
-        check('Review Request already sent is shown', by.get('Patient L', [''] * 5)[4] == 'Sent' and by.get('Patient A', [''] * 5)[4] == '', rows)
+        check('nothing about Review requests: no column, follow-ups not read', all(len(r) == 4 for r in rows) and not [x for x in S['log'] if 'followup' in x[1]], (rows, S['log']))
         check('left out: booked ahead, under 3 weeks, over 3 months, last one missed, not open-ended, negated, older note only',
               not any(n in names for n in ['Patient E', 'Patient F', 'Patient G', 'Patient H', 'Patient I', 'Patient J', 'Patient K']), names)
         link = await pg.evaluate("document.querySelector('[data-upc-check-ins] tbody tr td:nth-child(4) a').getAttribute('href')")

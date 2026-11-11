@@ -3,7 +3,7 @@
     {
       "file": "health-check.user.js",
       "name": "Halaxy health check (beta)",
-      "version": "1.1.25"
+      "version": "1.1.26"
     },
     {
       "file": "core.user.js",
@@ -33,7 +33,7 @@
     {
       "file": "check-ins.user.js",
       "name": "Halaxy check-ins (beta)",
-      "version": "0.1.0"
+      "version": "0.1.1"
     },
     {
       "file": "custom-reports.user.js",
