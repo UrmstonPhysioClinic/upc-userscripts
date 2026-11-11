@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.16
+// @version      1.1.17
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
-// @description  Checks that what the clinic's scripts rely on in Halaxy is still there, notices Halaxy updates, and collects script errors. Shows a small notice only when something needs looking at. Read-only.
+// @description  Checks that what the clinic's scripts rely on in Halaxy is still there, notices Halaxy updates, and collects script errors. Shows a small notice only when something needs looking at, and only to Carl Healy. Read-only.
 // @match        https://*.halaxy.com/a/*
 // @run-at       document-start
 // @grant        none
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.16';
+  const VERSION = '1.1.17';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -60,6 +60,24 @@
   }
   const group = () => (location.pathname.match(/\/a\/pr\/(\d+)\//) || [])[1];
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // Who sees it (Carl, 11 Nov 2026: "just show health check on my account"). The checks and error
+  // collection still run for everyone: results stay on this PC, so they show when Carl signs in here.
+  const SHOW_TO = ['Carl Healy'];
+  function signedInAs() {
+    try {
+      const h = window.HkUser || {};
+      const named = String(h.pracName || (h.CalendarDefault || {}).pracName || '').trim();
+      if (named) return named;
+    } catch (e) { /* fall back to the account menu */ }
+    const btn = document.getElementById('activeUser');
+    return btn ? btn.textContent.replace(/\s+/g, ' ').trim() : '';
+  }
+  function shown() {
+    const who = signedInAs().toLowerCase();
+    if (!who) return true;   // the sign-in can't be read: Halaxy may have changed, so show rather than hide
+    return SHOW_TO.some((n) => who.includes(n.toLowerCase()));
+  }
   const when = (t) => (t ? new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'never');
 
   // ------------------------------------------------------------------ script errors (listen from the start)
@@ -437,6 +455,7 @@
 
   function render() {
     if (!ensureHost()) return;
+    if (!shown()) { open = false; sh.innerHTML = ''; return; }
     watchMenu();
     place();
     const list = problems();
@@ -526,14 +545,20 @@
     return runningAll;
   }
 
-  if (typeof GM_registerMenuCommand === 'function') {
+  // Added once the page shows who is signed in, and only for them (Script settings lists it).
+  let menuAdded = false;
+  function addMenu() {
+    if (menuAdded || typeof GM_registerMenuCommand !== 'function' || !shown()) return;
+    menuAdded = true;
     GM_registerMenuCommand('Health check: show results', () => { open = true; render(); });
   }
 
   const start = () => setTimeout(() => runAll(false), (window.__hxHealthTest && window.__hxHealthTest.delay) || 3000);
   if (document.readyState === 'complete') start();
   else window.addEventListener('load', start, { once: true });
-  document.addEventListener('DOMContentLoaded', render, { once: true });
+  const ready = () => { render(); addMenu(); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ready, { once: true });
+  else ready();
 
   window.hxHealth = {
     version: VERSION,
