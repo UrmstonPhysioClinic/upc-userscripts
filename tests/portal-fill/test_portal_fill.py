@@ -220,12 +220,21 @@ def bupa_list():
 
 BUPA_ADD = bupa_page("<h2>Treatment details</h2><form id='createClaimForm' method='post' action='/providers-online/addClaimTreatment.do?method=save'>"
                      "<label>Impairment / diagnosis <span class='error'>*</span></label><select name='impairmentPair'><option>Please select...</option><option>11111-Knee pain</option><option selected>22222-Knee sprain</option></select>"
-                     "<label>Procedure <span class='mandatory-error'>*</span></label><select name='procedureCode'><option>Please select...</option><option>Physiotherapy group session (AA359)</option><option>Physio initial consultation - AA360</option>"
+                     "<label>Procedure <span class='mandatory-error'>*</span></label><select name='procedureCode' onchange=\"this.form.action='/providers-online/addClaimTreatment.do?method=reload'; this.form.submit()\"><option>Please select...</option><option>Physiotherapy group session (AA359)</option><option>Physio initial consultation - AA360</option>"
                      "<option>AA361 Physio follow up</option><option>Invented longer code AA3610</option></select>"
                      "<select name='typeOfService'><option>Outpatient</option></select><label for='place-of-service'>Place of service *</label><select id='place-of-service' name='placeOfService'>"
                      "<option value=''>Please select...</option><option value='HOME'>Home</option><option value='CR'>Consultant rooms</option><option value='OT'>Other</option></select>"
                      "<select name='providerId'><option>Urmston Physio Clinic</option></select><input name='treatmentFromDate'><input name='treatmentToDate'>"
                      "<input name='incidents' maxlength='3'><input name='chargeAmount' maxlength='8'><button type='submit' name='go' value='previous'>Previous</button><button type='submit' name='go' value='save'>Save</button></form>", False)
+
+
+def bupa_add(f=None):
+    page = BUPA_ADD
+    if S['bupa'].get('hide'):
+        page = page.replace(S['bupa']['hide'], 'Something else entirely')
+    if f and f.get('procedureCode'):
+        page = page.replace("<option>%s</option>" % f['procedureCode'], "<option selected>%s</option>" % f['procedureCode'])
+    return page
 
 
 async def bupa(route):
@@ -272,18 +281,21 @@ async def bupa(route):
             if f.get('go') == 'remove':
                 B['treatments'].pop(int(f['indexId']))
                 if not B['treatments']:   # as Bupa: once the last is removed, a new treatment opens
-                    return await html(BUPA_ADD)
+                    return await html(bupa_add())
             return await html(bupa_list())
+        if m == 'reload':   # as Bupa: choosing a procedure reloads the form; here only the lists come back (anything typed is lost)
+            B['reloads'] = B.get('reloads', 0) + 1
+            return await html(bupa_add(f))
         if m == 'save' and (B.get('reopen') or B.get('reopenAlways')):   # the form comes back with no message (as after a refresh): the fill should fill it again
             B['reopen'] = False
-            return await html(BUPA_ADD)
+            return await html(bupa_add())
         if m == 'save' and B.get('refuseSave'):
-            return await html(BUPA_ADD.replace("<h2>Treatment details</h2>", "<h2>Treatment details</h2><div class='errorMessage'>Please enter a valid fee</div>"))
+            return await html(bupa_add().replace("<h2>Treatment details</h2>", "<h2>Treatment details</h2><div class='errorMessage'>Please enter a valid fee</div>"))
         if m == 'save':
             B['treatments'].append({k: f.get(k) for k in ('placeOfService', 'treatmentFromDate', 'treatmentToDate', 'incidents', 'chargeAmount', 'impairmentPair', 'procedureCode')})
             return await html(bupa_list())
         if f.get('go') == 'add':
-            return await html(BUPA_ADD)
+            return await html(bupa_add())
         if f.get('go') == 'next':
             total = sum(float(t.get('chargeAmount') or 0) for t in B['treatments'])
             return await html(bupa_page("<h2>Confirm and Submit</h2><h3>Invoice total: £%.2f</h3><h3>Treatments</h3><form id='createClaimForm' action='/providers-online/createClaims.do' method='post'>"
@@ -429,6 +441,7 @@ async def main():
               B['treatments'] == [{'placeOfService': 'CR', 'treatmentFromDate': '03/11/2026', 'treatmentToDate': '03/11/2026', 'incidents': '1', 'chargeAmount': '60.00', 'impairmentPair': '22222-Knee sprain', 'procedureCode': 'Physio initial consultation - AA360'},
                                   {'placeOfService': 'CR', 'treatmentFromDate': '10/11/2026', 'treatmentToDate': '10/11/2026', 'incidents': '1', 'chargeAmount': '40.00', 'impairmentPair': '22222-Knee sprain', 'procedureCode': 'AA361 Physio follow up'}], B['treatments'])
         panel = await portal.evaluate("document.getElementById('upc-pf-panel').textContent")
+        check('Bupa: choosing the procedure reloads the page, and the fill carries on from the reloaded form', B.get('reloads') == 3, B.get('reloads'))   # treatment 1, its reopened form, treatment 2
         check('Bupa: stops on Confirm and Submit, total matches', 'Confirm and Submit' in await portal.evaluate("document.body.innerText") and 'Bupa shows a total' not in panel and not B.get('submitted')
               and await portal.evaluate("document.getElementById('confirmation').classList.contains('upc-pf-check') && !document.getElementById('confirmation').checked"), panel)
         await portal.check('#confirmation')
@@ -486,6 +499,24 @@ async def main():
         check('Bupa: a refused treatment stops the fill, with Bupa\'s message', 'Please enter a valid fee' in panel, panel)
         await pg2.wait_for_function("/has been sent a task/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=60000)
         check('and Carl gets a task on that invoice', len(S['tasks'][9002]) == 1 and 'Please enter a valid fee' in S['tasks'][9002][0]['comment'], S['tasks'][9002])
+        await portal.close()
+
+        # A fee whose Bupa code isn't in the list: the user is asked, their choice reloads the page, and the fill carries on
+        S['bupa'].update({'logged': True, 'treatments': [], 'prepopulated': False, 'refuseSave': False, 'submitted': False, 'hide': 'AA361 Physio follow up', 'reloads': 0})
+        S['tasks'][9002] = []
+        await pg2.bring_to_front()
+        async with ctx.expect_page() as newp:
+            await pg2.click('[data-upc-portal-fill] button')
+        portal = await newp.value
+        await portal.wait_for_function("document.getElementById('upc-pf-panel') && /Choose the procedure/.test(document.getElementById('upc-pf-panel').textContent)", timeout=90000)
+        panel = await portal.evaluate("document.getElementById('upc-pf-panel').textContent")
+        check('Bupa: code not in the list, the user is asked (uncovered), saying which code', 'AA361 not found' in panel and await portal.evaluate("!document.getElementById('upc-pf-cover')"), panel)
+        await portal.select_option('select[name=procedureCode]', label='Physiotherapy group session (AA359)')
+        await portal.wait_for_function("/Confirm and Submit/.test(document.body.innerText)", timeout=60000)
+        check('and after the choice (and Bupa\'s reload) the fill finishes the treatment with the user\'s procedure',
+              len(B['treatments']) == 2 and B['treatments'][1]['procedureCode'] == 'Physiotherapy group session (AA359)' and B['treatments'][1]['chargeAmount'] == '40.00'
+              and B['treatments'][1]['treatmentFromDate'] == '10/11/2026' and not S['tasks'][9002], B['treatments'])
+        S['bupa']['hide'] = None
         await portal.close()
 
         # Bupa keeps handing the form back with no message: the fill tries twice more, then stops rather than looping
