@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         Halaxy task stamps (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.2
+// @version      0.1.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/task-stamps.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/task-stamps.user.js
-// @description  Starts each new entry in a task's comment with the date, time and your initials ("2026-11-11 15:49 CH"), when adding a task or adding to one.
+// @description  Date, time and initials stamps ("2026-11-11 15:49 CH") and "- " bullets in task comments and appointment comments, added when you click into the box.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
 // @grant        none
@@ -18,8 +18,10 @@
  *
  *  - Halaxy's add-task and edit-task pop-ups are form#form_task_edit, with a plain text box form[comment]
  *    (line breaks kept; capture, 11 Nov 2026).
- *  - A new task's comment starts "2026-11-11 15:49 CH" and a new line starting "- ". On an existing task, a blank line and a new
- *    stamp go under what's there. The cursor goes to the end when the box is first clicked.
+ *  - Also an appointment's Comments in the calendar (Carl, 11 Nov 2026: "we use the same system there").
+ *  - When the box is first clicked into: an empty box gets "2026-11-11 15:49 CH" and a new line starting "- ";
+ *    one with text gets a blank line and a new stamp under what's there. The cursor goes under the stamp.
+ *  - "- " bullets behave like a rich text list (see bullets()).
  *  - Saved without anything typed after the stamp (say only the status changed): the empty stamp is taken off first.
  *  - Not stamped again if the comment already ends with this person's stamp from the last 5 minutes (Halaxy
  *    redrawing the pop-up, or a quick second edit).
@@ -32,9 +34,11 @@
   if (window.__hxTaskStamps) return;
   window.__hxTaskStamps = true;
 
-  const VERSION = '0.1.2';
+  const VERSION = '0.1.3';
   const RECENT = 5 * 60e3;
-  const FIELD = 'form#form_task_edit textarea[name="form[comment]"]';
+  // Task comments (add-task and edit-task pop-ups), and an appointment's Comments in the calendar (form#pr-appointment,
+  // a plain box form[description]; capture, 11 Nov 2026). Both plain text, line breaks kept.
+  const FIELD = 'form#form_task_edit textarea[name="form[comment]"], form#pr-appointment textarea[name="form[description]"]';
 
   function userName() {
     try {
@@ -101,45 +105,65 @@
     });
   }
 
+  // The stamp goes in when the box is first clicked or tabbed into (not when the pop-up opens), so a task or
+  // appointment that's only opened, moved or given a new status is left as it was.
   function prepare(box) {
     box.setAttribute('data-upc-stamp-done', '1');
     bullets(box);
-    const who = initials(userName());
-    if (!who) return;
-    const text = box.value || '';
-    const before = lastStampBy(text, who);
-    if (before !== null && Date.now() - before < RECENT && Date.now() >= before - 60e3) return;
-    const s = stamp(who);
-    box.value = (text.replace(/\s+$/, '') ? text.replace(/\s+$/, '') + '\n\n' : '') + s + '\n- ';
-    box.setAttribute('data-upc-stamp', s);
-    fire(box);
-    // The first click (or tab) into the box puts the cursor at the end, under the stamp; later clicks work as usual.
+    let armed = true, toEndOnUp = false;
     const toEnd = () => { try { box.setSelectionRange(box.value.length, box.value.length); } catch (e) { /* ignore */ } };
-    const done = () => { box.removeEventListener('focus', toEnd); box.removeEventListener('mouseup', onUp); box.removeEventListener('keydown', done); };
-    const onUp = () => { toEnd(); done(); };
-    box.addEventListener('focus', toEnd);
-    box.addEventListener('mouseup', onUp);
-    box.addEventListener('keydown', done);
+    box.addEventListener('focus', () => {
+      if (!armed) return;
+      armed = false;
+      box.setAttribute('data-upc-touched', '1');
+      const who = initials(userName());
+      if (!who) return;
+      const text = box.value || '';
+      const before = lastStampBy(text, who);
+      if (before === null || Date.now() - before >= RECENT || Date.now() < before - 60e3) {
+        const s = stamp(who);
+        box.value = (text.replace(/\s+$/, '') ? text.replace(/\s+$/, '') + '\n\n' : '') + s + '\n- ';
+        box.setAttribute('data-upc-stamp', s);
+        fire(box);
+      }
+      toEnd();
+      toEndOnUp = true;   // a click places the cursor after focus: put it back at the end, under the stamp
+    });
+    box.addEventListener('mouseup', () => { if (toEndOnUp) { toEndOnUp = false; toEnd(); } });
+    box.addEventListener('keydown', () => { toEndOnUp = false; });
   }
 
   // Before Halaxy reads the form on Save: empty "- " lines at the end go, and so does a stamp with nothing after it.
-  function tidy(form) {
-    const box = form && form.querySelector('textarea[name="form[comment]"]');
-    if (!box) return;
+  // Only boxes this script has been in are touched.
+  function tidy(box) {
+    if (!box.hasAttribute('data-upc-touched')) return;
     const s = box.getAttribute('data-upc-stamp');
     let v = box.value.replace(/(\n[ \t]*-?[ \t]*)+$/, '').replace(/\s+$/, '');
     if (s && v.endsWith(s)) v = v.slice(0, v.length - s.length).replace(/\s+$/, '');
+    if (v === '-' ) v = '';
     if (v !== box.value) { box.value = v; fire(box); }
   }
+  const tidyAll = () => document.querySelectorAll(FIELD).forEach(tidy);
+  // The appointment pop-up's Save sits outside its form (capture, 11 Nov 2026), so any Save / Book / Update tidies them all.
   document.addEventListener('click', (e) => {
     const b = e.target && e.target.closest && e.target.closest('button, input[type=submit], a');
-    const form = b && (b.closest('form#form_task_edit') || (b.closest('.modal, .bootbox, .modal-dialog') || document.createElement('div')).querySelector('form#form_task_edit'));
-    if (form && /^\s*save\b/i.test(b.textContent || b.value || '')) tidy(form);
+    if (b && /^\s*(save|book|update)\b/i.test(b.textContent || b.value || '')) tidyAll();
   }, true);
-  document.addEventListener('submit', (e) => { if (e.target && e.target.matches && e.target.matches('form#form_task_edit')) tidy(e.target); }, true);
+  document.addEventListener('submit', tidyAll, true);
 
   let queued = false;
-  const scan = () => { queued = false; document.querySelectorAll(FIELD + ':not([data-upc-stamp-done])').forEach(prepare); };
+  // The appointment pop-up opens long after page load, so the health check can't look for its Comments box: this
+  // script tells it (once a page) if the pop-up turns up without one.
+  let told = false;
+  function checkLayout() {
+    if (told) return;
+    const appt = document.querySelector('form#pr-appointment');
+    if (appt && appt.querySelector('select, input:not([type=hidden])') && !appt.querySelector('textarea[name="form[description]"]')) {
+      told = true;
+      document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: 'task-stamps.user.js', message: 'The appointment pop-up has changed (its Comments box, form[description], was not found).' }) }));
+    }
+  }
+  const scan = () => { queued = false; document.querySelectorAll(FIELD + ':not([data-upc-stamp-done])').forEach(prepare); checkLayout(); };
   new MutationObserver(() => { if (!queued) { queued = true; requestAnimationFrame(scan); } }).observe(document.body, { childList: true, subtree: true });
   scan();
 

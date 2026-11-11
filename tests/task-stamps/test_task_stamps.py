@@ -21,6 +21,13 @@ function popup(value) {
   document.querySelector('textarea').value = value || '';
   document.querySelector('.btn-submit').addEventListener('click', () => { window.saved.push(document.querySelector('textarea').value); });
 }
+function appointment(value) {
+  document.getElementById('modals').innerHTML = "<div class='upc-test-appt'><form id='pr-appointment' class='py-3 px-0'><select name='form[status]'><option>Booked</option></select>" +
+    "<textarea class='form-control large' name='form[description]' placeholder='Comments' rows='3'></textarea></form>" +
+    "<div class='footer'><button type='button' class='btn btn-primary' id='apptSave'>Save</button></div></div>";
+  document.querySelector('textarea').value = value || '';
+  document.getElementById('apptSave').addEventListener('click', () => { window.saved.push(document.querySelector('textarea').value); });
+}
 </script></body></html>"""
 
 STAMP = r'\d{4}-\d{2}-\d{2} \d{2}:\d{2} CH'
@@ -42,9 +49,9 @@ async def main():
         # New task: the stamp and a new line
         await pg.evaluate("popup('')")
         await pg.wait_for_timeout(200)
+        await pg.click('textarea')
         v = await val()
         check('new task: comment starts with the date, time and initials, then a "- " line', re.fullmatch(STAMP + r'\n- ', v) is not None, repr(v))
-        await pg.click('textarea')
         await pg.keyboard.type('Rang the patient')
         await pg.click('.btn-submit')
         s = (await pg.evaluate('saved'))[-1]
@@ -88,9 +95,17 @@ async def main():
         v = await val()
         check('Enter in the middle of a bullet splits it into two bullets', v.endswith('\n- Alpha\n- Beta'), repr(v))
 
+        # Opened and saved without clicking into the box: left exactly as it was
+        await pg.evaluate("popup('Some text   ')")
+        await pg.wait_for_timeout(200)
+        check('not clicked into: nothing added', await val() == 'Some text   ', repr(await val()))
+        await pg.click('.btn-submit')
+        check('not clicked into: saved exactly as it was', (await pg.evaluate('saved'))[-1] == 'Some text   ')
+
         # Saved with nothing typed: the empty stamp is taken off
         await pg.evaluate("popup('')")
         await pg.wait_for_timeout(200)
+        await pg.click('textarea')
         await pg.click('.btn-submit')
         s = (await pg.evaluate('saved'))[-1]
         check('saved without typing: no empty stamp left', s == '', repr(s))
@@ -98,9 +113,9 @@ async def main():
         # Adding to a task: a blank line and a new stamp under what's there
         await pg.evaluate("popup('2026-11-01 AB: Letter sent')")
         await pg.wait_for_timeout(200)
+        await pg.click('textarea')
         v = await val()
         check('existing task: new stamp under the old comment', re.fullmatch(r'2026-11-01 AB: Letter sent\n\n' + STAMP + r'\n- ', v) is not None, repr(v))
-        await pg.click('textarea')
         await pg.keyboard.type('Reply received')
         await pg.click('.btn-submit')
         s = (await pg.evaluate('saved'))[-1]
@@ -116,18 +131,42 @@ async def main():
         # Halaxy redraws the pop-up with what was typed (or a quick second edit): not stamped twice
         await pg.evaluate("popup(arguments[0])".replace('arguments[0]', repr(s + '\n\n' + await pg.evaluate("upcTaskStamps.stamp('CH')") + '\nJust now')))
         await pg.wait_for_timeout(200)
+        await pg.click('textarea')
         v = await val()
         check('own stamp from the last few minutes: not stamped again', v.endswith('\nJust now') and len(re.findall(STAMP, v)) == 1, repr(v))
 
         # An old stamp of mine (an hour ago): stamped again
         await pg.evaluate("popup('2020-01-01 10:00 CH\\n- Old note')")
         await pg.wait_for_timeout(200)
+        await pg.click('textarea')
         v = await val()
         check('older own stamp: a new stamp is added', len(re.findall(STAMP, v)) == 2, repr(v))
+
+        # An appointment's Comments in the calendar (Save outside the form, as live)
+        await pg.evaluate("appointment('Prefers mornings')")
+        await pg.wait_for_timeout(200)
+        await pg.click('#apptSave')
+        check('appointment opened and saved without touching Comments: unchanged', (await pg.evaluate('saved'))[-1] == 'Prefers mornings')
+        await pg.evaluate("appointment('Prefers mornings')")
+        await pg.wait_for_timeout(200)
+        await pg.click('textarea')
+        await pg.keyboard.type('Running late')
+        await pg.keyboard.press('Enter')
+        await pg.keyboard.type('Rebooked for Friday')
+        await pg.keyboard.press('Enter')
+        await pg.click('#apptSave')
+        s = (await pg.evaluate('saved'))[-1]
+        check('appointment Comments: stamped under the old text, bullets, empty bullet taken off on Save', re.fullmatch(r'Prefers mornings\n\n' + STAMP + r'\n- Running late\n- Rebooked for Friday', s) is not None, repr(s))
+        await pg.evaluate("appointment('')")
+        await pg.wait_for_timeout(200)
+        await pg.click('textarea')
+        await pg.click('#apptSave')
+        check('appointment Comments clicked into but nothing typed: left empty', (await pg.evaluate('saved'))[-1] == '')
 
         # No name known: left alone
         await pg.evaluate("window.HkUser = {}; document.getElementById('activeUser').textContent = ''; popup('')")
         await pg.wait_for_timeout(200)
+        await pg.click('textarea')
         check('no signed-in name: nothing added', await val() == '')
 
         check('no page errors', not errors, errors)
