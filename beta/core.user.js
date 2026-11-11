@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.28
+// @version      0.1.29
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.28';
+  const VERSION = '0.1.29';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -920,6 +920,43 @@
       const now = serialize(after.form).filter(([k]) => k !== 'patientdetailmain[_token]' && k !== FIELD).map((x) => x.join('='));
       const changed = was.filter(([k]) => k !== FIELD).map((x) => x.join('=')).filter((x) => !now.includes(x));
       if (changed.length) throw new UPCError('The label was added, but these details now read differently on the Edit page: ' + changed.map((x) => x.split('=')[0]).join(', ') + '. Please check the patient.');
+      return true;
+    },
+    // Sets the patient's status on their Edit page (select patientdetailmain[linkPaG][customStatus], options valued
+    // by name: current, claimant, discharged, review...; capture 11 Nov 2026), sending the form exactly as Halaxy
+    // filled it with only the status changed, then reads it back. Only from `from` (what the caller saw), so a
+    // status someone changed meanwhile is left alone. False if it's already `to`.
+    async setStatus(linkPaGId, from, to) {
+      const path = '/patient/' + encodeURIComponent(linkPaGId) + '/edit';
+      const FIELD = 'patientdetailmain[linkPaG][customStatus]';
+      const read = async () => {
+        const doc = await http.html(path);
+        const form = doc.querySelector('form#patientGeneralEditForm');
+        const sel = form && form.querySelector('select[name="' + FIELD + '"]');
+        if (!sel || !form.querySelector('[name="patientdetailmain[_token]"]')) throw new UPCError('The patient Edit page has changed (status not found), so the status was not changed.');
+        return { form, sel };
+      };
+      const { form, sel } = await read();
+      const now0 = String(sel.value || '').toLowerCase();
+      if (now0 === String(to).toLowerCase()) return false;
+      if (from && now0 !== String(from).toLowerCase()) throw new UPCError('The status is now ' + (now0 || 'blank') + ', not ' + from + ', so it was left alone.');
+      const opt = [...sel.options].find((x) => x.value.toLowerCase() === String(to).toLowerCase());
+      if (!opt) throw new UPCError('There is no "' + to + '" status in Halaxy\'s list, so it was not changed.');
+      const was = serialize(form).filter(([k]) => k !== 'patientdetailmain[_token]' && k !== FIELD);
+      [...sel.options].forEach((x) => { x.selected = x === opt; });
+      const pairs = serialize(form);
+      const save = form.querySelector('[name="save_patient"]');
+      if (save && !pairs.some(([k]) => k === 'save_patient')) pairs.push(['save_patient', save.value || '']);
+      const body = new URLSearchParams();
+      pairs.forEach(([k, v]) => body.append(k, v));
+      const res = await pacedFetch(url(path), { method: 'POST', credentials: 'same-origin', body: body.toString(),
+        headers: Object.assign({ 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, JSON_HEADERS) });
+      if (!res.ok) throw new UPCError('Halaxy returned ' + res.status + ' when saving the patient.');
+      const after = await read();
+      if (String(after.sel.value).toLowerCase() !== opt.value.toLowerCase()) throw new UPCError('Halaxy did not keep the new status. Change it on the patient\'s Edit page instead.');
+      const now = serialize(after.form).filter(([k]) => k !== 'patientdetailmain[_token]' && k !== FIELD).map((x) => x.join('='));
+      const changed = was.map((x) => x.join('=')).filter((x) => !now.includes(x));
+      if (changed.length) throw new UPCError('The status was changed, but these details now read differently on the Edit page: ' + changed.map((x) => x.split('=')[0]).join(', ') + '. Please check the patient.');
       return true;
     },
   };

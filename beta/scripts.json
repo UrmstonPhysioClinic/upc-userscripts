@@ -3,12 +3,12 @@
     {
       "file": "health-check.user.js",
       "name": "Halaxy health check (beta)",
-      "version": "1.1.28"
+      "version": "1.1.29"
     },
     {
       "file": "core.user.js",
       "name": "UPC core library (beta)",
-      "version": "0.1.28"
+      "version": "0.1.29"
     },
     {
       "file": "alerts.user.js",
@@ -64,6 +64,11 @@
       "file": "outstanding-actions.user.js",
       "name": "Halaxy Outstanding Actions (beta)",
       "version": "0.5.3"
+    },
+    {
+      "file": "patient-statuses.user.js",
+      "name": "Halaxy patient statuses (beta)",
+      "version": "0.1.0"
     },
     {
       "file": "portal-fill.user.js",
