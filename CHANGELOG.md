@@ -17,6 +17,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Portal fill
 
+### 0.1.6 (11 Nov 2026, beta)
+- Bupa: a treatment form that comes back while saving only counts as refused when Bupa shows an error message; the fill then stops quoting it (and Carl gets a task). Without a message (the page refreshed or reopened), the form is filled again and the fill carries on. On the live run, a refresh was wrongly taken for a refusal ("Bupa didn't accept treatment 1").
+
 ### 0.1.5 (11 Nov 2026, beta)
 - Bupa: the procedure is found by Bupa's code anywhere in its wording (Carl: "make sure AA360 that appears in the Halaxy invoice also appears somewhere in one of the dropdown options"). The code is taken from the fee's Item Code, which reads like "Bup-IA (AA360)"; 0.1.4 compared the whole Item Code and found nothing on the first live run.
 - Fee descriptions lose Halaxy's " - Patient Invoice UPC-..." ending (seen live), so AXA's treatment description is just the fee's name.

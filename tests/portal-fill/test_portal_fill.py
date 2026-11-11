@@ -274,6 +274,11 @@ async def bupa(route):
                 if not B['treatments']:   # as Bupa: once the last is removed, a new treatment opens
                     return await html(BUPA_ADD)
             return await html(bupa_list())
+        if m == 'save' and B.get('reopen'):   # the form comes back with no message (as after a refresh): the fill should fill it again
+            B['reopen'] = False
+            return await html(BUPA_ADD)
+        if m == 'save' and B.get('refuseSave'):
+            return await html(BUPA_ADD.replace("<h2>Treatment details</h2>", "<h2>Treatment details</h2><div class='errorMessage'>Please enter a valid fee</div>"))
         if m == 'save':
             B['treatments'].append({k: f.get(k) for k in ('placeOfService', 'treatmentFromDate', 'treatmentToDate', 'incidents', 'chargeAmount', 'impairmentPair', 'procedureCode')})
             return await html(bupa_list())
@@ -394,6 +399,7 @@ async def main():
 
         # Bupa
         pg2, errors2 = await open_halaxy(ctx, 9002)
+        S['bupa']['reopen'] = True   # the first Save brings the form back without a message, as a refresh would
         check('Bupa funder invoice: Fill on the Bupa portal', await pg2.evaluate("document.querySelector('[data-upc-portal-fill] button').textContent") == 'Fill on the Bupa portal')
         async with ctx.expect_page() as newp:
             await pg2.click('[data-upc-portal-fill] button')
@@ -417,7 +423,7 @@ async def main():
         check('Bupa: cookie box closed (Reject all)', any(c['name'] == 'ot' for c in await ctx.cookies('https://providersonline.bupa.co.uk')))
         check('Bupa: set-up (invoice number without the 0, first treatment date, pre-auth number)', B.get('setup', {}).get('invoiceNumber') == 'UPC-2222'
               and B['setup'].get('firstTreatmentDate') == '03/11/2026' and B['setup'].get('preAuthNumber') == 'AUTHTEST', B.get('setup'))
-        check('Bupa: pre-populated treatment removed, Bupa opens a new treatment after removal, one fee per treatment, Consultant rooms, the procedure chosen by the fee\'s Item Code (Bupa\'s code), Bupa\'s impairment left as it came',
+        check('Bupa: a form that comes back without a message is filled again; pre-populated treatment removed, Bupa opens a new treatment after removal, one fee per treatment, Consultant rooms, the procedure chosen by the fee\'s Item Code (Bupa\'s code), Bupa\'s impairment left as it came',
               B['treatments'] == [{'placeOfService': 'CR', 'treatmentFromDate': '03/11/2026', 'treatmentToDate': '03/11/2026', 'incidents': '1', 'chargeAmount': '60.00', 'impairmentPair': '22222-Knee sprain', 'procedureCode': 'Physio initial consultation - AA360'},
                                   {'placeOfService': 'CR', 'treatmentFromDate': '10/11/2026', 'treatmentToDate': '10/11/2026', 'incidents': '1', 'chargeAmount': '40.00', 'impairmentPair': '22222-Knee sprain', 'procedureCode': 'AA361 Physio follow up'}], B['treatments'])
         panel = await portal.evaluate("document.getElementById('upc-pf-panel').textContent")
@@ -447,6 +453,19 @@ async def main():
         check('a task for Carl on the funder invoice, with the reason', len(t) == 1 and t[0]['title'] == 'Portal fill stopped: AXA, UPC-01111' and t[0]['who'] == ['31']
               and 'charge per unit not found' in t[0]['comment'] and 'shared:portal-claim' not in S['gm'], t)
         AXA_FORM_OVERRIDE.clear()
+        await portal.close()
+
+        # Bupa refuses a treatment (an error message on the form): the fill stops with Bupa's words, and Carl gets a task
+        S['bupa'].update({'logged': True, 'treatments': [], 'prepopulated': False, 'refuseSave': True, 'submitted': False})
+        await pg2.bring_to_front()
+        async with ctx.expect_page() as newp:
+            await pg2.click('[data-upc-portal-fill] button')
+        portal = await newp.value
+        await portal.wait_for_function("document.getElementById('upc-pf-panel') && /has stopped/.test(document.getElementById('upc-pf-panel').textContent)", timeout=90000)
+        panel = await portal.evaluate("document.getElementById('upc-pf-panel').textContent")
+        check('Bupa: a refused treatment stops the fill, with Bupa\'s message', 'Please enter a valid fee' in panel, panel)
+        await pg2.wait_for_function("/has been sent a task/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=60000)
+        check('and Carl gets a task on that invoice', len(S['tasks'][9002]) == 1 and 'Please enter a valid fee' in S['tasks'][9002][0]['comment'], S['tasks'][9002])
         await portal.close()
 
         await ctx.close()
