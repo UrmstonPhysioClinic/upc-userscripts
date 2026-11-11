@@ -59,6 +59,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Core library
 
+### 0.1.25 (11 Nov 2026, beta)
+- Patient search sends the practice number from the page address, as Halaxy's search box does (live check: the number tried first before got an HTML page back, costing a wasted request).
+
 ### 0.1.24 (11 Nov 2026, beta)
 - UPC.surveys: list() (Reports > Surveys > Responses: /report/survey/feedback-data), response(id) (/report/survey/view/{id}: total, level, date of birth, answers) and band() (Excellent, Satisfactory, Below expected).
 - UPC.patient.find(name, dob): Halaxy's patient search (/a/magic/lookup/patient); the date of birth picks between patients with the same name; null unless certain. UPC.patient.nameKey().
@@ -74,6 +77,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - `UPC.notes.items` and `UPC.notes.text` (a patient's notes list and a note's text), `UPC.followUps.list` and `UPC.followUps.add` (Tasks & Follow-Ups), `UPC.patient.details`, `UPC.patient.invoices` and `UPC.patient.addLabel`. Confirmed against live captures, 10 Nov 2026.
 
 ## Health check
+
+### 1.1.19 (11 Nov 2026, beta)
+- The patient search check asks as Halaxy's search box does (with the page's practice number). 1.1.18 reported "Patient search has changed" wrongly.
 
 ### 1.1.18 (11 Nov 2026, beta)
 - Daily data checks for Feedback alerts: the survey responses list and a response's total, level and questions; Halaxy's patient search; a patient's add-task pop-up and task list. Feedback alerts added to the script names.

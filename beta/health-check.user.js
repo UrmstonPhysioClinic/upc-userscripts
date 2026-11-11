@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.18
+// @version      1.1.19
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.18';
+  const VERSION = '1.1.19';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -338,7 +338,7 @@
     // Patient search (Feedback alerts finds the patient by name) and a patient's tasks (where it adds them).
     try {
       const q = new URLSearchParams({ includeContacts: '1', term: 'zzqx' });
-      if (window.HkUser && window.HkUser.linkPrG) q.set('_locale', String(window.HkUser.linkPrG));
+      q.set('_locale', String(group()));   // the practice number from the page address, as the search box sends it
       const res = await fetch('/a/magic/lookup/patient?' + q.toString(), { credentials: 'same-origin', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
       const j = res.ok ? await res.json().catch(() => null) : null;
       put('data-patient-search', 'Patient search', ['Feedback alerts'], j && Array.isArray(j.lookup) ? [] : ['the search no longer answers with a lookup list' + (res.ok ? '' : ' (' + res.status + ')')]);

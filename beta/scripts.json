@@ -3,12 +3,12 @@
     {
       "file": "health-check.user.js",
       "name": "Halaxy health check (beta)",
-      "version": "1.1.18"
+      "version": "1.1.19"
     },
     {
       "file": "core.user.js",
       "name": "UPC core library (beta)",
-      "version": "0.1.24"
+      "version": "0.1.25"
     },
     {
       "file": "alerts.user.js",

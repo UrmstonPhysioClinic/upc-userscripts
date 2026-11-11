@@ -106,8 +106,8 @@ async def halaxy(route):
         return await js({'id': None, 'status': 'FORM', 'title': r['patientName'] + ' - How Was Your Appointment?', 'message': view(r), 'payload': None})
     if p == '/a/magic/lookup/patient':
         q = urllib.parse.parse_qs(u.query)
-        if q.get('_locale') != ['308963']:
-            return await route.fulfill(status=500, body='no locale')
+        if q.get('_locale') != ['555']:   # as live: anything but the page's practice number gets an HTML page
+            return await route.fulfill(body='<html><body>Halaxy</body></html>', content_type='text/html')
         term = q['term'][0].lower()
         hits = [{'id': 900 + x['id'], 'title': x['name'], 'payload': {'id': 900 + x['id'], 'quickAddValue': x['name'], 'displayValue': x['name'],
                  'pag': {'id': x['id'], 'status': 'Current'}, 'detail': {'id': 1, 'dob': {'uDate': x['dob'], 'date': ''}}}} for x in S['patients'] if term in x['name'].lower()]
@@ -174,7 +174,8 @@ async def main():
         views = sorted(int(x[1].rsplit('/', 1)[1]) for x in S['log'] if '/report/survey/view/' in x[1])
         check('only responses from the last 14 days are opened', views == [7001, 7002, 7003, 7004, 7005, 7006], views)
         searches = [x[1] for x in S['log'] if 'lookup' in x[1]]
-        check('patients searched for only for flagged responses, by name without the title', len(searches) == 4 and all('term=patient+' in s and 'mrs' not in s for s in searches), searches)
+        check('patients searched for only for flagged responses, by name without the title, with the page\'s practice number', len(searches) == 4
+              and all('term=patient+' in s and 'mrs' not in s and '_locale=555' in s for s in searches), searches)
         badge = await pg.evaluate("(document.querySelector('#mainMenu a.mainmenu-sublink .upc-fb-badge') || {}).textContent")
         check('F (not found for certain) counted on Reports > Surveys', badge == '1', badge)
         kept = await pg.evaluate("Object.keys(localStorage).filter(k => k.startsWith('upc-fb:')).map(k => localStorage.getItem(k)).join(' ')")

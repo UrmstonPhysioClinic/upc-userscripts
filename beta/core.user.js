@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.24
+// @version      0.1.25
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.24';
+  const VERSION = '0.1.25';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -813,7 +813,7 @@
 
   // ------------------------------------------------------------------ patients
 
-  // Halaxy's patient search box (confirmed live 11 Nov 2026): GET /a/magic/lookup/patient?includeContacts=1&term=...&_locale=...
+  // Halaxy's patient search box (confirmed live 11 Nov 2026): GET /a/magic/lookup/patient?includeContacts=1&term=...&_locale={the number in /a/pr/{n}/}
   // returns { lookup: [{ id, title, payload: { pag: { id = linkPaGId, ... }, detail: { dob: { uDate 'yyyy-mm-dd', ... } }, ... } }] }.
   const nameKey = (s) => clean(String(s || '').replace(/\([^)]*\)/g, ' ').replace(/^(mr|mrs|ms|miss|mx|dr|master|prof)\.?\s+/i, '')).toLowerCase();
   let lookupLocale;
@@ -825,7 +825,8 @@
       const term = nameKey(name);
       if (!term) return null;
       if (lookupLocale === undefined) { try { lookupLocale = JSON.parse(localStorage.getItem('upc-core:lookupLocale')); } catch (e) { lookupLocale = null; } }
-      const tries = [lookupLocale, window.HkUser && window.HkUser.linkPrG, pg(), ''].filter((x, i, a) => x !== null && x !== undefined && a.indexOf(x) === i);
+      // The search box sends the practice number from the page address (live, 11 Nov 2026; HkUser.linkPrG gets an HTML page back).
+      const tries = [lookupLocale, pg(), ''].filter((x, i, a) => x !== null && x !== undefined && a.indexOf(x) === i);
       let hits = null;
       for (const loc of tries) {
         const q = new URLSearchParams({ includeContacts: '1', term });
