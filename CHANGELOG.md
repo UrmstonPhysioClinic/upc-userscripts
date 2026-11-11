@@ -1,5 +1,9 @@
 # Changelog
 
+## Stable release, 11 Nov 2026
+
+Confirmed on live Halaxy by Carl and promoted: core 0.1.28, health check 1.1.23, Remittances 0.3.2, Review requests 0.5.0 (new on stable), Feedback alerts 0.1.1 (new on stable), Task stamps 0.1.3 (new on stable). Held on beta: Portal fill (AXA with several fees not yet tried) and Invoice Funder 0.8.x (the Billed total not yet checked).
+
 ## Moved to the clinic PCs (stable), 10 Nov 2026 (night)
 Carl confirmed on live Halaxy: Script settings 0.1.0 (in the account menu; stable PCs need loader 1.1.0, which Tampermonkey fetches by itself) and health check 1.1.15.
 
