@@ -84,6 +84,8 @@ async def halaxy(route):
     j = lambda o: route.fulfill(body=json.dumps(o), content_type='application/json')
     if p.endswith('/lookup/practitioner'):
         return await j([{'id': 11, 'name': 'Prac One'}])
+    if p.endswith('/profile/group/appointmenttypes/data'):
+        return await j([{'id': 1, 'title': 'Type', 'backgroundColor': '#FF0000', 'status': 'Active'}])
     if p.endswith('/funder/fee/data'):
         return await j([{'funder': 'Self-Funded', 'feeColour': '#FEF2C0', 'status': 'current', 'feeNumber': 'IA-IA'}])
     if p.endswith('/calendar/json'):
