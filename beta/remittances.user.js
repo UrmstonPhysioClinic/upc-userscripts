@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.1
+// @version      0.3.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -31,7 +31,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.3.1';
+  const VERSION = '0.3.2';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -633,7 +633,7 @@
           try {
             const added = await UPC.tasks.addToInvoice(id, {
               title: 'Bill excess: ' + m.number + ' (' + remit + ')', assignee: TASK_FOR, priority: 2, due: todayLabel(),
-              comment: (m.owes !== null ? 'Patient owes ' + fmt(m.owes) + ' on ' + m.number + '. ' : '') + 'Moved to the patient: ' + m.lines.join(', ') + '. From the ' + remit + '.',
+              by: 'Remittances', comment: [(m.owes !== null ? 'Patient owes ' + fmt(m.owes) + ' on ' + m.number : ''), 'Moved to the patient: ' + m.lines.join(', '), 'From the ' + remit, 'Bill the patient for the excess'],
             });
             say('  ' + (added ? 'Task added for ' + TASK_FOR + ' to bill the patient on ' + m.number + '.' : 'A task to bill the patient is already on ' + m.number + '.'));
           } catch (e) {

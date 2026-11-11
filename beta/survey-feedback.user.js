@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy feedback alerts (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.0
+// @version      0.1.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/survey-feedback.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/survey-feedback.user.js
@@ -35,7 +35,7 @@
   if (window.__hxSurveyFeedback) return;
   window.__hxSurveyFeedback = true;
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
   const ALLOWED = ['Carl Healy'];   // Carl, 11 Nov 2026
   const ASSIGNEE = 'Carl Healy';
   const MAX_SCORE = 35;             // the Feedback Request template: 3 x 5 + 2 x 5 + 2 x 5
@@ -81,12 +81,12 @@
   const meaningful = (c) => !!c && !NOTHING.test(c.trim());
 
   function taskFor(row, r, band) {
-    const lines = [row.template + ' survey, answered ' + time(row.answered) + (row.appointment ? ', for the appointment on ' + time(row.appointment) : '') + '.',
-      'Score: ' + r.total + ' of ' + MAX_SCORE + ', ' + (r.level || BAND[band]) + '.', ''];
+    const lines = [row.template + ' survey, answered ' + time(row.answered) + (row.appointment ? ', for the appointment on ' + time(row.appointment) : ''),
+      'Score: ' + r.total + ' of ' + MAX_SCORE + ', ' + (r.level || BAND[band])];
     r.answers.forEach((x) => lines.push(x.question + ' ' + (x.answer ? answerText(x.answer) : '(not answered)')));
-    lines.push('', 'Survey response ' + row.id + '. Completing this task marks it dealt with.');
+    lines.push('Survey response ' + row.id + '. Completing this task marks it dealt with');
     return { title: 'Feedback to look at: ' + (r.level || BAND[band]) + ' (' + r.total + ' of ' + MAX_SCORE + ')', assignee: ASSIGNEE, priority: band === 'below' ? 3 : 2,
-      due: label(Date.now()), comment: lines.join('\n'), key: 'Survey response ' + row.id };
+      due: label(Date.now()), by: 'Feedback alerts', comment: lines, key: 'Survey response ' + row.id };
   }
 
   // ------------------------------------------------------------------ the check

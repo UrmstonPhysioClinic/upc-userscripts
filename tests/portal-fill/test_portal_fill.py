@@ -497,6 +497,9 @@ async def main():
         t = S['tasks'][9001]
         check('a task for Carl on the funder invoice, with the reason', len(t) == 1 and t[0]['title'] == 'Portal fill stopped: AXA, UPC-01111' and t[0]['who'] == ['31']
               and 'charge per unit not found' in t[0]['comment'] and 'shared:portal-claim' not in S['gm'], t)
+        lines = t[0]['comment'].split('\n') if t else []
+        check('the task comment: stamped "date time Portal fill:", then one point per line starting "- "', bool(lines) and re.fullmatch(r'\d{4}-\d{2}-\d{2} \d{2}-\d{2} Portal fill:', lines[0]) is not None
+              and len(lines) > 2 and all(l.startswith('- ') for l in lines[1:]), lines)
         AXA_FORM_OVERRIDE.clear()
         await portal.close()
         await member_tab.close()

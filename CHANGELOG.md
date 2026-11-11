@@ -15,7 +15,15 @@ Health check 1.1.6, then 1.1.7, at Carl's request, so the clinic PCs stop report
 ## Moved to the clinic PCs (stable), 9 Nov 2026
 Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outstanding Actions 0.5.3, calendar controls 2.10, Alerts 1.0.0, Custom Reports 0.7.0, HTML source for emails 0.4. Arrival chime and Chat alert retired from stable (replaced by Alerts). `tools/promote.py` added for promotions.
 
+## Task stamps
+
+### 0.1.0 (11 Nov 2026, beta)
+- New (Carl, 11 Nov 2026): in Halaxy's add-task and edit-task pop-ups, the comment gets a stamp with the date, time and the signed-in person's initials ("2026-11-11 15-49 CH:") and a new line, under what's already there (after a blank line). The first click into the box puts the cursor under the stamp. Saved without typing after it, the empty stamp is taken off. Not stamped twice if the comment already ends with your stamp from the last 5 minutes.
+
 ## Portal fill
+
+### 0.1.14 (11 Nov 2026, beta)
+- The task Carl gets when a fill stops is written the new way (core 0.1.27): stamped, one point per line.
 
 ### 0.1.13 (11 Nov 2026, beta)
 - Bupa: picks "Urmston Physio Clinic" as the treatment's Provider name. With more than one provider on the claim Bupa leaves it at "Please select...", and refused the treatment (Carl, 11 Nov 2026).
@@ -75,6 +83,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Feedback alerts
 
+### 0.1.1 (11 Nov 2026, beta)
+- Task comments stamped "date time Feedback alerts:", one point per line starting "- " (core 0.1.27).
+
 ### 0.1.0 (11 Nov 2026, beta, with core 0.1.24)
 - New (Carl, 11 Nov 2026: "less than positive Feedback Request survey submissions flagged to me"). Every 2 hours on Carl's sign-in, new responses to the Feedback Request survey ("How Was Your Appointment?") from the last 14 days are read. Below expected (25 or less), or Satisfactory (26 to 31) with a comment, becomes a task for Carl on the patient's profile, added without asking: titled with the level and score, High for Below expected, due that day, with the answers (as 1 to 5), the comment and the response number. Completing the task marks it dealt with, on every PC.
 - The patient is found with Halaxy's patient search by name, and the response's date of birth picks the right one. If that isn't certain, no task is added; the response is counted on Reports > Surveys and listed in Script settings > Feedback alerts: show results, with a link to the Responses page.
@@ -117,6 +128,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Core library
 
+### 0.1.27 (11 Nov 2026, beta)
+- Tasks added by scripts (Carl, 11 Nov 2026): the comment starts with a stamp, "2026-11-11 15-45 Portal fill:", then each statement on its own line starting "- ". `UPC.tasks.stamp(by)` and `UPC.tasks.comment(by, lines)`; `addToInvoice` / `addToPatient` take `by` (the script's name) and `comment` as lines.
+
 ### 0.1.26 (11 Nov 2026, beta)
 - UPC.invoice.parse: each fee's description (on an organisation invoice, the last description cell, without the Patient column's script) and `billToName` (the funder in an organisation invoice's Bill To box).
 
@@ -138,6 +152,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - `UPC.notes.items` and `UPC.notes.text` (a patient's notes list and a note's text), `UPC.followUps.list` and `UPC.followUps.add` (Tasks & Follow-Ups), `UPC.patient.details`, `UPC.patient.invoices` and `UPC.patient.addLabel`. Confirmed against live captures, 10 Nov 2026.
 
 ## Health check
+
+### 1.1.23 (11 Nov 2026, beta)
+- Task stamps added to the script names; the add-task pop-up check now lists Task stamps and Portal fill too.
 
 ### 1.1.22 (11 Nov 2026, beta)
 - A patient's Invoices tab (/patient/invoice/{patient}/) is no longer checked as an invoice page. It reported "Invoice page layout has changed" (#invoiceLines, #invoicePayments) wrongly.
@@ -291,6 +308,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - The check goes through the core library's pacing and waits while Halaxy has asked scripts to pause.
 
 ## Remittances
+
+### 0.3.2 (11 Nov 2026, beta)
+- The "Bill excess" task comment is stamped "date time Remittances:", one point per line starting "- " (core 0.1.27).
 
 ### 0.3.1 (9 Nov 2026, beta)
 - With nothing to fix (all paid in full), the button reads "Attach remittance to n invoices" and attaches it, instead of being greyed out.

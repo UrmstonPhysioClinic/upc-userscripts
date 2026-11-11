@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.22
+// @version      1.1.23
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.22';
+  const VERSION = '1.1.23';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -39,7 +39,7 @@
   const NAMES = {
     'alerts.user.js': 'Alerts', 'bill-funder.user.js': 'Bill funder', 'arrival-chime.user.js': 'Arrival chime', 'chat-alert.user.js': 'Chat alert',
     'branding.user.js': 'Branding', 'calendar-controls.user.js': 'Calendar controls', 'core.user.js': 'Core library', 'custom-reports.user.js': 'Custom Reports',
-    'forecourt-lights.user.js': 'Forecourt lights', 'script-settings.user.js': 'Script settings', 'review-requests.user.js': 'Review requests', 'survey-feedback.user.js': 'Feedback alerts', 'portal-fill.user.js': 'Portal fill', 'email-html-source.user.js': 'HTML source for emails', 'health-check.user.js': 'Health check',
+    'forecourt-lights.user.js': 'Forecourt lights', 'script-settings.user.js': 'Script settings', 'review-requests.user.js': 'Review requests', 'survey-feedback.user.js': 'Feedback alerts', 'portal-fill.user.js': 'Portal fill', 'task-stamps.user.js': 'Task stamps', 'email-html-source.user.js': 'HTML source for emails', 'health-check.user.js': 'Health check',
     'outstanding-actions.user.js': 'Outstanding Actions', 'ready-to-bill.user.js': 'Ready to bill', 'rebate-sync.user.js': 'Rebate Sync', 'remittances.user.js': 'Remittances',
     'textarea-autogrow.user.js': 'Auto-expanding text boxes', 'toast-alerts.user.js': 'Toast alerts',
   };
@@ -308,8 +308,8 @@
         const need = ['form[title]', 'form[linkPrGs][]', 'form[priority]', 'form[displayDueDate]', 'form[comment]', 'form[_token]'];
         const problems = !form ? ['add-task form missing'] : need.filter((k) => !form.querySelector('[name="' + k + '"]')).map((k) => 'field ' + k + ' missing');
         if (form && ![...form.querySelectorAll('select[name="form[linkPrGs][]"] option')].some((o) => /carl healy/i.test(o.textContent))) problems.push('Carl Healy is not in the Assign to list');
-        put('data-task-form', 'Add-task pop-up', ['Remittances'], problems);
-      } catch (e) { put('data-task-form', 'Add-task pop-up', ['Remittances'], [e.message]); }
+        put('data-task-form', 'Add-task pop-up', ['Remittances', 'Task stamps', 'Portal fill'], problems);
+      } catch (e) { put('data-task-form', 'Add-task pop-up', ['Remittances', 'Task stamps', 'Portal fill'], [e.message]); }
     }
 
     // Follow-ups list: Review requests reads who has already had a Review Request.
