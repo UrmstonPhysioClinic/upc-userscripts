@@ -83,7 +83,7 @@
     {
       "file": "rebate-sync.user.js",
       "name": "UPC Halaxy Rebate Sync (beta)",
-      "version": "0.2.0"
+      "version": "0.3.0"
     },
     {
       "file": "remittances.user.js",

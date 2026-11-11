@@ -417,8 +417,10 @@
   }
 
   // Works out the steps for one funder line: which patient invoice line it came from, and checks
-  // both invoices agree. Read-only.
-  async function planMove(funderInvoiceId, funderLineId, newRebate) {
+  // both invoices agree. Read-only. opts.overrides: other fields to change on the patient fee in the same save (Rebate
+  // sync, when the fee's amount is changed with its rebate), with opts.fee the fee's new amount (pence).
+  async function planMove(funderInvoiceId, funderLineId, newRebate, opts) {
+    opts = opts || {};
     const funder = await invoice.fetch(funderInvoiceId);
     const line = funder.lines.find((l) => l.lineId === String(funderLineId));
     if (!line) throw new UPCError('Line ' + funderLineId + ' is not on invoice ' + funder.number + '.');
@@ -443,11 +445,13 @@
     const pFields = Object.fromEntries(await lineForm(cands[0].lineId));
     const origRebate = money.cents(pFields['form[rebate]']);
     if (origRebate !== line.amount) throw new UPCError('The invoices already disagree (patient rebate ' + money.fmt(origRebate) + ', funder line ' + money.fmt(line.amount) + '). Sort that out by hand first.');
-    const fee = money.cents(pFields['form[amount]']);
+    const fee = opts.fee !== undefined && opts.fee !== null ? opts.fee : money.cents(pFields['form[amount]']);
+    if (newRebate === null || newRebate === undefined || isNaN(newRebate)) throw new UPCError('The new funder amount is not a valid amount.');
     if (newRebate < 0) throw new UPCError('The new funder amount cannot be negative.');
     if (fee !== null && newRebate > fee) throw new UPCError('The new funder amount (' + money.fmt(newRebate) + ') is more than the fee (' + money.fmt(fee) + ').');
     return { funderInvoiceId: funder.id, funderNumber: funder.number, funderLineId: line.lineId, patientInvoiceId: patient.id, patientNumber: patient.number,
-      patientLineId: cands[0].lineId, date: line.date, patientDate: cands[0].date, item: line.item, fee, origRebate, newRebate };
+      patientLineId: cands[0].lineId, date: line.date, patientDate: cands[0].date, item: line.item, fee, origRebate, newRebate,
+      overrides: Object.assign({}, opts.overrides || {}) };
   }
 
   // Carries out a plan from planMove: revert the funder line, change the rebate on the patient
@@ -478,8 +482,10 @@
     say('Setting the rebate to ' + money.fmt(newRebate));
     try {
       const fresh = await lineForm(patientLineId);
-      const pairs = fresh.map(([k, v]) => [k, k === 'form[rebate]' ? money.plain(newRebate) : v]);
-      if (!fresh.some(([k]) => k === 'form[rebate]')) pairs.push(['form[rebate]', money.plain(newRebate)]);
+      const set = Object.assign({}, plan.overrides || {}, { 'form[rebate]': money.plain(newRebate) });
+      delete set['form[_token]'];
+      const pairs = fresh.map(([k, v]) => [k, k in set ? set[k] : v]);
+      Object.keys(set).forEach((k) => { if (!fresh.some(([x]) => x === k)) pairs.push([k, set[k]]); });
       http.expectRefresh(await http.postForm('/invoice/line/' + patientLineId + '/edit', pairs), 'Saving the new rebate');
     } catch (e) {
       say('Saving the rebate failed, putting the original back on ' + plan.funderNumber);

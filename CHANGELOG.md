@@ -240,6 +240,7 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 ## Core library
 
 ### 0.1.31 (11 Nov 2026, beta)
+- `UPC.rebate.plan` can carry other changes to the patient fee in the same save (Rebate sync).
 - New shared parts, so scripts stop carrying their own copies: `UPC.user` (who's signed in, with the 20-second wait for Halaxy to fill it in, and initials), `UPC.storage` (per-PC working state), `UPC.calendar.appointments` (one standard calendar window per page, shared by Patient statuses, Open-ended patients and Review requests for 15 minutes) and `UPC.wording` (one set of note phrases: finished, open-ended, and the "not ..." rule).
 
 ### 0.1.30 (11 Nov 2026, beta)
@@ -669,6 +670,11 @@ Existing scripts moved here from earlier chats, code unchanged. Only the header 
 - First version: attended appointments with an unpublished note, unpaid self-funded invoices (over £0), grouped per appointment, on every Halaxy page.
 
 ## Rebate Sync
+
+### 0.3.0 (11 Nov 2026, beta)
+- Runs on the core library: its requests are paced like every other script's, and the revert, rebate and re-bill steps are the same ones Remittances uses (tested).
+- Brings it in line with Remittances: a rebate set to £ 0.00 leaves a £ 0.00 line on the funder invoice (Carl, 9 Nov 2026: never a missing one), the re-billed line gets the fee's own date back when Halaxy shifts it, and a fee Halaxy copied a day or two out is still found.
+- Changing a fee's amount together with its rebate on the patient invoice still works (core: UPC.rebate.plan takes the other changes).
 
 ### 0.2.0 (7 Nov 2026, beta)
 - Its confirmation and progress use Halaxy's pop-up, shown above the fee edit pop-up. Amounts as £ 40.00. Now uses the core library.
