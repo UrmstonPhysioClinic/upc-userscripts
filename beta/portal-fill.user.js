@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy insurer portal fill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.2
+// @version      0.1.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
@@ -45,7 +45,7 @@
   if (window.__hxPortalFill) return;
   window.__hxPortalFill = true;
 
-  const VERSION = '0.1.2';
+  const VERSION = '0.1.3';
   const KEY = 'portal-claim';
   const MAX_AGE = 4 * 3600e3;
   const PORTALS = {
@@ -499,8 +499,12 @@
       // Add a treatment: one fee.
       const imp = document.querySelector('select[name="impairmentPair"]');
       if (imp) {
-        if (pr.stage !== 'adding') return say('A treatment is open. Save or go back, and the fill carries on.');
+        // Back on the form after Save: Bupa didn't take the treatment.
+        if (pr.stage === 'saving') return stop('Bupa didn\'t accept treatment ' + ((pr.added || 0) + 1) + ' (it\'s still open).');
+        // Bupa opens a new treatment by itself once the last pre-populated one is removed (Carl, 11 Nov 2026).
+        if (pr.stage !== 'adding') { pr.cleared = true; pr.stage = 'adding'; await save(); }
         const l = claim.lines[pr.added || 0];
+        if (!l) return stop('Bupa opened another treatment after all ' + claim.lines.length + ' were added.');
         const proc = document.querySelector('select[name="procedureCode"]');
         const place = document.querySelector('select[name="placeOfService"]');
         const from = document.querySelector('input[name="treatmentFromDate"]'), to = document.querySelector('input[name="treatmentToDate"]');
@@ -514,10 +518,18 @@
         setValue(to, l.date);
         setValue(count, '1');
         setValue(charge, l.amount);
-        if (imp.selectedIndex <= 0 || (proc && proc.selectedIndex <= 0)) {
+        // The procedure is the fee (Carl, 11 Nov 2026): Bupa's initial or follow-up consultation, matched to the Halaxy fee.
+        if (proc) {
+          const want = /initial|assessment|new patient/i.test(l.description) ? /initial|assessment|new patient/i : /follow|review|subsequent/i.test(l.description) ? /follow|review|subsequent/i : null;
+          const fits = want ? [...proc.options].filter((o) => o.index > 0 && want.test(clean(o.textContent))) : [];
+          if (fits.length === 1) setValue(proc, fits[0].value);
+          else if (proc.selectedIndex > 0 && !(want && want.test(clean(proc.options[proc.selectedIndex].textContent)))) setValue(proc, proc.options[0].value);   // pre-selected for another fee
+        }
+        const missing = [[imp, 'impairment'], [proc, 'procedure']].filter(([x]) => x && x.selectedIndex <= 0);
+        if (missing.length) {
           pr.stage = 'saving'; await save();
-          [imp, proc].filter((x) => x && x.selectedIndex <= 0).forEach((x) => x.classList.add('upc-pf-check'));
-          return say('Bupa hasn\'t filled in the ' + (imp.selectedIndex <= 0 ? 'impairment' : 'procedure code') + ' for this treatment (highlighted). Choose it and press Save; the fill carries on.');
+          missing.forEach(([x]) => x.classList.add('upc-pf-check'));
+          return say('Choose the ' + missing.map((x) => x[1]).join(' and ') + ' for this fee (' + l.description + ', ' + l.date + ', £ ' + l.amount + '; highlighted), then press Save. The fill carries on.');
         }
         pr.stage = 'saving'; await save();
         say('Adding treatment ' + ((pr.added || 0) + 1) + ' of ' + claim.lines.length + '...');

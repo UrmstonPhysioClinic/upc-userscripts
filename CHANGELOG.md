@@ -17,6 +17,11 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Portal fill
 
+### 0.1.3 (11 Nov 2026, beta)
+- Bupa: once the last pre-populated treatment is removed, Bupa opens a new treatment by itself; the fill now carries on from there (it stopped with "A treatment is open" on the first live run).
+- Bupa: the procedure is the fee (Carl, 11 Nov 2026). For each Halaxy fee, the procedure whose wording matches it (initial consultation or assessment; follow-up) is chosen. If none, or more than one, fits, the box is highlighted for you to choose, then you press Save and the fill carries on.
+- Bupa: if Bupa doesn't accept a saved treatment, the fill stops (and Carl gets a task) instead of waiting.
+
 ### 0.1.2 (11 Nov 2026, beta)
 - Bupa: you log in yourself again. Bupa's log-in is on a separate site (identity.provider.bupa.co.uk), and Carl agreed logging in by hand is simpler and safer than having the script press it there. Once you're in, the fill carries on by itself from Providers Online.
 
