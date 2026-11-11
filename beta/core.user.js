@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.25
+// @version      0.1.26
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.25';
+  const VERSION = '0.1.26';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -216,11 +216,17 @@
           const dateLink = dateTd && dateTd.querySelector('a[href]');
           const pInv = dateLink && (dateLink.getAttribute('href').match(/\/invoice\/(\d+)\/?$/) || [])[1];
           const apptLink = dateTd && dateTd.querySelector('a[href*="/appointment/"]');
+          // On an organisation invoice the Patient column is also marked "description" (and holds a script), so
+          // the fee's own description is the last such cell, read without scripts (live, 11 Nov 2026).
+          const descTd = [...tr.querySelectorAll('td[data-property="description"]')].pop();
+          const descCopy = descTd ? descTd.cloneNode(true) : null;
+          if (descCopy) descCopy.querySelectorAll('script, style').forEach((x) => x.remove());
           inv.lines.push({
             appointmentId: apptLink ? (apptLink.getAttribute('href').match(/\/appointment\/(\d+)/) || [])[1] || null : null,
             lineId: edit.getAttribute('href').match(/\/invoice\/line\/(\d+)\//)[1],
             date: (clean(dateTd && dateTd.textContent).match(/\d{2}-[A-Za-z]{3}-\d{4}/) || [''])[0],
             item: clean((tr.querySelector('td[data-property="itemNumber"]') || {}).textContent),
+            description: descCopy ? clean(descCopy.textContent) : '',
             amount: money.inText(amountTd.textContent),
             patientInvoiceId: pInv || null,
           });
@@ -267,6 +273,9 @@
     inv.claimId = claimFromBtn || claimFromEdit || null;
     const org = doc.querySelector('#card-invoice-parts-claim-view a[href*="/organisation/"]');
     inv.funderName = org ? clean(org.textContent) : '';
+    // An organisation invoice's Bill To box names the funder (#card-invoice-view-organisation, live 11 Nov 2026).
+    const billTo = doc.querySelector('#card-invoice-view-organisation a[href*="/organisation/"]:not([href*="/edit"])');
+    inv.billToName = billTo ? clean(billTo.textContent) : '';
     const ref = doc.querySelector('[data-referral]');
     const pos = ref && clean(ref.textContent).match(/\((\d+)(?:st|nd|rd|th)\s+of\s+(\d+)\s+appt/i);
     inv.referral = pos ? { position: +pos[1], limit: +pos[2] } : null;
