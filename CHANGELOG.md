@@ -33,6 +33,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Portal fill
 
+### 0.1.15 (11 Nov 2026, beta)
+- A fill that fails on the portal now sends Carl his task from any Halaxy page open on the PC. Before, the task was only sent if that funder invoice was still open, so closing it meant no task, even though the portal said Carl had been notified. The funder invoice's own page still gets the first go; only one task is sent.
+
 ### 0.1.14 (11 Nov 2026, beta)
 - The task Carl gets when a fill stops is written the new way (core 0.1.27): stamped, one point per line.
 
