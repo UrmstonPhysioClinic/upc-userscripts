@@ -1,5 +1,15 @@
 # Changelog
 
+## Branding
+
+### 2.9.2 (11 Nov 2026, beta)
+- Hides Reports > Medicare in the menu (Australian only; Carl). Hidden whether the branding is switched on or not.
+
+## Custom Reports
+
+### Retired from beta (11 Nov 2026)
+- Carl: what it was used for is now done by its own tools (Ready to bill, Insurer payments due, Remittances and so on). Removed from beta; it stays on stable until Insurer payments due goes to stable, then it's removed there too.
+
 ## Insurer payments due
 
 ### 0.1.1 (11 Nov 2026, beta)
@@ -214,6 +224,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - `UPC.notes.items` and `UPC.notes.text` (a patient's notes list and a note's text), `UPC.followUps.list` and `UPC.followUps.add` (Tasks & Follow-Ups), `UPC.patient.details`, `UPC.patient.invoices` and `UPC.patient.addLabel`. Confirmed against live captures, 10 Nov 2026.
 
 ## Health check
+
+### 1.1.32 (11 Nov 2026, beta)
+- The table builder check (only Custom Reports used it) is gone, with Custom Reports retired.
 
 ### 1.1.31 (11 Nov 2026, beta)
 - Checks the appointment types list (title, colour, status) for Patient statuses.

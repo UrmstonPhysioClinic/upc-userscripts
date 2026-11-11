@@ -3,7 +3,7 @@
     {
       "file": "health-check.user.js",
       "name": "Halaxy health check (beta)",
-      "version": "1.1.31"
+      "version": "1.1.32"
     },
     {
       "file": "core.user.js",
@@ -23,7 +23,7 @@
     {
       "file": "branding.user.js",
       "name": "UPC Halaxy branding (beta)",
-      "version": "2.9.1"
+      "version": "2.9.2"
     },
     {
       "file": "calendar-controls.user.js",
@@ -34,11 +34,6 @@
       "file": "check-ins.user.js",
       "name": "Halaxy open-ended patients (beta)",
       "version": "0.1.2"
-    },
-    {
-      "file": "custom-reports.user.js",
-      "name": "Halaxy Custom Reports (beta)",
-      "version": "0.7.0"
     },
     {
       "file": "email-html-source.user.js",

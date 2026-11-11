@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.31
+// @version      1.1.32
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.31';
+  const VERSION = '1.1.32';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -133,13 +133,13 @@
   const PAGE_CHECKS = [
     {
       id: 'core', title: "Halaxy's page basics",
-      scripts: ['Outstanding Actions', 'Calendar controls', 'Custom Reports', 'Rebate Sync'],
+      scripts: ['Outstanding Actions', 'Calendar controls', 'Rebate Sync'],
       applies: () => !!group(),
       test: () => missingIn(['jQuery()', 'HkUser.linkPrG', 'HkUser.pracID', 'hk_glob.preferences']),
     },
     {
       id: 'layout', title: "Halaxy's page layout",
-      scripts: ['Toast alerts', 'Custom Reports', 'Alerts', 'Branding', 'Script settings'],
+      scripts: ['Toast alerts', 'Alerts', 'Branding', 'Script settings'],
       applies: onCalendar,
       test: () => missingEls(['#alerts', '#mainMenu', '#footer', '#btn-chat-popover-open', '#practitioner-select .dropdown-menu'])
         .concat(document.body && document.body.classList.contains('vs-theme') ? [] : ['theme classes on the page (vs-theme)']),
@@ -174,14 +174,6 @@
       test: () => missingEls(['#invoiceLines', '#invoicePayments'])
         // Bill funder reads the patient, claim and authorisation from patient invoices that can still be billed.
         .concat(document.getElementById('invoiceFunderBtn') ? missingEls(['#card-invoice-view-patient a[href*="/patient/"]', '#card-invoice-parts-claim-view', '#btn-group-outstanding-charges']) : []),
-    },
-    {
-      id: 'reports', title: "Halaxy's table builder",
-      scripts: ['Custom Reports'],
-      // Only the Finance report page, where Custom Reports opens: other report pages (such as the form
-      // at /report/appointment/new) don't load the table builder (false alarm, 9 Nov 2026).
-      applies: () => /\/report\/finance(\/|$)/.test(location.pathname),
-      test: () => missingIn(['HxGridTable()', 'Hk.jwt']),
     },
     {
       id: 'editor', title: "Halaxy's text editor",
