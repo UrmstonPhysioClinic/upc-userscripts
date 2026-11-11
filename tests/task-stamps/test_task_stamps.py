@@ -23,7 +23,7 @@ function popup(value) {
 }
 </script></body></html>"""
 
-STAMP = r'\d{4}-\d{2}-\d{2} \d{2}-\d{2} CH:'
+STAMP = r'\d{4}-\d{2}-\d{2} \d{2}:\d{2} CH'
 
 async def main():
     async with async_playwright() as p:
@@ -60,14 +60,14 @@ async def main():
         v = await val()
         check('Enter gives a new "- "; Enter on an empty "- " ends the list; Shift+Enter is a plain new line', re.fullmatch(STAMP + r'\n- First\n- Second\nPlain line\nStill plain', v) is not None, repr(v))
         await pg.keyboard.press('Enter')
-        await pg.keyboard.type('2026-11-11 16-30 CH:')
+        await pg.keyboard.type('2026-11-11 16:30 CH')
         await pg.keyboard.press('Enter')
         await pg.keyboard.type('After my own stamp')
         await pg.keyboard.press('Enter')
         await pg.keyboard.press('Backspace')
         await pg.keyboard.type('x')
         v = await val()
-        check('Enter after a typed stamp starts a "- " line; Backspace on an empty "- " takes it off', v.endswith('\n2026-11-11 16-30 CH:\n- After my own stamp\nx'), repr(v))
+        check('Enter after a typed stamp starts a "- " line; Backspace on an empty "- " takes it off', v.endswith('\n2026-11-11 16:30 CH\n- After my own stamp\nx'), repr(v))
         await pg.keyboard.press('Control+z')
         check('Undo still works', not (await val()).endswith('\nx'), repr(await val()))
         await pg.evaluate("popup('')")
@@ -120,7 +120,7 @@ async def main():
         check('own stamp from the last few minutes: not stamped again', v.endswith('\nJust now') and len(re.findall(STAMP, v)) == 1, repr(v))
 
         # An old stamp of mine (an hour ago): stamped again
-        await pg.evaluate("popup('2020-01-01 10-00 CH: Old note')")
+        await pg.evaluate("popup('2020-01-01 10:00 CH\\n- Old note')")
         await pg.wait_for_timeout(200)
         v = await val()
         check('older own stamp: a new stamp is added', len(re.findall(STAMP, v)) == 2, repr(v))

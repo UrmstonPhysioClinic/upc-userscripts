@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.27
+// @version      0.1.28
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.27';
+  const VERSION = '0.1.28';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -666,11 +666,12 @@
       if (!Array.isArray(rows)) throw new UPCError('The patient\'s task list has changed, so their tasks could not be read.');
       return rows;
     },
-    // A stamp as Carl writes them (11 Nov 2026): "2026-11-11 15-45 Portal fill:" (the date, the time, and who: a script's name or a person's initials).
+    // A stamp (Carl, 11 Nov 2026): "2026-11-11 15:45 Portal fill" (the date, the time, and who: a script's name or a person's
+    // initials), on its own line with the notes below it.
     stamp(by, when) {
       const d = new Date(when || Date.now());
       const p2 = (n) => String(n).padStart(2, '0');
-      return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' + p2(d.getHours()) + '-' + p2(d.getMinutes()) + ' ' + by + ':';
+      return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes()) + ' ' + by;
     },
     // A script's task comment (Carl, 11 Nov 2026): the stamp, then each statement on its own line starting "- ".
     // `lines` is an array or text with line breaks; blank lines are dropped.
