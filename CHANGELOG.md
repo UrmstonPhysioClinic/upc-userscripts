@@ -15,6 +15,12 @@
 ### Retired from beta (11 Nov 2026)
 - Carl: what it was used for is now done by its own tools (Ready to bill, Insurer payments due, Remittances and so on). Removed from beta; it stays on stable until Insurer payments due goes to stable, then it's removed there too.
 
+### 0.7.0 (7 Nov 2026, beta)
+- Halaxy card headers on the Report and Filters sections, and Halaxy's page buttons in the toolbar.
+
+### 0.6.1 (6 Nov 2026, beta)
+- Its menu item no longer shows as highlighted on the Finance reports page (it copied Finance's highlight).
+
 ## Insurer payments due
 
 ### 0.1.2 (11 Nov 2026, beta)
@@ -67,18 +73,23 @@
 Confirmed on live Halaxy by Carl and promoted: core 0.1.28, health check 1.1.23, Remittances 0.3.2, Review requests 0.5.0 (new on stable), Feedback alerts 0.1.1 (new on stable), Task stamps 0.1.3 (new on stable). Held on beta: Portal fill (AXA with several fees not yet tried) and Invoice Funder 0.8.x (the Billed total not yet checked).
 
 ## Moved to the clinic PCs (stable), 10 Nov 2026 (night)
+
 Carl confirmed on live Halaxy: Script settings 0.1.0 (in the account menu; stable PCs need loader 1.1.0, which Tampermonkey fetches by itself) and health check 1.1.15.
 
 ## Moved to the clinic PCs (stable), 10 Nov 2026 (evening)
+
 Carl confirmed on live Halaxy: core library 0.1.19, Invoice Funder (bill-funder) 0.7.3, Remittances 0.3.1, Ready to bill 0.3.0, calendar controls 2.11, Rebate Sync 0.2.0 and health check 1.1.13.
 
 ## Moved to the clinic PCs (stable), 9 Nov 2026 (evening)
+
 Health check 1.1.9 (Carl), which also brings 1.1.8's add-task check and the table builder false alarm fix.
 
 ## Moved to the clinic PCs (stable), 9 Nov 2026 (afternoon)
+
 Health check 1.1.6, then 1.1.7, at Carl's request, so the clinic PCs stop reporting the check-response status as a problem.
 
 ## Moved to the clinic PCs (stable), 9 Nov 2026
+
 Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outstanding Actions 0.5.3, calendar controls 2.10, Alerts 1.0.0, Custom Reports 0.7.0, HTML source for emails 0.4. Arrival chime and Chat alert retired from stable (replaced by Alerts). `tools/promote.py` added for promotions.
 
 ## Task stamps
@@ -240,7 +251,72 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 ### 0.1.20 (10 Nov 2026, beta)
 - `UPC.notes.items` and `UPC.notes.text` (a patient's notes list and a note's text), `UPC.followUps.list` and `UPC.followUps.add` (Tasks & Follow-Ups), `UPC.patient.details`, `UPC.patient.invoices` and `UPC.patient.addLabel`. Confirmed against live captures, 10 Nov 2026.
 
+### 0.1.19 (10 Nov 2026, beta)
+- `UPC.forms.list(linkPaGId)` (a patient's filled forms, from their notes list) and `UPC.forms.answers(id)` (question and answer pairs), confirmed live 10 Nov 2026.
+
+### 0.1.18 (10 Nov 2026, beta)
+- `UPC.reports.unpaidLines(start)`: Halaxy's Unpaid Invoices report as one row per fee line (columns confirmed live 10 Nov 2026), invoice-level cells carried to every line. `UPC.reports.pendingInvoiceIds()`: invoices Halaxy lists as Pending. `UPC.dayLabel` and `UPC.parseDay` for Halaxy's dates.
+
+### 0.1.17 (9 Nov 2026, beta)
+- The invoice reader keeps each attachment's whole row (the first cell is the date, not the file name). `files.attachToInvoice(..., { skipIfAttached })`.
+- `ui.menuItem` / `ensureMenuItem` take a section (default Reports) and an href function.
+
+### 0.1.16 (9 Nov 2026, beta)
+- `UPC.tasks.addToInvoice(id, task)` and `UPC.tasks.forInvoice(id)`, through Halaxy's own add-task pop-up (`task/new/invoice/{id}`); confirms the task shows on the invoice's task list.
+
+### 0.1.15 (9 Nov 2026, beta)
+- Fix: when the insurer paid nothing for a fee, the excess fix removed the fee from the funder invoice and then stopped on the £0.00 Halaxy left waiting to bill (live, UPC-37794 / UPC-37382). It now re-bills £0.00, so the fee stays on the funder invoice at £0.00, dated as the patient fee.
+
+### 0.1.14 (9 Nov 2026, beta)
+- Excess fixes (Remittances): when Halaxy copied a fee onto the funder invoice a day or two out, the patient fee is still found (the one same-item fee within two days that no other funder line claims); anything ambiguous still stops. The error now lists the patient invoice's fee dates. Live failure 9 Nov: "Could not find the matching line on UPC-37382".
+- After re-billing part of a fee, the new funder line's date is corrected to the patient fee's date if Halaxy slipped it.
+
+### 0.1.13 (9 Nov 2026, beta)
+- `UPC.invoice.setSettings(id, changes)`: any invoice settings fields through the cogwheel, others unchanged, confirmed by re-reading.
+- `UPC.invoice.setLineDate(lineId, date)`: a fee's date (`form[date]`, confirmed live), confirmed by re-reading.
+
+### 0.1.11 (9 Nov 2026, beta)
+- `UPC.invoice.setLineAmount(..., { lowerRebate: true })` lowers the funder rebate with the amount, only while the invoice still shows Invoice Funder; confirms by re-reading the fee's form.
+
+### 0.1.10 (9 Nov 2026, beta)
+- Version label sits after a left-hand button in pop-up button rows.
+
+### 0.1.9 (9 Nov 2026, beta)
+- `UPC.invoice.setLineAmount(invoiceId, lineId, pence)`: sets a fee's amount through its edit pop-up, other fields unchanged; refuses a fee with a funder rebate above the new amount; checks the result.
+
+### 0.1.8 (9 Nov 2026, beta)
+- `UPC.http.fragment` (HTML as Halaxy's pop-ups request it) and `UPC.appointment.notes(id)` (the appointment's comments).
+
+### 0.1.7 (7 Nov 2026, beta)
+- Amounts written as Halaxy writes them (£ 40.00) everywhere.
+- Pop-ups can sit above Halaxy's own pop-ups (for steps that start from one) and come in Halaxy's narrower size.
+
+### 0.1.6 (7 Nov 2026, beta)
+- Pop-up close cross sized and placed by Halaxy's own style.
+
+### 0.1.5 (7 Nov 2026, beta)
+- `UPC.ui.dialog` and `UPC.ui.btn`: pop-ups and buttons built from Halaxy's own classes, with a small stylesheet scoped to our elements.
+
+### 0.1.4 (7 Nov 2026, beta)
+- The invoice reader finds the patient from the patient's own page link, not the edit link that comes first on the card. Bill funder stopped on live invoices because of this.
+
+### 0.1.3 (7 Nov 2026, beta)
+- `UPC.invoice.status(id)` and `UPC.invoice.setStatus(id, status)`: read and set an invoice's status through its settings pop-up (cogwheel), sending every other setting unchanged and checking the result.
+
+### 0.1.2 (7 Nov 2026, beta)
+- The invoice reader also returns, for patient invoices: patient, claim, funder, whether Invoice Funder is still available, the appointment behind each fee, and the authorisation position ("3rd of 5 appts").
+
+### 0.1.1 (6 Nov 2026, beta)
+- Pages such as Remittances now cover the whole content area between the side menu, top bar and footer, so nothing from the Halaxy page underneath shows through (the Finance reports title, banner and controls did before). The menu highlights only the tool, not the page underneath, and puts Halaxy's highlight back on leaving. Menu items added by scripts no longer copy Halaxy's highlight.
+
+### 0.1.0 (6 Nov 2026, beta)
+- window.UPC: Halaxy requests, invoice reading and lookup, rebate moves, invoice attachments, CDN loading, menu and page helpers.
+- Request pacing shared by all scripts on a PC, with a pause when Halaxy says it is busy.
+
 ## Health check
+
+### 1.1.34 (11 Nov 2026, beta)
+- Its own requests (the daily checks) go through the core library's pacing once that has loaded, sharing the PC's request budget with the other scripts.
 
 ### 1.1.33 (11 Nov 2026, beta)
 - Checks the Mark as Paid pop-up (read only) has its fields and a Direct Deposit payment method, for Bank statement. Bank statement added to the script names.
@@ -299,6 +375,73 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 ### 1.1.15 (10 Nov 2026, beta)
 - Checks the follow-ups list daily (Review requests), and knows Review requests by name.
 
+### 1.1.14 (10 Nov 2026, beta)
+- Checks Halaxy's account menu (#practitioner-select), where Script settings goes, and knows Script settings by name.
+
+### 1.1.13 (10 Nov 2026, beta)
+- Knows Forecourt lights by name.
+
+### 1.1.12 (10 Nov 2026, beta)
+- Checks the calendar's appointment template and redraw, and the payment icon class in the calendar data (used by calendar controls 2.11).
+
+### 1.1.11 (10 Nov 2026, beta)
+- Knows Ready to bill by name, and shows its message when Halaxy's Unpaid Invoices report changes.
+
+### 1.1.10 (10 Nov 2026, beta and stable)
+- A new version clears all of the previous version's results, page checks included. Before, a page result (such as 1.1.8's table builder false alarm on a referral report page) stayed until that kind of page was opened again.
+
+### 1.1.9 (9 Nov 2026, beta)
+- Halaxy's table builder is only checked on the Finance report page, where Custom Reports uses it. Other report pages, such as the new appointment report form, don't load it, which gave a false alarm. Remittances no longer listed as relying on it.
+
+### 1.1.8 (9 Nov 2026, beta)
+- Daily check of the add-task pop-up (fields, and Carl Healy in the Assign to list). Opening it adds nothing.
+
+### 1.1.7 (9 Nov 2026, beta and stable)
+- Re-runs the data check as soon as a new version of the health check arrives, instead of showing the previous version's results until the next daily check. Moved to the clinic PCs at once, so the old check-response notice clears there without anyone pressing Check again.
+
+### 1.1.6 (9 Nov 2026, beta)
+- "check-response" is a known appointment status (treated as attended, as before), so it is no longer reported.
+- A genuinely new status is reported with the time and date of an example appointment, so it can be found.
+
+### 1.1.5 (9 Nov 2026, beta)
+- Daily check of the appointment details pop-up that Bill funder reads comments from.
+
+### 1.1.4 (9 Nov 2026, beta)
+- Notice moved to the bottom centre, just above Outstanding Actions' notice, so Halaxy's side panels (such as the patient notes list) no longer hide it. Its panel comes to the front while open.
+
+### 1.1.3 (9 Nov 2026, beta)
+- Same fix as Outstanding Actions 0.5.3 for its notice.
+
+### 1.1.2 (9 Nov 2026, beta)
+- Same fix as Outstanding Actions 0.5.2 for its notice.
+
+### 1.1.1 (9 Nov 2026, beta)
+- The notice has a solid fill, so the page no longer shows through it.
+
+### 1.1.0 (7 Nov 2026, beta)
+- Looks like Halaxy: the panel is a Halaxy card with Halaxy buttons; the notice is a Halaxy button.
+
+### 1.0.5 (7 Nov 2026, beta)
+- Daily check of the invoice settings pop-up (cogwheel) that Bill funder uses to mark invoices Issued.
+
+### 1.0.4 (7 Nov 2026, beta)
+- Knows Bill funder; the invoice page check covers what it reads.
+
+### 1.0.3 (6 Nov 2026, beta)
+- Knows the core library and Remittances by name; the reports page check covers Remittances too.
+
+### 1.0.2 (6 Nov 2026, beta)
+- Results are saved one at a time, so two Halaxy tabs checking at once no longer overwrite each other (the daily data results went missing this way on first live use).
+- If the data check itself stops with an error, that is shown as a problem.
+
+### 1.0.1 (6 Nov 2026, beta)
+- Notice and panel sit to the right of Halaxy's side menu instead of underneath it, and follow it when the menu is collapsed or the window resized.
+
+### 1.0.0 (6 Nov 2026, beta)
+- Page checks for what calendar controls, Rebate Sync, Custom Reports, the editor scripts, toast alerts, Alerts and branding rely on, run on the pages where they apply.
+- Daily data checks (and straight after a Halaxy update) for the fields Outstanding Actions reads, and for appointment or note statuses it doesn't know.
+- Records the Halaxy version, collects errors from our scripts and the loader's update problems. Notice bottom left only when something is wrong; Copy details gives structure only.
+
 ## Loader
 
 ### 1.2.0 (11 Nov 2026)
@@ -309,15 +452,13 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Scripts' menu items are kept for Script settings in Halaxy (window.__upcLoader.items, run(id)); the Tampermonkey menu gets them only on pages where Script settings isn't running (checked 4 seconds after the page loads). The loader's own "UPC scripts: settings and updates" stays in the Tampermonkey menu.
 - Answers Script settings' upc-loader-get and upc-loader-do (switch a script, stable or beta, check for updates) with upc-loader-state.
 
+### 1.0.0 (6 Nov 2026)
+- One script per PC that runs every script in the repository and picks up new and changed ones by itself, with a per-PC channel (stable or beta), per-script switches, saved copies for offline use, and refusal of broken updates.
+
 ## Script settings
 
 ### 0.1.0 (10 Nov 2026, beta)
 - New: "Script settings" in Halaxy's account menu (your name, top right), above Log Out (Carl). Its pop-up lists every script's options, grouped by script, and the scripts on this PC with their versions, switches, stable or beta, and Check for updates now. Replaces the Tampermonkey menu, which keeps only the loader's own entry as a way in.
-
-## Health check
-
-### 1.1.14 (10 Nov 2026, beta)
-- Checks Halaxy's account menu (#practitioner-select), where Script settings goes, and knows Script settings by name.
 
 ## Forecourt lights
 
@@ -409,14 +550,6 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Suggests this patient's fees for the same claim: dated today or earlier and within 6 months, not already billed, not on an Issued invoice. Did-not-attend/cancelled and £0 fees are listed with the appointment's comments but not ticked. Flags fees beyond the authorisation.
 - After one confirmation: merges the chosen fees onto the latest of their invoices that holds only chosen fees (Halaxy's Merge invoice fees), checks the result, then uses Invoice Funder once to create a new organisation invoice while keeping the patient invoice. Never uses the existing organisation invoice Halaxy pre-selects.
 
-## Custom Reports
-
-### 0.7.0 (7 Nov 2026, beta)
-- Halaxy card headers on the Report and Filters sections, and Halaxy's page buttons in the toolbar.
-
-### 0.6.1 (6 Nov 2026, beta)
-- Its menu item no longer shows as highlighted on the Finance reports page (it copied Finance's highlight).
-
 ## Calendar controls
 
 ### 2.11 (10 Nov 2026, beta)
@@ -456,70 +589,6 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Applies excess fixes after one confirmation (revert, rebate, re-bill to the same invoice) and attaches the remittance to each matched invoice as Payment. Never records payments.
 - Scanned invoice numbers can be corrected and re-checked on the review screen.
 
-## Core library
-
-### 0.1.19 (10 Nov 2026, beta)
-- `UPC.forms.list(linkPaGId)` (a patient's filled forms, from their notes list) and `UPC.forms.answers(id)` (question and answer pairs), confirmed live 10 Nov 2026.
-
-### 0.1.18 (10 Nov 2026, beta)
-- `UPC.reports.unpaidLines(start)`: Halaxy's Unpaid Invoices report as one row per fee line (columns confirmed live 10 Nov 2026), invoice-level cells carried to every line. `UPC.reports.pendingInvoiceIds()`: invoices Halaxy lists as Pending. `UPC.dayLabel` and `UPC.parseDay` for Halaxy's dates.
-
-### 0.1.17 (9 Nov 2026, beta)
-- The invoice reader keeps each attachment's whole row (the first cell is the date, not the file name). `files.attachToInvoice(..., { skipIfAttached })`.
-- `ui.menuItem` / `ensureMenuItem` take a section (default Reports) and an href function.
-
-### 0.1.16 (9 Nov 2026, beta)
-- `UPC.tasks.addToInvoice(id, task)` and `UPC.tasks.forInvoice(id)`, through Halaxy's own add-task pop-up (`task/new/invoice/{id}`); confirms the task shows on the invoice's task list.
-
-### 0.1.15 (9 Nov 2026, beta)
-- Fix: when the insurer paid nothing for a fee, the excess fix removed the fee from the funder invoice and then stopped on the £0.00 Halaxy left waiting to bill (live, UPC-37794 / UPC-37382). It now re-bills £0.00, so the fee stays on the funder invoice at £0.00, dated as the patient fee.
-
-### 0.1.14 (9 Nov 2026, beta)
-- Excess fixes (Remittances): when Halaxy copied a fee onto the funder invoice a day or two out, the patient fee is still found (the one same-item fee within two days that no other funder line claims); anything ambiguous still stops. The error now lists the patient invoice's fee dates. Live failure 9 Nov: "Could not find the matching line on UPC-37382".
-- After re-billing part of a fee, the new funder line's date is corrected to the patient fee's date if Halaxy slipped it.
-
-### 0.1.13 (9 Nov 2026, beta)
-- `UPC.invoice.setSettings(id, changes)`: any invoice settings fields through the cogwheel, others unchanged, confirmed by re-reading.
-- `UPC.invoice.setLineDate(lineId, date)`: a fee's date (`form[date]`, confirmed live), confirmed by re-reading.
-
-### 0.1.11 (9 Nov 2026, beta)
-- `UPC.invoice.setLineAmount(..., { lowerRebate: true })` lowers the funder rebate with the amount, only while the invoice still shows Invoice Funder; confirms by re-reading the fee's form.
-
-### 0.1.10 (9 Nov 2026, beta)
-- Version label sits after a left-hand button in pop-up button rows.
-
-### 0.1.9 (9 Nov 2026, beta)
-- `UPC.invoice.setLineAmount(invoiceId, lineId, pence)`: sets a fee's amount through its edit pop-up, other fields unchanged; refuses a fee with a funder rebate above the new amount; checks the result.
-
-### 0.1.8 (9 Nov 2026, beta)
-- `UPC.http.fragment` (HTML as Halaxy's pop-ups request it) and `UPC.appointment.notes(id)` (the appointment's comments).
-
-### 0.1.7 (7 Nov 2026, beta)
-- Amounts written as Halaxy writes them (£ 40.00) everywhere.
-- Pop-ups can sit above Halaxy's own pop-ups (for steps that start from one) and come in Halaxy's narrower size.
-
-### 0.1.6 (7 Nov 2026, beta)
-- Pop-up close cross sized and placed by Halaxy's own style.
-
-### 0.1.5 (7 Nov 2026, beta)
-- `UPC.ui.dialog` and `UPC.ui.btn`: pop-ups and buttons built from Halaxy's own classes, with a small stylesheet scoped to our elements.
-
-### 0.1.4 (7 Nov 2026, beta)
-- The invoice reader finds the patient from the patient's own page link, not the edit link that comes first on the card. Bill funder stopped on live invoices because of this.
-
-### 0.1.3 (7 Nov 2026, beta)
-- `UPC.invoice.status(id)` and `UPC.invoice.setStatus(id, status)`: read and set an invoice's status through its settings pop-up (cogwheel), sending every other setting unchanged and checking the result.
-
-### 0.1.2 (7 Nov 2026, beta)
-- The invoice reader also returns, for patient invoices: patient, claim, funder, whether Invoice Funder is still available, the appointment behind each fee, and the authorisation position ("3rd of 5 appts").
-
-### 0.1.1 (6 Nov 2026, beta)
-- Pages such as Remittances now cover the whole content area between the side menu, top bar and footer, so nothing from the Halaxy page underneath shows through (the Finance reports title, banner and controls did before). The menu highlights only the tool, not the page underneath, and puts Halaxy's highlight back on leaving. Menu items added by scripts no longer copy Halaxy's highlight.
-
-### 0.1.0 (6 Nov 2026, beta)
-- window.UPC: Halaxy requests, invoice reading and lookup, rebate moves, invoice attachments, CDN loading, menu and page helpers.
-- Request pacing shared by all scripts on a PC, with a pause when Halaxy says it is busy.
-
 ## Alerts
 
 ### 1.0.0 (6 Nov 2026, beta)
@@ -527,78 +596,8 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Each alert sounds once per PC however many Halaxy tabs are open; a click or keypress in any tab stops the chat alarm in all of them.
 - Arrival chime and chat alarm can be switched off per PC from the Tampermonkey menu.
 
-## Health check
-
-### 1.1.13 (10 Nov 2026, beta)
-- Knows Forecourt lights by name.
-
-### 1.1.12 (10 Nov 2026, beta)
-- Checks the calendar's appointment template and redraw, and the payment icon class in the calendar data (used by calendar controls 2.11).
-
-### 1.1.11 (10 Nov 2026, beta)
-- Knows Ready to bill by name, and shows its message when Halaxy's Unpaid Invoices report changes.
-
-### 1.1.10 (10 Nov 2026, beta and stable)
-- A new version clears all of the previous version's results, page checks included. Before, a page result (such as 1.1.8's table builder false alarm on a referral report page) stayed until that kind of page was opened again.
-
-### 1.1.9 (9 Nov 2026, beta)
-- Halaxy's table builder is only checked on the Finance report page, where Custom Reports uses it. Other report pages, such as the new appointment report form, don't load it, which gave a false alarm. Remittances no longer listed as relying on it.
-
-### 1.1.8 (9 Nov 2026, beta)
-- Daily check of the add-task pop-up (fields, and Carl Healy in the Assign to list). Opening it adds nothing.
-
-### 1.1.7 (9 Nov 2026, beta and stable)
-- Re-runs the data check as soon as a new version of the health check arrives, instead of showing the previous version's results until the next daily check. Moved to the clinic PCs at once, so the old check-response notice clears there without anyone pressing Check again.
-
-### 1.1.6 (9 Nov 2026, beta)
-- "check-response" is a known appointment status (treated as attended, as before), so it is no longer reported.
-- A genuinely new status is reported with the time and date of an example appointment, so it can be found.
-
-### 1.1.5 (9 Nov 2026, beta)
-- Daily check of the appointment details pop-up that Bill funder reads comments from.
-
-### 1.1.4 (9 Nov 2026, beta)
-- Notice moved to the bottom centre, just above Outstanding Actions' notice, so Halaxy's side panels (such as the patient notes list) no longer hide it. Its panel comes to the front while open.
-
-### 1.1.3 (9 Nov 2026, beta)
-- Same fix as Outstanding Actions 0.5.3 for its notice.
-
-### 1.1.2 (9 Nov 2026, beta)
-- Same fix as Outstanding Actions 0.5.2 for its notice.
-
-### 1.1.1 (9 Nov 2026, beta)
-- The notice has a solid fill, so the page no longer shows through it.
-
-### 1.1.0 (7 Nov 2026, beta)
-- Looks like Halaxy: the panel is a Halaxy card with Halaxy buttons; the notice is a Halaxy button.
-
-### 1.0.5 (7 Nov 2026, beta)
-- Daily check of the invoice settings pop-up (cogwheel) that Bill funder uses to mark invoices Issued.
-
-### 1.0.4 (7 Nov 2026, beta)
-- Knows Bill funder; the invoice page check covers what it reads.
-
-### 1.0.3 (6 Nov 2026, beta)
-- Knows the core library and Remittances by name; the reports page check covers Remittances too.
-
-### 1.0.2 (6 Nov 2026, beta)
-- Results are saved one at a time, so two Halaxy tabs checking at once no longer overwrite each other (the daily data results went missing this way on first live use).
-- If the data check itself stops with an error, that is shown as a problem.
-
-### 1.0.1 (6 Nov 2026, beta)
-- Notice and panel sit to the right of Halaxy's side menu instead of underneath it, and follow it when the menu is collapsed or the window resized.
-
-### 1.0.0 (6 Nov 2026, beta)
-- Page checks for what calendar controls, Rebate Sync, Custom Reports, the editor scripts, toast alerts, Alerts and branding rely on, run on the pages where they apply.
-- Daily data checks (and straight after a Halaxy update) for the fields Outstanding Actions reads, and for appointment or note statuses it doesn't know.
-- Records the Halaxy version, collects errors from our scripts and the loader's update problems. Notice bottom left only when something is wrong; Copy details gives structure only.
-
-## Loader
-
-### 1.0.0 (6 Nov 2026)
-- One script per PC that runs every script in the repository and picks up new and changed ones by itself, with a per-PC channel (stable or beta), per-script switches, saved copies for offline use, and refusal of broken updates.
-
 ## Added to the repository (6 Nov 2026)
+
 Existing scripts moved here from earlier chats, code unchanged. Only the header changed: repository namespace and update URLs, plus "(beta)" on the beta copies.
 - Calendar controls 2.9
 - Custom Reports 0.6

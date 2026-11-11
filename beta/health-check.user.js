@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.33
+// @version      1.1.34
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.33';
+  const VERSION = '1.1.34';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -201,8 +201,11 @@
 
   // ------------------------------------------------------------------ data checks (daily)
 
+  // Through the core library's pacing once it has loaded (it loads after this script), so the daily checks
+  // share the PC's request budget with every other script.
+  const hfetch = (url, init) => (window.UPC && UPC.http && UPC.http.fetch ? UPC.http.fetch(url, init) : fetch(url, init));
   async function getJSON(path) {
-    const res = await fetch('/a/pr/' + group() + path, { credentials: 'same-origin', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+    const res = await hfetch('/a/pr/' + group() + path, { credentials: 'same-origin', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
     const text = await res.text();
     if (!res.ok) throw new Error('Halaxy returned ' + res.status + ' for ' + path.split('?')[0]);
     try { return JSON.parse(text); } catch (e) { throw new Error('not JSON from ' + path.split('?')[0] + ' (signed out?)'); }
@@ -282,7 +285,7 @@
     // Appointment details pop-up: Bill funder reads cancellation comments from its "Notes" box.
     if (appts.length) {
       try {
-        const res = await fetch('/a/pr/' + group() + '/appointment/' + encodeURIComponent(appts[0].id), { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        const res = await hfetch('/a/pr/' + group() + '/appointment/' + encodeURIComponent(appts[0].id), { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
         if (!res.ok) throw new Error('Halaxy returned ' + res.status + ' for /appointment');
         const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
         const box = doc.querySelector('.appointment-details-popup');
@@ -332,7 +335,7 @@
     try {
       const q = new URLSearchParams({ includeContacts: '1', term: 'zzqx' });
       q.set('_locale', String(group()));   // the practice number from the page address, as the search box sends it
-      const res = await fetch('/a/magic/lookup/patient?' + q.toString(), { credentials: 'same-origin', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+      const res = await hfetch('/a/magic/lookup/patient?' + q.toString(), { credentials: 'same-origin', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
       const j = res.ok ? await res.json().catch(() => null) : null;
       put('data-patient-search', 'Patient search', ['Feedback alerts'], j && Array.isArray(j.lookup) ? [] : ['the search no longer answers with a lookup list' + (res.ok ? '' : ' (' + res.status + ')')]);
     } catch (e) { put('data-patient-search', 'Patient search', ['Feedback alerts'], [e.message]); }
@@ -350,7 +353,7 @@
       } catch (e) { put('data-patient-tasks', 'Patient tasks', ['Feedback alerts'], [e.message]); }
       // The patient's Edit page (read only): Portal fill takes the legal name, address and postcode from it.
       try {
-        const res = await fetch('/a/pr/' + group() + '/patient/' + encodeURIComponent(withPatient.linkPaGId) + '/edit', { credentials: 'same-origin' });
+        const res = await hfetch('/a/pr/' + group() + '/patient/' + encodeURIComponent(withPatient.linkPaGId) + '/edit', { credentials: 'same-origin' });
         if (!res.ok) throw new Error('Halaxy returned ' + res.status + ' for the patient Edit page');
         const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
         const need = ['firstline', 'postcode'].map((k) => 'patientdetailmain[linkPaG][linkpagaddresses][0][address][' + k + ']')
