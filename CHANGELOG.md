@@ -17,6 +17,11 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Portal fill
 
+### 0.1.1 (11 Nov 2026, beta)
+- Bupa: presses Log in once Firefox has filled in the saved log-in (Carl: "can you log in as part of the flow"). The password is never read or kept, only whether the box has something in it. If Bupa refuses it, the fill stops rather than trying again.
+- A fill that fails, in Halaxy or on the portal, now sends Carl a task on the funder invoice ("Portal fill stopped: ...", with the reason), and the person filling is told he has been notified and will pick it up (Carl, 11 Nov 2026). The Stop button doesn't.
+- The AXA payee email and phone are the clinic's own, so they're built in (Carl: "there is nothing secret"); Script settings > Portal fill: settings can still change them on a PC. The repository check now allows the clinic's own email domain.
+
 ### 0.1.0 (11 Nov 2026, beta, with core 0.1.26 and loader 1.2.0)
 - New (Carl's steps, 11 Nov 2026). "Fill on the AXA portal" / "Fill on the Bupa portal" in the Bill To box of a Bupa or AXA funder invoice, and at the end of Invoice Funder. Reads the claim from Halaxy (the funder invoice's fees, number without the leading 0 and date; the claim's membership and authorisation numbers; the patient's name without title, date of birth, and address with postcode from the Edit page, read only; for AXA a condition from the first line under "Subjective:" in the notes for that claim), passes it to the portal tab through the loader on this PC, and opens the portal.
 - AXA: membership number, Submit invoice, then the form: Therapist, payee details (Script settings > Portal fill: settings, asked for the first time), ICS code NA, one fee per treatment line (Outpatient, 1 unit), "add another treatment line" for each further fee. The condition is highlighted to check.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy insurer portal fill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.0
+// @version      0.1.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
@@ -31,25 +31,29 @@
  *   - AXA: membership number, "Submit invoice", then the form: Therapist; payee details (Script settings, Portal
  *     fill: settings); ICS code NA; one fee per treatment line, Outpatient, 1 unit; "add another treatment line"
  *     for each further fee. The condition is highlighted to check.
- *   - Bupa: waits for the log-in (Firefox fills it in), closes the cookie box, Create an invoice, invoice number,
+ *   - Bupa: presses Log in once Firefox has filled in the saved log-in (never reads the password), closes the cookie box, Create an invoice, invoice number,
  *     first treatment date and pre-auth number, Next on the Pre-Auth Summary, checks Urmston Physio Clinic is the
  *     provider, removes any pre-populated treatment, then adds one fee per treatment (Consultant rooms, 1 session,
  *     the fee), leaving Bupa's impairment and procedure code as they come.
  *   - Stops before submitting, and stops (saying why) at anything it doesn't expect. It never presses Submit.
+ *   - A fill that fails, in Halaxy or on the portal, sends Carl a task on the funder invoice, and the person filling is
+ *     told he has been notified (Carl, 11 Nov 2026). Stopping it with the Stop button doesn't.
  */
 (() => {
   'use strict';
   if (window.__hxPortalFill) return;
   window.__hxPortalFill = true;
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
   const KEY = 'portal-claim';
   const MAX_AGE = 4 * 3600e3;
   const PORTALS = {
     axa: { name: 'AXA', host: 'provider.axahealth.co.uk', start: 'https://provider.axahealth.co.uk/payment-support-service/form/submit-invoice-updated/' },
     bupa: { name: 'Bupa', host: 'providersonline.bupa.co.uk', start: 'https://providersonline.bupa.co.uk/providers-online/' },
   };
-  const DEFAULTS = { payee: 'Urmston Physio Clinic', providerCode: 'ZZ03779', email: '', phone: '' };   // Carl, 11 Nov 2026
+  // The clinic's own payee details for AXA (Carl, 11 Nov 2026: "there is nothing secret"). Can be changed per PC in Script settings.
+  const DEFAULTS = { payee: 'Urmston Physio Clinic', providerCode: 'ZZ03779', email: 'admin@urmstonphysioclinic.com', phone: '01617484100' };
+  const OWNER = 'Carl Healy';   // gets a task in Halaxy when a fill fails (Carl, 11 Nov 2026)
   const clean = (s) => String(s === null || s === undefined ? '' : s).replace(/\s+/g, ' ').trim();
   const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -201,6 +205,7 @@
       if (busy) return;
       const s = settings();
       if (box.getAttribute('data-kind') === 'axa' && (!s.email || !s.phone)) { showSettings(); return; }
+      const kindName = PORTALS[box.getAttribute('data-kind')].name;
       busy = true; note = ''; noteErr = false; draw();
       // The portal opens straight away (pop-up blockers allow it only from the click), and fills once the claim is ready.
       const tab = window.open('about:blank', '_blank');
@@ -214,10 +219,27 @@
         watch();
       } catch (e) {
         if (tab) tab.close();
-        note = e.message || String(e); noteErr = true;
         tellHealthCheck(e);
+        note = (e.message || String(e)) + ' ' + await notifyOwner(kindName, e.message || String(e), 'Halaxy, before the portal was opened');
+        noteErr = true;
       }
       busy = false; draw();
+    }
+
+    // A fill that fails: a task for Carl on the funder invoice (once per fill), so it's picked up.
+    async function notifyOwner(portalName, reason, where, key) {
+      const number = clean(document.title).match(/UPC-?\d+/i);
+      try {
+        await U().tasks.addToInvoice(invoiceId, {
+          title: 'Portal fill stopped: ' + portalName + (number ? ', ' + number[0] : ''), assignee: OWNER, priority: 2, due: U().dayLabel(Date.now()),
+          comment: 'The ' + portalName + ' portal fill stopped (' + where + '): ' + reason + '\nThe claim needs submitting by hand, or the fill trying again once the cause is fixed.\nPortal fill ' + VERSION + (key ? ', ' + key : '') + '.',
+          key: key || undefined,
+        });
+        return OWNER + ' has been sent a task in Halaxy and will pick it up.';
+      } catch (x) {
+        tellHealthCheck(x);
+        return 'A task for ' + OWNER + ' couldn\'t be added (' + (x.message || x) + '): please tell him.';
+      }
     }
 
     // Once the portal says it was submitted: offer to mark the funder invoice Issued.
@@ -228,10 +250,24 @@
       check();
     }
     async function check() {
-      if (asking || document.visibilityState !== 'visible') return;
+      if (asking) return;
       const c = await shared('get', KEY);
       if (!c || c.invoiceId !== invoiceId) { clearInterval(watching); watching = null; return; }
-      if (c.status !== 'submitted') return;
+      if (c.status === 'stopped') { clearInterval(watching); watching = null; await shared('del', KEY); note = 'The fill on the ' + PORTALS[c.kind].name + ' portal was stopped.'; noteErr = false; draw(); return; }
+      if (c.status === 'failed') {
+        // Reported from whichever Halaxy tab sees it first; the task's key stops a second one.
+        asking = true;
+        c.status = 'reporting';
+        await shared('set', KEY, c);
+        const told = await notifyOwner(PORTALS[c.kind].name, c.reason || 'no reason given', 'on the portal', 'fill ' + c.at);
+        await shared('del', KEY);
+        clearInterval(watching); watching = null;
+        note = 'The fill on the ' + PORTALS[c.kind].name + ' portal stopped: ' + (c.reason || '') + ' ' + told; noteErr = true;
+        asking = false;
+        draw();
+        return;
+      }
+      if (c.status !== 'submitted' || document.visibilityState !== 'visible') return;
       asking = true;
       clearInterval(watching); watching = null;
       const ok = await confirm('Mark Issued?', '<p>The ' + esc(PORTALS[c.kind].name) + ' portal says the invoice was submitted (' + esc(c.number) + ', £ ' + esc(c.total) + '). Mark this funder invoice Issued?</p>', 'Mark Issued');
@@ -330,7 +366,11 @@
       panel.innerHTML = '<b>Fill from Halaxy' + (claim ? ': ' + esc(claim.number) + ', ' + esc(claim.patient.name) : '') + '</b><div class="' + (error ? 'upc-pf-err' : '') + '">' + esc(message) + '</div>' +
         (done ? '' : '<button type="button" data-a="stop">Stop</button>');
     }
-    const stop = async (message) => { if (claim) { claim.status = 'stopped'; await save(); } say(message + ' The fill has stopped: carry on by hand.', true, true); };
+    // Anything unexpected: the fill stops and Halaxy sends Carl a task (Carl, 11 Nov 2026).
+    const stop = async (message) => {
+      if (claim) { claim.status = 'failed'; claim.reason = message; await save(); }
+      say(message + ' The fill has stopped. ' + OWNER.split(' ')[0] + ' has been notified (a task in Halaxy) and will pick it up.', true, true);
+    };
 
     // ---------------------------------------------------------------- filling fields
     function setValue(el, v) {
@@ -443,7 +483,8 @@
       const has = (re) => h.some((x) => re.test(x));
       if (has(/invoice has been submitted successfully/i)) return submitted();
       const pw = [...document.querySelectorAll('input[type=password]')].find(visible);
-      if (pw) return say('Log in to Bupa (Firefox fills in the details). The fill carries on once you\'re in.');
+      if (pw) return bupaLogIn(pw);
+      if (claim.progress.loginTried) { claim.progress.loginTried = false; await save(); }
       const cookie = document.getElementById('onetrust-reject-all-handler');
       if (visible(cookie)) { cookie.click(); await sleep(500); }
       const pr = claim.progress;
@@ -552,6 +593,22 @@
         if (link) { pr.stage = 'start'; await save(); return link.click(); }
       }
       say('Waiting for Bupa\'s Create an invoice page.');
+    }
+
+    // Bupa's log-in: Firefox fills in the saved username and password; the fill presses Log in once. The password
+    // is never read or kept, only whether the box has something in it.
+    async function bupaLogIn(pw) {
+      const pr = claim.progress;
+      if (pr.loginTried) return stop('Bupa didn\'t accept the saved log-in.');
+      const form = pw.form || pw.closest('form') || document;
+      const user = [...form.querySelectorAll('input[type=text], input[type=email], input:not([type])')].find(visible);
+      say('Logging in to Bupa...');
+      for (let i = 0; i < 20 && !(pw.value && (!user || user.value)); i++) await sleep(250);   // Firefox's autofill can take a moment
+      if (!pw.value || (user && !user.value)) return say('Firefox didn\'t fill in the Bupa log-in. Log in, and the fill carries on.');
+      const btn = [...form.querySelectorAll('button, input[type=submit]')].find((b) => visible(b) && (b.type === 'submit' || /log ?in|sign ?in/i.test(clean(b.textContent || b.value))));
+      if (!btn) return stop('Bupa\'s log-in page has changed (no Log in button).');
+      pr.loginTried = true; await save();
+      btn.click();
     }
 
     async function submitted() {

@@ -12,7 +12,8 @@ with postcode, condition from the notes); AXA: membership page, then every field
 line, stopping before Submit; after Submit, Halaxy offers to mark the invoice Issued; Bupa: waits for the
 log-in, closes the cookie box, Create an invoice, set-up, Pre-Auth Summary, provider check, removes the
 pre-populated treatment, one fee per treatment, stops on Confirm and Submit; the claim is only given to the
-portal it is for; payee details asked for first; a changed portal page stops the fill.
+portal it is for; Bupa's saved log-in pressed once; a fill that fails (a changed page, a refused log-in) stops,
+says Carl has been notified, and Halaxy adds a task for him on the funder invoice.
 
 Run:  python3 tests/portal-fill/test_portal_fill.py
 Needs: Python 3 with Playwright (Chromium).
@@ -46,7 +47,7 @@ STUBS = r"""
 
 def fresh():
     S.clear()
-    S.update({'gm': {}, 'log': [], 'axa': {}, 'bupa': {'logged': False, 'treatments': [], 'prepopulated': True, 'posted': []}, 'status': {9001: '', 9002: ''}})
+    S.update({'gm': {}, 'log': [], 'axa': {}, 'bupa': {'logged': False, 'treatments': [], 'prepopulated': True, 'posted': []}, 'status': {9001: '', 9002: ''}, 'tasks': {9001: [], 9002: []}})
 
 
 # ------------------------------------------------------------------ Halaxy
@@ -111,6 +112,18 @@ async def halaxy(route):
             S['status'][inv] = f['form[status]'][0]
             return await js({'status': 'REFRESH'})
         return await js({'status': 'FORM', 'message': options(inv)})
+    m = re.search(r'/task/invoice/(\d+)/list-data$', p)
+    if m:
+        return await js(S['tasks'][int(m.group(1))])
+    m = re.search(r'/task/new/invoice/(\d+)$', p)
+    if m:
+        inv = int(m.group(1))
+        if req.method == 'GET':
+            return await js({'status': 'FORM', 'message': "<form id='form_task_edit'><input name='form[title]'><select name='form[linkPrGs][]'><option value='30'>Wendy Pritchard</option><option value='31'>Carl Healy</option></select>"
+                                                          "<select name='form[priority]'><option value='2'>Medium</option></select><input name='form[displayDueDate]'><textarea name='form[comment]'></textarea><input type='hidden' name='form[_token]' value='T'></form>"})
+        f = urllib.parse.parse_qs(req.post_data or '', keep_blank_values=True)
+        S['tasks'][inv].append({'title': f['form[title]'][0], 'comment': f['form[comment]'][0], 'who': f['form[linkPrGs][]']})
+        return await js({'status': 'POPUP'})
     if p == '/a/pr/555/note/menu/linkPaG/987/items':
         return await js({'payload': {'menuItems': [{'id': 'n1', 'linkId': 601, 'category': 'appointment', 'entity': 'note', 'label': 'Appointment', 'date': '20-Oct-2026'},
                                                    {'id': 'n2', 'linkId': 602, 'category': 'appointment', 'entity': 'note', 'label': 'Appointment', 'date': '27-Oct-2026'}]}})
@@ -223,10 +236,12 @@ async def bupa(route):
     B = S['bupa']
     html = lambda b: route.fulfill(body=b, content_type='text/html')
     if p == '/providers-online/login.do':
-        B['logged'] = True
+        B['logins'] = B.get('logins', 0) + 1
+        B['logged'] = not B.get('refuse')
         return await route.fulfill(body="<!doctype html><html><body><script>location.href = '/providers-online/';</script></body></html>", content_type='text/html')
     if not B['logged']:
-        return await html("<!doctype html><html><body><h1>Log in</h1><form method='post' action='/providers-online/login.do'><input name='u'><input type='password' name='pw'><button type='submit'>Log in</button></form></body></html>")
+        # As Firefox's autofill would leave it: the saved username and password already in the boxes.
+        return await html("<!doctype html><html><body><h1>Log in</h1><form method='post' action='/providers-online/login.do'><input name='u' value='tester'><input type='password' name='pw' value='not-a-real-password'><button type='submit'>Log in</button></form></body></html>")
     if p == '/providers-online/':
         return await html(bupa_page('<h1>Provider Home</h1>'))
     if p == '/providers-online/createClaims.do' and req.method == 'GET':
@@ -336,14 +351,6 @@ async def main():
         look = await pg.evaluate("(() => { const b = document.querySelector('[data-upc-portal-fill]'); return b.classList.contains('upc-native') && b.closest('#card-invoice-view-organisation') !== null && b.querySelector('button').className; })()")
         check('Halaxy look, in the Bill To box', look == 'btn btn-outline-primary-light', look)
 
-        # Payee details asked for first (AXA needs an email and phone)
-        await pg.click('[data-upc-portal-fill] button')
-        await pg.wait_for_selector('[data-upc-dialog=upc-portal-fill-settings]')
-        vals = await pg.evaluate("[...document.querySelectorAll('[data-upc-dialog=upc-portal-fill-settings] input')].map(i => i.value)")
-        check('payee details asked for first, with the defaults', vals == ['Urmston Physio Clinic', 'ZZ03779', '', ''], vals)
-        await pg.fill('#upc-pf-email', 'payee@example.test')
-        await pg.fill('#upc-pf-phone', '0161 000 0000')
-        await pg.click('[data-upc-dialog=upc-portal-fill-settings] [data-c=yes]')
 
         # Fill: the portal opens in a new tab
         async with ctx.expect_page() as newp:
@@ -360,7 +367,7 @@ async def main():
               and claim.get('condition') == 'right knee pain after running' and claim.get('forHost') == 'provider.axahealth.co.uk', claim)
         vals = await portal.evaluate("(() => { const d = {}; document.querySelectorAll('form input').forEach(i => { if (i.type === 'radio') { if (i.checked) d[i.name] = i.value; } else d[i.id] = i.value; }); return d; })()")
         want = {'who': 'Therapist (physiotherapist, osteopath or other)', 'mem': 'MEMBERTEST', 'name': 'Patient Test', 'dob': '05/05/1975', 'addr': '1 Test Street, TE1 1ST',
-                'payee': 'Urmston Physio Clinic', 'code': 'ZZ03779', 'email': 'payee@example.test', 'phone': '0161 000 0000', 'auth': 'AUTHTEST', 'cond': 'right knee pain after running',
+                'payee': 'Urmston Physio Clinic', 'code': 'ZZ03779', 'email': 'admin@urmstonphysioclinic.com', 'phone': '01617484100', 'auth': 'AUTHTEST', 'cond': 'right knee pain after running',
                 'total': '100.00', 'idate': '11/11/2026', 'num': 'UPC-1111', 'notes': '',
                 'ics1': 'NA', 'desc1': 'Initial Physiotherapy Assessment', 'where1': 'Outpatient', 'tdate1': '20/10/2026', 'units1': '1', 'charge1': '60.00', 'ltotal1': '60.00', 'more1': 'Yes',
                 'ics2': 'NA', 'desc2': 'Follow-Up Physiotherapy Consultation', 'where2': 'Outpatient', 'tdate2': '27/10/2026', 'units2': '1', 'charge2': '40.00', 'ltotal2': '40.00', 'more2': 'No'}
@@ -390,8 +397,8 @@ async def main():
         portal = await newp.value
         perr = []
         portal.on('pageerror', lambda e: perr.append(str(e)))
-        await portal.wait_for_function("document.getElementById('upc-pf-panel') && /Log in/.test(document.getElementById('upc-pf-panel').textContent)", timeout=60000)
-        check('Bupa: waits for the log-in', True)
+        await portal.wait_for_url('**/createClaims.do', timeout=60000)
+        check('Bupa: the saved log-in pressed once', S['bupa'].get('logins') == 1, S['bupa'].get('logins'))
         # The claim is only for Bupa: an AXA page can't read it
         axa_tab = await ctx.new_page()
         await axa_tab.goto('https://provider.axahealth.co.uk/payment-support-service/form/submit-invoice-updated/')
@@ -399,9 +406,6 @@ async def main():
         seen = await axa_tab.evaluate("window.__upcLoader ? window.__upcLoader.shared('get', 'portal-claim') : 'no loader'")
         check('the claim is only given to the portal it is for', seen is None and not await axa_tab.evaluate("!!document.getElementById('upc-pf-panel')"), seen)
         await axa_tab.close()
-        await portal.fill('input[name=u]', 'tester')
-        await portal.fill('input[name=pw]', 'not-a-real-password')
-        await portal.click('button[type=submit]')
         await portal.wait_for_function("document.getElementById('upc-pf-panel') && /Filled:/.test(document.getElementById('upc-pf-panel').textContent)", timeout=90000)
         B = S['bupa']
         check('Bupa: cookie box closed (Reject all)', any(c['name'] == 'ot' for c in await ctx.cookies('https://providersonline.bupa.co.uk')))
@@ -431,8 +435,25 @@ async def main():
         portal = await newp.value
         await portal.wait_for_function("document.getElementById('upc-pf-panel') && /has stopped/.test(document.getElementById('upc-pf-panel').textContent)", timeout=60000)
         panel = await portal.evaluate("document.getElementById('upc-pf-panel').textContent")
-        check('a changed portal page stops the fill and says what', 'treatment line 1: charge per unit not found' in panel and (S['gm'].get('shared:portal-claim') or {}).get('status') == 'stopped', panel)
+        check('a changed portal page stops the fill, says what, and that Carl has been notified', 'treatment line 1: charge per unit not found' in panel and 'Carl has been notified' in panel, panel)
+        await pg.wait_for_function("/Carl Healy has been sent a task/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=60000)
+        t = S['tasks'][9001]
+        check('a task for Carl on the funder invoice, with the reason', len(t) == 1 and t[0]['title'] == 'Portal fill stopped: AXA, UPC-01111' and t[0]['who'] == ['31']
+              and 'charge per unit not found' in t[0]['comment'] and 'shared:portal-claim' not in S['gm'], t)
         AXA_FORM_OVERRIDE.clear()
+        await portal.close()
+
+        # Bupa refuses the saved log-in: tried once, then the fill stops and Carl gets a task
+        S['bupa'].update({'logged': False, 'refuse': True, 'logins': 0})
+        await pg2.bring_to_front()
+        async with ctx.expect_page() as newp:
+            await pg2.click('[data-upc-portal-fill] button')
+        portal = await newp.value
+        await portal.wait_for_function("document.getElementById('upc-pf-panel') && /has stopped/.test(document.getElementById('upc-pf-panel').textContent)", timeout=60000)
+        panel = await portal.evaluate("document.getElementById('upc-pf-panel').textContent")
+        check('Bupa: a refused log-in is tried once, then stops', S['bupa']['logins'] == 1 and "didn't accept the saved log-in" in panel, (S['bupa']['logins'], panel))
+        await pg2.wait_for_function("/has been sent a task/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=60000)
+        check('and Carl gets a task on that invoice', len(S['tasks'][9002]) == 1 and 'Bupa' in S['tasks'][9002][0]['title'], S['tasks'][9002])
         await ctx.close()
         await browser.close()
 
