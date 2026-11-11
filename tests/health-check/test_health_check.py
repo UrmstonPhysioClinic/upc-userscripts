@@ -92,6 +92,17 @@ async def halaxy(route):
         return await j([{'id': 501, 'total': 45, 'balance': 0, 'status': 'Paid In Full'}])
     if p.endswith('/task/task-followup/list/data'):
         return await j([{'id': 1, 'title': 'Review Request', 'status': 'Sent', 'assignedToUrl': '/a/pr/555/patient/1', 'linkedToUrl': ''}])
+    if p.endswith('/report/survey/feedback-data'):
+        return await j([{'id': 7001, 'template': 'How Was Your Appointment?', 'patientName': 'Mr Patient 09:00', 'answeredDate': '10-Nov-2026 14:00', 'appointmentDateAndTime': '10-Nov-2026 09:00'}])
+    if re.search(r'/report/survey/view/\d+$', p):
+        total = '' if 'survey' in STATE['break'] else "<span id='note_total_score'>35</span>"
+        return await j({'status': 'FORM', 'message': "<h3>Total: %s <span class='score-level-name'> - <span>Excellent</span></span></h3><p class='answerContainer'><span class='answerName'>How helpful was today's appointment?</span></p><span class='answer-wrap'>15 - 5</span>" % total})
+    if p == '/a/magic/lookup/patient':
+        return await j({'suggest': {}, 'lookup': [], 'imports': [], 'addtype': 'patient'})
+    if re.search(r'/task/new/linkPaG/\d+$', p):
+        return await j({'status': 'FORM', 'message': "<form id='form_task_edit'><input name='form[title]'><select name='form[linkPrGs][]'><option value='31'>Carl Healy</option></select><input name='form[priority]'><input name='form[displayDueDate]'><textarea name='form[comment]'></textarea><input type='hidden' name='form[_token]' value='t'></form>"})
+    if re.search(r'/task/linkPaG/\d+/list-data$', p):
+        return await j([{'id': 1, 'title': 'Call back', 'comment': '', 'status': 'Pending'}])
     if re.search(r'/task/new/invoice/\d+$', p):
         f = "<form id='form_task_edit'><input name='form[title]'><select name='form[linkPrGs][]'><option value='31'>Carl Healy</option></select><input type='radio' name='form[priority]' value='2'>"
         f += ("" if 'task' in STATE['break'] else "<input name='form[displayDueDate]'>") + "<textarea name='form[comment]'></textarea><input type='hidden' name='form[_token]' value='t'></form>"
@@ -199,7 +210,7 @@ async def main():
 
         # 4. Halaxy update: data checks run straight away and catch data changes
         STATE['version'] = '4.13'
-        STATE['break'] = {'field', 'status', 'settings', 'details', 'task'}
+        STATE['break'] = {'field', 'status', 'settings', 'details', 'task', 'survey'}
         probs, pill = await load()
         stored = await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:halaxy'))")
         check('Halaxy update noted', stored['version'] == '4.13' and stored['previous'] == '4.12', stored)
@@ -212,6 +223,8 @@ async def main():
         check('add-task pop-up change reported for Remittances', tsk and 'Remittances' in tsk[0]['scripts'] and any('displayDueDate' in l for l in tsk[0]['lines']), tsk)
         det = [x for x in probs if x['title'] == 'Appointment details pop-up has changed']
         check('appointment details layout change reported for Bill funder', det and 'Bill funder' in det[0]['scripts'], det)
+        sv = [x for x in probs if x['title'] == 'Survey responses has changed']
+        check('survey response layout change reported for Feedback alerts and Review requests', sv and 'Feedback alerts' in sv[0]['scripts'] and any('note_total_score' in l for l in sv[0]['lines']), sv)
         sett = [x for x in probs if x['title'] == 'Invoice settings (cogwheel) has changed']
         check('cogwheel status change reported for Bill funder', sett and sett[0]['lines'] == ['no Issued status'] and 'Bill funder' in sett[0]['scripts'], sett)
         STATE['break'] = set()

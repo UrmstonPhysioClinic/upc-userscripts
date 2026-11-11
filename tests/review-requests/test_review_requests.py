@@ -68,6 +68,16 @@ def fresh():
     patient(115, 'Patient O', [(-3, '')], [(-3, 'Pain free, much better. Continue exercises.')])
     # Seen today: not yet (from the day after).
     patient(116, 'Patient P', [(0, '')], [(0, 'Discharged.')])
+    # Feedback Request surveys: Q has only an Excellent survey (good); R is discharged with a Below expected survey
+    # (worth a look); C's Excellent survey belongs to someone else with the same name (other date of birth).
+    patient(117, 'Patient Q', [(-25, ''), (-18, '')], [(-18, 'Continue exercises.')])
+    patient(118, 'Patient R', [(-20, '')], [(-20, 'Discharged.')])
+    S['surveys'] = [
+        {'id': 8001, 'patientName': 'Mr Patient Q', 'answeredDate': hx(at(-18)) + ' 15:00', 'dob': '01-Jan-1980', 'total': 34, 'level': 'Excellent'},
+        {'id': 8002, 'patientName': 'Mrs Patient R', 'answeredDate': hx(at(-20)) + ' 16:00', 'dob': '01-Jan-1980', 'total': 21, 'level': 'Below expected'},
+        {'id': 8003, 'patientName': 'Ms Patient C', 'answeredDate': hx(at(-20)) + ' 16:00', 'dob': '02-Feb-1992', 'total': 35, 'level': 'Excellent'},
+        {'id': 8004, 'patientName': 'Mr Patient Q', 'answeredDate': hx(at(-60)) + ' 09:00', 'dob': '01-Jan-1980', 'total': 10, 'level': 'Below expected'},   # an earlier course
+    ]
 
 
 PAGE = ("<!doctype html><html><head><title>Patients | Halaxy</title><script>window.HkUser = { pracName: %s }; window.Hk = { jwt: 'x' };</script></head>"
@@ -113,6 +123,13 @@ async def halaxy(route):
         q = urllib.parse.parse_qs(u.query)
         lo, hi = int(q['start'][0]), int(q['end'][0])
         return await js({'payload': {'events': [e for e in S['events'] if lo <= e['start'] < hi]}})
+    if p.endswith('/report/survey/feedback-data'):
+        return await js([{'id': x['id'], 'template': 'How Was Your Appointment?', 'patientName': x['patientName'], 'answeredDate': x['answeredDate'], 'appointmentDateAndTime': ''} for x in S['surveys']])
+    m = re.search(r'/report/survey/view/(\d+)$', p)
+    if m:
+        x = next(v for v in S['surveys'] if v['id'] == int(m.group(1)))
+        return await js({'status': 'FORM', 'message': "<div class='viewRow'><div class='label'>Date of Birth</div><div class='data'>%s</div></div><h3>Total: <span id='note_total_score'>%d</span>"
+                         " <span class='score-level-name'> - <span>%s</span></span></h3>" % (x['dob'], x['total'], x['level'])})
     if p.endswith('/task/task-followup/list/data'):
         return await js(S['followups'])
     m = re.search(r'/task/patient/(\d+)/task-followup/create$', p)
@@ -197,7 +214,7 @@ async def main():
         await pg.wait_for_function(ROOT_JS + " && " + ROOT_JS + ".querySelector('table') && !" + ROOT_JS + ".querySelector('[data-a=refresh]').disabled", timeout=90000)
         rows = await pg.evaluate(ROWS)
         by = {r['who']: r for r in rows}
-        check('good outcome: listed first, with the reasons', by.get('Patient A') and not by['Patient A']['off'] and rows[1]['who'] == 'Patient A'
+        check('good outcome: listed first, with the reasons', by.get('Patient A') and not by['Patient A']['off'] and [r['who'] for r in rows if not r['off']] == ['Patient N', 'Patient Q', 'Patient A']
               and 'Progress Update +5' in by['Patient A']['why'] and 'discharged' in by['Patient A']['why'] and 'goals met' in by['Patient A']['why'] and 'back to sport or work' in by['Patient A']['why'], rows)
         a = S['patients'][101]['items']
         check('links to the notes and Progress Update form behind it, newest first, in a new tab', by.get('Patient A', {}).get('links') == [
@@ -205,17 +222,21 @@ async def main():
             'Previous note (%s) /a/pr/555/patient/101/clinical/category/note/id/%s _blank' % (a[0]['date'], a[0]['id']),
             'Progress Update (%s) /a/pr/555/patient/101/clinical/category/intake-form-invite/id/%s _blank' % (a[2]['date'], a[2]['id'])], by.get('Patient A'))
         check('mixed signs: greyed under Worth a look, with what counts against', by.get('Patient B', {}).get('off') and 'Against: referred on' in by['Patient B']['why'], by.get('Patient B'))
-        check('only A, B and N listed', sorted(by) == ['Patient A', 'Patient B', 'Patient N'], sorted(by))
+        check('only A, B, N, Q and R listed', sorted(by) == ['Patient A', 'Patient B', 'Patient N', 'Patient Q', 'Patient R'], sorted(by))
+        check('an Excellent Feedback Request survey counts for', by.get('Patient Q', {}).get('off') is False and 'Feedback survey Excellent (34 of 35)' in by['Patient Q']['why']
+              and any(l.startswith('Feedback survey (%s) /a/pr/555/report/survey/feedback' % hx(at(-18))) for l in by['Patient Q']['links']), by.get('Patient Q'))
+        check('Below expected counts against', by.get('Patient R', {}).get('off') and 'Against: Feedback survey Below expected (21 of 35)' in by['Patient R']['why'], by.get('Patient R'))
+        check('a survey from someone with the same name but another date of birth is ignored', 'Patient C' not in by, sorted(by))
         check('discharged 2 days ago: asked straight away', by.get('Patient N', {}).get('off') is False and 'discharged' in by['Patient N']['why'], by.get('Patient N'))
         foot = await pg.evaluate(ROOT_JS + ".querySelector('.upc-rr > p.text-muted').textContent")
         check('left out and counted: asked, labelled/under 16/owing, cancelled, no good signs', "Left out: 1 already sent a review request, 3 labelled No review request, under 16 or owing money, 1 whose last appointment was cancelled or missed, 1 seen in the last 2 weeks whose notes don't say they've finished, and 3 with no good-outcome signs" in foot, foot)
-        check('menu count', await pg.evaluate("(document.querySelector('a.upc-rr-menu .upc-rr-badge') || {}).textContent") == '2')
+        check('menu count', await pg.evaluate("(document.querySelector('a.upc-rr-menu .upc-rr-badge') || {}).textContent") == '3')
         menu = await pg.evaluate("[...document.querySelectorAll('#mainMenu a.mainmenu-sublink')].map(a => a.getAttribute('href'))")
         check('menu item under Patients, over the Patient List', '/a/pr/555/patient/#upc-review-requests' in menu, menu)
         notes_read = sorted({x[1] for x in S['log'] if x[1].startswith('/note/menu/')})
-        check('notes read only for finished patients not yet asked', notes_read == ['/note/menu/linkPaG/%d/items' % i for i in (101, 102, 103, 109, 110, 111, 112, 113, 114, 115)], notes_read)
+        check('notes read only for finished patients not yet asked', notes_read == ['/note/menu/linkPaG/%d/items' % i for i in (101, 102, 103, 109, 110, 111, 112, 113, 114, 115, 117, 118)], notes_read)
         details = sorted({x[1] for x in S['log'] if '/note/sidebar/' in x[1] or '/patient/invoice/' in x[1]})
-        check('labels, age and invoices read only for good-looking patients', all(re.search(r'/(101|102|109|110|111|114|115)(/|$)', x) for x in details) and len(details) >= 5, details)
+        check('labels, age and invoices read only for good-looking patients', all(re.search(r'/(101|102|103|109|110|111|114|115|117|118)(/|$)', x) for x in details) and len(details) >= 5, details)
         kept = await pg.evaluate("Object.keys(localStorage).filter(k => k.startsWith('upc-rr:')).map(k => localStorage.getItem(k)).join(' ')")
         check('note text never kept', not any(t in kept for t in ['Back to running', 'Referred to GP', 'Still sore', 'Knee pain']), kept[:300])
         look = await pg.evaluate("(() => { const r = " + ROOT_JS + "; return r.classList.contains('upc-native') && !r.shadowRoot && r.querySelector('table').className.startsWith('table table-striped table-bordered'); })()")
@@ -233,7 +254,7 @@ async def main():
         check('follow-up for the next weekday 10:30 UK time, entered as Sydney time (21:30) for Halaxy, Review Request email template only', len(w) == 1 and w[0][1] == 101 and f.get('form[recallTemplate]') == [''] and f.get('form[emailTemplate]') == ['45']
               and f.get('form[title]') == ['Review Request'] and f.get('form[isEmailMethod]') == ['1'] and 'form[isSmsMethod]' not in f and f.get('form[scheduleAt][date]') == ['11-Nov-2026']
               and f.get('form[scheduleAt][time][hour]') == ['21'] and f.get('form[scheduleAt][time][minute]') == ['30'] and f.get('form[_token]') == ['FT'], f)
-        check('count drops once sent', await pg.evaluate("(document.querySelector('a.upc-rr-menu .upc-rr-badge') || {}).textContent") == '1')
+        check('count drops once sent', await pg.evaluate("(document.querySelector('a.upc-rr-menu .upc-rr-badge') || {}).textContent") == '2')
 
         # Halaxy refuses: only its own reason is shown, not the form's hints
         S['rejectFollowup'] = True
@@ -274,7 +295,7 @@ async def main():
         await pg.click('[data-a=refresh]')
         await pg.wait_for_function("!document.querySelector('[data-a=refresh]').disabled", timeout=60000)
         again = [x[1] for x in S['log'][n:]]
-        check('checking again reuses what was read', not any('/note/' in x or '/patient/invoice/' in x for x in again) and any('task-followup/list/data' in x for x in again), again)
+        check('checking again reuses what was read', not any('/note/' in x or '/patient/invoice/' in x or '/survey/view/' in x for x in again) and any('task-followup/list/data' in x for x in again), again)
         rows = await pg.evaluate(ROWS)
         check('after sending, A is left out as already asked', 'Patient A' not in {r['who'] for r in rows}, rows)
         await ctx.close()
