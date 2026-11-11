@@ -104,7 +104,7 @@ async def halaxy(route):
     if re.search(r'/task/new/linkPaG/\d+$', p):
         return await j({'status': 'FORM', 'message': "<form id='form_task_edit'><input name='form[title]'><select name='form[linkPrGs][]'><option value='31'>Carl Healy</option></select><input name='form[priority]'><input name='form[displayDueDate]'><textarea name='form[comment]'></textarea><input type='hidden' name='form[_token]' value='t'></form>"})
     if re.search(r'/patient/\d+/edit$', p):
-        return await route.fulfill(body="<form><input name='patientdetailmain[linkPaG][linkpagaddresses][0][address][firstline]' value='x'><input name='patientdetailmain[linkPaG][linkpagaddresses][0][address][postcode]' value='y'><input name='patientdetailmain[name][forename]' value='x'><input name='patientdetailmain[name][surname]' value='x'></form>", content_type='text/html')
+        return await route.fulfill(body="<form><input name='patientdetailmain[linkPaG][linkpagaddresses][0][address][firstline]' value='x'><input name='patientdetailmain[linkPaG][linkpagaddresses][0][address][postcode]' value='y'><input name='patientdetailmain[name][forename]' value='x'><input name='patientdetailmain[name][surname]' value='x'><select name='patientdetailmain[linkPaG][customStatus]'><option value='current'>Current</option></select></form>", content_type='text/html')
     if re.search(r'/task/linkPaG/\d+/list-data$', p):
         return await j([{'id': 1, 'title': 'Call back', 'comment': '', 'status': 'Pending'}])
     if re.search(r'/task/new/invoice/\d+$', p):

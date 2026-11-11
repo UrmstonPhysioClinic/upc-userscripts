@@ -19,6 +19,11 @@
 ### 0.1.0 (11 Nov 2026, beta)
 - New (Carl, 11 Nov 2026), the list only: Patients > Check-ins, Carl only for now. Patients last seen 3 weeks to 3 months ago, with nothing booked and their last appointment not cancelled or missed, whose latest note leaves treatment open-ended ("open return", "open appointment", "book again if needed", "see how things go", "come back if needed", "see as needed" and similar; negations cancel). Shows the wording found and a link to the note. Count on the menu. Note text is never kept, only which wording was found (kept a week). Sends nothing.
 
+## Patient statuses
+
+### 0.1.0 (11 Nov 2026, beta)
+- New (Carl, 11 Nov 2026): Patients > Patient statuses, Carl only for now. Suggests Current, Claimant or Discharged where a status looks out of date, with why, and changes them only with Change or Change all after confirming. Booked: Current if the booked fee is self-funded, Claimant if funded (its invoice is linked to an insurance claim); this also brings back discharged patients who book again. Nothing booked: Discharged after 6 weeks without an appointment (open-ended patients too), or sooner if the last note says treatment has finished. Review is never suggested or changed (set by hand), nor any other status. The change is made on the patient's Edit page, only if it still shows what was listed. Once the suggestions prove right, the plan is to make the changes automatically.
+
 ## Mobile layout
 
 ### 2.18 (11 Nov 2026, beta)
@@ -170,6 +175,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Core library
 
+### 0.1.29 (11 Nov 2026, beta)
+- `UPC.patient.setStatus(linkPaGId, from, to)`: sets the status on the patient's Edit page (patientdetailmain[linkPaG][customStatus], captured 11 Nov 2026) with everything else sent as Halaxy filled it, only if it still reads `from`, and checks it afterwards.
+
 ### 0.1.28 (11 Nov 2026, beta)
 - Script task stamps in the new style: "2026-11-11 15:45 Portal fill", on its own line, with the "- " points below.
 
@@ -197,6 +205,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - `UPC.notes.items` and `UPC.notes.text` (a patient's notes list and a note's text), `UPC.followUps.list` and `UPC.followUps.add` (Tasks & Follow-Ups), `UPC.patient.details`, `UPC.patient.invoices` and `UPC.patient.addLabel`. Confirmed against live captures, 10 Nov 2026.
 
 ## Health check
+
+### 1.1.29 (11 Nov 2026, beta)
+- Patient statuses added; the patient Edit page check also looks for the status field.
 
 ### 1.1.28 (11 Nov 2026, beta)
 - Check-ins' new name, Open-ended patients.
