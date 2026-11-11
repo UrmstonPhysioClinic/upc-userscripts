@@ -17,6 +17,10 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Portal fill
 
+### 0.1.8 (11 Nov 2026, beta)
+- Fixes a false stop on Bupa's treatment form ("Bupa didn't accept treatment 1: "*""): Bupa's red required-field stars were read as an error message. Only an error with wording now counts.
+- If Bupa hands the treatment form back without saving and without a message, the fill tries twice more, then stops (and Carl gets a task) rather than going round in a loop.
+
 ### 0.1.7 (11 Nov 2026, beta)
 - While the fill is working on a portal page, the page is covered (a grey layer, with the progress in the middle and a Stop button) so a click or key press can't interfere (Carl, 11 Nov 2026). The cover goes as soon as it needs you: log in, choose a procedure, check and submit, or when it stops.
 - A page that sits unchanged under the cover for a minute counts as a failure: the fill stops, uncovers the page and Carl gets a task.
