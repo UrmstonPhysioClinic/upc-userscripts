@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.20
+// @version      1.1.21
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.20';
+  const VERSION = '1.1.21';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -355,12 +355,13 @@
         else if (list.length) keysMissing(list, ['title', 'comment', 'status']).forEach((k) => problems.push('task list field ' + k));
         put('data-patient-tasks', 'Patient tasks', ['Feedback alerts'], problems);
       } catch (e) { put('data-patient-tasks', 'Patient tasks', ['Feedback alerts'], [e.message]); }
-      // The patient's Edit page (read only): Portal fill takes the address and postcode from it.
+      // The patient's Edit page (read only): Portal fill takes the legal name, address and postcode from it.
       try {
         const res = await fetch('/a/pr/' + group() + '/patient/' + encodeURIComponent(withPatient.linkPaGId) + '/edit', { credentials: 'same-origin' });
         if (!res.ok) throw new Error('Halaxy returned ' + res.status + ' for the patient Edit page');
         const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
-        const need = ['firstline', 'postcode'].map((k) => 'patientdetailmain[linkPaG][linkpagaddresses][0][address][' + k + ']');
+        const need = ['firstline', 'postcode'].map((k) => 'patientdetailmain[linkPaG][linkpagaddresses][0][address][' + k + ']')
+          .concat(['forename', 'surname'].map((k) => 'patientdetailmain[name][' + k + ']'));
         put('data-patient-edit', 'Patient Edit page', ['Portal fill', 'Review requests'], need.filter((n) => !doc.querySelector('[name="' + n + '"]')).map((n) => 'field ' + n + ' missing'));
       } catch (e) { put('data-patient-edit', 'Patient Edit page', ['Portal fill', 'Review requests'], [e.message]); }
     }

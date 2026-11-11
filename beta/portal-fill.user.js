@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy insurer portal fill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.10
+// @version      0.1.11
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
@@ -47,7 +47,7 @@
   if (window.__hxPortalFill) return;
   window.__hxPortalFill = true;
 
-  const VERSION = '0.1.10';
+  const VERSION = '0.1.11';
   const KEY = 'portal-claim';
   const MAX_AGE = 4 * 3600e3;
   const PORTALS = {
@@ -154,13 +154,9 @@
       const ed = await U().http.html('/patient/' + encodeURIComponent(pinv.patientId) + '/edit');
       const addr = (part) => { const el = ed.querySelector('[name="patientdetailmain[linkPaG][linkpagaddresses][0][address][' + part + ']"]'); return el ? clean(el.value) : ''; };
       if (!ed.querySelector('[name^="patientdetailmain[linkPaG][linkpagaddresses][0][address]"]')) throw new (U().Error)('The patient Edit page has changed (address not found), so the claim couldn\'t be read.');
-      // The legal name, not the preferred one (Carl, 11 Nov 2026): the "Legal Name" row on the patient's General page.
-      let legal = '';
-      if (kind === 'axa') {
-        const gen = await U().http.html('/patient/' + encodeURIComponent(pinv.patientId));
-        const lab = [...gen.querySelectorAll('body *')].find((e) => !e.children.length && /^legal name\s*:?$/i.test(clean(e.textContent)));
-        if (lab) legal = nameOnly((lab.nextElementSibling ? lab.nextElementSibling.textContent : lab.parentElement.textContent.replace(lab.textContent, '')));
-      }
+      // The legal name, not the preferred one (Carl, 11 Nov 2026): the Edit page's legal name fields (the preferred name is a separate field).
+      const nm = (part) => { const el = ed.querySelector('[name="patientdetailmain[name][' + part + ']"]'); return el ? clean(el.value) : ''; };
+      const legal = nm('forename') && nm('surname') ? nm('forename') + ' ' + nm('surname') : '';
       const settingsForm = (await U().http.popup('/invoice/options/' + invoiceId)).doc.querySelector('[name="form[displayDate]"]');
       const invDate = settingsForm ? U().parseDay(settingsForm.value) : null;
       let condition = '';

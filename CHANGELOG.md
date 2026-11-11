@@ -17,6 +17,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Portal fill
 
+### 0.1.11 (11 Nov 2026, beta)
+- AXA: the legal name now comes from the patient Edit page's own name fields (forename and surname; the preferred name is a separate field there), confirmed by a capture on live Halaxy. One less request than 0.1.10's General page read.
+
 ### 0.1.10 (11 Nov 2026, beta)
 - AXA: the patient's legal name (the "Legal Name" row on their General page), not the preferred name (Carl, 11 Nov 2026). If the legal name can't be found, the name is highlighted for checking and the message says why.
 - AXA condition: just the condition, without clinical detail (Carl: "lower back pain, dull achy quality" becomes "Lower back pain"). The first phrase is kept; duration, onset and description are dropped; (L) and (R) become left and right.
@@ -128,6 +131,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - `UPC.notes.items` and `UPC.notes.text` (a patient's notes list and a note's text), `UPC.followUps.list` and `UPC.followUps.add` (Tasks & Follow-Ups), `UPC.patient.details`, `UPC.patient.invoices` and `UPC.patient.addLabel`. Confirmed against live captures, 10 Nov 2026.
 
 ## Health check
+
+### 1.1.21 (11 Nov 2026, beta)
+- The patient Edit page check also looks for the legal name fields (forename, surname), which Portal fill now uses.
 
 ### 1.1.20 (11 Nov 2026, beta)
 - Daily check of the patient Edit page's address and postcode fields (Portal fill). Portal fill added to the script names.
