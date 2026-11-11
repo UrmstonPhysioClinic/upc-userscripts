@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Halaxy branding (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      2.9.1
+// @version      2.9.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/branding.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/branding.user.js
@@ -467,6 +467,23 @@ ${S} .mainmenu-collapsed #logoWrapper { height: 2.34rem !important; }
       });
     });
   }
+
+  // Reports > Medicare: Australian only, never used here (Carl, 11 Nov 2026). Hidden whether the branding is on or not.
+  const hideMenu = document.createElement('style');
+  hideMenu.id = 'upc-hidden-menu-items';
+  hideMenu.textContent = '#mainMenu li:has(> a.mainmenu-sublink[href*="/report/medicare" i]), #mainMenu a.mainmenu-sublink[href*="/report/medicare" i] { display: none !important; }';
+  if (document.documentElement) (document.head || document.documentElement).appendChild(hideMenu);
+  const hideByLabel = () => {
+    if (document.head && hideMenu.parentNode !== document.head) document.head.appendChild(hideMenu);
+    // If Halaxy's link doesn't say medicare in its address, hide it by its label instead.
+    const byLabel = () => document.querySelectorAll('#mainMenu a.mainmenu-sublink').forEach((a) => {
+      if (/^\s*medicare\s*$/i.test(a.textContent)) { const li = a.closest('li'); (li && li.querySelector('a.mainmenu-sublink') === a ? li : a).style.setProperty('display', 'none', 'important'); }
+    });
+    byLabel();
+    const menu = document.getElementById('mainMenu');
+    if (menu) new MutationObserver(byLabel).observe(menu, { childList: true, subtree: true });
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', hideByLabel, { once: true }); else hideByLabel();
 
   if (!enabled) return;
 

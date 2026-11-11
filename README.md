@@ -16,7 +16,7 @@ That is the only install. Scripts added to this repository later reach every PC 
 |---|---|
 | Outstanding Actions | Notice at the bottom centre of today's attended appointments with an unpublished note, and unpaid self-funded invoices. Your own appointments by default; Show everyone for the whole clinic. Reception sees everyone. |
 | Calendar controls | Clinic calendar defaults, compact 15-minute zoom, accurate time line, Just me / All practitioners, live refresh from other PCs, drag fixes, resizable personal appointments, 24-hour time picker, durations from fees, green paid £ on £0 invoices. |
-| Custom Reports | Reports menu item: invoices, appointments or patients with any filters, chosen columns and saved views. Read-only. |
+| Custom Reports (retiring) | Reports menu item: invoices, appointments or patients with any filters, chosen columns and saved views. Read-only. Retired 11 Nov 2026 (Carl): removed from beta; leaves stable when Insurer payments due goes to stable, as Ready to bill, Insurer payments due and the other tools now cover what it was used for. |
 | Rebate Sync | Change a rebate on the patient or funder invoice and the linked line on the other follows. Asks before changing anything. |
 | Branding | Clinic colours, logo, favicon and font in Halaxy. |
 | Auto-expanding text boxes | Text boxes and rich text editors grow to fit their content instead of scrolling. |
