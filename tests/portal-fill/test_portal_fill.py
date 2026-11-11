@@ -75,7 +75,7 @@ CLAIM = ("<form><select name='claim[organisation]'><option selected>AXA Health</
          "<input name='claim[col1]' value='MEMBERTEST'><input name='claim[date1]' value=''><input type='hidden' name='claim[_token]' value='C'></form>")
 EDIT = ("<html><body><form id='patientGeneralEditForm'><input name='patientdetailmain[linkPaG][linkpagaddresses][0][address][firstline]' value='1 Test Street'>"
         "<input name='patientdetailmain[linkPaG][linkpagaddresses][0][address][secondline]' value=''><input name='patientdetailmain[linkPaG][linkpagaddresses][0][address][city]' value='Testtown'>"
-        "<input name='patientdetailmain[linkPaG][linkpagaddresses][0][address][postcode]' value='TE1 1ST'></form></body></html>")
+        "<input name='patientdetailmain[linkPaG][linkpagaddresses][0][address][postcode]' value='te11st'></form></body></html>")
 
 
 def options(inv):
@@ -102,6 +102,9 @@ async def halaxy(route):
         return await js({'status': 'FORM', 'message': CLAIM})
     if p == '/a/pr/555/note/sidebar/linkPaG/987':
         return await js({'patientDetails': {'fullName': 'Mrs Patient (Pat) Test', 'dob': '05-May-1975 (51 yrs)', 'addresses': [{'type': 'Home', 'formatted': '1 Test Street, Testtown'}]}})
+    if p == '/a/pr/555/patient/987':   # the General page: legal name differs from the preferred one
+        return await route.fulfill(body="<html><body><div class='card'><div class='viewRow'><span class='label'>Legal Name:</span> <span>Mrs Patricia Test</span></div>"
+                                        "<div class='viewRow'><span class='label'>Date of Birth:</span> <span>05-May-1975 (51 yr)</span></div></div></body></html>", content_type='text/html')
     if p == '/a/pr/555/patient/987/edit':
         return await route.fulfill(body=EDIT, content_type='text/html')
     m = re.search(r'/invoice/options/(\d+)$', p)
@@ -381,13 +384,16 @@ async def main():
         await portal.wait_for_url('**/axa-health-new/', timeout=60000)
         await portal.wait_for_function("document.getElementById('upc-pf-panel') && /Filled:/.test(document.getElementById('upc-pf-panel').textContent)", timeout=60000)
         claim = S['gm'].get('shared:portal-claim') or {}
+        briefs = await pg.evaluate('''() => ['lower back pain, dull achy quality', 'ongoing shoulder pain post-fall 7/52 ago', 'L) knee pain', '(R) shoulder pain', 'Chronic neck pain - worse at work',
+            'gradual onset of R hip pain for 3 months', 'right ankle sprain 2/52', 'low back pain with sciatica', 'Plantar fasciitis'].map(window.upcPortalFill.brief)''')
+        check('the condition, without clinical detail', briefs == ['Lower back pain', 'Shoulder pain', 'Left knee pain', 'Right shoulder pain', 'Neck pain', 'R hip pain', 'Right ankle sprain', 'Low back pain', 'Plantar fasciitis'], briefs)
         check('the claim read from Halaxy', claim.get('number') == 'UPC-1111' and claim.get('membership') == 'MEMBERTEST' and claim.get('authorisation') == 'AUTHTEST'
-              and claim.get('patient', {}).get('name') == 'Patient Test' and claim.get('patient', {}).get('dob') == '05/05/1975'
+              and claim.get('patient', {}).get('name') == 'Patricia Test' and claim.get('patient', {}).get('dob') == '05/05/1975'
               and claim.get('patient', {}).get('address') == '1 Test Street, TE1 1ST' and claim.get('total') == '100.00' and claim.get('invoiceDate') == '11/11/2026'
-              and claim.get('condition') == 'right knee pain after running' and claim.get('forHost') == 'provider.axahealth.co.uk', claim)
+              and claim.get('condition') == 'Right knee pain' and claim.get('forHost') == 'provider.axahealth.co.uk', claim)
         vals = await portal.evaluate("(() => { const d = {}; document.querySelectorAll('form input').forEach(i => { if (i.type === 'radio') { if (i.checked) d[i.name] = i.value; } else d[i.id] = i.value; }); return d; })()")
-        want = {'who': 'Therapist (physiotherapist, osteopath or other)', 'mem': 'MEMBERTEST', 'name': 'Patient Test', 'dob': '05/05/1975', 'addr': '1 Test Street, TE1 1ST',
-                'payee': 'Urmston Physio Clinic', 'code': 'ZZ03779', 'email': 'admin@urmstonphysioclinic.com', 'phone': '01617484100', 'auth': 'AUTHTEST', 'cond': 'right knee pain after running',
+        want = {'who': 'Therapist (physiotherapist, osteopath or other)', 'mem': 'MEMBERTEST', 'name': 'Patricia Test', 'dob': '05/05/1975', 'addr': '1 Test Street, TE1 1ST',
+                'payee': 'Urmston Physio Clinic', 'code': 'ZZ03779', 'email': 'admin@urmstonphysioclinic.com', 'phone': '01617484100', 'auth': 'AUTHTEST', 'cond': 'Right knee pain',
                 'total': '100.00', 'idate': '11/11/2026', 'num': 'UPC-1111', 'notes': '',
                 'ics1': 'NA', 'desc1': 'Initial Physiotherapy Assessment', 'where1': 'Outpatient', 'tdate1': '20/10/2026', 'units1': '1', 'charge1': '60.00', 'ltotal1': '60.00', 'more1': 'Yes',
                 'ics2': 'NA', 'desc2': 'Follow-Up Physiotherapy Consultation', 'where2': 'Outpatient', 'tdate2': '27/10/2026', 'units2': '1', 'charge2': '40.00', 'ltotal2': '40.00', 'more2': 'No'}
