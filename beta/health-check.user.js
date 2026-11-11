@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.30
+// @version      1.1.31
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.30';
+  const VERSION = '1.1.31';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -384,6 +384,12 @@
         put('data-invoice-settings', 'Invoice settings (cogwheel)', ['Bill funder'], problems);
       } catch (e) { put('data-invoice-settings', 'Invoice settings (cogwheel)', ['Bill funder'], [e.message]); }
     }
+
+    // Appointment types (Patient statuses tells funded bookings by them; capture 11 Nov 2026).
+    try {
+      const types = await getJSON('/profile/group/appointmenttypes/data');
+      put('data-appointment-types', 'Appointment types', ['Patient statuses'], !Array.isArray(types) ? ['not a list'] : types.length ? keysMissing(types, ['title', 'backgroundColor', 'status']).map((k) => 'field ' + k) : []);
+    } catch (e) { put('data-appointment-types', 'Appointment types', ['Patient statuses'], [e.message]); }
   }
 
   // ------------------------------------------------------------------ Halaxy version

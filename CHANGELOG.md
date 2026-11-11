@@ -21,6 +21,11 @@
 
 ## Patient statuses
 
+### 0.2.0 (11 Nov 2026, beta)
+- Automatic (Carl, 11 Nov 2026: "lets just automate this now and remove the menu"): statuses are updated in the background while Carl is signed in, at most every 30 minutes, at most 40 a run. The menu item and page are gone; "Patient statuses: recent changes" (Script settings or the Tampermonkey menu) lists the last 100 changes and any that failed.
+- Insurance appointment types: an appointment booked with an active type titled Insurance or Referral counts as funded, fee or not. The type is read from the appointment's title, which starts with it (its colour as a fallback). Archived types (Appointment Available) are ignored.
+- The patient's name is taken from after the type in such titles.
+
 ### 0.1.1 (11 Nov 2026, beta)
 - Contacts (only another patient's contact, hidden from searches) who have an appointment, say booked online, are moved to Current, Claimant or Discharged by the same rules (Carl, 11 Nov 2026).
 - Funded or not now also comes from the fee's own funder in Halaxy's fee list. The appointment type sets the fee, so an online booking counts as funded before any claim exists. A claim on the invoice still counts too.
@@ -209,6 +214,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - `UPC.notes.items` and `UPC.notes.text` (a patient's notes list and a note's text), `UPC.followUps.list` and `UPC.followUps.add` (Tasks & Follow-Ups), `UPC.patient.details`, `UPC.patient.invoices` and `UPC.patient.addLabel`. Confirmed against live captures, 10 Nov 2026.
 
 ## Health check
+
+### 1.1.31 (11 Nov 2026, beta)
+- Checks the appointment types list (title, colour, status) for Patient statuses.
 
 ### 1.1.30 (11 Nov 2026, beta)
 - The fee list check also needs feeNumber (Patient statuses matches the invoice's item code to it).
