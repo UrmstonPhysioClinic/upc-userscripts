@@ -17,6 +17,10 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Portal fill
 
+### 0.1.5 (11 Nov 2026, beta)
+- Bupa: the procedure is found by Bupa's code anywhere in its wording (Carl: "make sure AA360 that appears in the Halaxy invoice also appears somewhere in one of the dropdown options"). The code is taken from the fee's Item Code, which reads like "Bup-IA (AA360)"; 0.1.4 compared the whole Item Code and found nothing on the first live run.
+- Fee descriptions lose Halaxy's " - Patient Invoice UPC-..." ending (seen live), so AXA's treatment description is just the fee's name.
+
 ### 0.1.4 (11 Nov 2026, beta)
 - Bupa: the procedure is chosen by code (Carl, 11 Nov 2026): the Halaxy fee's Item Code is Bupa's procedure code (AA360, AA361 ...), so the procedure starting with that code is picked. If the code isn't in Bupa's list, the box is highlighted for you to choose, saying so. Matching by wording (0.1.3) is gone.
 

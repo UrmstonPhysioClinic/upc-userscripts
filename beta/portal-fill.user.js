@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy insurer portal fill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.4
+// @version      0.1.5
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
@@ -45,7 +45,7 @@
   if (window.__hxPortalFill) return;
   window.__hxPortalFill = true;
 
-  const VERSION = '0.1.4';
+  const VERSION = '0.1.5';
   const KEY = 'portal-claim';
   const MAX_AGE = 4 * 3600e3;
   const PORTALS = {
@@ -155,7 +155,7 @@
         membership, authorisation, condition,
         patient: { name: nameOnly(det.fullName), dob: dob ? slash(dob) : '', address: [addr('firstline'), addr('secondline'), addr('postcode')].filter(Boolean).join(', '),
           hasPostcode: !!addr('postcode') },
-        lines: lines.map((l, i) => ({ date: slash(days[i]), code: clean(l.item), description: clean(l.description).replace(funderPrefix, ''), amount: pounds(l.amount) })),
+        lines: lines.map((l, i) => ({ date: slash(days[i]), code: clean(l.item), description: clean(l.description).replace(funderPrefix, '').replace(/\s*-\s*patient invoice\s+UPC-?\d+\s*$/i, ''), amount: pounds(l.amount) })),
         payee: { name: s.payee, providerCode: s.providerCode, email: s.email, phone: s.phone },
       };
       const missing = [];
@@ -518,11 +518,12 @@
         setValue(to, l.date);
         setValue(count, '1');
         setValue(charge, l.amount);
-        // The procedure is the fee (Carl, 11 Nov 2026): the Halaxy fee's Item Code is Bupa's procedure code (AA360 ...),
-        // which starts each procedure in Bupa's list ("AA360-...").
+        // The procedure is the fee (Carl, 11 Nov 2026): Bupa's code (AA360 ...) is in the Halaxy fee's Item Code ("Bup-IA (AA360)"),
+        // and appears somewhere in the procedure's wording in Bupa's list. Matched as a whole code, so AA361 never picks AA3610.
         if (proc) {
-          const code = String(l.code || '').toUpperCase();
-          const fits = code ? [...proc.options].filter((o) => o.index > 0 && clean(o.textContent).toUpperCase().split(/[\s-]/)[0] === code) : [];
+          const codes = String(l.code || '').match(/\b[A-Z]{1,3}\d{2,}[A-Z]?\b/gi) || [];
+          const has = (o) => codes.some((c) => new RegExp('(^|[^A-Za-z0-9])' + c + '([^A-Za-z0-9]|$)', 'i').test(clean(o.textContent)));
+          const fits = [...proc.options].filter((o) => o.index > 0 && has(o));
           if (fits.length === 1) setValue(proc, fits[0].value);
           else if (proc.selectedIndex > 0) setValue(proc, proc.options[0].value);   // pre-selected, but not this fee's code
         }
@@ -530,8 +531,8 @@
         if (missing.length) {
           pr.stage = 'saving'; await save();
           missing.forEach(([x]) => x.classList.add('upc-pf-check'));
-          return say('Choose the ' + missing.map((x) => x[1]).join(' and ') + ' for this fee (' + (l.code ? l.code + ' ' : '') + l.description + ', ' + l.date + ', £ ' + l.amount + '; highlighted' +
-            (missing.some((x) => x[1] === 'procedure') && l.code ? ': ' + l.code + ' isn\'t in Bupa\'s list' : '') + '), then press Save. The fill carries on.');
+          const codeNote = missing.some((x) => x[1] === 'procedure') ? ': ' + ((String(l.code || '').match(/\b[A-Z]{1,3}\d{2,}[A-Z]?\b/gi) || []).join(', ') || 'no Bupa code in the Item Code') + ' not found in Bupa\'s list' : '';
+          return say('Choose the ' + missing.map((x) => x[1]).join(' and ') + ' for this fee (' + l.description + ', ' + l.date + ', £ ' + l.amount + '; highlighted' + codeNote + '), then press Save. The fill carries on.');
         }
         pr.stage = 'saving'; await save();
         say('Adding treatment ' + ((pr.added || 0) + 1) + ' of ' + claim.lines.length + '...');
