@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy open-ended patients (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.3
+// @version      0.1.4
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/check-ins.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/check-ins.user.js
@@ -29,7 +29,7 @@
   if (window.__hxCheckIns) return;
   window.__hxCheckIns = true;
 
-  const VERSION = '0.1.3';
+  const VERSION = '0.1.4';
   const ROUTE = 'upc-check-ins';
   const MENU_CLS = 'upc-ci-menu';
   const ALLOWED = ['Carl Healy'];
@@ -38,74 +38,34 @@
   const UP_TO_DAYS = 91;       // not further back than about 3 months
   const REFRESH_EVERY = 12 * 3600e3, PAGE_FRESH = 30 * 60e3, KEEP = 7 * DAY;
   const KEY = 'upc-ci:';
-  const RULES = 1;   // bump when the wording list changes, so patients are read again
+  const RULES = 2;   // bump when the wording list changes, so patients are read again
 
   const U = () => window.UPC;
-  const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const store = {
-    get(k, d) { try { const v = localStorage.getItem(KEY + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
-    set(k, v) { try { localStorage.setItem(KEY + k, JSON.stringify(v)); } catch (e) { /* storage blocked */ } },
-  };
+  const esc = (s) => U().esc(s);
+  const store = { get: (k, d) => U().storage(KEY).get(k, d), set: (k, v) => U().storage(KEY).set(k, v), del: (k) => U().storage(KEY).del(k) };   // core's per-PC storage
+
   const label = (ms) => U().dayLabel(ms);
   const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
 
-  function userName() {
-    const h = window.HkUser || {};
-    const named = String(h.pracName || (h.CalendarDefault || {}).pracName || '').trim();
-    if (named) return named;
-    const btn = document.getElementById('activeUser');
-    if (btn && btn.textContent.trim()) return btn.textContent.replace(/\s+/g, ' ').trim();
-    const el = [...document.querySelectorAll('header *, nav *, .navbar *, #top *, #headerWrapper *')]
-      .find((e) => !e.children.length && ALLOWED.some((n) => n.toLowerCase() === e.textContent.trim().toLowerCase()));
-    return el ? el.textContent.trim() : '';
-  }
-  const allowed = () => ALLOWED.some((n) => n.toLowerCase() === userName().toLowerCase());
-  // Halaxy may not have filled in who's signed in when this script starts (it starts early in the load order: live,
-  // 11 Nov 2026), so keep looking for 20 seconds before deciding it isn't for this person.
-  function whenAllowed(fn) {
-    if (allowed()) return fn();
-    const t0 = Date.now();
-    const timer = setInterval(() => {
-      if (allowed()) { clearInterval(timer); fn(); } else if (Date.now() - t0 > 20000) clearInterval(timer);
-    }, 500);
-  }
+  // Who's signed in: the core library's check (Halaxy can fill the name in late, so it keeps looking for 20 seconds).
+  const allowed = () => !!U() && U().user.is(ALLOWED);
+  const whenAllowed = (fn) => U().user.whenAllowed(ALLOWED, fn);
 
   // ------------------------------------------------------------------ open-ended wording
 
-  const IF_NEEDED = '(if|when|as) (needed|required|necessary|nec|req|reqd|appropriate)|if (any|further) (problems|issues|concerns|symptoms)|if (it |things |symptoms |pain )?(gets? worse|worsens?|returns?|recurs?|flares?( up)?)|prn|sos';
-  const WORDING = [
-    ['open return', /\bopen (return|review|f\/?u|follow[- ]?up)\b|\bleft open\b|\bopen[- ]ended\b/i],
-    ['open appointment', /\bopen (appointment|appt|booking)\b/i],
-    ['book again if needed', new RegExp('\\b(re-?)?book (again|in|back|another( session| appointment| appt)?|a follow[- ]?up)?\\s*(' + IF_NEEDED + ')\\b', 'i')],
-    ['come back if needed', new RegExp('\\b(come|coming|call|ring|get|getting|contact|be) (back|in touch|us)\\s*(' + IF_NEEDED + ')\\b|\\b(to |will )?(contact|call|ring|email|e-?mail|text|message) (us|clinic|the clinic|me)?\\s*(' + IF_NEEDED + ')\\b|\\bget in touch\\b', 'i')],
-    ['see how things go', /\bsee how (things|it|he|she|they|pt|patient|symptoms|knee|back|shoulder|ankle|hip|neck)?\s*(go(es)?|get(s)? on|progress(es)?|settle(s)?)\b|\bwait and see\b/i],
-    ['see as needed', /\b(see|review|f\/?u|follow[- ]?up) (as|when|if) (needed|required|necessary|nec|req|reqd)\b|\bprn\b|\bsos\b/i],
-  ];
-  const NEGATION = /\b(not|no longer|never|isn'?t|wasn'?t|hasn'?t|without|unable to|no need to)\b[^.]{0,20}$/i;
-  function wording(text) {
-    const found = [];
-    WORDING.forEach(([name, re]) => {
-      const g = new RegExp(re.source, 'gi');
-      let m;
-      while ((m = g.exec(text))) {
-        if (NEGATION.test(text.slice(Math.max(0, m.index - 30), m.index))) continue;
-        if (!found.includes(name)) found.push(name);
-        break;
-      }
-    });
-    return found;
-  }
+  // The core library's open-ended wording (open return, book again if needed, see as needed and so on), so every script
+  // reads a note the same way.
+  const wording = (text) => U().wording.openEnded(text);
 
   // ------------------------------------------------------------------ the check
 
+  // Appointments from the calendar: the core library reads one standard window per page and shares it with the other
+  // scripts that read long windows (Patient statuses, Open-ended patients, Review requests).
   async function calendar(fromMs, toMs, say) {
     say('Reading the calendar...');
-    const pracs = await U().http.json('/lookup/practitioner?clinic=&include_id=&type=');
-    const qs = new URLSearchParams({ start: Math.floor(fromMs / 1000), end: Math.floor(toMs / 1000) });
-    (Array.isArray(pracs) ? pracs : []).forEach((p, i) => qs.append('practitioners[' + i + '][id]', p.id));
-    const cal = await U().http.json('/calendar/json?' + qs.toString());
-    return ((cal && cal.payload && cal.payload.events) || []).filter((e) => e.type === 'appointment' && e.linkPaGId);
+    return U().calendar.appointments(fromMs, toMs);
   }
+
 
   async function check(say) {
     say = say || (() => {});
@@ -273,7 +233,7 @@
     root = document.createElement('div');
     root.className = 'upc-native';
     root.setAttribute('data-upc-check-ins', '');
-    root.addEventListener('click', (e) => { if (e.target.closest('[data-a=refresh]')) run(); });
+    root.addEventListener('click', (e) => { if (e.target.closest('[data-a=refresh]')) { U().calendar.forget(); run(); } });
     state.unmount = U().ui.mountPage('Open-ended patients', root, MENU_CLS);
     render();
     const r = store.get('result', null);

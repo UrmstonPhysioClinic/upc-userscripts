@@ -334,7 +334,7 @@ async def main():
         check('pain-free and a race', 'pain-free' in cases[3]['good'] and 'race or event done' in cases[3]['good'], cases[3])
         check('back to training, low pain score, pleased', 'back to sport or work' in cases[4]['good'] and 'low pain score' in cases[4]['nice'] and 'very happy' in cases[4]['nice'], cases[4])
         check('flare-up counts against', 'worse or flare-up' in cases[5]['bad'], cases[5])
-        check('self-managing, see as needed', 'self-managing' in cases[6]['good'] and 'discharged' in cases[6]['good'], cases[6])
+        check('self-managing, see as needed', 'self-managing' in cases[6]['good'] and 'see as needed' in cases[6]['good'], cases[6])
         check('plain mentions (worse on stairs, a scan, injection options) don\'t count against', not cases[7]['bad'] and 'discharged' in cases[7]['good'], cases[7])
         check('referred to GP counts against', 'referred on' in cases[8]['bad'], cases[8])
         check('"no flare-up" doesn\'t count against', not cases[9]['bad'], cases[9])

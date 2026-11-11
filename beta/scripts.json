@@ -8,7 +8,7 @@
     {
       "file": "core.user.js",
       "name": "UPC core library (beta)",
-      "version": "0.1.30"
+      "version": "0.1.31"
     },
     {
       "file": "alerts.user.js",
@@ -18,7 +18,7 @@
     {
       "file": "bank-statement.user.js",
       "name": "Halaxy bank statement (beta)",
-      "version": "0.1.0"
+      "version": "0.1.1"
     },
     {
       "file": "bill-funder.user.js",
@@ -38,7 +38,7 @@
     {
       "file": "check-ins.user.js",
       "name": "Halaxy open-ended patients (beta)",
-      "version": "0.1.3"
+      "version": "0.1.4"
     },
     {
       "file": "email-html-source.user.js",
@@ -53,7 +53,7 @@
     {
       "file": "funder-chaser.user.js",
       "name": "Halaxy insurer payments due (beta)",
-      "version": "0.1.2"
+      "version": "0.1.3"
     },
     {
       "file": "halaxy-mobile.user.js",
@@ -68,7 +68,7 @@
     {
       "file": "patient-statuses.user.js",
       "name": "Halaxy patient statuses (beta)",
-      "version": "0.2.1"
+      "version": "0.2.2"
     },
     {
       "file": "portal-fill.user.js",
@@ -78,7 +78,7 @@
     {
       "file": "ready-to-bill.user.js",
       "name": "Halaxy ready to bill (beta)",
-      "version": "0.3.0"
+      "version": "0.3.1"
     },
     {
       "file": "rebate-sync.user.js",
@@ -93,7 +93,7 @@
     {
       "file": "review-requests.user.js",
       "name": "Halaxy review requests (beta)",
-      "version": "0.5.0"
+      "version": "0.5.1"
     },
     {
       "file": "script-settings.user.js",
@@ -103,7 +103,7 @@
     {
       "file": "survey-feedback.user.js",
       "name": "Halaxy feedback alerts (beta)",
-      "version": "0.1.1"
+      "version": "0.1.2"
     },
     {
       "file": "task-stamps.user.js",

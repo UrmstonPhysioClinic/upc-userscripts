@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy bank statement (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.0
+// @version      0.1.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
@@ -38,7 +38,7 @@
   if (window.__hxBankStatement) return;
   window.__hxBankStatement = true;
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
   const ROUTE = 'upc-bank-statement';
   const MENU_CLS = 'upc-bank-menu';
   const ALLOWED = ['Carl Healy'];
@@ -54,11 +54,9 @@
   ];
 
   const U = () => window.UPC;
-  const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const store = {
-    get(k, d) { try { const v = localStorage.getItem(KEY + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
-    set(k, v) { try { localStorage.setItem(KEY + k, JSON.stringify(v)); } catch (e) { /* storage blocked */ } },
-  };
+  const esc = (s) => U().esc(s);
+  const store = { get: (k, d) => U().storage(KEY).get(k, d), set: (k, v) => U().storage(KEY).set(k, v), del: (k) => U().storage(KEY).del(k) };   // core's per-PC storage
+
   const fmt = (c) => U().money.fmt(c);
   const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const isoLabel = (iso) => { const [y, m, d] = iso.split('-'); return d + '-' + MON[Number(m) - 1] + '-' + y; };
@@ -70,22 +68,9 @@
   const numberOf = (inv) => (String(inv || '').match(/UPC-?0*(\d+)/i) || [])[1] || '';
   const payerIsFunder = (payer, funder) => { const p = String(payer).toLowerCase(), f = String(funder).toLowerCase(); return !!p && !!f && (p.includes(f) || f.includes(p)); };
 
-  function userName() {
-    const h = window.HkUser || {};
-    const named = String(h.pracName || (h.CalendarDefault || {}).pracName || '').trim();
-    if (named) return named;
-    const btn = document.getElementById('activeUser');
-    if (btn && btn.textContent.trim()) return btn.textContent.replace(/\s+/g, ' ').trim();
-    const el = [...document.querySelectorAll('header *, nav *, .navbar *, #top *, #headerWrapper *')]
-      .find((e) => !e.children.length && ALLOWED.some((n) => n.toLowerCase() === e.textContent.trim().toLowerCase()));
-    return el ? el.textContent.trim() : '';
-  }
-  const allowed = () => ALLOWED.some((n) => n.toLowerCase() === userName().toLowerCase());
-  function whenAllowed(fn) {
-    if (allowed()) return fn();
-    const t0 = Date.now();
-    const timer = setInterval(() => { if (allowed()) { clearInterval(timer); fn(); } else if (Date.now() - t0 > 20000) clearInterval(timer); }, 500);
-  }
+  // Who's signed in: the core library's check (Halaxy can fill the name in late, so it keeps looking for 20 seconds).
+  const allowed = () => !!U() && U().user.is(ALLOWED);
+  const whenAllowed = (fn) => U().user.whenAllowed(ALLOWED, fn);
 
   // ------------------------------------------------------------------ reading the statement
 

@@ -2,6 +2,9 @@
 
 ## Bank statement
 
+### 0.1.1 (11 Nov 2026, beta)
+- Sign-in check and storage from the core library. No change in what it does.
+
 ### 0.1.0 (11 Nov 2026, beta)
 - New (Carl, 10 and 11 Nov 2026): Finances > Bank statement, Carl only for now. Open the month's Starling statement (PDF; read in the browser, nothing uploaded or kept). The reading is checked against the statement's running balance. Each insurer credit (a transfer from the old account naming an insurer counts as that insurer) is matched to the insurer's unpaid invoices dated on or before it: first the invoice(s) whose number is in the bank reference, if they add up (a reused old reference falls through to the rest, and says so); then the invoices one remittance covers (from the comment Remittances leaves on each), preferring the remittance whose reference is the bank reference, then the one dated within a few days of the payment (a remittance far from the bank date is offered, not ticked); then one invoice for the whole amount; then the only set of invoices that adds up. Several answers are offered to choose from. A credit naming a patient's invoice (a patient paying by transfer) is left out. After confirming, each invoice is marked paid as Direct Deposit on the bank date, with a note of the insurer, date and reference, and the result is checked. Recorded credits are remembered on the PC. This is the only place payments are recorded (Carl's rule: only once the bank shows the money).
 
@@ -23,6 +26,9 @@
 
 ## Insurer payments due
 
+### 0.1.3 (11 Nov 2026, beta)
+- Sign-in check and storage from the core library. No change in what it shows.
+
 ### 0.1.2 (11 Nov 2026, beta)
 - Fix: the menu item didn't appear on live Halaxy. The script starts early, before Halaxy has filled in who's signed in, so it decided the page wasn't Carl's. It now keeps looking for 20 seconds, and also reads the name in Halaxy's top bar.
 
@@ -33,6 +39,9 @@
 - New (Carl, 10 and 11 Nov 2026): Finances > Funder chaser, Carl only for now. Insurer invoices (billed to the insurer itself) marked Issued that still have something to pay 30 days or more after their invoice date, oldest first, with a count on the menu. A remittance attached doesn't take an invoice off the list; only the payment does. Funder invoices still Active after 30 days are shown greyed (perhaps never submitted) and not counted. One request: Halaxy's Unpaid Invoices report, read back 18 months. Reads only; no tasks.
 
 ## Open-ended patients
+
+### 0.1.4 (11 Nov 2026, beta)
+- Open-ended wording and the calendar come from the core library (shared with Patient statuses and Review requests). Patients are read again once, as the "not ..." rule now also covers "not yet" and "before".
 
 ### 0.1.3 (11 Nov 2026, beta)
 - Fix: the menu item didn't appear on live Halaxy. The script starts early, before Halaxy has filled in who's signed in, so it decided the page wasn't Carl's. It now keeps looking for 20 seconds, and also reads the name in Halaxy's top bar.
@@ -47,6 +56,10 @@
 - New (Carl, 11 Nov 2026), the list only: Patients > Check-ins, Carl only for now. Patients last seen 3 weeks to 3 months ago, with nothing booked and their last appointment not cancelled or missed, whose latest note leaves treatment open-ended ("open return", "open appointment", "book again if needed", "see how things go", "come back if needed", "see as needed" and similar; negations cancel). Shows the wording found and a link to the note. Count on the menu. Note text is never kept, only which wording was found (kept a week). Sends nothing.
 
 ## Patient statuses
+
+### 0.2.2 (11 Nov 2026, beta)
+- Runs every 3 hours instead of every 30 minutes, and reads a patient's latest note again only after a new appointment or a change to its note: far fewer requests to Halaxy.
+- "Treatment finished" wording is the core library's, shared with Review requests (adds "independent with exercises" and "continue exercises independently").
 
 ### 0.2.1 (11 Nov 2026, beta)
 - The same timing fix as Insurer payments due 0.1.2: it keeps looking for Carl's sign-in for 20 seconds rather than deciding at once.
@@ -174,6 +187,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Feedback alerts
 
+### 0.1.2 (11 Nov 2026, beta)
+- Fix: could skip its checks if Halaxy filled in who's signed in late (now waits up to 20 seconds).
+
 ### 0.1.1 (11 Nov 2026, beta)
 - Task comments stamped "date time Feedback alerts:", one point per line starting "- " (core 0.1.27).
 
@@ -183,6 +199,10 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Never twice: the patient's tasks are checked for the response number first. Only the response number, score band and outcome are kept on the PC; names and answers are read from Halaxy when needed.
 
 ## Review requests
+
+### 0.5.1 (11 Nov 2026, beta)
+- Fix: could miss appearing if Halaxy filled in who's signed in late (now waits up to 20 seconds, like the newer scripts).
+- "Finished" wording and the calendar come from the core library. "See as needed" is now shown under its own name rather than as "discharged" (it still counts as finished). Patients are read again once.
 
 ### 0.5.0 (11 Nov 2026, beta, with core 0.1.24)
 - Feedback Request survey (Carl, 11 Nov 2026): the patient's latest response from this course of treatment, matched by name and checked against their date of birth. Excellent (32 to 35) counts for a review request; Below expected (25 or less) counts against. Shown in the reasons, with a Feedback survey link under Check first. Everyone is read again once, as the signs have changed.
@@ -218,6 +238,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Notes are read in the browser only; only the kinds of phrase found are kept, never the note text. Each patient's result is kept for a week; the count refreshes at most every 12 hours.
 
 ## Core library
+
+### 0.1.31 (11 Nov 2026, beta)
+- New shared parts, so scripts stop carrying their own copies: `UPC.user` (who's signed in, with the 20-second wait for Halaxy to fill it in, and initials), `UPC.storage` (per-PC working state), `UPC.calendar.appointments` (one standard calendar window per page, shared by Patient statuses, Open-ended patients and Review requests for 15 minutes) and `UPC.wording` (one set of note phrases: finished, open-ended, and the "not ..." rule).
 
 ### 0.1.30 (11 Nov 2026, beta)
 - New `UPC.invoice.payOffline(id, {method, date, amount, note})`: records a payment the way the invoice's Mark as Paid pop-up does, only if the invoice still has that much outstanding, and checks the outstanding went down by the amount. Used only by Bank statement.
@@ -473,6 +496,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Off until switched on per PC from the Tampermonkey menu (Forecourt lights: settings): clinic evenings, off time, minutes before sunset, reminder time, the timer's current on time, dates to skip, and a two-week preview. Halaxy-style pop-up with Done and Remind me later (an hour). Sunset is worked out on the PC: nothing is fetched.
 
 ## Ready to bill
+
+### 0.3.1 (11 Nov 2026, beta)
+- Fix: could miss appearing if Halaxy filled in who's signed in late (now waits up to 20 seconds).
 
 ### 0.3.0 (10 Nov 2026, beta)
 - Excess hold reads the patient's answer to "Excess amount:" on their Bupa or AXA Initial Assessment Form (the form nearest the start of the claim) and holds a new claim until the unbilled fees cover it. Shown as "patient-reported excess £ 250.00 (unconfirmed)" and used only to time billing. "None" or 0 means no hold. Aviva and WPA forms don't ask, and a missing or unreadable answer falls back to 2 fees. Two requests per new Bupa or AXA claim, cached for a day.
