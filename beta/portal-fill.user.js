@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy insurer portal fill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.6
+// @version      0.1.7
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
@@ -37,6 +37,8 @@
  *     provider, removes any pre-populated treatment, then adds one fee per treatment (Consultant rooms, 1 session,
  *     the fee), leaving Bupa's impairment and procedure code as they come.
  *   - Stops before submitting, and stops (saying why) at anything it doesn't expect. It never presses Submit.
+ *   - While it works, the page is covered (clicks and key presses blocked, Stop still works), and uncovered when it needs
+ *     you. A page that sits unchanged under the cover for a minute counts as a failure.
  *   - A fill that fails, in Halaxy or on the portal, sends Carl a task on the funder invoice, and the person filling is
  *     told he has been notified (Carl, 11 Nov 2026). Stopping it with the Stop button doesn't.
  */
@@ -45,7 +47,7 @@
   if (window.__hxPortalFill) return;
   window.__hxPortalFill = true;
 
-  const VERSION = '0.1.6';
+  const VERSION = '0.1.7';
   const KEY = 'portal-claim';
   const MAX_AGE = 4 * 3600e3;
   const PORTALS = {
@@ -351,8 +353,29 @@
       #upc-pf-panel .upc-pf-err { color: #b3261e; }
       #upc-pf-panel button { margin-top: 8px; font: inherit; padding: 4px 10px; border: 1px solid #c9cfdc; border-radius: 4px; background: #fff; cursor: pointer; }
       .upc-pf-check { outline: 3px solid #f0ad4e !important; outline-offset: 2px; }
+      #upc-pf-cover { position: fixed; inset: 0; z-index: 2147482999; background: rgba(29,36,51,.35); cursor: wait; }
+      #upc-pf-panel.upc-pf-busy { top: 50%; left: 50%; right: auto; transform: translate(-50%, -50%); width: 440px; font-size: 15px; padding: 18px 20px; }
     `;
+    // While the script works, the page is covered so a click or key press can't get in the way (Carl, 11 Nov 2026);
+    // the cover goes as soon as it needs you (log in, choose, check and submit) or stops. Stop stays clickable.
+    let cover = null, stuck = null;
+    function working(message) {
+      say(message);
+      panel.classList.add('upc-pf-busy');
+      if (!cover) {
+        cover = document.createElement('div');
+        cover.id = 'upc-pf-cover';
+        document.body.appendChild(cover);
+      }
+      try { if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur(); } catch (e) { /* ignore */ }
+      clearTimeout(stuck);
+      stuck = setTimeout(() => { if (cover) stop('The fill got stuck on this page (nothing happened for a minute).'); }, 60000);
+    }
+    document.addEventListener('keydown', (e) => { if (cover && e.isTrusted) { e.preventDefault(); e.stopPropagation(); } }, true);
     function say(message, error, done) {
+      clearTimeout(stuck);
+      if (cover) { cover.remove(); cover = null; }
+      if (panel) panel.classList.remove('upc-pf-busy');
       if (!panel) {
         const st = document.createElement('style');
         st.textContent = PANEL_CSS;
@@ -406,7 +429,7 @@
         if (!claim.membership) return stop('Halaxy has no membership number for this claim.');
         setValue(member, claim.membership);
         claim.status = 'filling'; claim.progress.member = true; await save();
-        say('Membership number entered. Opening the invoice form...');
+        working('Membership number entered. Opening the invoice form...');
         await sleep(300);
         go.click();
         return;
@@ -541,7 +564,7 @@
           return say('Choose the ' + missing.map((x) => x[1]).join(' and ') + ' for this fee (' + l.description + ', ' + l.date + ', £ ' + l.amount + '; highlighted' + codeNote + '), then press Save. The fill carries on.');
         }
         pr.stage = 'saving'; await save();
-        say('Adding treatment ' + ((pr.added || 0) + 1) + ' of ' + claim.lines.length + '...');
+        working('Adding treatment ' + ((pr.added || 0) + 1) + ' of ' + claim.lines.length + '...');
         await sleep(300);
         return saveBtn.click();
       }
@@ -551,12 +574,12 @@
         if (pr.stage === 'saving') { pr.added = (pr.added || 0) + 1; pr.stage = 'list'; await save(); }
         if (!pr.cleared) {
           const remove = [...document.querySelectorAll('a, button, input[type=submit]')].find((b) => visible(b) && /^remove( treatment)?$/i.test(clean(b.textContent || b.value)));
-          if (remove) { pr.stage = 'removing'; await save(); say('Removing a pre-populated treatment...'); return remove.click(); }
+          if (remove) { pr.stage = 'removing'; await save(); working('Removing a pre-populated treatment...'); return remove.click(); }
           pr.cleared = true; await save();
         }
         if ((pr.added || 0) < claim.lines.length) {
           pr.stage = 'adding'; await save();
-          say('Adding treatment ' + ((pr.added || 0) + 1) + ' of ' + claim.lines.length + '...');
+          working('Adding treatment ' + ((pr.added || 0) + 1) + ' of ' + claim.lines.length + '...');
           return addBtn.click();
         }
         const next = buttonByText(/^next$/i);
@@ -595,7 +618,7 @@
         setValue(first, claim.lines[0].date);
         setValue(pre, claim.authorisation);
         claim.status = 'filling'; pr.stage = 'setup'; await save();
-        say('Invoice number, first treatment date and pre-auth number entered...');
+        working('Invoice number, first treatment date and pre-auth number entered...');
         await sleep(300);
         return next.click();
       }
@@ -628,6 +651,7 @@
       if (!claim || claim.kind !== kind || Date.now() - claim.at > MAX_AGE || !/^(ready|filling|filled|submitted)$/.test(claim.status)) return;
       if (claim.status === 'submitted') return say('Submitted to ' + P.name + '. Back in Halaxy you\'ll be asked whether to mark ' + claim.number + ' Issued.', false, true);
       claim.progress = claim.progress || {};
+      working('Filling this page from Halaxy. Please wait, and don\'t click or type until it says it has finished.');
       try { await (kind === 'axa' ? axa() : bupa()); } catch (e) { console.error('[UPC portal fill]', e); await stop('Something went wrong: ' + (e.message || e) + '.'); }
     }
     const go = () => setTimeout(run, 700);
