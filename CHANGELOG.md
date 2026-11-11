@@ -12,6 +12,9 @@
 
 ## Insurer payments due
 
+### 0.1.2 (11 Nov 2026, beta)
+- Fix: the menu item didn't appear on live Halaxy. The script starts early, before Halaxy has filled in who's signed in, so it decided the page wasn't Carl's. It now keeps looking for 20 seconds, and also reads the name in Halaxy's top bar.
+
 ### 0.1.1 (11 Nov 2026, beta)
 - Renamed from Funder chaser (Carl's choice): the menu item, page and script name. Nothing else changed.
 
@@ -19,6 +22,9 @@
 - New (Carl, 10 and 11 Nov 2026): Finances > Funder chaser, Carl only for now. Insurer invoices (billed to the insurer itself) marked Issued that still have something to pay 30 days or more after their invoice date, oldest first, with a count on the menu. A remittance attached doesn't take an invoice off the list; only the payment does. Funder invoices still Active after 30 days are shown greyed (perhaps never submitted) and not counted. One request: Halaxy's Unpaid Invoices report, read back 18 months. Reads only; no tasks.
 
 ## Open-ended patients
+
+### 0.1.3 (11 Nov 2026, beta)
+- Fix: the menu item didn't appear on live Halaxy. The script starts early, before Halaxy has filled in who's signed in, so it decided the page wasn't Carl's. It now keeps looking for 20 seconds, and also reads the name in Halaxy's top bar.
 
 ### 0.1.2 (11 Nov 2026, beta)
 - Renamed from Check-ins (Carl's choice): the menu item, page and script name.
@@ -30,6 +36,9 @@
 - New (Carl, 11 Nov 2026), the list only: Patients > Check-ins, Carl only for now. Patients last seen 3 weeks to 3 months ago, with nothing booked and their last appointment not cancelled or missed, whose latest note leaves treatment open-ended ("open return", "open appointment", "book again if needed", "see how things go", "come back if needed", "see as needed" and similar; negations cancel). Shows the wording found and a link to the note. Count on the menu. Note text is never kept, only which wording was found (kept a week). Sends nothing.
 
 ## Patient statuses
+
+### 0.2.1 (11 Nov 2026, beta)
+- The same timing fix as Insurer payments due 0.1.2: it keeps looking for Carl's sign-in for 20 seconds rather than deciding at once.
 
 ### 0.2.0 (11 Nov 2026, beta)
 - Automatic (Carl, 11 Nov 2026: "lets just automate this now and remove the menu"): statuses are updated in the background while Carl is signed in, at most every 30 minutes, at most 40 a run. The menu item and page are gone; "Patient statuses: recent changes" (Script settings or the Tampermonkey menu) lists the last 100 changes and any that failed.

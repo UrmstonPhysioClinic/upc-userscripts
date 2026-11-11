@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy open-ended patients (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.2
+// @version      0.1.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/check-ins.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/check-ins.user.js
@@ -29,7 +29,7 @@
   if (window.__hxCheckIns) return;
   window.__hxCheckIns = true;
 
-  const VERSION = '0.1.2';
+  const VERSION = '0.1.3';
   const ROUTE = 'upc-check-ins';
   const MENU_CLS = 'upc-ci-menu';
   const ALLOWED = ['Carl Healy'];
@@ -54,9 +54,21 @@
     const named = String(h.pracName || (h.CalendarDefault || {}).pracName || '').trim();
     if (named) return named;
     const btn = document.getElementById('activeUser');
-    return btn ? btn.textContent.replace(/\s+/g, ' ').trim() : '';
+    if (btn && btn.textContent.trim()) return btn.textContent.replace(/\s+/g, ' ').trim();
+    const el = [...document.querySelectorAll('header *, nav *, .navbar *, #top *, #headerWrapper *')]
+      .find((e) => !e.children.length && ALLOWED.some((n) => n.toLowerCase() === e.textContent.trim().toLowerCase()));
+    return el ? el.textContent.trim() : '';
   }
   const allowed = () => ALLOWED.some((n) => n.toLowerCase() === userName().toLowerCase());
+  // Halaxy may not have filled in who's signed in when this script starts (it starts early in the load order: live,
+  // 11 Nov 2026), so keep looking for 20 seconds before deciding it isn't for this person.
+  function whenAllowed(fn) {
+    if (allowed()) return fn();
+    const t0 = Date.now();
+    const timer = setInterval(() => {
+      if (allowed()) { clearInterval(timer); fn(); } else if (Date.now() - t0 > 20000) clearInterval(timer);
+    }, 500);
+  }
 
   // ------------------------------------------------------------------ open-ended wording
 
@@ -293,8 +305,9 @@
     setTimeout(refreshCount, 6000);
     setInterval(refreshCount, 30 * 60e3);
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
-  else start();
+  const begin = () => { if (U()) whenAllowed(start); else start(); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', begin, { once: true });
+  else begin();
 
   window.upcCheckIns = { version: VERSION, wording, check, allowed };
 })();

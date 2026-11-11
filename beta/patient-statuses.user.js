@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy patient statuses (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.0
+// @version      0.2.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
@@ -39,7 +39,7 @@
   if (window.__hxPatientStatuses) return;
   window.__hxPatientStatuses = true;
 
-  const VERSION = '0.2.0';
+  const VERSION = '0.2.1';
   const ALLOWED = ['Carl Healy'];
   const DAY = 86400e3;
   const GAP_DAYS = 42;          // Carl, 11 Nov 2026: a gap counts; 6 weeks
@@ -67,9 +67,21 @@
     const named = String(h.pracName || (h.CalendarDefault || {}).pracName || '').trim();
     if (named) return named;
     const btn = document.getElementById('activeUser');
-    return btn ? btn.textContent.replace(/\s+/g, ' ').trim() : '';
+    if (btn && btn.textContent.trim()) return btn.textContent.replace(/\s+/g, ' ').trim();
+    const el = [...document.querySelectorAll('header *, nav *, .navbar *, #top *, #headerWrapper *')]
+      .find((e) => !e.children.length && ALLOWED.some((n) => n.toLowerCase() === e.textContent.trim().toLowerCase()));
+    return el ? el.textContent.trim() : '';
   }
   const allowed = () => ALLOWED.some((n) => n.toLowerCase() === userName().toLowerCase());
+  // Halaxy may not have filled in who's signed in when this script starts (it starts early in the load order: live,
+  // 11 Nov 2026), so keep looking for 20 seconds before deciding it isn't for this person.
+  function whenAllowed(fn) {
+    if (allowed()) return fn();
+    const t0 = Date.now();
+    const timer = setInterval(() => {
+      if (allowed()) { clearInterval(timer); fn(); } else if (Date.now() - t0 > 20000) clearInterval(timer);
+    }, 500);
+  }
 
   // Treatment finished, in the last note. "See as needed" and similar open-ended wording don't count: those patients
   // are discharged by the 6-week gap instead.
@@ -289,8 +301,9 @@
     setTimeout(tick, 8000);
     setInterval(tick, 5 * 60e3);
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
-  else start();
+  const begin = () => { if (U()) whenAllowed(start); else start(); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', begin, { once: true });
+  else begin();
 
   window.upcPatientStatuses = { version: VERSION, saysFinished, check, runOnce, allowed };
 })();
