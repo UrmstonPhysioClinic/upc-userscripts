@@ -65,19 +65,15 @@ The channel is saved on each PC, not synced, so Firefox Sync never moves a clini
 ## Tests
 
 ```
-python3 tests/check_scripts.py                                             # every script: headers, channels, syntax, script lists
-python3 tests/loader/test_loader.py                                        # the loader, against a mock GitHub and Halaxy
-python3 tests/alerts/test_alerts.py                                        # Alerts, two tabs
-python3 tests/health-check/test_health_check.py                            # health check, against a breakable mock Halaxy
-python3 tests/remittances/test_remittances.py                              # remittances and core, invented remittances and a mock Halaxy
-python3 tests/calendar-controls/test_calendar_refresh.py                   # calendar controls' refresh, on a minimal mock calendar
-python3 tests/bill-funder/test_bill_funder.py                              # bill funder, one invented patient covering every rule
-python3 tests/outstanding-actions/test_outstanding_actions.py              # beta
-python3 tests/outstanding-actions/test_outstanding_actions.py stable/outstanding-actions.user.js
+python3 tools/run_tests.py                     # everything: check_scripts.py, then every tests/<script>/test_*.py
+python3 tools/run_tests.py remittances         # only the tests in these folders
+python3 tests/check_scripts.py                 # every script: headers, channels, syntax, script lists, no identifiers
 ```
 
-Needs Python 3 and Node.js; the other tests also need Playwright with Chromium. The remittances test also needs reportlab and Pillow, and installs its PDF and text recognition libraries with npm on first run. The mocks contain no patient data.
+GitHub runs all of them on every pull request (`.github/workflows/tests.yml`). Each test runs the beta copy against a mock Halaxy page with invented data; a few take the stable copy as an argument (`python3 tests/alerts/test_alerts.py stable/alerts.user.js`).
+
+Needs Python 3 with Playwright (Chromium), reportlab, Pillow and astral, and Node.js with npm (the PDF, text recognition and jQuery libraries some tests serve are installed into their test folder on first run).
 
 ## Background
 
-How Halaxy works under the hood (endpoints, data fields, write flows) is documented in the Halaxy reference in the Urmston Physio Clinic Claude project.
+The Urmston Physio Clinic Claude project holds the system specification (`upc-scripts-spec.md`), the Halaxy mappings our scripts rely on, confirmed on live Halaxy (`halaxy-mappings.md`), and background on how Halaxy works (`halaxy-reference.md`).

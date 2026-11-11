@@ -9,7 +9,7 @@ Tampermonkey userscripts for Halaxy (eu.halaxy.com), used at Urmston Physio Clin
 - Work on a branch and open a pull request. Never push to `main` directly. Claude merges its own pull requests once the checks pass; Carl does not handle pull requests or merges.
 - Changes go to `beta/` first. Promote to `stable/` only when Carl confirms beta works on live Halaxy. Stable and beta files differ only in `@name` (" (beta)" suffix) and `@updateURL`/`@downloadURL`.
 - Bump `@version` (and the `VERSION` constant) in every changed script, then run `python3 tools/build_manifest.py`. The loader only fetches a script when its version in `scripts.json` changes.
-- Run `python3 tests/check_scripts.py` and the relevant test in `tests/` before opening a PR (`tests/loader/test_loader.py` for any loader change).
+- Run `python3 tests/check_scripts.py` and the relevant test in `tests/` before opening a PR (`tests/loader/test_loader.py` for any loader change); `python3 tools/run_tests.py` runs everything. GitHub runs all tests on every PR: merge only when they pass.
 - The PCs install only `loader/upc-loader.user.js`. Never ask Carl to install a script individually: adding it to `stable/` and `beta/` (and the manifests) is the install.
 
 ## Conventions
@@ -28,7 +28,7 @@ Tampermonkey userscripts for Halaxy (eu.halaxy.com), used at Urmston Physio Clin
 - Pinned layers stay below Halaxy's overlays (z-index under 100; Halaxy overlays start at 100+). Our pop-ups use 2990, just below Halaxy's own pop-ups (3000).
 - Reads only, unless a feature explicitly needs writes. Writes drive Halaxy's own pop-ups (GET form, read `form[_token]`, POST) and ask the user to confirm first.
 - User-facing text: plain British English, no em dashes.
-- Data facts (endpoints, field meanings) live in the Halaxy reference doc in the Claude project. Key ones:
+- Data facts (endpoints, forms, field meanings) live in `halaxy-mappings.md` in the Claude project (confirmed on live Halaxy; add to it whenever a script relies on something new); background in `halaxy-reference.md`; the whole system in `upc-scripts-spec.md`. Key ones:
   - `calendar/json`: `appointmentStatus` blank for normal appointments, filled only for exceptions (`cancelled`, `did-not-attend`). `requestStatus` is the online booking request status, not the appointment status.
   - `noteStatusCss`: `empty-` / `draft-` / `published-clinical-note`.
   - Funder is not in calendar events; classify by fee colour via `funder/fee/data`.
