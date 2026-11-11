@@ -252,7 +252,7 @@ async def bupa(route):
                                     "<button type='submit'>Next</button></form>", False))
     if p == '/providers-online/claimSetup.do':
         B['setup'] = f
-        return await html(bupa_page("<h2>Pre-Auth Summary</h2><h3>Membership number: 0000000000</h3><form id='createClaimForm' method='post' action='/providers-online/memberSearch.do?method=search'>"
+        return await html(bupa_page("<h2>Pre-Auth Summary</h2><h3>Membership number: 0000000000</h3><form id='createClaimForm' method='post' action='/providers-online/memberSearch.do?method=search'%s>" % (" onsubmit='return false'" if B.get('stall') else '') +
                                     "<button type='submit' name='go' value='previous'>Previous</button><button type='submit' name='go' value='next'>Next</button></form>", False))
     if p == '/providers-online/memberSearch.do':
         if q.get('method') == ['search']:
@@ -384,6 +384,7 @@ async def main():
         check('AXA: lines after the last left empty', vals.get('desc3') == '' and 'more3' not in vals, (vals.get('desc3'), vals.get('more3')))
         check('AXA: the condition highlighted to check', await portal.evaluate("document.getElementById('cond').classList.contains('upc-pf-check')"))
         check('AXA: never submitted by the script', 'submitted' not in S['axa'])
+        check('AXA: the page is uncovered once filled, for checking', await portal.evaluate("!document.getElementById('upc-pf-cover') && !document.getElementById('upc-pf-panel').classList.contains('upc-pf-busy')"))
         await portal.click('button[type=submit]')
         await portal.wait_for_function("document.getElementById('upc-pf-panel') && /Submitted to AXA/.test(document.getElementById('upc-pf-panel').textContent)", timeout=30000)
         check('AXA: submitted noted', (S['gm'].get('shared:portal-claim') or {}).get('status') == 'submitted')
@@ -407,6 +408,7 @@ async def main():
         perr = []
         portal.on('pageerror', lambda e: perr.append(str(e)))
         await portal.wait_for_timeout(3000)
+        check('Bupa: not covered while waiting for the log-in', await portal.evaluate("!document.getElementById('upc-pf-cover')"))
         check('Bupa: leaves the log-in to the user', S['bupa'].get('logins', 0) == 0 and await portal.evaluate("!document.getElementById('upc-pf-panel') || /Log in to Bupa/.test(document.getElementById('upc-pf-panel').textContent)"))
         await portal.fill('input[name=u]', 'tester')
         await portal.fill('input[name=pw]', 'not-a-real-password')
@@ -453,6 +455,24 @@ async def main():
         check('a task for Carl on the funder invoice, with the reason', len(t) == 1 and t[0]['title'] == 'Portal fill stopped: AXA, UPC-01111' and t[0]['who'] == ['31']
               and 'charge per unit not found' in t[0]['comment'] and 'shared:portal-claim' not in S['gm'], t)
         AXA_FORM_OVERRIDE.clear()
+        await portal.close()
+
+        # While working, the page is covered and a real click doesn't reach it; after a minute stuck, the fill gives up
+        S['bupa'].update({'logged': True, 'treatments': [], 'prepopulated': False, 'refuseSave': False, 'submitted': False, 'stall': True})
+        S['tasks'][9002] = []
+        await pg2.bring_to_front()
+        async with ctx.expect_page() as newp:
+            await pg2.click('[data-upc-portal-fill] button')
+        portal = await newp.value
+        await portal.wait_for_function("/Pre-Auth Summary/.test(document.body.innerText) && !!document.getElementById('upc-pf-cover')", timeout=60000)
+        await portal.wait_for_timeout(1500)   # Next pressed; nothing happens
+        blocked = await portal.evaluate("(() => { const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === 'Next'); const r = b.getBoundingClientRect(); const top = document.elementFromPoint(r.left + 5, r.top + 5); return top && top.id; })()")
+        check('while working: the page is covered and clicks land on the cover', blocked == 'upc-pf-cover', blocked)
+        await portal.wait_for_function("document.getElementById('upc-pf-panel') && /got stuck/.test(document.getElementById('upc-pf-panel').textContent) && !document.getElementById('upc-pf-cover')", timeout=90000)
+        check('stuck under the cover for a minute: the fill stops and uncovers', True)
+        await pg2.wait_for_function("/has been sent a task/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=60000)
+        S['bupa']['stall'] = False
+        S['tasks'][9002] = []
         await portal.close()
 
         # Bupa refuses a treatment (an error message on the form): the fill stops with Bupa's words, and Carl gets a task
