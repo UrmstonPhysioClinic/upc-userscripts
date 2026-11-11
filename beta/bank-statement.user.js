@@ -18,13 +18,16 @@
  *
  *  - The statement: a Starling Bank business statement PDF (layout from the September 2026 statement), read in the
  *    browser with pdf.js; nothing is uploaded or kept. The parse is checked against the statement's running balance.
- *  - Insurer credits: money in whose details name an insurer (Bupa, AXA, WPA, Aviva and others). A transfer from the
- *    clinic's old account whose reference names an insurer counts as that insurer's (Carl, 11 Nov 2026).
+ *  - Insurer credits: money in whose details name an insurer (Bupa, AXA, WPA, Aviva and others), or name one of our
+ *    unpaid insurer invoices (UPC-...). A transfer from the clinic's old account whose reference names an insurer counts
+ *    as that insurer's (Carl, 11 Nov 2026). Patients' invoices are not used.
  *  - Candidates: the insurer's unpaid invoices billed to it (Halaxy's Unpaid Invoices report, one request), dated on or
  *    before the credit. Remittances has already settled any excess, so their balances are what was paid.
- *  - Match, in this order: invoices sharing the same remittance (Remittances attaches it to every invoice it covers,
+ *  - Match, in this order: the invoice(s) whose number (UPC-...) is in the bank reference, if they add up to it (Carl:
+ *    a reused old reference doesn't fit, so it falls through to the rest); invoices sharing the same remittance (Remittances attaches it to every invoice it covers,
  *    with the comment "Insurer reference ...; remittance total ... over N invoices") that add up to it, preferring the
- *    one whose reference is the bank reference; else one invoice whose balance is the credit; else any set of invoices
+ *    one whose reference is the bank reference, then one dated within a few days of the payment (Carl: the strongest
+ *    sign; a remittance far from the bank date is offered to tick, not ticked); else one invoice whose balance is the credit; else any set of invoices
  *    that adds up to it. One answer is ticked; several are offered to choose from; none says so.
  *  - Record (after confirming): each invoice is marked paid with its balance, "Direct Deposit" (Carl), the bank date,
  *    and a note naming the insurer, bank date and reference (core UPC.invoice.payOffline, which checks the result).
@@ -41,6 +44,7 @@
   const ALLOWED = ['Carl Healy'];
   const METHOD = 'Direct Deposit';
   const LOOK_BACK_MONTHS = 18;
+  const NEAR_BEFORE = 3, NEAR_AFTER = 14;   // days the bank date may be before / after the remittance's date
   const PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/';
   const KEY = 'upc-bank:';
   const INSURERS = [
@@ -61,6 +65,9 @@
   const isoMs = (iso) => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d).getTime(); };
   const insurerOf = (text) => (INSURERS.find(([, re]) => re.test(String(text || ''))) || [])[0] || '';
   const refOf = (desc) => { const m = String(desc).match(/\(([^()]*)\)/g); return m ? m[m.length - 1].slice(1, -1).trim() : ''; };
+  // Our invoice numbers in a bank reference ("UPC-" then digits, with or without the dash, or a space), as digits without leading zeros.
+  const numbersIn = (text) => [...String(text || '').matchAll(/\bUPC[\s-]?0*(\d{2,})\b/gi)].map((m) => m[1]);
+  const numberOf = (inv) => (String(inv || '').match(/UPC-?0*(\d+)/i) || [])[1] || '';
   const payerIsFunder = (payer, funder) => { const p = String(payer).toLowerCase(), f = String(funder).toLowerCase(); return !!p && !!f && (p.includes(f) || f.includes(p)); };
 
   function userName() {
@@ -148,7 +155,9 @@
       if (bal !== null && r.balance !== null) { checked++; if (bal + (r.in || 0) - (r.out || 0) !== r.balance) bad++; }
       if (r.balance !== null) bal = r.balance; else if (bal !== null) bal += (r.in || 0) - (r.out || 0);
     });
-    const credits = rows.filter((r) => r.in > 0 && insurerOf(r.desc)).map((r) => ({ key: r.date + '|' + r.in + '|' + refOf(r.desc), date: r.date, insurer: insurerOf(r.desc), desc: r.desc, ref: refOf(r.desc), amount: r.in }));
+    // Insurer credits, and credits naming one of our invoice numbers (kept only if it's an insurer invoice; see match).
+    const credits = rows.filter((r) => r.in > 0 && (insurerOf(r.desc) || numbersIn(r.desc).length))
+      .map((r) => ({ key: r.date + '|' + r.in + '|' + refOf(r.desc), date: r.date, insurer: insurerOf(r.desc), desc: r.desc, ref: refOf(r.desc), amount: r.in, numbers: numbersIn(r.desc) }));
     const dates = rows.map((r) => r.date).sort();
     return { rows: rows.length, from: dates[0], to: dates[dates.length - 1], checked, bad, credits };
   }
@@ -185,7 +194,12 @@
       const title = (row.match(/\b([A-Za-z]+ remittance(?: \d{4}-\d\d-\d\d| \d\d-[A-Za-z]{3}-\d{4})?)/) || [])[1];
       const file = (row.match(/\bpayment\b.*?([\w .()-]+\.pdf)\b/i) || [])[1];
       const key = ref ? 'reference ' + ref : title || (file && file.trim());
-      if (key && !out.some((x) => x.key === key)) out.push({ key, ref: ref || '' });
+      // The remittance's own date is in the title Remittances gives it ("Bupa remittance 2026-10-08").
+      const iso = title && (title.match(/(\d{4})-(\d\d)-(\d\d)$/) || []);
+      const hx = title && (title.match(/(\d\d)-([A-Za-z]{3})-(\d{4})$/) || []);
+      const date = iso && iso[1] ? iso[1] + '-' + iso[2] + '-' + iso[3]
+        : hx && hx[1] && MON.indexOf(hx[2]) >= 0 ? hx[3] + '-' + String(MON.indexOf(hx[2]) + 1).padStart(2, '0') + '-' + hx[1] : '';
+      if (key && !out.some((x) => x.key === key)) out.push({ key, ref: ref || '', date });
     });
     return out;
   }
@@ -200,8 +214,8 @@
     const lines = await U().reports.unpaidLines(U().dayLabel(from.getTime()));
     const byId = new Map();
     lines.forEach((l) => {
-      if (!l.invoiceId || !payerIsFunder(l.payer, l.funder) || !insurerOf(l.funder + ' ' + l.payer)) return;
-      if (!byId.has(l.invoiceId)) byId.set(l.invoiceId, { id: String(l.invoiceId), number: l.invoice, when: U().parseDay(l.date), insurer: insurerOf(l.funder + ' ' + l.payer), balance: l.balance, status: l.invoiceStatus });
+      if (!l.invoiceId || !payerIsFunder(l.payer, l.funder) || /self.?fund/i.test(l.funder)) return;
+      if (!byId.has(l.invoiceId)) byId.set(l.invoiceId, { id: String(l.invoiceId), number: l.invoice, when: U().parseDay(l.date), insurer: insurerOf(l.funder + ' ' + l.payer) || l.funder, balance: l.balance, status: l.invoiceStatus });
     });
     const open = [...byId.values()].filter((i) => i.balance > 0 && i.when !== null);
     const done = store.get('done', {});
@@ -212,8 +226,22 @@
     for (const c of credits) {
       n++;
       const r = Object.assign({}, c, { state: 'none', options: [] });
+      // 0. The bank reference names our invoice(s) and they add up to the payment. A named invoice that doesn't fit (an
+      //    old reference reused, Carl 11 Nov 2026) is set aside and the payment matched by amount and date as usual.
+      const named = c.numbers.map((n) => open.find((i) => numberOf(i.number) === n && !used.has(i.id))).filter(Boolean);
+      const namedFits = named.length === c.numbers.length && named.length && named.reduce((t, i) => t + i.balance, 0) === c.amount &&
+        named.every((i) => i.when <= isoMs(c.date) + 86400e3) && (!c.insurer || named.every((i) => i.insurer === c.insurer));
+      if (!c.insurer && namedFits) r.insurer = named[0].insurer;
+      if (!r.insurer && !done[c.key]) continue;   // names an invoice that isn't an unpaid insurer invoice (a patient paying, say): not ours here
       results.push(r);
-      if (done[c.key]) { r.state = 'done'; r.doneAt = done[c.key].at; r.invoices = done[c.key].invoices; continue; }
+      if (done[c.key]) { r.state = 'done'; r.doneAt = done[c.key].at; r.invoices = done[c.key].invoices; if (!r.insurer) r.insurer = (done[c.key].insurer || ''); continue; }
+      if (namedFits) {
+        r.state = 'matched'; r.pick = 0; r.options = [named];
+        r.how = 'the invoice number' + (named.length === 1 ? '' : 's') + ' in the bank reference';
+        named.forEach((i) => used.add(i.id));
+        continue;
+      }
+      const setAside = c.numbers.length ? 'the bank reference names ' + (String(c.desc).match(/\bUPC[\s-]?\d{2,}\b/gi) || []).join(', ') + ', which doesn\'t fit (paid already, or another amount); ' : '';
       say('Matching ' + c.insurer + ' ' + fmt(c.amount) + ' (' + n + ' of ' + credits.length + ')...');
       const cand = open.filter((i) => i.insurer === c.insurer && !used.has(i.id) && i.when <= isoMs(c.date) + 86400e3).sort((a, b) => b.when - a.when);
       // 1. The invoices covered by one remittance (Remittances attaches the same PDF to each) that add up to it: the
@@ -223,15 +251,26 @@
       for (const i of recent) {
         let keys = [];
         try { keys = await remittancesOf(i); } catch (e) { keys = []; }
-        keys.forEach((k) => { if (!groups.has(k.key)) groups.set(k.key, { key: k.key, ref: k.ref, list: [] }); groups.get(k.key).list.push(i); });
+        keys.forEach((k) => { if (!groups.has(k.key)) groups.set(k.key, { key: k.key, ref: k.ref, date: k.date, list: [] }); groups.get(k.key).list.push(i); });
       }
       let byRemit = [...groups.values()].filter((g) => g.list.reduce((t, i) => t + i.balance, 0) === c.amount);
-      // The bank reference being the remittance's own reference settles it.
+      // The bank reference being the remittance's own reference settles it. Otherwise the payment usually reaches the
+      // bank within a few days of the remittance's date (Carl, 11 Nov 2026): a remittance in that window is preferred,
+      // and one far from it is only offered, not ticked.
+      byRemit.forEach((g) => { g.gap = g.date ? Math.round((isoMs(c.date) - isoMs(g.date)) / 86400e3) : null; g.near = g.gap !== null && g.gap >= -NEAR_BEFORE && g.gap <= NEAR_AFTER; });
       const sameRef = byRemit.filter((g) => g.ref && c.ref && normRef(c.ref).includes(normRef(g.ref)));
+      const near = byRemit.filter((g) => g.near);
       if (sameRef.length === 1) byRemit = sameRef;
+      else if (near.length === 1) byRemit = near;
+      const dated = (g) => g.date ? ', dated ' + isoLabel(g.date) + (g.gap === 0 ? ', the day of the payment' : ', ' + Math.abs(g.gap) + ' day' + (Math.abs(g.gap) === 1 ? '' : 's') + (g.gap > 0 ? ' before' : ' after') + ' the payment') : '';
       const single = cand.filter((i) => i.balance === c.amount);
-      if (byRemit.length === 1) { r.state = 'matched'; r.how = 'the invoices on the remittance with ' + byRemit[0].key + (sameRef.length === 1 ? ' (the same reference as the bank)' : ''); r.options = [byRemit[0].list]; }
-      else if (byRemit.length > 1) { r.state = 'choose'; r.how = 'more than one remittance adds up to it'; r.options = byRemit.map((g) => g.list); }
+      if (byRemit.length === 1) {
+        const g = byRemit[0];
+        const sure = sameRef.length === 1 || g.near || !g.date;
+        r.state = sure ? 'matched' : 'choose';
+        r.how = (sure ? '' : 'check the date: ') + 'the invoices on the remittance with ' + g.key + dated(g) + (sameRef.length === 1 ? ' (the same reference as the bank)' : '');
+        r.options = [g.list];
+      } else if (byRemit.length > 1) { r.state = 'choose'; r.how = 'more than one remittance adds up to it'; r.options = byRemit.map((g) => g.list); r.labels = byRemit.map((g) => g.key + dated(g)); }
       else if (single.length === 1) { r.state = 'matched'; r.how = 'one invoice for the whole amount'; r.options = [single]; }
       else {
         const sets = single.length > 1 ? single.map((i) => [i]) : subsets(recent.slice(0, 24), c.amount, 4);
@@ -239,6 +278,7 @@
         else if (sets.length) { r.state = 'choose'; r.how = 'more than one set of invoices adds up to it'; r.options = sets; }
         else r.how = 'no unpaid ' + c.insurer + ' invoices add up to it (has the remittance been through Remittances?)';
       }
+      if (setAside) r.how = setAside + (r.how || '');
       if (r.state === 'matched') r.options[0].forEach((i) => used.add(i.id));
       r.pick = r.state === 'matched' ? 0 : null;
     }
@@ -258,7 +298,7 @@
       paid.push({ id: i.id, number: i.number, amount: i.balance });
     }
     const done = store.get('done', {});
-    done[r.key] = { at: Date.now(), invoices: paid };
+    done[r.key] = { at: Date.now(), invoices: paid, insurer: r.insurer };
     store.set('done', done);
     r.state = 'done'; r.doneAt = Date.now(); r.invoices = paid;
   }
@@ -305,7 +345,7 @@
             if (r.state === 'done') { inv = (r.invoices || []).map((i) => esc(i.number) + ' ' + fmt(i.amount)).join(', '); act = '<span class="upc-ok">Recorded ' + esc(U().dayLabel(r.doneAt)) + '</span>'; }
             else if (r.state === 'matched') { inv = '<div class="upc-bank-set">' + setHtml(r, 0) + '</div><div class="text-muted">' + esc(r.how) + '</div>'; act = '<button type="button" class="btn btn-outline-primary-light" data-rec="' + k + '"' + (state.busy ? ' disabled' : '') + '>Record</button>'; }
             else if (r.state === 'choose') {
-              inv = '<div class="text-muted">' + esc(r.how) + ': choose one</div>' + r.options.map((o, j) => '<label class="upc-bank-set d-block"><input type="radio" name="upc-bank-' + k + '" data-pick="' + k + ':' + j + '"' + (r.pick === j ? ' checked' : '') + '> ' + setHtml(r, j) + '</label>').join('');
+              inv = '<div class="text-muted">' + esc(r.how) + ': choose one</div>' + r.options.map((o, j) => '<label class="upc-bank-set d-block"><input type="radio" name="upc-bank-' + k + '" data-pick="' + k + ':' + j + '"' + (r.pick === j ? ' checked' : '') + '> ' + setHtml(r, j) + (r.labels && r.labels[j] ? ' <span class="text-muted">(' + esc(r.labels[j]) + ')</span>' : '') + '</label>').join('');
               act = r.pick !== null ? '<button type="button" class="btn btn-outline-primary-light" data-rec="' + k + '"' + (state.busy ? ' disabled' : '') + '>Record</button>' : '';
             } else inv = '<span class="text-muted">Not matched: ' + esc(r.how || '') + '</span>';
             if (r.error) act += '<div class="upc-err">' + esc(r.error) + '</div>';

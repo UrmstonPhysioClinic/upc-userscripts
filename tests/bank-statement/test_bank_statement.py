@@ -46,9 +46,14 @@ TX = [
     ('05/10/2026', 'DIRECT CREDIT', 'Bupa (2455419)', 12000, None),
     ('08/10/2026', 'DIRECT DEBIT', 'Energy Supplier', None, 9000),
     ('12/10/2026', 'DIRECT CREDIT', 'Axa Health Service (GB33AXA0001)', 7500, None),
+    ('15/10/2026', 'FASTER PAYMENT', 'HEALTH TRUST PAYMENTS (UPC-0961)', 4500, None),
+    ('16/10/2026', 'FASTER PAYMENT', 'J SMITH (UPC0905)', 12000, None),
+    ('18/10/2026', 'DIRECT CREDIT', 'Bupa (UPC-0800)', 3500, None),
     ('20/10/2026', 'FASTER PAYMENT', 'URMSTON PHYSIO CLINIC (WPA)', 9000, None),
     ('25/10/2026', 'DIRECT CREDIT', 'Aviva Health (AV778812)', 6000, None),
     ('28/10/2026', 'DIRECT CREDIT', 'Vitality Health (VH1001)', 5500, None),
+    ('29/10/2026', 'DIRECT CREDIT', 'Cigna Healthcare (CG55)', 4400, None),
+    ('29/10/2026', 'DIRECT CREDIT', 'Simplyhealth (SH12)', 3300, None),
     ('30/10/2026', 'ONLINE PAYMENT', 'Landlord Rent October', None, 80000),
 ]
 
@@ -102,6 +107,15 @@ def fresh():
         931: ['Aviva', 'Aviva', '01-Sep-2026', 2000, []],              # 931 + 932 or 931 + 933: choose
         932: ['Aviva', 'Aviva', '02-Sep-2026', 4000, []],
         933: ['Aviva', 'Aviva', '03-Sep-2026', 4000, []],
+        961: ['Health Trust', 'Health Trust', '01-Oct-2026', 4500, []],   # named in the bank reference; an insurer not on our list
+        907: ['Bupa', 'Bupa', '10-Oct-2026', 3500, []],                   # paid with a reused old reference (UPC-0800, paid long ago)
+        # Vitality: two remittances without a reference add up; the one dated 4 days before the payment wins
+        941: ['Vitality', 'Vitality', '01-Oct-2026', 2500, [('Vitality remittance 2026-10-24', 'Remittance total £ 55.00 over 2 invoices')]],
+        942: ['Vitality', 'Vitality', '02-Oct-2026', 3000, [('Vitality remittance 2026-10-24', 'Remittance total £ 55.00 over 2 invoices')]],
+        944: ['Vitality', 'Vitality', '01-Jun-2026', 2000, [('Vitality remittance 2026-07-01', 'Remittance total £ 55.00 over 2 invoices')]],
+        945: ['Vitality', 'Vitality', '02-Jun-2026', 3500, [('Vitality remittance 2026-07-01', 'Remittance total £ 55.00 over 2 invoices')]],
+        # Simplyhealth: the only remittance that adds up is months away from the payment: offered, not ticked
+        951: ['Simplyhealth', 'Simplyhealth', '01-May-2026', 3300, [('Simplyhealth remittance 2026-06-01', 'Remittance total £ 33.00 over 1 invoice')]],
     }
 
 
@@ -219,26 +233,37 @@ async def main():
         await pg.goto(URL)
         rows = await open_statement(pg, pdf)
         info = await pg.evaluate("document.querySelector('[data-upc-bank-statement] p.text-muted').textContent")
-        check('statement read and checked against the running balance', '9 transactions, 01-Oct-2026 to 30-Oct-2026' in info and 'Read correctly' in info, info)
-        by = {r['cells'][1]: r for r in rows}
-        check('only insurer credits, in date order', [r['cells'][1] for r in rows] == ['Bupa', 'AXA', 'WPA', 'Aviva', 'Vitality'], [r['cells'][:4] for r in rows])
+        check('statement read and checked against the running balance', '14 transactions, 01-Oct-2026 to 30-Oct-2026' in info and 'Read correctly' in info, info)
+        by = {}
+        for r in rows:
+            by.setdefault(r['cells'][1], r)
+        check('only insurer credits, in date order', [r['cells'][1] for r in rows] == ['Bupa', 'AXA', 'Health Trust', 'Bupa', 'WPA', 'Aviva', 'Vitality', 'Cigna', 'Simplyhealth'], [r['cells'][:4] for r in rows])
         check('reference and amount shown', by['Bupa']['cells'][2:4] == ['2455419', '£ 120.00'], by['Bupa']['cells'])
         check('shared remittance first, the one with the bank\'s reference (not another remittance or the single £ 120.00 invoice)', 'UPC-0901' in by['Bupa']['cells'][4] and 'UPC-0902' in by['Bupa']['cells'][4]
-              and 'UPC-0903' not in by['Bupa']['cells'][4] and 'reference 2455419 (the same reference as the bank)' in by['Bupa']['cells'][4], by['Bupa']['cells'])
+              and 'UPC-0903' not in by['Bupa']['cells'][4] and 'reference 2455419, dated 30-Sep-2026, 5 days before the payment (the same reference as the bank)' in by['Bupa']['cells'][4], by['Bupa']['cells'])
         check('one invoice for the whole amount; one dated after the credit left out', 'UPC-0911' in by['AXA']['cells'][4] and 'UPC-0912' not in by['AXA']['cells'][4] and 'one invoice' in by['AXA']['cells'][4], by['AXA']['cells'])
         check('transfer from the old account naming WPA: the only set that adds up', 'UPC-0921' in by['WPA']['cells'][4] and 'UPC-0922' in by['WPA']['cells'][4] and 'UPC-0923' not in by['WPA']['cells'][4], by['WPA']['cells'])
         check('several answers: offered to choose, nothing ticked', by['Aviva']['radios'] == 2 and not by['Aviva']['rec'] and 'choose' in by['Aviva']['cells'][4], by['Aviva'])
-        check('no answer: says so, greyed', by['Vitality']['off'] and 'Not matched' in by['Vitality']['cells'][4], by['Vitality'])
+        v = by['Vitality']['cells'][4]
+        check('no reference: the remittance dated near the payment wins', 'UPC-0941' in v and 'UPC-0942' in v and 'UPC-0944' not in v and 'dated 24-Oct-2026, 4 days before the payment' in v and by['Vitality']['rec'], v)
+        sh = by['Simplyhealth']
+        check('remittance months from the payment: offered, not ticked', sh['radios'] == 1 and not sh['rec'] and 'check the date' in sh['cells'][4] and 'UPC-0951' in sh['cells'][4], sh)
+        check('no answer: says so, greyed', by['Cigna']['off'] and 'Not matched' in by['Cigna']['cells'][4], by['Cigna'])
+        ht = by['Health Trust']['cells']
+        check('invoice number in the bank reference: matched, insurer taken from the invoice', 'UPC-0961' in ht[4] and 'invoice number in the bank reference' in ht[4] and by['Health Trust']['rec'], ht)
+        reused = next((r['cells'] for r in rows if r['cells'][3] == '£ 35.00'), [])
+        check('reused old reference: matched by amount and date instead, and says so', reused[1:2] == ['Bupa'] and 'UPC-0907' in reused[4] and 'UPC-0800, which doesn' in reused[4], reused)
+        check('a patient paying by transfer (names a patient invoice) is left out', not any('£ 120.00' == r['cells'][3] and r['cells'][1] != 'Bupa' for r in rows) and len(rows) == 9, [r['cells'][:4] for r in rows])
         check('the patient\'s own invoice is never offered', not any('UPC-0905' in r['cells'][4] for r in rows), rows)
         btn = await pg.evaluate("document.querySelector('[data-upc-bank-statement] [data-a=all]').textContent")
-        check('record button counts the matched ones', btn == 'Record 3 payments', btn)
+        check('record button counts the matched ones', btn == 'Record 6 payments', btn)
         reads = [x for x in S['log'] if x[1].endswith('/report/finance/0')]
         check('one report request; nothing written while matching', len(reads) == 1 and not S['posts'] and not [x for x in S['log'] if x[0] == 'POST'], S['log'])
 
         # choose for Aviva, then cancel: nothing recorded
-        await pg.click('[data-upc-bank-statement] input[data-pick="3:0"]')
+        await pg.click('[data-upc-bank-statement] input[data-pick="5:0"]')
         btn = await pg.evaluate("document.querySelector('[data-upc-bank-statement] [data-a=all]').textContent")
-        check('a chosen answer joins the button', btn == 'Record 4 payments', btn)
+        check('a chosen answer joins the button', btn == 'Record 7 payments', btn)
         await pg.click('[data-upc-bank-statement] [data-a=all]')
         await pg.wait_for_selector('[data-upc-bank-confirm]', timeout=10000)
         conf = await pg.evaluate("document.querySelector('[data-upc-bank-confirm]').textContent")
@@ -251,9 +276,9 @@ async def main():
         await pg.click('[data-upc-bank-statement] [data-a=all]')
         await pg.wait_for_selector('[data-upc-bank-confirm]', timeout=10000)
         await pg.click('[data-upc-bank-confirm] [data-c=yes]')
-        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-bank-statement] tbody tr')].filter((tr) => /Recorded/.test(tr.textContent)).length === 4", timeout=60000)
+        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-bank-statement] tbody tr')].filter((tr) => /Recorded/.test(tr.textContent)).length === 7", timeout=60000)
         paid = {iid: f for iid, f in S['posts']}
-        check('paid exactly the matched invoices', sorted(paid)[:6] == [901, 902, 911, 921, 922, 931] and len(paid) == 7 and sorted(paid)[6] in (932, 933), sorted(paid))
+        check('paid exactly the matched invoices', sorted(paid)[:7] == [901, 902, 907, 911, 921, 922, 931] and len(paid) == 11 and sorted(paid)[7] in (932, 933) and sorted(paid)[8:] == [941, 942, 961], sorted(paid))
         f = paid.get(902, {})
         check('Direct Deposit, bank date, amount, note', f.get('form[paymentMethod]') == '9' and f.get('form[paymentDate]') == '05-Oct-2026' and f.get('form[amount]') == '80.00'
               and f.get('form[note]') == 'Bupa, bank 05-Oct-2026, ref 2455419', f)
@@ -269,7 +294,7 @@ async def main():
         await pg.reload()
         rows = await open_statement(pg, pdf)
         done = [r['cells'][1] for r in rows if 'Recorded' in r['cells'][5]]
-        check('opened again: recorded credits shown as done, nothing to record', done == ['Bupa', 'AXA', 'WPA', 'Aviva'] and not await pg.evaluate("!!document.querySelector('[data-upc-bank-statement] [data-a=all]')"), rows)
+        check('opened again: recorded credits shown as done, nothing to record', done == ['Bupa', 'AXA', 'Health Trust', 'Bupa', 'WPA', 'Aviva', 'Vitality'] and not await pg.evaluate("!!document.querySelector('[data-upc-bank-statement] [data-a=all]')"), rows)
         await ctx.close()
 
         # an invoice shows less outstanding than the report (paid meanwhile): not paid, error on its row
