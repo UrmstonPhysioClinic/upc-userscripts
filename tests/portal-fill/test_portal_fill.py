@@ -73,7 +73,7 @@ PATIENT_INVOICE = ("<!doctype html><html><head><meta charset='utf-8'><title>Invo
                    "<a id='editClaimButton' href='/a/pr/555/patient/claim/1/987/44/edit?invoice=8001'>Edit</a></div><table id='invoiceLines'></table></body></html>")
 CLAIM = ("<form><select name='claim[organisation]'><option selected>AXA Health</option></select><input name='claim[enc1]' value='AUTHTEST'><input name='claim[enc2]' value=''>"
          "<input name='claim[col1]' value='MEMBERTEST'><input name='claim[date1]' value=''><input type='hidden' name='claim[_token]' value='C'></form>")
-EDIT = ("<html><body><form id='patientGeneralEditForm'><input name='patientdetailmain[linkPaG][linkpagaddresses][0][address][firstline]' value='1 Test Street'>"
+EDIT = ("<html><body><form id='patientGeneralEditForm'><input name='patientdetailmain[name][title]' value='Mrs'><input name='patientdetailmain[name][forename]' value='Patricia'><input name='patientdetailmain[name][middle]' value=''><input name='patientdetailmain[name][surname]' value='Test'><input name='patientdetailmain[preferredName]' value='Pat'><input name='patientdetailmain[linkPaG][linkpagaddresses][0][address][firstline]' value='1 Test Street'>"
         "<input name='patientdetailmain[linkPaG][linkpagaddresses][0][address][secondline]' value=''><input name='patientdetailmain[linkPaG][linkpagaddresses][0][address][city]' value='Testtown'>"
         "<input name='patientdetailmain[linkPaG][linkpagaddresses][0][address][postcode]' value='te11st'></form></body></html>")
 
@@ -102,9 +102,6 @@ async def halaxy(route):
         return await js({'status': 'FORM', 'message': CLAIM})
     if p == '/a/pr/555/note/sidebar/linkPaG/987':
         return await js({'patientDetails': {'fullName': 'Mrs Patient (Pat) Test', 'dob': '05-May-1975 (51 yrs)', 'addresses': [{'type': 'Home', 'formatted': '1 Test Street, Testtown'}]}})
-    if p == '/a/pr/555/patient/987':   # the General page: legal name differs from the preferred one
-        return await route.fulfill(body="<html><body><div class='card'><div class='viewRow'><span class='label'>Legal Name:</span> <span>Mrs Patricia Test</span></div>"
-                                        "<div class='viewRow'><span class='label'>Date of Birth:</span> <span>05-May-1975 (51 yr)</span></div></div></body></html>", content_type='text/html')
     if p == '/a/pr/555/patient/987/edit':
         return await route.fulfill(body=EDIT, content_type='text/html')
     m = re.search(r'/invoice/options/(\d+)$', p)
