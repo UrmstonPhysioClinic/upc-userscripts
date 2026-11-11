@@ -1,11 +1,11 @@
 // ==UserScript==
-// @name         Halaxy funder chaser (beta)
+// @name         Halaxy insurer payments due (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.0
+// @version      0.1.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/funder-chaser.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/funder-chaser.user.js
-// @description  Finances > Funder chaser (Carl only for now): insurer invoices marked Issued that still aren't paid 30 days after their invoice date, with a count on the menu. Reads only.
+// @description  Finances > Insurer payments due (Carl only for now): insurer invoices marked Issued that still aren't paid 30 days after their invoice date, with a count on the menu. Reads only.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
 // @grant        none
@@ -13,7 +13,7 @@
 // ==/UserScript==
 
 /*
- * Funder chaser (Carl, 10 and 11 Nov 2026).
+ * Insurer payments due (Carl, 10 and 11 Nov 2026; named by Carl; first built as Funder chaser, and the file keeps that name).
  *
  *  - One request: Halaxy's Unpaid Invoices report (core's UPC.reports.unpaidLines), which lists every unpaid invoice,
  *    Active or Issued, with its payer, funder, date and balance.
@@ -30,7 +30,7 @@
   if (window.__hxFunderChaser) return;
   window.__hxFunderChaser = true;
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
   const ROUTE = 'upc-funder-chaser';
   const MENU_CLS = 'upc-fc-menu';
   const ALLOWED = ['Carl Healy'];
@@ -99,7 +99,7 @@
     const last = store.get('result', null);
     if (last && Date.now() - last.at < REFRESH_EVERY && last.by === VERSION) return;
     if (locked()) return;
-    try { await checkLocked(); } catch (e) { console.warn('[UPC funder chaser]', e); tellHealthCheck(e); }
+    try { await checkLocked(); } catch (e) { console.warn('[UPC insurer payments due]', e); tellHealthCheck(e); }
     paintBadge();
   }
   const locked = () => Date.now() - store.get('running', 0) < 5 * 60e3;
@@ -156,7 +156,7 @@
   function render() {
     if (!root) return;
     const r = store.get('result', null);
-    let h = '<div class="upc-fc"><h1>Funder chaser</h1><div class="upc-fc-bar">' +
+    let h = '<div class="upc-fc"><h1>Insurer payments due</h1><div class="upc-fc-bar">' +
       '<button type="button" class="btn btn-outline-primary-light" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check again') + '</button>' +
       '<span class="text-muted">' + esc(state.running ? state.status : r ? 'Checked at ' + new Date(r.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + label(r.at) + '.' : '') + '</span></div>';
     if (state.error) h += '<p class="upc-err">' + esc(state.error) + '</p>';
@@ -172,7 +172,7 @@
       h += '<p class="text-muted">Insurer invoices (billed to the funder itself) with something still to pay, ' + OVERDUE_DAYS + ' days or more after their invoice date. ' +
         'A remittance attached doesn\'t take an invoice off the list: only the payment, once recorded, does.</p>';
     }
-    h += '<div class="text-muted upc-version">Funder chaser ' + VERSION + '</div></div>';
+    h += '<div class="text-muted upc-version">Insurer payments due ' + VERSION + '</div></div>';
     root.innerHTML = h;
   }
 
@@ -209,7 +209,7 @@
     root.className = 'upc-native';
     root.setAttribute('data-upc-funder-chaser', '');
     root.addEventListener('click', (e) => { if (e.target.closest('[data-a=refresh]')) run(); });
-    state.unmount = U().ui.mountPage('Funder chaser', root, MENU_CLS);
+    state.unmount = U().ui.mountPage('Insurer payments due', root, MENU_CLS);
     render();
     const r = store.get('result', null);
     if (!r || Date.now() - r.at > PAGE_FRESH || r.by !== VERSION) run();
@@ -223,11 +223,11 @@
   const route = () => (location.hash === '#' + ROUTE ? mount() : unmount());
 
   function start() {
-    if (!U()) { console.error('[UPC funder chaser] needs the core library'); return; }
+    if (!U()) { console.error('[UPC insurer payments due] needs the core library'); return; }
     if (!allowed()) return;
     if (!document.getElementById('upc-fc-css')) { const st = document.createElement('style'); st.id = 'upc-fc-css'; st.textContent = CSS; document.head.appendChild(st); }
     // Under Finances, opening over Halaxy's Invoices page (as Ready to bill does).
-    U().ui.ensureMenuItem('Funder chaser', (section) => {
+    U().ui.ensureMenuItem('Insurer payments due', (section) => {
       const inv = section && [...section.querySelectorAll('a.mainmenu-sublink')].find((a) => /^invoices$/i.test(U().clean(a.textContent)));
       return (inv ? inv.getAttribute('href').split('#')[0] : U().base() + '/invoice/') + '#' + ROUTE;
     }, MENU_CLS, /^finances?$/i);

@@ -3,7 +3,7 @@
     {
       "file": "health-check.user.js",
       "name": "Halaxy health check (beta)",
-      "version": "1.1.26"
+      "version": "1.1.27"
     },
     {
       "file": "core.user.js",
@@ -52,8 +52,8 @@
     },
     {
       "file": "funder-chaser.user.js",
-      "name": "Halaxy funder chaser (beta)",
-      "version": "0.1.0"
+      "name": "Halaxy insurer payments due (beta)",
+      "version": "0.1.1"
     },
     {
       "file": "halaxy-mobile.user.js",
