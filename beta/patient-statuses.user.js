@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         Halaxy patient statuses (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.0
+// @version      0.1.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
-// @description  Patients > Patient statuses (Carl only for now): patients whose status looks out of date (Current, Claimant or Discharged), with the suggested status and why, and Change / Change all after confirming. Review and every other status are left alone.
+// @description  Patients > Patient statuses (Carl only for now): patients whose status looks out of date (Current, Claimant or Discharged, and Contacts who have an appointment), with the suggested status and why, and Change / Change all after confirming. Review and every other status are left alone.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
 // @grant        none
@@ -24,7 +24,10 @@
  *    - Nothing booked, and no appointment for 6 weeks or more: Discharged (open-ended patients too, Carl).
  *    - Nothing booked, seen in the last 6 weeks: Discharged if their last note says so ("discharged", "goals met",
  *      "no further treatment needed", "self-managing"); otherwise Current or Claimant from their last fee.
- *  - Funded or not: the fee's invoice is linked to an insurance claim (its claim box) or isn't. Read once per invoice.
+ *  - Funded or not (Carl: the latest fee): the fee's own funder in Halaxy's fee list (the appointment type sets the fee,
+ *    so an online booking counts before any claim exists), or the invoice being linked to an insurance claim.
+ *  - Contact (only another patient's contact, hidden from searches) with an appointment: moved to the usual statuses
+ *    by the same rules (Carl, 11 Nov 2026). Contact is never suggested.
  *  - The status itself is changed on the patient's Edit page (core UPC.patient.setStatus), only from what was shown, so
  *    a status someone changed meanwhile is left alone.
  */
@@ -33,7 +36,7 @@
   if (window.__hxPatientStatuses) return;
   window.__hxPatientStatuses = true;
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
   const ROUTE = 'upc-patient-statuses';
   const MENU_CLS = 'upc-ps-menu';
   const ALLOWED = ['Carl Healy'];
@@ -41,8 +44,12 @@
   const GAP_DAYS = 42;          // Carl, 11 Nov 2026: a gap counts; 6 weeks
   const BACK_DAYS = 183, AHEAD_DAYS = 122;
   const MANAGED = ['current', 'claimant', 'discharged'];
+  // Contact (someone added only as another patient's contact) who has an appointment, say booked online: moved to the
+  // usual statuses, as Contacts don't show in searches (Carl, 11 Nov 2026). Never suggested as a status.
+  const FROM = MANAGED.concat(['contact']);
+  const SELF_FUNDED = /self|private/i;
   const KNOWN = MANAGED.concat(['review', 'archived', 'waiting list', 'blocked', 'deleted', 'deceased', 'contact', 'lead']);
-  const NAME = { current: 'Current', claimant: 'Claimant', discharged: 'Discharged' };
+  const NAME = { current: 'Current', claimant: 'Claimant', discharged: 'Discharged', contact: 'Contact' };
   const REFRESH_EVERY = 12 * 3600e3, PAGE_FRESH = 30 * 60e3;
   const KEY = 'upc-ps:';
 
@@ -91,7 +98,7 @@
   async function check(say) {
     say = say || (() => {});
     const now = Date.now();
-    const funded = store.get('funded', {});      // invoice id -> true (claim) / false (self-funded)
+    const funded = store.get('funded2', {});     // invoice id -> true (funded) / false (self-funded)
     const finished = store.get('finished', {});  // note id -> wording found ('' if none)
     const events = await calendar(now - BACK_DAYS * DAY, now + AHEAD_DAYS * DAY, say);
     const startMs = (e) => (typeof e.start === 'number' ? e.start * 1000 : Date.parse(e.start));
@@ -99,13 +106,22 @@
     events.forEach((e) => { const id = String(e.linkPaGId); if (!byPatient.has(id)) byPatient.set(id, []); byPatient.get(id).push(e); });
     const counts = { other: 0, right: 0, unknown: 0 };
     const rows = [];
+    // Funded: the fee's own funder (set by the fee, which the appointment type sets, so an online booking counts before
+    // any claim exists), or the invoice being linked to an insurance claim.
+    let feeFunder = null;
     const fundedOf = async (e) => {
       const iid = e.invoiceID || e.invoiceId;
       if (!iid) return null;
       if (!(String(iid) in funded)) {
+        if (!feeFunder) {
+          const fees = await U().http.json('/funder/fee/data');
+          feeFunder = {};
+          (Array.isArray(fees) ? fees : []).forEach((f) => { if (f && f.feeNumber) feeFunder[U().clean(f.feeNumber).toLowerCase()] = String(f.funder || ''); });
+        }
         const inv = await U().invoice.fetch(iid);
-        funded[iid] = !!inv.claimId;
-        store.set('funded', funded);
+        const byFee = inv.lines.some((l) => { const f = feeFunder[U().clean(l.item).toLowerCase()]; return !!f && !SELF_FUNDED.test(f); });
+        funded[iid] = byFee || !!inv.claimId;
+        store.set('funded2', funded);
       }
       return funded[iid];
     };
@@ -123,14 +139,14 @@
       try {
         // The calendar carries each patient's status; if it isn't one of Halaxy's status names, ask the patient's details.
         if (!KNOWN.includes(status)) { tell('Reading ' + name + '\'s status'); status = norm((await U().patient.details(id)).status); }
-        if (!MANAGED.includes(status)) { counts.other++; continue; }
+        if (!FROM.includes(status)) { counts.other++; continue; }
         let to = '', why = '';
         if (future.length) {
           tell('Reading the fee for ' + name);
           const f = await fundedOf(future[0]);
           if (f === null) { counts.unknown++; continue; }
           to = f ? 'claimant' : 'current';
-          why = 'Booked ' + label(startMs(future[0])) + ', ' + (f ? 'funded (insurance claim)' : 'self-funded');
+          why = 'Booked ' + label(startMs(future[0])) + ', ' + (f ? 'funded fee' : 'self-funded fee');
         } else {
           const last = attended[attended.length - 1];
           const gap = Math.floor((now - startMs(last)) / DAY);
@@ -151,7 +167,7 @@
               const f = await fundedOf(last);
               if (f === null) { counts.unknown++; continue; }
               to = f ? 'claimant' : 'current';
-              why = 'Seen ' + label(startMs(last)) + ', ' + (f ? 'funded (insurance claim)' : 'self-funded') + ', treatment still going';
+              why = 'Seen ' + label(startMs(last)) + ', ' + (f ? 'funded fee' : 'self-funded fee') + ', treatment still going';
             }
           } else { counts.right++; continue; }   // discharged, seen recently, nothing booked: leave it
         }
@@ -163,6 +179,7 @@
       }
     }
     const order = { discharged: 0, claimant: 1, current: 2, '': 3 };
+    rows.forEach((r) => { if (r.from === 'contact' && r.to) r.why = 'Contact with an appointment (not found in searches). ' + r.why; });
     rows.sort((a, b) => order[a.to] - order[b.to] || a.name.localeCompare(b.name));
     const result = { at: Date.now(), by: VERSION, rows, counts, suggested: rows.filter((r) => r.to).length };
     store.set('result', result);
@@ -243,10 +260,11 @@
             return '<tr><td><a href="' + esc(base + '/patient/' + x.id) + '" target="_blank" rel="noopener">' + esc(x.name) + '</a></td><td>' + esc(NAME[x.from] || x.from) + '</td>' +
               '<td><b>' + esc(NAME[x.to]) + '</b></td><td>' + esc(x.why) + '</td><td class="upc-ps-act">' + act + '</td></tr>';
           }).join('') + '</tbody></table>'
-          : '<p class="text-muted m-3">Every Current, Claimant and Discharged status looks right.</p>') + '</div></div>';
+          : '<p class="text-muted m-3">Every Current, Claimant, Discharged and Contact status looks right.</p>') + '</div></div>';
       if (bad.length) h += '<p class="upc-err">Not checked: ' + bad.map((x) => esc(x.name) + ' (' + esc(x.error) + ')').join(', ') + '.</p>';
       const c = r.counts || {};
-      h += '<p class="text-muted">Patients with an appointment in the last 6 months or booked in the next 4. Booked: Current if self-funded, Claimant if funded (from the booked fee). ' +
+      h += '<p class="text-muted">Patients with an appointment in the last 6 months or booked in the next 4. Booked: Current if the booked fee is self-funded, Claimant if it\'s funded. ' +
+        'Contacts with an appointment are moved to these too. ' +
         'Nothing booked: Discharged after ' + (GAP_DAYS / 7) + ' weeks without an appointment, or sooner if the last note says treatment has finished. ' +
         'Review and every other status are never suggested or changed (' + (c.other || 0) + ' left alone). ' + (c.right || 0) + ' already right.' +
         (c.unknown ? ' ' + c.unknown + ' couldn\'t be told (no invoice for the fee).' : '') + '</p>';

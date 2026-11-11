@@ -85,7 +85,7 @@ async def halaxy(route):
     if p.endswith('/lookup/practitioner'):
         return await j([{'id': 11, 'name': 'Prac One'}])
     if p.endswith('/funder/fee/data'):
-        return await j([{'funder': 'Self-Funded', 'feeColour': '#FEF2C0', 'status': 'current'}])
+        return await j([{'funder': 'Self-Funded', 'feeColour': '#FEF2C0', 'status': 'current', 'feeNumber': 'IA-IA'}])
     if p.endswith('/calendar/json'):
         return await j({'status': 'OK', 'payload': {'events': events()}})
     if '/patient/invoice/' in p and p.endswith('/list-data'):
