@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy insurer portal fill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.8
+// @version      0.1.9
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
@@ -47,7 +47,7 @@
   if (window.__hxPortalFill) return;
   window.__hxPortalFill = true;
 
-  const VERSION = '0.1.8';
+  const VERSION = '0.1.9';
   const KEY = 'portal-claim';
   const MAX_AGE = 4 * 3600e3;
   const PORTALS = {
@@ -522,20 +522,22 @@
       // Add a treatment: one fee.
       const imp = document.querySelector('select[name="impairmentPair"]');
       if (imp) {
-        // Back on the form while saving: an error message means Bupa didn't take the treatment; without one, the page was
-        // reloaded or reopened (live, 11 Nov 2026: a refresh was taken for a refusal), so the form is filled again.
         // Bupa marks required fields with a red "*" in an error-styled element (live, 11 Nov 2026), so only wording counts as a message.
-        if (pr.stage === 'saving') {
+        if (pr.stage === 'saving' || pr.stage === 'asked') {
           const errs = [...document.querySelectorAll('[class*="error" i], [class*="alert" i], .invalid-feedback, [role=alert]')]
             .filter((e) => visible(e) && /[a-z]{3}/i.test(clean(e.textContent)) && !(panel && panel.contains(e)) && !e.querySelector('[class*="error" i], [class*="alert" i]'));
           if (errs.length) return stop('Bupa didn\'t accept treatment ' + ((pr.added || 0) + 1) + ': "' + clean(errs[0].textContent).slice(0, 160) + '"');
-          // Came back without a message: fill it again, but not endlessly.
+        }
+        // Back on the form after Save without a message (a refresh, or Bupa reopening it): fill it again, but not endlessly.
+        if (pr.stage === 'saving') {
           pr.retries = (pr.retries || 0) + 1;
           if (pr.retries > 2) return stop('Bupa keeps returning treatment ' + ((pr.added || 0) + 1) + ' without saving it, and shows no message.');
           pr.stage = 'adding'; await save();
         }
         // Bupa opens a new treatment by itself once the last pre-populated one is removed (Carl, 11 Nov 2026).
-        if (pr.stage !== 'adding') { pr.cleared = true; pr.stage = 'adding'; await save(); }
+        // 'asked': the user was asked to choose something; their choice can reload the page (choosing a procedure does).
+        const asked = pr.stage === 'asked';
+        if (pr.stage !== 'adding' && !asked) { pr.cleared = true; pr.stage = 'adding'; await save(); }
         const l = claim.lines[pr.added || 0];
         if (!l) return stop('Bupa opened another treatment after all ' + claim.lines.length + ' were added.');
         const proc = document.querySelector('select[name="procedureCode"]');
@@ -546,27 +548,40 @@
         if (!place || !from || !to || !count || !charge || !saveBtn) return stop('Bupa\'s treatment form has changed.');
         const cr = optionByText(place, /^consultant rooms$/i);
         if (!cr) return stop('Bupa\'s place of service list has no "Consultant rooms".');
-        setValue(place, cr.value);
+        // Choosing in Bupa's lists can reload the page (the procedure does, Carl, 11 Nov 2026), which would lose anything typed
+        // first. So the lists come first, each only when it isn't already right, and if the page starts to reload the fill
+        // carries on from the reloaded form.
+        let leaving = false;
+        window.addEventListener('beforeunload', () => { leaving = true; });
+        const choose = async (sel, value) => {
+          if (sel.value === String(value)) return false;
+          setValue(sel, value);
+          await sleep(2000);
+          return leaving;
+        };
+        // The procedure is the fee (Carl, 11 Nov 2026): Bupa's code (AA360 ...) is in the Halaxy fee's Item Code ("Bup-IA (AA360)"),
+        // and appears somewhere in the procedure's wording in Bupa's list. Matched as a whole code, so AA361 never picks AA3610.
+        if (proc && !asked) {
+          const codes = String(l.code || '').match(/\b[A-Z]{1,3}\d{2,}[A-Z]?\b/gi) || [];
+          const has = (o) => codes.some((c) => new RegExp('(^|[^A-Za-z0-9])' + c + '([^A-Za-z0-9]|$)', 'i').test(clean(o.textContent)));
+          const fits = [...proc.options].filter((o) => o.index > 0 && has(o));
+          if (fits.length === 1) { if (await choose(proc, fits[0].value)) return; }
+          else if (proc.selectedIndex > 0) { if (await choose(proc, proc.options[0].value)) return; }   // pre-selected, but not this fee's code
+        }
+        if (await choose(place, cr.value)) return;
+        const missing = [[imp, 'impairment'], [proc, 'procedure']].filter(([x]) => x && x.selectedIndex <= 0);
+        if (missing.length) {
+          pr.stage = 'asked'; await save();
+          missing.forEach(([x]) => x.classList.add('upc-pf-check'));
+          // Once chosen: if Bupa doesn't reload the page by itself, carry on here.
+          missing.forEach(([x]) => x.addEventListener('change', () => setTimeout(() => { if (!leaving) bupa().catch((e) => stop('Something went wrong: ' + (e.message || e) + '.')); }, 2500), { once: true }));
+          const codeNote = missing.some((x) => x[1] === 'procedure') ? ': ' + ((String(l.code || '').match(/\b[A-Z]{1,3}\d{2,}[A-Z]?\b/gi) || []).join(', ') || 'no Bupa code in the Item Code') + ' not found in Bupa\'s list' : '';
+          return say('Choose the ' + missing.map((x) => x[1]).join(' and ') + ' for this fee (' + l.description + ', ' + l.date + ', £ ' + l.amount + '; highlighted' + codeNote + '). The fill carries on.');
+        }
         setValue(from, l.date);
         setValue(to, l.date);
         setValue(count, '1');
         setValue(charge, l.amount);
-        // The procedure is the fee (Carl, 11 Nov 2026): Bupa's code (AA360 ...) is in the Halaxy fee's Item Code ("Bup-IA (AA360)"),
-        // and appears somewhere in the procedure's wording in Bupa's list. Matched as a whole code, so AA361 never picks AA3610.
-        if (proc) {
-          const codes = String(l.code || '').match(/\b[A-Z]{1,3}\d{2,}[A-Z]?\b/gi) || [];
-          const has = (o) => codes.some((c) => new RegExp('(^|[^A-Za-z0-9])' + c + '([^A-Za-z0-9]|$)', 'i').test(clean(o.textContent)));
-          const fits = [...proc.options].filter((o) => o.index > 0 && has(o));
-          if (fits.length === 1) setValue(proc, fits[0].value);
-          else if (proc.selectedIndex > 0) setValue(proc, proc.options[0].value);   // pre-selected, but not this fee's code
-        }
-        const missing = [[imp, 'impairment'], [proc, 'procedure']].filter(([x]) => x && x.selectedIndex <= 0);
-        if (missing.length) {
-          pr.stage = 'saving'; await save();
-          missing.forEach(([x]) => x.classList.add('upc-pf-check'));
-          const codeNote = missing.some((x) => x[1] === 'procedure') ? ': ' + ((String(l.code || '').match(/\b[A-Z]{1,3}\d{2,}[A-Z]?\b/gi) || []).join(', ') || 'no Bupa code in the Item Code') + ' not found in Bupa\'s list' : '';
-          return say('Choose the ' + missing.map((x) => x[1]).join(' and ') + ' for this fee (' + l.description + ', ' + l.date + ', £ ' + l.amount + '; highlighted' + codeNote + '), then press Save. The fill carries on.');
-        }
         pr.stage = 'saving'; await save();
         working('Adding treatment ' + ((pr.added || 0) + 1) + ' of ' + claim.lines.length + '...');
         await sleep(300);
@@ -575,7 +590,7 @@
       // The treatment list.
       const addBtn = buttonByText(/^add treatment$/i);
       if (has(/^treatment details$/i) && addBtn) {
-        if (pr.stage === 'saving') { pr.added = (pr.added || 0) + 1; pr.retries = 0; pr.stage = 'list'; await save(); }
+        if (pr.stage === 'saving' || pr.stage === 'asked') { pr.added = (pr.added || 0) + 1; pr.retries = 0; pr.stage = 'list'; await save(); }
         if (!pr.cleared) {
           const remove = [...document.querySelectorAll('a, button, input[type=submit]')].find((b) => visible(b) && /^remove( treatment)?$/i.test(clean(b.textContent || b.value)));
           if (remove) { pr.stage = 'removing'; await save(); working('Removing a pre-populated treatment...'); return remove.click(); }

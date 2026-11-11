@@ -17,6 +17,10 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Portal fill
 
+### 0.1.9 (11 Nov 2026, beta)
+- Bupa reloads the treatment form when a procedure is chosen (Carl, 11 Nov 2026). The fill now sets Bupa's lists first (procedure, then place of service), only when they aren't already right, and if the page reloads it carries on from the reloaded form; the dates, quantity and fee are typed last, just before Save.
+- When the fill asks you to choose a procedure or impairment, it carries on by itself once you've chosen (whether or not Bupa reloads the page), and presses Save.
+
 ### 0.1.8 (11 Nov 2026, beta)
 - Fixes a false stop on Bupa's treatment form ("Bupa didn't accept treatment 1: "*""): Bupa's red required-field stars were read as an error message. Only an error with wording now counts.
 - If Bupa hands the treatment form back without saving and without a message, the fill tries twice more, then stops (and Carl gets a task) rather than going round in a loop.
