@@ -3,7 +3,7 @@
     {
       "file": "health-check.user.js",
       "name": "Halaxy health check (beta)",
-      "version": "1.1.24"
+      "version": "1.1.25"
     },
     {
       "file": "core.user.js",
@@ -31,6 +31,11 @@
       "version": "2.11"
     },
     {
+      "file": "check-ins.user.js",
+      "name": "Halaxy check-ins (beta)",
+      "version": "0.1.0"
+    },
+    {
       "file": "custom-reports.user.js",
       "name": "Halaxy Custom Reports (beta)",
       "version": "0.7.0"
@@ -44,6 +49,11 @@
       "file": "forecourt-lights.user.js",
       "name": "Halaxy forecourt lights reminder (beta)",
       "version": "0.2.1"
+    },
+    {
+      "file": "funder-chaser.user.js",
+      "name": "Halaxy funder chaser (beta)",
+      "version": "0.1.0"
     },
     {
       "file": "halaxy-mobile.user.js",

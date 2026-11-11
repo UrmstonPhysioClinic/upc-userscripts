@@ -1,5 +1,15 @@
 # Changelog
 
+## Funder chaser
+
+### 0.1.0 (11 Nov 2026, beta)
+- New (Carl, 10 and 11 Nov 2026): Finances > Funder chaser, Carl only for now. Insurer invoices (billed to the insurer itself) marked Issued that still have something to pay 30 days or more after their invoice date, oldest first, with a count on the menu. A remittance attached doesn't take an invoice off the list; only the payment does. Funder invoices still Active after 30 days are shown greyed (perhaps never submitted) and not counted. One request: Halaxy's Unpaid Invoices report, read back 18 months. Reads only; no tasks.
+
+## Check-ins
+
+### 0.1.0 (11 Nov 2026, beta)
+- New (Carl, 11 Nov 2026), the list only: Patients > Check-ins, Carl only for now. Patients last seen 3 weeks to 3 months ago, with nothing booked and their last appointment not cancelled or missed, whose latest note leaves treatment open-ended ("open return", "open appointment", "book again if needed", "see how things go", "come back if needed", "see as needed" and similar; negations cancel). Shows the wording found, a link to the note, and whether a Review Request was sent. Count on the menu. Note text is never kept, only which wording was found (kept a week). Sends nothing.
+
 ## Mobile layout
 
 ### 2.18 (11 Nov 2026, beta)
@@ -178,6 +188,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - `UPC.notes.items` and `UPC.notes.text` (a patient's notes list and a note's text), `UPC.followUps.list` and `UPC.followUps.add` (Tasks & Follow-Ups), `UPC.patient.details`, `UPC.patient.invoices` and `UPC.patient.addLabel`. Confirmed against live captures, 10 Nov 2026.
 
 ## Health check
+
+### 1.1.25 (11 Nov 2026, beta)
+- Funder chaser and Check-ins added to the script names; the follow-ups list check lists Check-ins too.
 
 ### 1.1.24 (11 Nov 2026, beta)
 - Mobile layout added to the script names.
