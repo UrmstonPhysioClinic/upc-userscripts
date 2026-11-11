@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy insurer payments due (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.1
+// @version      0.1.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/funder-chaser.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/funder-chaser.user.js
@@ -30,7 +30,7 @@
   if (window.__hxFunderChaser) return;
   window.__hxFunderChaser = true;
 
-  const VERSION = '0.1.1';
+  const VERSION = '0.1.2';
   const ROUTE = 'upc-funder-chaser';
   const MENU_CLS = 'upc-fc-menu';
   const ALLOWED = ['Carl Healy'];
@@ -58,9 +58,21 @@
     const named = String(h.pracName || (h.CalendarDefault || {}).pracName || '').trim();
     if (named) return named;
     const btn = document.getElementById('activeUser');
-    return btn ? btn.textContent.replace(/\s+/g, ' ').trim() : '';
+    if (btn && btn.textContent.trim()) return btn.textContent.replace(/\s+/g, ' ').trim();
+    const el = [...document.querySelectorAll('header *, nav *, .navbar *, #top *, #headerWrapper *')]
+      .find((e) => !e.children.length && ALLOWED.some((n) => n.toLowerCase() === e.textContent.trim().toLowerCase()));
+    return el ? el.textContent.trim() : '';
   }
   const allowed = () => ALLOWED.some((n) => n.toLowerCase() === userName().toLowerCase());
+  // Halaxy may not have filled in who's signed in when this script starts (it starts early in the load order: live,
+  // 11 Nov 2026), so keep looking for 20 seconds before deciding it isn't for this person.
+  function whenAllowed(fn) {
+    if (allowed()) return fn();
+    const t0 = Date.now();
+    const timer = setInterval(() => {
+      if (allowed()) { clearInterval(timer); fn(); } else if (Date.now() - t0 > 20000) clearInterval(timer);
+    }, 500);
+  }
 
   // ------------------------------------------------------------------ the check
 
@@ -240,8 +252,9 @@
     setTimeout(refreshCount, 4000);
     setInterval(refreshCount, 10 * 60e3);
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
-  else start();
+  const begin = () => { if (U()) whenAllowed(start); else start(); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', begin, { once: true });
+  else begin();
 
   window.upcFunderChaser = { version: VERSION, check, allowed };
 })();

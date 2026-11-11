@@ -66,7 +66,7 @@ def page_html(user):
             "<li class='mainmenu-item active'><a class='mainmenu-link'><span class='mainmenu-link-label'>Finances</span></a>"
             "<ul><li><a class='mainmenu-sublink' href='/a/pr/555/expense/'>Expenses</a></li><li class='active'><a class='mainmenu-sublink active' href='/a/pr/555/invoice/'>Invoices</a></li></ul></li></ul></nav></div>"
             "<div id='headerWrapper' style='height:50px'></div><h1>Invoices</h1>"
-            "<script>window.HkUser = { linkPrG: 11, pracID: 11, pracName: %s };</script></body></html>") % json.dumps(user)
+            "<script>setTimeout(function () { window.HkUser = { linkPrG: 11, pracID: 11, pracName: %s }; }, S.get('lateUser', 0));</script></body></html>").replace("S.get('lateUser', 0)", str(S.get('lateUser', 0))) % json.dumps(user)
 
 
 async def halaxy(route):
@@ -124,6 +124,16 @@ async def main():
         check('native look', native)
         check('no page errors', not errors, errors)
         await ctx.close()
+
+        # Halaxy fills in who's signed in late (live, 11 Nov 2026): the menu item still appears
+        S.update({'log': [], 'user': 'Carl Healy', 'lateUser': 3000})
+        ctx = await context(browser)
+        pg = await ctx.new_page()
+        await pg.goto('https://eu.halaxy.com/a/pr/555/invoice/')
+        await pg.wait_for_timeout(6000)
+        check('signed-in name filled in late: the menu item still appears', await pg.evaluate("!!document.querySelector('a.upc-fc-menu')"))
+        await ctx.close()
+        S['lateUser'] = 0
 
         # Not Carl: nothing
         S.update({'log': [], 'user': 'Someone Else'})
