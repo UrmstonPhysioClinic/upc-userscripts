@@ -72,7 +72,7 @@ python3 tests/check_scripts.py                 # every script: headers, channels
 
 GitHub runs all of them on every pull request (`.github/workflows/tests.yml`). Each test runs the beta copy against a mock Halaxy page with invented data; a few take the stable copy as an argument (`python3 tests/alerts/test_alerts.py stable/alerts.user.js`).
 
-Needs Python 3 with Playwright (Chromium), reportlab and Pillow, and Node.js with npm (the PDF, text recognition and jQuery libraries some tests serve are installed into their test folder on first run).
+Needs Python 3 with Playwright (Chromium), reportlab, Pillow and astral, and Node.js with npm (the PDF, text recognition and jQuery libraries some tests serve are installed into their test folder on first run).
 
 ## Background
 

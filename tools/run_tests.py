@@ -4,7 +4,7 @@ Runs every test: tests/check_scripts.py, then each tests/<script>/test_*.py (bet
 Run:  python3 tools/run_tests.py            # all
       python3 tools/run_tests.py remittances bank-statement   # only these folders
 Prints one line per test and the failures; exits 1 if any failed.
-Needs Python 3 with Playwright (Chromium), reportlab and Pillow, and Node.js with npm.
+Needs Python 3 with Playwright (Chromium), reportlab, Pillow and astral, and Node.js with npm.
 """
 import subprocess, sys, time
 from pathlib import Path

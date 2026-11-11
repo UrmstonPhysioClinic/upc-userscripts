@@ -20,7 +20,7 @@ jobs:
           node-version: '20'
       - name: Install test tools
         run: |
-          pip install playwright reportlab Pillow
+          pip install playwright reportlab Pillow astral
           python -m playwright install --with-deps chromium
       - name: Run all tests
         run: python tools/run_tests.py
