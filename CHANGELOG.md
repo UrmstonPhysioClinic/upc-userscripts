@@ -60,6 +60,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Health check
 
+### 1.1.17 (11 Nov 2026, beta)
+- Shown only to Carl Healy (Carl: "just show health check on my account"): the notice and "Health check: show results" in Script settings appear only on his sign-in. The checks and script errors are still collected on every sign-in and kept on that PC, so they show when Carl next signs in there. If the page doesn't say who is signed in (Halaxy may have changed), it shows rather than hides.
+
 ### 1.1.16 (10 Nov 2026, beta)
 - The follow-ups check looks for assignedToUrl (the patient), which Review requests now reads.
 

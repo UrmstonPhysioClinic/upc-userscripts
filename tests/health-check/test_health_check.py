@@ -4,7 +4,8 @@ Test for the health check, against a mock Halaxy that can be broken in specific 
 Checks: a healthy Halaxy shows nothing; a missing calendar function, a missing invoice page
 element, a missing calendar data field, a new appointment status, a script error and an update
 problem are each reported with the scripts they affect; a Halaxy version change is noted and
-triggers the data checks; nothing stored contains patient details.
+triggers the data checks; nothing stored contains patient details; only Carl Healy sees the notice
+and the menu item, while results are still collected for everyone.
 
 Run:  python3 tests/health-check/test_health_check.py [path/to/health-check.user.js]   (default: beta)
 Needs: Python 3 with Playwright (Chromium).
@@ -16,13 +17,13 @@ from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / 'beta' / 'health-check.user.js'
-STATE = {'version': '4.12', 'break': set()}
+STATE = {'version': '4.12', 'break': set(), 'user': 'Carl Healy'}
 
 GLOBALS = r"""
 <script>
   var f = function () {};
   window.jQuery = function () {}; jQuery.ui = { intersect: f }; jQuery.hkTypes = { Date: f };
-  window.HkUser = { linkPrG: 11, pracID: 11 };
+  window.HkUser = { linkPrG: 11, pracID: 11, pracName: USER };
   window.hk_glob = { preferences: { timeFormat: 'H:i' }, variables: {} };
   window.HkCalendar = {
     initForPrac: f, calendarModel: { get: f }, PathForEventJSON: '/a/pr/555/calendar/json', PathForNewEvent: 'x', PathForNewAppointment: 'y',
@@ -49,7 +50,7 @@ def page(path):
     brk = ''
     if 'timeline' in STATE['break']:
         brk = 'delete HkCalendar.Timeline;'
-    head = "<script src='https://cdn.halaxy.com/z/version/%s/build/app.js'></script>" % STATE['version'] + GLOBALS.replace('BREAK', brk)
+    head = "<script src='https://cdn.halaxy.com/z/version/%s/build/app.js'></script>" % STATE['version'] + GLOBALS.replace('BREAK', brk).replace('USER', json.dumps(STATE['user']))
     body = CAL_BODY if path.endswith('/calendar') else SIDEBAR
     if path.endswith('/calendar') and 'slow' in STATE['break']:   # calendar takes 2 s to draw
         body = body.replace("<div class='timeLabel'>08:00</div>", "") + ("<script>setTimeout(function () { document.querySelector('.cal')"
@@ -243,7 +244,28 @@ async def main():
         await pg2.close()
         STATE['break'] = set()
 
-        # 6. No patient details stored
+        # 7. Shown only to Carl Healy; collected for everyone
+        await pg.evaluate("document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: 'alerts.user.js', message: 'y is undefined' }) }))")
+        STATE['user'] = 'Wendy Pritchard'
+        await pg.evaluate("window.__menu = []")
+        await pg.evaluate("localStorage.removeItem('upc-health:dataAt')")
+        probs, pill = await load()
+        check('another sign-in: no notice, no menu item', pill == '' and await pg.evaluate("window.__menu.length") == 0, (pill, await pg.evaluate("window.__menu.map(m => m[0])")))
+        check('another sign-in: problems and data checks still collected', any(x['title'] == 'Alerts stopped with an error' for x in probs) and
+              await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:dataAt')) > 0"), probs)
+        await pg.evaluate("hxHealth.open()")
+        check('another sign-in: opening it does nothing', await pg.evaluate("document.querySelector('[data-hx-health]').innerHTML") == '')
+        STATE['user'] = 'Carl Healy'
+        probs, pill = await load()
+        check('Carl signs in on the same PC: the problem collected meanwhile shows', pill.startswith('Clinic scripts:') and
+              await pg.evaluate("window.__menu.map(m => m[0])") == ['Health check: show results'], (pill, await pg.evaluate("window.__menu.map(m => m[0])")))
+        STATE['user'] = ''
+        probs, pill = await load()
+        check('sign-in not readable: shown rather than hidden', pill.startswith('Clinic scripts:'), pill)
+        STATE['user'] = 'Carl Healy'
+        await pg.evaluate("localStorage.setItem('upc-health:errors', '[]')")
+
+        # 8. No patient details stored
         dump = await pg.evaluate("JSON.stringify(Object.keys(localStorage).filter(k => k.startsWith('upc-health:')).map(k => localStorage.getItem(k)))")
         check('nothing stored contains patient details', 'Patient 09' not in dump and 'name-text' not in dump, dump[:300])
         check('no page errors', not errors, errors)

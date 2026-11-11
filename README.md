@@ -29,7 +29,7 @@ That is the only install. Scripts added to this repository later reach every PC 
 | Script settings | "Script settings" in Halaxy's account menu: every script's options (instead of the Tampermonkey menu), which scripts run on this PC, stable or beta, and updates. Needs loader 1.1.0. |
 | Review requests (beta only for now) | Patients > Review requests, for Carl: finished patients (nothing booked; from the day after a visit whose notes say discharged or goals met, otherwise after 2 weeks; up to 4 weeks) with a good outcome in their notes or Progress Update form, ready for the Review Request follow-up. Send it, or label No review request, from the list (asks first). Leaves out anyone already asked, labelled, under 16 or owing money. |
 | Core library | Shared helpers the other scripts use, including request pacing so our traffic stays modest. Does nothing on its own. |
-| Health check | Checks that what our scripts rely on in Halaxy is still there, notes Halaxy updates, and collects script errors and update problems. Shows a small notice at the bottom centre only when something needs looking at; Script settings > Health check: show results at any time. |
+| Health check | Checks that what our scripts rely on in Halaxy is still there, notes Halaxy updates, and collects script errors and update problems. Shows a small notice at the bottom centre only when something needs looking at, and only to Carl Healy (it still collects on every sign-in); Script settings > Health check: show results at any time. |
 | HTML source for emails | A `<>` button on email editors to edit the body as raw HTML with a live preview. |
 
 ## How it works
