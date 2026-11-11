@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.26
+// @version      0.1.27
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.26';
+  const VERSION = '0.1.27';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -666,7 +666,20 @@
       if (!Array.isArray(rows)) throw new UPCError('The patient\'s task list has changed, so their tasks could not be read.');
       return rows;
     },
-    // { title, assignee (name as in Assign to), priority 1 Low / 2 Medium / 3 High, due '09-Nov-2026', comment }.
+    // A stamp as Carl writes them (11 Nov 2026): "2026-11-11 15-45 Portal fill:" (the date, the time, and who: a script's name or a person's initials).
+    stamp(by, when) {
+      const d = new Date(when || Date.now());
+      const p2 = (n) => String(n).padStart(2, '0');
+      return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' + p2(d.getHours()) + '-' + p2(d.getMinutes()) + ' ' + by + ':';
+    },
+    // A script's task comment (Carl, 11 Nov 2026): the stamp, then each statement on its own line starting "- ".
+    // `lines` is an array or text with line breaks; blank lines are dropped.
+    comment(by, lines) {
+      const list = (Array.isArray(lines) ? lines : String(lines || '').split('\n')).map((l) => clean(l).replace(/^[-*•]\s*/, '')).filter(Boolean);
+      return [tasks.stamp(by || 'UPC scripts')].concat(list.map((l) => '- ' + l)).join('\n');
+    },
+    // { title, assignee (name as in Assign to), priority 1 Low / 2 Medium / 3 High, due '09-Nov-2026', comment, by (the script's name) }.
+    // The comment is written as tasks.comment(by, comment).
     // Returns false if a task with this title is already on the invoice.
     async addToInvoice(invoiceId, task) {
       return addTask('/task/new/invoice/' + encodeURIComponent(invoiceId), () => tasks.forInvoice(invoiceId), task, 'on the invoice\'s task list');
@@ -689,7 +702,7 @@
     const who = [...form.querySelectorAll('select[name="form[linkPrGs][]"] option')].find((o) => clean(o.textContent).toLowerCase() === String(task.assignee).toLowerCase());
     if (!who) throw new UPCError('Could not find ' + task.assignee + ' in the task\'s Assign to list, so no task was added.');
     const set = { 'form[title]': task.title, 'form[taskTemplates]': '', 'form[actionerType]': '1', 'form[priority]': String(task.priority || 2),
-      'form[displayDueDate]': task.due, 'form[displayDueTime][hour]': '0', 'form[displayDueTime][minute]': '0', 'form[isTimeSet]': 'false', 'form[comment]': task.comment || '' };
+      'form[displayDueDate]': task.due, 'form[displayDueTime][hour]': '0', 'form[displayDueTime][minute]': '0', 'form[isTimeSet]': 'false', 'form[comment]': tasks.comment(task.by, task.comment) };
     const pairs = serialize(form).filter(([k]) => k !== 'form[linkPrGs][]' && !(k in set));
     Object.keys(set).forEach((k) => pairs.push([k, set[k]]));
     pairs.push(['form[linkPrGs][]', who.value]);

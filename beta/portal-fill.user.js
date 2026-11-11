@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy insurer portal fill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.13
+// @version      0.1.14
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
@@ -47,7 +47,7 @@
   if (window.__hxPortalFill) return;
   window.__hxPortalFill = true;
 
-  const VERSION = '0.1.13';
+  const VERSION = '0.1.14';
   const KEY = 'portal-claim';
   const MAX_AGE = 4 * 3600e3;
   const PORTALS = {
@@ -250,7 +250,8 @@
       try {
         await U().tasks.addToInvoice(invoiceId, {
           title: 'Portal fill stopped: ' + portalName + (number ? ', ' + number[0] : ''), assignee: OWNER, priority: 2, due: U().dayLabel(Date.now()),
-          comment: 'The ' + portalName + ' portal fill stopped (' + where + '): ' + reason + '\nThe claim needs submitting by hand, or the fill trying again once the cause is fixed.\nPortal fill ' + VERSION + (key ? ', ' + key : '') + '.',
+          by: 'Portal fill', comment: ['The ' + portalName + ' portal fill stopped (' + where + '): ' + reason, 'Submit the claim by hand, or run the fill again once the cause is fixed',
+            'Portal fill ' + VERSION + (key ? ', ' + key : '')],
           key: key || undefined,
         });
         return OWNER + ' has been sent a task in Halaxy and will pick it up.';
