@@ -3,7 +3,7 @@
     {
       "file": "health-check.user.js",
       "name": "Halaxy health check (beta)",
-      "version": "1.1.21"
+      "version": "1.1.22"
     },
     {
       "file": "core.user.js",
@@ -18,7 +18,7 @@
     {
       "file": "bill-funder.user.js",
       "name": "Halaxy bill funder (beta)",
-      "version": "0.8.0"
+      "version": "0.8.1"
     },
     {
       "file": "branding.user.js",
@@ -53,7 +53,7 @@
     {
       "file": "portal-fill.user.js",
       "name": "Halaxy insurer portal fill (beta)",
-      "version": "0.1.11"
+      "version": "0.1.13"
     },
     {
       "file": "ready-to-bill.user.js",

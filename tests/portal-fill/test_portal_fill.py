@@ -138,8 +138,8 @@ async def halaxy(route):
 # ------------------------------------------------------------------ AXA
 
 AXA_MEMBER = ("<!doctype html><html><head><meta charset='utf-8'><title>Submit invoice</title></head><body><h1>I'm a healthcare provider and would like to submit an invoice</h1>"
-              "<input type='text' id='member_id_v77' name='__field_112374'><button id='next_v77' type='button' onclick=\"sessionStorage.setItem('m', document.getElementById('member_id_v77').value); "
-              "location.href='/payment-support-service/form/submit-invoice-updated/axa-health-new/'\">Submit invoice</button></body></html>")
+              "<input type='text' id='member_id_v77' name='__field_112374'><button id='next_v77' type='button' onclick=\"localStorage.setItem('m', document.getElementById('member_id_v77').value); "
+              "var a = document.createElement('a'); a.href = '/payment-support-service/form/submit-invoice-updated/axa-health-new/'; a.target = '_blank'; a.rel = 'noopener'; document.body.appendChild(a); a.click();\">Submit invoice</button></body></html>")
 
 
 def axa_form():
@@ -175,7 +175,7 @@ def axa_form():
         radios('more%d' % n, ['Yes', 'No'])
         f.append('</div>')
     script = ("<script>document.addEventListener('change', function (e) { var m = /^more(\\d)_0$/.exec(e.target.id); if (m && e.target.checked) { var nx = document.getElementById('line' + (+m[1] + 1)); if (nx) nx.style.display = ''; } });"
-              "document.getElementById('mem').value = sessionStorage.getItem('m') || '';"
+              "document.getElementById('mem').value = localStorage.getItem('m') || '';"
               "document.querySelector('form').addEventListener('submit', function (e) { e.preventDefault(); var d = {}; document.querySelectorAll('form input').forEach(function (i) { if (i.type === 'radio') { if (i.checked) d[i.name] = i.value; } else d[i.id] = i.value; });"
               "fetch('/record', { method: 'POST', body: JSON.stringify(d) }); document.querySelector('form').style.display = 'none'; document.getElementById('ok').style.display = ''; });</script>")
     return ("<!doctype html><html><head><meta charset='utf-8'><title>I would like to submit an invoice - AXA Health new</title></head><body><h2>I would like to submit an invoice</h2>"
@@ -218,13 +218,13 @@ def bupa_list():
                      "<button type='submit' name='go' value='add'>Add treatment</button><button type='submit' name='go' value='previous'>Previous</button><button type='submit' name='go' value='next'>Next</button></form>" % rows, False)
 
 
-BUPA_ADD = bupa_page("<h2>Treatment details</h2><form id='createClaimForm' method='post' action='/providers-online/addClaimTreatment.do?method=save'>"
+BUPA_ADD = bupa_page("<ol class='progress-alert'><li><span>Add treatments</span></li></ol><h2>Treatment details</h2><form id='createClaimForm' method='post' action='/providers-online/addClaimTreatment.do?method=save'>"
                      "<label>Impairment / diagnosis <span class='error'>*</span></label><select name='impairmentPair'><option>Please select...</option><option>11111-Knee pain</option><option selected>22222-Knee sprain</option></select>"
                      "<label>Procedure <span class='mandatory-error'>*</span></label><select name='procedureCode' onchange=\"this.form.action='/providers-online/addClaimTreatment.do?method=reload'; this.form.submit()\"><option>Please select...</option><option>Physiotherapy group session (AA359)</option><option>Physio initial consultation - AA360</option>"
                      "<option>AA361 Physio follow up</option><option>Invented longer code AA3610</option></select>"
                      "<select name='typeOfService'><option>Outpatient</option></select><label for='place-of-service'>Place of service *</label><select id='place-of-service' name='placeOfService'>"
                      "<option value=''>Please select...</option><option value='HOME'>Home</option><option value='CR'>Consultant rooms</option><option value='OT'>Other</option></select>"
-                     "<select name='providerId'><option>Urmston Physio Clinic</option></select><input name='treatmentFromDate'><input name='treatmentToDate'>"
+                     "<select name='providerId' id='provider-name'><option value=''>Please select...</option><option>Another Clinic</option><option>Urmston Physio Clinic</option></select><input name='treatmentFromDate'><input name='treatmentToDate'>"
                      "<input name='incidents' maxlength='3'><input name='chargeAmount' maxlength='8'><button type='submit' name='go' value='previous'>Previous</button><button type='submit' name='go' value='save'>Save</button></form>", False)
 
 
@@ -291,6 +291,8 @@ async def bupa(route):
             return await html(bupa_add())
         if m == 'save' and B.get('refuseSave'):
             return await html(bupa_add().replace("<h2>Treatment details</h2>", "<h2>Treatment details</h2><div class='errorMessage'>Please enter a valid fee</div>"))
+        if m == 'save' and f.get('providerId') != 'Urmston Physio Clinic':   # as live, 11 Nov 2026, with more than one provider
+            return await html(bupa_add().replace("<h2>Treatment details</h2>", "<h2>Treatment details</h2><div class='text-error'>Please check the details required</div><div class='errorMessage'>Provider Name is required</div>"))
         if m == 'save':
             B['treatments'].append({k: f.get(k) for k in ('placeOfService', 'treatmentFromDate', 'treatmentToDate', 'incidents', 'chargeAmount', 'impairmentPair', 'procedureCode')})
             return await html(bupa_list())
@@ -347,6 +349,7 @@ async def setup(browser):
     await ctx.route('https://providersonline.bupa.co.uk/**', bupa)
     await ctx.add_init_script(STUBS)
     await ctx.add_init_script(LOADER)
+    ctx.on('console', lambda m: CONSOLE.append(m.page.url[-30:] + ' ' + m.type + ' ' + m.text[:200]) if m.page else None)
     return ctx
 
 
@@ -358,6 +361,19 @@ async def open_halaxy(ctx, inv):
         await pg.goto('https://eu.halaxy.com/a/pr/555/invoice/%d' % inv)
         await pg.wait_for_timeout(1200)
     return pg, errors
+
+
+SEEN_FORM_TABS = set()
+CONSOLE = []
+async def new_form_tab(ctx):
+    # As live (11 Nov 2026): AXA's "Submit invoice" opens the form in a new tab, leaving the membership tab behind.
+    for _ in range(120):
+        for t in ctx.pages:
+            if t.url.endswith('/axa-health-new/') and id(t) not in SEEN_FORM_TABS:
+                SEEN_FORM_TABS.add(id(t))
+                return t
+        await asyncio.sleep(0.5)
+    raise Exception('the AXA form tab never opened')
 
 
 async def main():
@@ -375,11 +391,17 @@ async def main():
         # Fill: the portal opens in a new tab
         async with ctx.expect_page() as newp:
             await pg.click('[data-upc-portal-fill] button')
-        portal = await newp.value
+        member_tab = await newp.value
+        portal = await new_form_tab(ctx)
         perr = []
         portal.on('pageerror', lambda e: perr.append(str(e)))
+        member_tab.on('pageerror', lambda e: perr.append(str(e)))
         await portal.wait_for_url('**/axa-health-new/', timeout=60000)
-        await portal.wait_for_function("document.getElementById('upc-pf-panel') && /Filled:/.test(document.getElementById('upc-pf-panel').textContent)", timeout=60000)
+        try:
+            await portal.wait_for_function("document.getElementById('upc-pf-panel') && /Filled:/.test(document.getElementById('upc-pf-panel').textContent)", timeout=60000)
+        except Exception:
+            print('\n'.join(CONSOLE[-25:])); print('DEBUG loader:', await portal.evaluate("[typeof window.GM_getValue, !!window.__upcLoader, typeof window.__hxPortalFill, document.readyState, location.href]"), 'DEBUG form tab:', await portal.evaluate("(document.getElementById('upc-pf-panel') || {}).textContent || 'no panel'"), '| member tab:', await member_tab.evaluate("(document.getElementById('upc-pf-panel') || {}).textContent || 'no panel'"), perr, S['gm'].get('shared:portal-claim', {}).get('progress'))
+            raise
         claim = S['gm'].get('shared:portal-claim') or {}
         briefs = await pg.evaluate('''() => ['lower back pain, dull achy quality', 'ongoing shoulder pain post-fall 7/52 ago', 'L) knee pain', '(R) shoulder pain', 'Chronic neck pain - worse at work',
             'gradual onset of R hip pain for 3 months', 'right ankle sprain 2/52', 'low back pain with sciatica', 'Plantar fasciitis'].map(window.upcPortalFill.brief)''')
@@ -403,6 +425,10 @@ async def main():
         await portal.click('button[type=submit]')
         await portal.wait_for_function("document.getElementById('upc-pf-panel') && /Submitted to AXA/.test(document.getElementById('upc-pf-panel').textContent)", timeout=30000)
         check('AXA: submitted noted', (S['gm'].get('shared:portal-claim') or {}).get('status') == 'submitted')
+        mpanel = await member_tab.evaluate("(document.getElementById('upc-pf-panel') || {}).textContent || ''")
+        check('AXA: the membership tab left behind steps aside (no failure, no cover, no task)', 'carried on there' in mpanel and 'stopped' not in mpanel
+              and await member_tab.evaluate("!document.getElementById('upc-pf-cover')") and not S['tasks'].get(9001), (mpanel, S['tasks'].get(9001)))
+        await member_tab.close()
         await pg.bring_to_front()
         await pg.wait_for_selector('[data-upc-pf-confirm]', timeout=30000)
         txt = await pg.evaluate("document.querySelector('[data-upc-pf-confirm]').innerText")
@@ -462,7 +488,8 @@ async def main():
         AXA_FORM_OVERRIDE['html'] = axa_form().replace('Charge per unit (required)', 'Unit price (required)')
         async with ctx.expect_page() as newp:
             await pg.click('[data-upc-portal-fill] button')
-        portal = await newp.value
+        member_tab = await newp.value
+        portal = await new_form_tab(ctx)
         await portal.wait_for_function("document.getElementById('upc-pf-panel') && /has stopped/.test(document.getElementById('upc-pf-panel').textContent)", timeout=60000)
         panel = await portal.evaluate("document.getElementById('upc-pf-panel').textContent")
         check('a changed portal page stops the fill, says what, and that Carl has been notified', 'treatment line 1: charge per unit not found' in panel and 'Carl has been notified' in panel, panel)
@@ -472,6 +499,7 @@ async def main():
               and 'charge per unit not found' in t[0]['comment'] and 'shared:portal-claim' not in S['gm'], t)
         AXA_FORM_OVERRIDE.clear()
         await portal.close()
+        await member_tab.close()
 
         # While working, the page is covered and a real click doesn't reach it; after a minute stuck, the fill gives up
         S['bupa'].update({'logged': True, 'treatments': [], 'prepopulated': False, 'refuseSave': False, 'submitted': False, 'stall': True})

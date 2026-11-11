@@ -214,6 +214,7 @@ async def halaxy(route):
                            "<td data-property='tax'>£ 0.00</td><td data-property='amount' class='money number'>%s</td>"
                            "<td><a class='btn icon ajax' href='/a/pr/555/invoice/line/%d/edit'>e</a></td></tr>" % (l.get('patientInvoice', 0), hx(l['day']), gbp(l['amount']), l['lineId'])
                            for l in S['orgs'][iid]['lines'])
+            rows += "<tr><td></td><td>Total</td><td class='money number'>%s</td></tr>" % gbp(sum(l['amount'] for l in S['orgs'][iid]['lines']))
             return await route.fulfill(body="<html><head><title>Invoice %s | Halaxy</title></head><body><table id='invoiceLines'>%s</table></body></html>" % (S['orgs'][iid]['number'], rows), content_type='text/html')
         return await route.fulfill(status=404, body='gone')
     await route.fulfill(status=404, body='not mocked: ' + p)
@@ -292,6 +293,7 @@ async def main():
         await pg.wait_for_function(root + ".querySelector('.upc-ok') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60000)
         done = await pg.evaluate(root + ".textContent")
         check('merged first, onto the latest chosen invoice, then billed once, then marked Issued', [c[0] for c in S['calls']] == ['merge', 'bill', 'status', 'linedate', 'dates'] and S['calls'][0][1] == 1009 and S['calls'][0][2] == [2001, 2003] and S['calls'][1][1] == 1009, S['calls'])
+        check('the Billed line gives the funder invoice\'s total (all the fees), not one fee', '(£ 120.00), and' in done and 'Check UPC' not in done, done[-400:])
         check('billed as a NEW organisation invoice, keeping the patient invoice', S['calls'][1][2:] == ('0', 'no'), S['calls'])
         check('never used Halaxy\'s pre-selected invoice for another patient', S['orgs'][7777]['lines'] == [])
         org = S['orgs'].get(9001, {})

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy insurer portal fill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.11
+// @version      0.1.13
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
@@ -47,7 +47,7 @@
   if (window.__hxPortalFill) return;
   window.__hxPortalFill = true;
 
-  const VERSION = '0.1.11';
+  const VERSION = '0.1.13';
   const KEY = 'portal-claim';
   const MAX_AGE = 4 * 3600e3;
   const PORTALS = {
@@ -447,12 +447,25 @@
         working('Membership number entered. Opening the invoice form...');
         await sleep(300);
         go.click();
-        return;
+        // AXA opens the form in a new tab (live, 11 Nov 2026), leaving this one behind. Once the form tab has picked
+        // the claim up, this tab says so and steps aside, rather than timing out and reporting a failure over it.
+        const clicked = Date.now();
+        while (Date.now() - clicked < 45000) {
+          await sleep(1500);
+          let c = null;
+          try { c = await shared('get', KEY); } catch (e) { c = null; }
+          if (c && c.at === claim.at && c.progress && (c.progress.form || c.progress.filled || c.status === 'submitted')) {
+            return say('AXA opened the invoice form in a new tab, and the fill carried on there. You can close this tab.', false, true);
+          }
+          if (!c || c.at !== claim.at) return say('The fill has finished or been stopped in the other tab. You can close this tab.', false, true);
+        }
+        return stop('AXA\'s invoice form didn\'t open after "Submit invoice".');
       }
       say('Waiting for AXA\'s "Submit an invoice" page. If it doesn\'t open, go to Payment support and submit an invoice.');
     }
 
     async function axaForm() {
+      claim.progress.form = true; await save();   // tells the membership tab (left behind when AXA opens a new tab) that this one has it
       const all = inputs(document.querySelector('form') || document);
       const who = all.find((e) => e.type === 'radio' && /^therapist\b/i.test(labelOf(e)));
       if (!who) return stop('The AXA form has changed ("Therapist" not found).');
@@ -543,8 +556,13 @@
         // Bupa marks required fields with a red "*" in an error-styled element (live, 11 Nov 2026), so only wording counts as a message.
         if (pr.stage === 'saving' || pr.stage === 'asked') {
           const errs = [...document.querySelectorAll('[class*="error" i], [class*="alert" i], .invalid-feedback, [role=alert]')]
-            .filter((e) => visible(e) && /[a-z]{3}/i.test(clean(e.textContent)) && !(panel && panel.contains(e)) && !e.querySelector('[class*="error" i], [class*="alert" i]'));
-          if (errs.length) return stop('Bupa didn\'t accept treatment ' + ((pr.added || 0) + 1) + ': "' + clean(errs[0].textContent).slice(0, 160) + '"');
+            .filter((e) => visible(e) && /[a-z]{3}/i.test(clean(e.textContent)) && !(panel && panel.contains(e)) && !e.querySelector('[class*="error" i], [class*="alert" i]'))
+            // Wording of a message, not a styled heading (live, 11 Nov 2026: "Add treatments" was quoted instead of "Provider Name is required").
+            .filter((e) => /required|invalid|not valid|please|must|cannot|can't|error|incorrect|exceed/i.test(clean(e.textContent)));
+          if (errs.length) {
+            const words = [...new Set(errs.map((e) => clean(e.textContent).slice(0, 120)))].slice(0, 3).join('; ');
+            return stop('Bupa didn\'t accept treatment ' + ((pr.added || 0) + 1) + ': "' + words + '"');
+          }
         }
         // Back on the form after Save without a message (a refresh, or Bupa reopening it): fill it again, but not endlessly.
         if (pr.stage === 'saving') {
@@ -587,6 +605,13 @@
           else if (proc.selectedIndex > 0) { if (await choose(proc, proc.options[0].value)) return; }   // pre-selected, but not this fee's code
         }
         if (await choose(place, cr.value)) return;
+        // Provider name: with more than one provider on the claim it starts as "Please select..." (Carl, 11 Nov 2026).
+        const prov = document.querySelector('select[name="providerId"]');
+        if (prov) {
+          const ours = optionByText(prov, new RegExp(claim.payee && claim.payee.name ? claim.payee.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : 'urmston physio clinic', 'i'));
+          if (!ours) return stop('Bupa\'s provider list for this treatment has no "' + ((claim.payee && claim.payee.name) || 'Urmston Physio Clinic') + '".');
+          if (await choose(prov, ours.value)) return;
+        }
         const missing = [[imp, 'impairment'], [proc, 'procedure']].filter(([x]) => x && x.selectedIndex <= 0);
         if (missing.length) {
           pr.stage = 'asked'; await save();
