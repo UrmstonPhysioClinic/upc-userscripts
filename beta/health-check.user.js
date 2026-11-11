@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.21
+// @version      1.1.22
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.21';
+  const VERSION = '1.1.22';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -169,7 +169,8 @@
     {
       id: 'invoice-page', title: 'Invoice page layout',
       scripts: ['Rebate Sync', 'Remittances', 'Bill funder'],
-      applies: () => /\/invoice\/(\d+\/)?\d+\/?$/.test(location.pathname),
+      // An invoice: /invoice/{id} or /patient/invoice/{patient}/{id}. Not /patient/invoice/{patient}/, the patient's Invoices tab (a list).
+      applies: () => /\/invoice\/\d+\/?$/.test(location.pathname) && !/\/patient\/invoice\/\d+\/?$/.test(location.pathname) || /\/patient\/invoice\/\d+\/\d+\/?$/.test(location.pathname),
       test: () => missingEls(['#invoiceLines', '#invoicePayments'])
         // Bill funder reads the patient, claim and authorisation from patient invoices that can still be billed.
         .concat(document.getElementById('invoiceFunderBtn') ? missingEls(['#card-invoice-view-patient a[href*="/patient/"]', '#card-invoice-parts-claim-view', '#btn-group-outstanding-charges']) : []),

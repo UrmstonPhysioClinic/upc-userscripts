@@ -17,6 +17,13 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Portal fill
 
+### 0.1.13 (11 Nov 2026, beta)
+- Bupa: picks "Urmston Physio Clinic" as the treatment's Provider name. With more than one provider on the claim Bupa leaves it at "Please select...", and refused the treatment (Carl, 11 Nov 2026).
+- When Bupa refuses a treatment, the fill quotes Bupa's actual messages ("Provider Name is required"), not a styled heading ("Add treatments").
+
+### 0.1.12 (11 Nov 2026, beta)
+- AXA opens its invoice form in a new tab, leaving the first tab behind. That tab used to time out after a minute, report a failure (sending Carl a task) and stop the Halaxy side waiting, so "Mark Issued?" was never asked even though the fill finished in the new tab. Now the first tab steps aside once the form tab has the claim ("carried on there; you can close this tab"), and only reports a failure if the form never opens.
+
 ### 0.1.11 (11 Nov 2026, beta)
 - AXA: the legal name now comes from the patient Edit page's own name fields (forename and surname; the preferred name is a separate field there), confirmed by a capture on live Halaxy. One less request than 0.1.10's General page read.
 
@@ -132,6 +139,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Health check
 
+### 1.1.22 (11 Nov 2026, beta)
+- A patient's Invoices tab (/patient/invoice/{patient}/) is no longer checked as an invoice page. It reported "Invoice page layout has changed" (#invoiceLines, #invoicePayments) wrongly.
+
 ### 1.1.21 (11 Nov 2026, beta)
 - The patient Edit page check also looks for the legal name fields (forename, surname), which Portal fill now uses.
 
@@ -204,6 +214,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - A count of due patients on the menu item, refreshed at most every 2 hours in the visible tab and shared by all tabs. One report, one list and one calendar request per check, plus each patient's first and latest invoice (cached for a week). Read-only.
 
 ## Bill funder
+
+### 0.8.1 (11 Nov 2026, beta)
+- The "Billed." line gives the funder invoice's own total. It showed one fee's amount (£ 40.00 for five fees, Carl, 11 Nov 2026), read from the patient invoice's payment row. A warning shows if the funder invoice total differs from the fees chosen.
 
 ### 0.8.0 (11 Nov 2026, beta)
 - After billing Bupa or AXA: a "Fill on the Bupa portal" / "Fill on the AXA portal" button opens the new funder invoice, where Portal fill does the rest.

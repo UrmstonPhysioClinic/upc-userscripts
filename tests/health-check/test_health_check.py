@@ -163,6 +163,10 @@ async def main():
         })()""")
         probs2, pill2 = await load()
         check('new health check version re-checks at once, clearing the old results (data and page)', probs2 == [] and pill2 == '', (probs2, pill2))
+        # The patient's Invoices tab (/patient/invoice/{patient}/) is a list, not an invoice: no invoice layout check there
+        await load('/a/pr/555/patient/invoice/9/')
+        r = await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:results') || '{}')")
+        check('the patient Invoices tab is not checked as an invoice page', 'invoice-page' not in r or not r['invoice-page']['problems'], r.get('invoice-page'))
         probs3, pill3 = await load()
         check('and then waits for the daily check again', await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:dataBy'))") != '0.0.1' and probs3 == [], probs3)
         stored = await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:halaxy'))")
