@@ -17,6 +17,11 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Portal fill
 
+### 0.1.10 (11 Nov 2026, beta)
+- AXA: the patient's legal name (the "Legal Name" row on their General page), not the preferred name (Carl, 11 Nov 2026). If the legal name can't be found, the name is highlighted for checking and the message says why.
+- AXA condition: just the condition, without clinical detail (Carl: "lower back pain, dull achy quality" becomes "Lower back pain"). The first phrase is kept; duration, onset and description are dropped; (L) and (R) become left and right.
+- AXA address: the postcode written properly ("m419el" becomes "M41 9EL").
+
 ### 0.1.9 (11 Nov 2026, beta)
 - Bupa reloads the treatment form when a procedure is chosen (Carl, 11 Nov 2026). The fill now sets Bupa's lists first (procedure, then place of service), only when they aren't already right, and if the page reloads it carries on from the reloaded form; the dates, quantity and fee are typed last, just before Save.
 - When the fill asks you to choose a procedure or impairment, it carries on by itself once you've chosen (whether or not Bupa reloads the page), and presses Save.

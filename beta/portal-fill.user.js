@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy insurer portal fill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.9
+// @version      0.1.10
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
@@ -47,7 +47,7 @@
   if (window.__hxPortalFill) return;
   window.__hxPortalFill = true;
 
-  const VERSION = '0.1.9';
+  const VERSION = '0.1.10';
   const KEY = 'portal-claim';
   const MAX_AGE = 4 * 3600e3;
   const PORTALS = {
@@ -99,8 +99,20 @@
       if (i < 0) return '';
       const same = lines[i].replace(/^subjective\s*:?\s*/i, '');
       const first = same || lines[i + 1] || '';
-      return clean(first.replace(/^[-*•\s]+/, '').replace(/^c\s*\/\s*o\s*:?\s*/i, '')).slice(0, 120);
+      return brief(clean(first.replace(/^[-*•\s]+/, '').replace(/^c\s*\/\s*o\s*:?\s*/i, '')));
     }
+    // The condition only, without clinical detail (Carl, 11 Nov 2026: "lower back pain, dull achy quality" should be just
+    // "Lower back pain"): the first phrase, without how long, how it started or what it feels like.
+    function brief(c) {
+      let s = clean(String(c || '').replace(/(^|\s)\(?([LR])\)\s*/gi, (m, a, side) => a + (/l/i.test(side) ? 'left ' : 'right ')).split(/\s*(?:[,;.:(]|\s[-–]\s)/)[0]);
+      s = s.split(/\s+(?:post|following|after|since|for|with|secondary to|due to|from|x\s*\d|\d)\b/i)[0];
+      const LEAD = /^(?:ongoing|recurrent|recurring|intermittent|constant|persistent|worsening|chronic|acute|longstanding|long-standing|new|mild|moderate|severe|(?:gradual|sudden|insidious) onset(?: of)?)\s+/i;
+      while (LEAD.test(s)) s = s.replace(LEAD, '');
+      s = clean(s).slice(0, 80);
+      return s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+    }
+    // UK postcodes as written: "m419el" becomes "M41 9EL".
+    const postcode = (p) => { const t = clean(p).replace(/\s+/g, '').toUpperCase(); return /^[A-Z]{1,2}\d[A-Z\d]?\d[A-Z]{2}$/.test(t) ? t.slice(0, -3) + ' ' + t.slice(-3) : clean(p); };
     async function suggestCondition(lpg, fromMs, toMs) {
       const items = (await U().notes.items(lpg)).filter((x) => x.noteId && x.entity === 'note' && (x.category === 'appointment' || x.category === 'note')
         && x.date && x.date >= fromMs - 90 * 86400e3 && x.date <= toMs + 86400e3).sort((a, b) => a.date - b.date).slice(0, 4);
@@ -142,6 +154,13 @@
       const ed = await U().http.html('/patient/' + encodeURIComponent(pinv.patientId) + '/edit');
       const addr = (part) => { const el = ed.querySelector('[name="patientdetailmain[linkPaG][linkpagaddresses][0][address][' + part + ']"]'); return el ? clean(el.value) : ''; };
       if (!ed.querySelector('[name^="patientdetailmain[linkPaG][linkpagaddresses][0][address]"]')) throw new (U().Error)('The patient Edit page has changed (address not found), so the claim couldn\'t be read.');
+      // The legal name, not the preferred one (Carl, 11 Nov 2026): the "Legal Name" row on the patient's General page.
+      let legal = '';
+      if (kind === 'axa') {
+        const gen = await U().http.html('/patient/' + encodeURIComponent(pinv.patientId));
+        const lab = [...gen.querySelectorAll('body *')].find((e) => !e.children.length && /^legal name\s*:?$/i.test(clean(e.textContent)));
+        if (lab) legal = nameOnly((lab.nextElementSibling ? lab.nextElementSibling.textContent : lab.parentElement.textContent.replace(lab.textContent, '')));
+      }
       const settingsForm = (await U().http.popup('/invoice/options/' + invoiceId)).doc.querySelector('[name="form[displayDate]"]');
       const invDate = settingsForm ? U().parseDay(settingsForm.value) : null;
       let condition = '';
@@ -155,7 +174,7 @@
         invoiceId, invoiceUrl: location.origin + U().base() + '/invoice/' + invoiceId, number: noLeadingZero(inv.number),
         invoiceDate: invDate ? slash(invDate) : '', total: pounds(lines.reduce((t, l) => t + l.amount, 0)),
         membership, authorisation, condition,
-        patient: { name: nameOnly(det.fullName), dob: dob ? slash(dob) : '', address: [addr('firstline'), addr('secondline'), addr('postcode')].filter(Boolean).join(', '),
+        patient: { name: legal || nameOnly(det.fullName), legalFound: !!legal, dob: dob ? slash(dob) : '', address: [addr('firstline'), addr('secondline'), postcode(addr('postcode'))].filter(Boolean).join(', '),
           hasPostcode: !!addr('postcode') },
         lines: lines.map((l, i) => ({ date: slash(days[i]), code: clean(l.item), description: clean(l.description).replace(funderPrefix, '').replace(/\s*-\s*patient invoice\s+UPC-?\d+\s*$/i, ''), amount: pounds(l.amount) })),
         payee: { name: s.payee, providerCode: s.providerCode, email: s.email, phone: s.phone },
@@ -332,7 +351,7 @@
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
     else start();
-    window.upcPortalFill = { version: VERSION, conditionFrom, readClaim };
+    window.upcPortalFill = { version: VERSION, conditionFrom, brief, readClaim };
   }
 
   // ================================================================== the insurer's portal
@@ -487,11 +506,14 @@
       }
       const cond = byLabel(/^condition for which/i, list());
       if (cond) cond.classList.add('upc-pf-check');
+      const nameBox = byLabel(/^patient.{1,3}s forename and surname/i, list());
+      if (nameBox && !claim.patient.legalFound) nameBox.classList.add('upc-pf-check');
       claim.status = 'filled'; claim.progress.filled = true; await save();
       const submit = buttonByText(/^submit$/i);
       if (submit) submit.scrollIntoView({ block: 'center' });
       say('Filled: ' + claim.lines.length + ' treatment line' + (claim.lines.length === 1 ? '' : 's') + ', £ ' + claim.total + '. Check everything, especially the condition (highlighted' +
-        (claim.condition ? ', from the notes' : ', not found in the notes: please type it') + '), then press Submit yourself.', false, true);
+        (claim.condition ? ', from the notes' : ', not found in the notes: please type it') + ')' +
+        (claim.patient.legalFound ? '' : ' and the patient\'s name (highlighted: their legal name wasn\'t found, so this may be the preferred name)') + ', then press Submit yourself.', false, true);
       // AXA shows its "submitted" message in the same page: watch for it once (our own panel changing is ignored).
       const obs = new MutationObserver((list) => {
         if (list.every((m) => panel && panel.contains(m.target))) return;
