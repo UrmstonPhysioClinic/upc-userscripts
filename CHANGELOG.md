@@ -17,6 +17,11 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Task stamps
 
+### 0.1.3 (11 Nov 2026, beta)
+- Also an appointment's Comments in the calendar (Carl, 11 Nov 2026), the same stamp and bullets.
+- The stamp now goes in when you first click (or tab) into the box, not when the pop-up opens, so a task or appointment that's only opened, moved or given a new status is left exactly as it was.
+- Tells the health check if the appointment pop-up turns up without its Comments box.
+
 ### 0.1.2 (11 Nov 2026, beta)
 - The stamp is now "2026-11-11 15:45 CH": a colon in the time, nothing after the initials (Carl's choice, 11 Nov 2026). The first style ("2026-11-11 15-45 CH:") is still recognised.
 
