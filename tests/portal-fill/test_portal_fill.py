@@ -94,7 +94,7 @@ async def halaxy(route):
         return await route.fulfill(body=funder_invoice(9001, 'AXA Health', [('20-Oct-2026', 'AXA-IA', 'AXA Health: Initial Physiotherapy Assessment', '60.00'),
                                                                            ('27-Oct-2026', 'AXA-FU', 'AXA Health: Follow-Up Physiotherapy Consultation', '40.00')]), content_type='text/html')
     if p == '/a/pr/555/invoice/9002':
-        return await route.fulfill(body=funder_invoice(9002, 'Bupa', [('03-Nov-2026', 'BUPA-FU', 'Bupa: Follow-Up Physiotherapy Consultation', '40.00'),
+        return await route.fulfill(body=funder_invoice(9002, 'Bupa', [('03-Nov-2026', 'BUPA-IA', 'Bupa: Initial Physiotherapy Consultation', '60.00'),
                                                                       ('10-Nov-2026', 'BUPA-FU', 'Bupa: Follow-Up Physiotherapy Consultation', '40.00')]), content_type='text/html')
     if p == '/a/pr/555/invoice/8001':
         return await route.fulfill(body=PATIENT_INVOICE, content_type='text/html')
@@ -220,7 +220,8 @@ def bupa_list():
 
 BUPA_ADD = bupa_page("<h2>Treatment details</h2><form id='createClaimForm' method='post' action='/providers-online/addClaimTreatment.do?method=save'>"
                      "<select name='impairmentPair'><option>Please select...</option><option>11111-Knee pain</option><option selected>22222-Knee sprain</option></select>"
-                     "<select name='procedureCode'><option>Please select...</option><option selected>PH001-Physiotherapy</option></select>"
+                     "<select name='procedureCode'><option>Please select...</option><option>A5010-Physiotherapy initial consultation</option><option>A5020-Physiotherapy follow-up consultation</option>"
+                     "<option>A5030-Physiotherapy group session</option></select>"
                      "<select name='typeOfService'><option>Outpatient</option></select><label for='place-of-service'>Place of service *</label><select id='place-of-service' name='placeOfService'>"
                      "<option value=''>Please select...</option><option value='HOME'>Home</option><option value='CR'>Consultant rooms</option><option value='OT'>Other</option></select>"
                      "<select name='providerId'><option>Urmston Physio Clinic</option></select><input name='treatmentFromDate'><input name='treatmentToDate'>"
@@ -270,6 +271,8 @@ async def bupa(route):
         if m == 'removeTreatment':
             if f.get('go') == 'remove':
                 B['treatments'].pop(int(f['indexId']))
+                if not B['treatments']:   # as Bupa: once the last is removed, a new treatment opens
+                    return await html(BUPA_ADD)
             return await html(bupa_list())
         if m == 'save':
             B['treatments'].append({k: f.get(k) for k in ('placeOfService', 'treatmentFromDate', 'treatmentToDate', 'incidents', 'chargeAmount', 'impairmentPair', 'procedureCode')})
@@ -414,9 +417,9 @@ async def main():
         check('Bupa: cookie box closed (Reject all)', any(c['name'] == 'ot' for c in await ctx.cookies('https://providersonline.bupa.co.uk')))
         check('Bupa: set-up (invoice number without the 0, first treatment date, pre-auth number)', B.get('setup', {}).get('invoiceNumber') == 'UPC-2222'
               and B['setup'].get('firstTreatmentDate') == '03/11/2026' and B['setup'].get('preAuthNumber') == 'AUTHTEST', B.get('setup'))
-        check('Bupa: pre-populated treatment removed, one fee per treatment, Consultant rooms, Bupa\'s impairment and procedure left as they came',
-              B['treatments'] == [{'placeOfService': 'CR', 'treatmentFromDate': '03/11/2026', 'treatmentToDate': '03/11/2026', 'incidents': '1', 'chargeAmount': '40.00', 'impairmentPair': '22222-Knee sprain', 'procedureCode': 'PH001-Physiotherapy'},
-                                  {'placeOfService': 'CR', 'treatmentFromDate': '10/11/2026', 'treatmentToDate': '10/11/2026', 'incidents': '1', 'chargeAmount': '40.00', 'impairmentPair': '22222-Knee sprain', 'procedureCode': 'PH001-Physiotherapy'}], B['treatments'])
+        check('Bupa: pre-populated treatment removed, Bupa opens a new treatment after removal, one fee per treatment, Consultant rooms, the procedure matched to the fee, Bupa\'s impairment left as it came',
+              B['treatments'] == [{'placeOfService': 'CR', 'treatmentFromDate': '03/11/2026', 'treatmentToDate': '03/11/2026', 'incidents': '1', 'chargeAmount': '60.00', 'impairmentPair': '22222-Knee sprain', 'procedureCode': 'A5010-Physiotherapy initial consultation'},
+                                  {'placeOfService': 'CR', 'treatmentFromDate': '10/11/2026', 'treatmentToDate': '10/11/2026', 'incidents': '1', 'chargeAmount': '40.00', 'impairmentPair': '22222-Knee sprain', 'procedureCode': 'A5020-Physiotherapy follow-up consultation'}], B['treatments'])
         panel = await portal.evaluate("document.getElementById('upc-pf-panel').textContent")
         check('Bupa: stops on Confirm and Submit, total matches', 'Confirm and Submit' in await portal.evaluate("document.body.innerText") and 'Bupa shows a total' not in panel and not B.get('submitted')
               and await portal.evaluate("document.getElementById('confirmation').classList.contains('upc-pf-check') && !document.getElementById('confirmation').checked"), panel)
