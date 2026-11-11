@@ -219,8 +219,8 @@ def bupa_list():
 
 
 BUPA_ADD = bupa_page("<h2>Treatment details</h2><form id='createClaimForm' method='post' action='/providers-online/addClaimTreatment.do?method=save'>"
-                     "<select name='impairmentPair'><option>Please select...</option><option>11111-Knee pain</option><option selected>22222-Knee sprain</option></select>"
-                     "<select name='procedureCode'><option>Please select...</option><option>Physiotherapy group session (AA359)</option><option>Physio initial consultation - AA360</option>"
+                     "<label>Impairment / diagnosis <span class='error'>*</span></label><select name='impairmentPair'><option>Please select...</option><option>11111-Knee pain</option><option selected>22222-Knee sprain</option></select>"
+                     "<label>Procedure <span class='mandatory-error'>*</span></label><select name='procedureCode'><option>Please select...</option><option>Physiotherapy group session (AA359)</option><option>Physio initial consultation - AA360</option>"
                      "<option>AA361 Physio follow up</option><option>Invented longer code AA3610</option></select>"
                      "<select name='typeOfService'><option>Outpatient</option></select><label for='place-of-service'>Place of service *</label><select id='place-of-service' name='placeOfService'>"
                      "<option value=''>Please select...</option><option value='HOME'>Home</option><option value='CR'>Consultant rooms</option><option value='OT'>Other</option></select>"
@@ -274,7 +274,7 @@ async def bupa(route):
                 if not B['treatments']:   # as Bupa: once the last is removed, a new treatment opens
                     return await html(BUPA_ADD)
             return await html(bupa_list())
-        if m == 'save' and B.get('reopen'):   # the form comes back with no message (as after a refresh): the fill should fill it again
+        if m == 'save' and (B.get('reopen') or B.get('reopenAlways')):   # the form comes back with no message (as after a refresh): the fill should fill it again
             B['reopen'] = False
             return await html(BUPA_ADD)
         if m == 'save' and B.get('refuseSave'):
@@ -486,6 +486,20 @@ async def main():
         check('Bupa: a refused treatment stops the fill, with Bupa\'s message', 'Please enter a valid fee' in panel, panel)
         await pg2.wait_for_function("/has been sent a task/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=60000)
         check('and Carl gets a task on that invoice', len(S['tasks'][9002]) == 1 and 'Please enter a valid fee' in S['tasks'][9002][0]['comment'], S['tasks'][9002])
+        await portal.close()
+
+        # Bupa keeps handing the form back with no message: the fill tries twice more, then stops rather than looping
+        S['bupa'].update({'logged': True, 'treatments': [], 'prepopulated': False, 'refuseSave': False, 'reopenAlways': True, 'submitted': False})
+        S['tasks'][9002] = []
+        await pg2.bring_to_front()
+        async with ctx.expect_page() as newp:
+            await pg2.click('[data-upc-portal-fill] button')
+        portal = await newp.value
+        await portal.wait_for_function("document.getElementById('upc-pf-panel') && /has stopped/.test(document.getElementById('upc-pf-panel').textContent)", timeout=90000)
+        panel = await portal.evaluate("document.getElementById('upc-pf-panel').textContent")
+        saves = len([x for x in S['log'] if 'method=save' in x[1]])
+        check('Bupa: a form returned again and again stops the fill (no loop)', 'keeps returning treatment 1' in panel and '"*"' not in panel, panel)
+        S['bupa']['reopenAlways'] = False
         await portal.close()
 
         await ctx.close()

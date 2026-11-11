@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy insurer portal fill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.7
+// @version      0.1.8
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
@@ -47,7 +47,7 @@
   if (window.__hxPortalFill) return;
   window.__hxPortalFill = true;
 
-  const VERSION = '0.1.7';
+  const VERSION = '0.1.8';
   const KEY = 'portal-claim';
   const MAX_AGE = 4 * 3600e3;
   const PORTALS = {
@@ -524,10 +524,14 @@
       if (imp) {
         // Back on the form while saving: an error message means Bupa didn't take the treatment; without one, the page was
         // reloaded or reopened (live, 11 Nov 2026: a refresh was taken for a refusal), so the form is filled again.
+        // Bupa marks required fields with a red "*" in an error-styled element (live, 11 Nov 2026), so only wording counts as a message.
         if (pr.stage === 'saving') {
           const errs = [...document.querySelectorAll('[class*="error" i], [class*="alert" i], .invalid-feedback, [role=alert]')]
-            .filter((e) => visible(e) && clean(e.textContent) && !(panel && panel.contains(e)) && !e.querySelector('[class*="error" i], [class*="alert" i]'));
+            .filter((e) => visible(e) && /[a-z]{3}/i.test(clean(e.textContent)) && !(panel && panel.contains(e)) && !e.querySelector('[class*="error" i], [class*="alert" i]'));
           if (errs.length) return stop('Bupa didn\'t accept treatment ' + ((pr.added || 0) + 1) + ': "' + clean(errs[0].textContent).slice(0, 160) + '"');
+          // Came back without a message: fill it again, but not endlessly.
+          pr.retries = (pr.retries || 0) + 1;
+          if (pr.retries > 2) return stop('Bupa keeps returning treatment ' + ((pr.added || 0) + 1) + ' without saving it, and shows no message.');
           pr.stage = 'adding'; await save();
         }
         // Bupa opens a new treatment by itself once the last pre-populated one is removed (Carl, 11 Nov 2026).
@@ -571,7 +575,7 @@
       // The treatment list.
       const addBtn = buttonByText(/^add treatment$/i);
       if (has(/^treatment details$/i) && addBtn) {
-        if (pr.stage === 'saving') { pr.added = (pr.added || 0) + 1; pr.stage = 'list'; await save(); }
+        if (pr.stage === 'saving') { pr.added = (pr.added || 0) + 1; pr.retries = 0; pr.stage = 'list'; await save(); }
         if (!pr.cleared) {
           const remove = [...document.querySelectorAll('a, button, input[type=submit]')].find((b) => visible(b) && /^remove( treatment)?$/i.test(clean(b.textContent || b.value)));
           if (remove) { pr.stage = 'removing'; await save(); working('Removing a pre-populated treatment...'); return remove.click(); }
