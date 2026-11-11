@@ -1,5 +1,10 @@
 # Changelog
 
+## Mobile layout
+
+### 2.18 (11 Nov 2026, beta)
+- Joins the clinic's script set (Carl's stand-alone Halaxy mobile 2.17), so the loader keeps it up to date. It switches itself on only on phone-sized screens (the shorter side 600 pixels or less), and does nothing on PCs; ?hxm=1 on a Halaxy address still forces it on for testing. Guarded against running twice, and waits for the page if it starts before the page exists. Otherwise unchanged.
+
 ## Stable release, 11 Nov 2026
 
 Confirmed on live Halaxy by Carl and promoted: core 0.1.28, health check 1.1.23, Remittances 0.3.2, Review requests 0.5.0 (new on stable), Feedback alerts 0.1.1 (new on stable), Task stamps 0.1.3 (new on stable). Held on beta: Portal fill (AXA with several fees not yet tried) and Invoice Funder 0.8.x (the Billed total not yet checked).
@@ -173,6 +178,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - `UPC.notes.items` and `UPC.notes.text` (a patient's notes list and a note's text), `UPC.followUps.list` and `UPC.followUps.add` (Tasks & Follow-Ups), `UPC.patient.details`, `UPC.patient.invoices` and `UPC.patient.addLabel`. Confirmed against live captures, 10 Nov 2026.
 
 ## Health check
+
+### 1.1.24 (11 Nov 2026, beta)
+- Mobile layout added to the script names.
 
 ### 1.1.23 (11 Nov 2026, beta)
 - Task stamps added to the script names; the add-task pop-up check now lists Task stamps and Portal fill too.
