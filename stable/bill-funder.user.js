@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy bill funder
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.7.3
+// @version      0.8.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/bill-funder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/bill-funder.user.js
@@ -40,7 +40,7 @@
   if (window.__upcBillFunder) return;
   window.__upcBillFunder = true;
 
-  const VERSION = '0.7.3';
+  const VERSION = '0.8.1';
   const MAX_AGE_DAYS = 183;   // about 6 months
   const NOT_ATTENDED = /cancel|did-not-attend|dna|reject|declin|reschedul/i;
   const DAY = 86400e3;
@@ -213,8 +213,9 @@
     const after = await U().invoice.fetch(targetId);
     const org = after.payments.find((p) => p.funderInvoiceId);
     if (after.billFunderHref || !org) throw new (U().Error)('Halaxy accepted the request, but ' + after.number + ' does not show an organisation invoice. Check it.');
-    let orgNumber = '';
-    try { orgNumber = (await U().invoice.fetch(org.funderInvoiceId)).number; } catch (e) { /* link still works */ }
+    // The funder invoice's own total (Carl, 11 Nov 2026: the payment row's last amount showed one fee, not the total).
+    let orgNumber = '', orgTotal = null;
+    try { const o = await U().invoice.fetch(org.funderInvoiceId); orgNumber = o.number; orgTotal = o.total; } catch (e) { /* link still works */ }
 
     // 5. Mark the patient invoice Issued.
     say('Marking ' + after.number + ' as Issued...');
@@ -254,7 +255,7 @@
     say('Setting ' + (orgNumber || 'the funder invoice') + ' to invoice date ' + invDate + ', due ' + dueDate + '...');
     let datesError = '';
     try { await U().invoice.setSettings(org.funderInvoiceId, { 'form[displayDate]': invDate, 'form[dueDate]': dueDate }, 'the invoice dates'); } catch (e) { datesError = e.message || String(e); }
-    return { patientInvoiceId: targetId, patientInvoiceNumber: after.number, orgInvoiceId: org.funderInvoiceId, orgInvoiceNumber: orgNumber, amount: org.amount, issuedError, invDate, dueDate, datesError, dateFixes, feeDateError };
+    return { patientInvoiceId: targetId, patientInvoiceNumber: after.number, orgInvoiceId: org.funderInvoiceId, orgInvoiceNumber: orgNumber, amount: orgTotal, expectTotal, issuedError, invDate, dueDate, datesError, dateFixes, feeDateError };
   }
 
   // ------------------------------------------------------------------ panel
@@ -321,11 +322,15 @@
       if (st.result) {
         const r = st.result;
         h += '<p class="upc-ok upc-gap">Billed. ' + esc(r.patientInvoiceNumber) + ' is billed to the funder on <a href="' + esc(U().base() + '/invoice/' + r.orgInvoiceId) + '" target="_blank" rel="noopener">' + esc(r.orgInvoiceNumber || 'the new organisation invoice') + '</a>' + (r.amount !== null && r.amount !== undefined ? ' (' + fmt(r.amount) + ')' : '') +
+          (r.amount !== null && r.amount !== undefined && r.expectTotal !== undefined && r.amount !== r.expectTotal ? '.</p><p class="upc-warn upc-gap">Check ' + esc(r.orgInvoiceNumber || 'the funder invoice') + ': it totals ' + fmt(r.amount) + ', but the fees chosen total ' + fmt(r.expectTotal) + '.</p><p class="upc-gap">Also' : '') +
           (r.issuedError ? '.</p><p class="upc-warn upc-gap">Billing is done, but ' + esc(r.patientInvoiceNumber) + ' could not be marked Issued (' + esc(r.issuedError) + '). Set it with the cogwheel.</p>' : ', and ' + esc(r.patientInvoiceNumber) + ' is marked Issued.</p>');
         h += r.datesError ? '<p class="upc-warn">The funder invoice dates were not set (' + esc(r.datesError) + '). Set the invoice date to ' + esc(r.invDate) + ' and the due date to ' + esc(r.dueDate) + ' with its cogwheel.</p>'
           : '<p class="text-muted">' + esc(r.orgInvoiceNumber || 'The funder invoice') + ': invoice date ' + esc(r.invDate) + ', due ' + esc(r.dueDate) + '.</p>';
         if (r.dateFixes && r.dateFixes.length) h += '<p class="text-muted">Fee date' + (r.dateFixes.length === 1 ? '' : 's') + ' corrected on ' + esc(r.orgInvoiceNumber || 'the funder invoice') + ' (Halaxy copied ' + (r.dateFixes.length === 1 ? 'it' : 'them') + ' wrongly): ' + esc(r.dateFixes.map((f) => f.from + ' to ' + f.to).join(', ')) + '.</p>';
         if (r.feeDateError) h += '<p class="upc-warn">Check the fee dates on ' + esc(r.orgInvoiceNumber || 'the funder invoice') + ': ' + esc(r.feeDateError) + '.</p>';
+        // Bupa and AXA claims: the next step is the insurer's portal (Portal fill, on the funder invoice).
+        const portal = /bupa/i.test(p.current.funderName || '') ? 'Bupa' : /axa/i.test(p.current.funderName || '') ? 'AXA' : '';
+        if (portal && r.orgInvoiceId) h += '<p><a class="btn btn-outline-primary-light" href="' + esc(U().base() + '/invoice/' + r.orgInvoiceId + '#upc-portal-fill') + '" target="_blank" rel="noopener">Fill on the ' + portal + ' portal</a></p>';
       }
       // After billing: cancelled or did-not-attend fees left out, to keep or set to £0.
       const left = leftover();

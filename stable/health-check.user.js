@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         Halaxy health check
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.15
+// @version      1.1.23
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/health-check.user.js
-// @description  Checks that what the clinic's scripts rely on in Halaxy is still there, notices Halaxy updates, and collects script errors. Shows a small notice only when something needs looking at. Read-only.
+// @description  Checks that what the clinic's scripts rely on in Halaxy is still there, notices Halaxy updates, and collects script errors. Shows a small notice only when something needs looking at, and only to Carl Healy. Read-only.
 // @match        https://*.halaxy.com/a/*
 // @run-at       document-start
 // @grant        none
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.15';
+  const VERSION = '1.1.23';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -39,7 +39,7 @@
   const NAMES = {
     'alerts.user.js': 'Alerts', 'bill-funder.user.js': 'Bill funder', 'arrival-chime.user.js': 'Arrival chime', 'chat-alert.user.js': 'Chat alert',
     'branding.user.js': 'Branding', 'calendar-controls.user.js': 'Calendar controls', 'core.user.js': 'Core library', 'custom-reports.user.js': 'Custom Reports',
-    'forecourt-lights.user.js': 'Forecourt lights', 'script-settings.user.js': 'Script settings', 'review-requests.user.js': 'Review requests', 'email-html-source.user.js': 'HTML source for emails', 'health-check.user.js': 'Health check',
+    'forecourt-lights.user.js': 'Forecourt lights', 'script-settings.user.js': 'Script settings', 'review-requests.user.js': 'Review requests', 'survey-feedback.user.js': 'Feedback alerts', 'portal-fill.user.js': 'Portal fill', 'task-stamps.user.js': 'Task stamps', 'email-html-source.user.js': 'HTML source for emails', 'health-check.user.js': 'Health check',
     'outstanding-actions.user.js': 'Outstanding Actions', 'ready-to-bill.user.js': 'Ready to bill', 'rebate-sync.user.js': 'Rebate Sync', 'remittances.user.js': 'Remittances',
     'textarea-autogrow.user.js': 'Auto-expanding text boxes', 'toast-alerts.user.js': 'Toast alerts',
   };
@@ -60,6 +60,24 @@
   }
   const group = () => (location.pathname.match(/\/a\/pr\/(\d+)\//) || [])[1];
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+  // Who sees it (Carl, 11 Nov 2026: "just show health check on my account"). The checks and error
+  // collection still run for everyone: results stay on this PC, so they show when Carl signs in here.
+  const SHOW_TO = ['Carl Healy'];
+  function signedInAs() {
+    try {
+      const h = window.HkUser || {};
+      const named = String(h.pracName || (h.CalendarDefault || {}).pracName || '').trim();
+      if (named) return named;
+    } catch (e) { /* fall back to the account menu */ }
+    const btn = document.getElementById('activeUser');
+    return btn ? btn.textContent.replace(/\s+/g, ' ').trim() : '';
+  }
+  function shown() {
+    const who = signedInAs().toLowerCase();
+    if (!who) return true;   // the sign-in can't be read: Halaxy may have changed, so show rather than hide
+    return SHOW_TO.some((n) => who.includes(n.toLowerCase()));
+  }
   const when = (t) => (t ? new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'never');
 
   // ------------------------------------------------------------------ script errors (listen from the start)
@@ -151,7 +169,8 @@
     {
       id: 'invoice-page', title: 'Invoice page layout',
       scripts: ['Rebate Sync', 'Remittances', 'Bill funder'],
-      applies: () => /\/invoice\/(\d+\/)?\d+\/?$/.test(location.pathname),
+      // An invoice: /invoice/{id} or /patient/invoice/{patient}/{id}. Not /patient/invoice/{patient}/, the patient's Invoices tab (a list).
+      applies: () => /\/invoice\/\d+\/?$/.test(location.pathname) && !/\/patient\/invoice\/\d+\/?$/.test(location.pathname) || /\/patient\/invoice\/\d+\/\d+\/?$/.test(location.pathname),
       test: () => missingEls(['#invoiceLines', '#invoicePayments'])
         // Bill funder reads the patient, claim and authorisation from patient invoices that can still be billed.
         .concat(document.getElementById('invoiceFunderBtn') ? missingEls(['#card-invoice-view-patient a[href*="/patient/"]', '#card-invoice-parts-claim-view', '#btn-group-outstanding-charges']) : []),
@@ -289,15 +308,64 @@
         const need = ['form[title]', 'form[linkPrGs][]', 'form[priority]', 'form[displayDueDate]', 'form[comment]', 'form[_token]'];
         const problems = !form ? ['add-task form missing'] : need.filter((k) => !form.querySelector('[name="' + k + '"]')).map((k) => 'field ' + k + ' missing');
         if (form && ![...form.querySelectorAll('select[name="form[linkPrGs][]"] option')].some((o) => /carl healy/i.test(o.textContent))) problems.push('Carl Healy is not in the Assign to list');
-        put('data-task-form', 'Add-task pop-up', ['Remittances'], problems);
-      } catch (e) { put('data-task-form', 'Add-task pop-up', ['Remittances'], [e.message]); }
+        put('data-task-form', 'Add-task pop-up', ['Remittances', 'Task stamps', 'Portal fill'], problems);
+      } catch (e) { put('data-task-form', 'Add-task pop-up', ['Remittances', 'Task stamps', 'Portal fill'], [e.message]); }
     }
 
     // Follow-ups list: Review requests reads who has already had a Review Request.
     try {
       const fu = await getJSON('/task/task-followup/list/data');
-      put('data-followups', 'Follow-ups list', ['Review requests'], !Array.isArray(fu) ? ['not a list'] : fu.length ? keysMissing(fu, ['title', 'status', 'linkedToUrl']).map((k) => 'field ' + k) : []);
+      put('data-followups', 'Follow-ups list', ['Review requests'], !Array.isArray(fu) ? ['not a list'] : fu.length ? keysMissing(fu, ['title', 'status', 'assignedToUrl']).map((k) => 'field ' + k) : []);
     } catch (e) { put('data-followups', 'Follow-ups list', ['Review requests'], [e.message]); }
+
+    // Survey responses: Feedback alerts and Review requests read the list and each response's score.
+    const FB = ['Feedback alerts', 'Review requests'];
+    try {
+      const list = await getJSON('/report/survey/feedback-data');
+      if (!Array.isArray(list)) put('data-surveys', 'Survey responses list', FB, ['not a list']);
+      else {
+        const problems = list.length ? keysMissing(list, ['id', 'template', 'patientName', 'answeredDate']).map((k) => 'field ' + k) : [];
+        const newest = list.slice().sort((a, b) => b.id - a.id)[0];
+        if (newest) {
+          const v = await getJSON('/report/survey/view/' + encodeURIComponent(newest.id));
+          const doc = new DOMParser().parseFromString(String((v && v.message) || ''), 'text/html');
+          if (!doc.querySelector('#note_total_score')) problems.push('a response no longer shows its total (span#note_total_score)');
+          if (!doc.querySelector('.score-level-name')) problems.push('a response no longer shows its level (span.score-level-name)');
+          if (!doc.querySelector('.answerName')) problems.push('a response no longer shows its questions (span.answerName)');
+        }
+        put('data-surveys', 'Survey responses', FB, problems);
+      }
+    } catch (e) { put('data-surveys', 'Survey responses', FB, [e.message]); }
+    // Patient search (Feedback alerts finds the patient by name) and a patient's tasks (where it adds them).
+    try {
+      const q = new URLSearchParams({ includeContacts: '1', term: 'zzqx' });
+      q.set('_locale', String(group()));   // the practice number from the page address, as the search box sends it
+      const res = await fetch('/a/magic/lookup/patient?' + q.toString(), { credentials: 'same-origin', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+      const j = res.ok ? await res.json().catch(() => null) : null;
+      put('data-patient-search', 'Patient search', ['Feedback alerts'], j && Array.isArray(j.lookup) ? [] : ['the search no longer answers with a lookup list' + (res.ok ? '' : ' (' + res.status + ')')]);
+    } catch (e) { put('data-patient-search', 'Patient search', ['Feedback alerts'], [e.message]); }
+    if (withPatient) {
+      try {
+        const res = await getJSON('/task/new/linkPaG/' + encodeURIComponent(withPatient.linkPaGId) + '?clicked=' + Date.now());
+        const doc = new DOMParser().parseFromString(String((res && res.message) || ''), 'text/html');
+        const form = doc.querySelector('form#form_task_edit');
+        const need = ['form[title]', 'form[linkPrGs][]', 'form[priority]', 'form[displayDueDate]', 'form[comment]', 'form[_token]'];
+        const problems = !form ? ['add-task form missing'] : need.filter((k) => !form.querySelector('[name="' + k + '"]')).map((k) => 'field ' + k + ' missing');
+        const list = await getJSON('/task/linkPaG/' + encodeURIComponent(withPatient.linkPaGId) + '/list-data');
+        if (!Array.isArray(list)) problems.push('the patient\'s task list is not a list');
+        else if (list.length) keysMissing(list, ['title', 'comment', 'status']).forEach((k) => problems.push('task list field ' + k));
+        put('data-patient-tasks', 'Patient tasks', ['Feedback alerts'], problems);
+      } catch (e) { put('data-patient-tasks', 'Patient tasks', ['Feedback alerts'], [e.message]); }
+      // The patient's Edit page (read only): Portal fill takes the legal name, address and postcode from it.
+      try {
+        const res = await fetch('/a/pr/' + group() + '/patient/' + encodeURIComponent(withPatient.linkPaGId) + '/edit', { credentials: 'same-origin' });
+        if (!res.ok) throw new Error('Halaxy returned ' + res.status + ' for the patient Edit page');
+        const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+        const need = ['firstline', 'postcode'].map((k) => 'patientdetailmain[linkPaG][linkpagaddresses][0][address][' + k + ']')
+          .concat(['forename', 'surname'].map((k) => 'patientdetailmain[name][' + k + ']'));
+        put('data-patient-edit', 'Patient Edit page', ['Portal fill', 'Review requests'], need.filter((n) => !doc.querySelector('[name="' + n + '"]')).map((n) => 'field ' + n + ' missing'));
+      } catch (e) { put('data-patient-edit', 'Patient Edit page', ['Portal fill', 'Review requests'], [e.message]); }
+    }
 
     // Invoice settings (cogwheel): Bill funder reads and sets the status here.
     const withInvoice = appts.find((e) => e.invoiceID);
@@ -437,6 +505,7 @@
 
   function render() {
     if (!ensureHost()) return;
+    if (!shown()) { open = false; sh.innerHTML = ''; return; }
     watchMenu();
     place();
     const list = problems();
@@ -526,14 +595,20 @@
     return runningAll;
   }
 
-  if (typeof GM_registerMenuCommand === 'function') {
+  // Added once the page shows who is signed in, and only for them (Script settings lists it).
+  let menuAdded = false;
+  function addMenu() {
+    if (menuAdded || typeof GM_registerMenuCommand !== 'function' || !shown()) return;
+    menuAdded = true;
     GM_registerMenuCommand('Health check: show results', () => { open = true; render(); });
   }
 
   const start = () => setTimeout(() => runAll(false), (window.__hxHealthTest && window.__hxHealthTest.delay) || 3000);
   if (document.readyState === 'complete') start();
   else window.addEventListener('load', start, { once: true });
-  document.addEventListener('DOMContentLoaded', render, { once: true });
+  const ready = () => { render(); addMenu(); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ready, { once: true });
+  else ready();
 
   window.hxHealth = {
     version: VERSION,
