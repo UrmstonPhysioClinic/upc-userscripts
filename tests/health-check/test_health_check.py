@@ -98,6 +98,8 @@ async def halaxy(route):
         total = '' if 'survey' in STATE['break'] else "<span id='note_total_score'>35</span>"
         return await j({'status': 'FORM', 'message': "<h3>Total: %s <span class='score-level-name'> - <span>Excellent</span></span></h3><p class='answerContainer'><span class='answerName'>How helpful was today's appointment?</span></p><span class='answer-wrap'>15 - 5</span>" % total})
     if p == '/a/magic/lookup/patient':
+        if urllib.parse.parse_qs(urllib.parse.urlparse(route.request.url).query).get('_locale') != ['555']:   # as live
+            return await route.fulfill(body='<html></html>', content_type='text/html')
         return await j({'suggest': {}, 'lookup': [], 'imports': [], 'addtype': 'patient'})
     if re.search(r'/task/new/linkPaG/\d+$', p):
         return await j({'status': 'FORM', 'message': "<form id='form_task_edit'><input name='form[title]'><select name='form[linkPrGs][]'><option value='31'>Carl Healy</option></select><input name='form[priority]'><input name='form[displayDueDate]'><textarea name='form[comment]'></textarea><input type='hidden' name='form[_token]' value='t'></form>"})
