@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy insurer portal fill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.5
+// @version      0.1.6
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
@@ -45,7 +45,7 @@
   if (window.__hxPortalFill) return;
   window.__hxPortalFill = true;
 
-  const VERSION = '0.1.5';
+  const VERSION = '0.1.6';
   const KEY = 'portal-claim';
   const MAX_AGE = 4 * 3600e3;
   const PORTALS = {
@@ -499,8 +499,14 @@
       // Add a treatment: one fee.
       const imp = document.querySelector('select[name="impairmentPair"]');
       if (imp) {
-        // Back on the form after Save: Bupa didn't take the treatment.
-        if (pr.stage === 'saving') return stop('Bupa didn\'t accept treatment ' + ((pr.added || 0) + 1) + ' (it\'s still open).');
+        // Back on the form while saving: an error message means Bupa didn't take the treatment; without one, the page was
+        // reloaded or reopened (live, 11 Nov 2026: a refresh was taken for a refusal), so the form is filled again.
+        if (pr.stage === 'saving') {
+          const errs = [...document.querySelectorAll('[class*="error" i], [class*="alert" i], .invalid-feedback, [role=alert]')]
+            .filter((e) => visible(e) && clean(e.textContent) && !(panel && panel.contains(e)) && !e.querySelector('[class*="error" i], [class*="alert" i]'));
+          if (errs.length) return stop('Bupa didn\'t accept treatment ' + ((pr.added || 0) + 1) + ': "' + clean(errs[0].textContent).slice(0, 160) + '"');
+          pr.stage = 'adding'; await save();
+        }
         // Bupa opens a new treatment by itself once the last pre-populated one is removed (Carl, 11 Nov 2026).
         if (pr.stage !== 'adding') { pr.cleared = true; pr.stage = 'adding'; await save(); }
         const l = claim.lines[pr.added || 0];
