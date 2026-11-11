@@ -1,6 +1,9 @@
 # Changelog
 
-## Funder chaser
+## Insurer payments due
+
+### 0.1.1 (11 Nov 2026, beta)
+- Renamed from Funder chaser (Carl's choice): the menu item, page and script name. Nothing else changed.
 
 ### 0.1.0 (11 Nov 2026, beta)
 - New (Carl, 10 and 11 Nov 2026): Finances > Funder chaser, Carl only for now. Insurer invoices (billed to the insurer itself) marked Issued that still have something to pay 30 days or more after their invoice date, oldest first, with a count on the menu. A remittance attached doesn't take an invoice off the list; only the payment does. Funder invoices still Active after 30 days are shown greyed (perhaps never submitted) and not counted. One request: Halaxy's Unpaid Invoices report, read back 18 months. Reads only; no tasks.
@@ -191,6 +194,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - `UPC.notes.items` and `UPC.notes.text` (a patient's notes list and a note's text), `UPC.followUps.list` and `UPC.followUps.add` (Tasks & Follow-Ups), `UPC.patient.details`, `UPC.patient.invoices` and `UPC.patient.addLabel`. Confirmed against live captures, 10 Nov 2026.
 
 ## Health check
+
+### 1.1.27 (11 Nov 2026, beta)
+- Funder chaser's new name, Insurer payments due.
 
 ### 1.1.26 (11 Nov 2026, beta)
 - Check-ins no longer uses the follow-ups list.
