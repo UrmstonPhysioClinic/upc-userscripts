@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         Halaxy task stamps (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.1
+// @version      0.1.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/task-stamps.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/task-stamps.user.js
-// @description  Starts each new entry in a task's comment with the date, time and your initials ("2026-11-11 15-49 CH:"), when adding a task or adding to one.
+// @description  Starts each new entry in a task's comment with the date, time and your initials ("2026-11-11 15:49 CH"), when adding a task or adding to one.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
 // @grant        none
@@ -18,7 +18,7 @@
  *
  *  - Halaxy's add-task and edit-task pop-ups are form#form_task_edit, with a plain text box form[comment]
  *    (line breaks kept; capture, 11 Nov 2026).
- *  - A new task's comment starts "2026-11-11 15-49 CH:" and a new line starting "- ". On an existing task, a blank line and a new
+ *  - A new task's comment starts "2026-11-11 15:49 CH" and a new line starting "- ". On an existing task, a blank line and a new
  *    stamp go under what's there. The cursor goes to the end when the box is first clicked.
  *  - Saved without anything typed after the stamp (say only the status changed): the empty stamp is taken off first.
  *  - Not stamped again if the comment already ends with this person's stamp from the last 5 minutes (Halaxy
@@ -32,7 +32,7 @@
   if (window.__hxTaskStamps) return;
   window.__hxTaskStamps = true;
 
-  const VERSION = '0.1.1';
+  const VERSION = '0.1.2';
   const RECENT = 5 * 60e3;
   const FIELD = 'form#form_task_edit textarea[name="form[comment]"]';
 
@@ -54,11 +54,12 @@
   const p2 = (n) => String(n).padStart(2, '0');
   function stamp(who, when) {
     const d = new Date(when || Date.now());
-    return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' + p2(d.getHours()) + '-' + p2(d.getMinutes()) + ' ' + who + ':';
+    return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes()) + ' ' + who;
   }
   // This person's most recent stamp in the text, and when it was made.
   function lastStampBy(text, who) {
-    const re = /(\d{4})-(\d{2})-(\d{2}) (\d{2})-(\d{2}) ([A-Za-z][A-Za-z .-]{0,40}):/g;
+    // A stamp on a line of its own: "2026-11-11 15:45 CH" (and 11 Nov 2026's first style, "2026-11-11 15-45 CH:").
+    const re = /^(\d{4})-(\d{2})-(\d{2}) (\d{2})[:-](\d{2}) ([A-Za-z][A-Za-z .-]{0,40}?):?[ \t]*$/gm;
     let m, last = null;
     while ((m = re.exec(text))) last = m;
     if (!last || last[6] !== who) return null;
@@ -70,7 +71,7 @@
   // empty "- " line ends the list (the "- " goes, leaving a plain new line); Enter after a stamp starts the list;
   // Shift+Enter is a plain new line; Backspace on an empty "- " takes the "- " off.
   const BULLET = /^-[ \t]?/;
-  const STAMP_LINE = /^\d{4}-\d{2}-\d{2} \d{2}-\d{2} [^:\n]{1,40}:\s*$/;
+  const STAMP_LINE = /^\d{4}-\d{2}-\d{2}( \d{2}[:.-]\d{2})? [A-Za-z][A-Za-z .-]{0,30}:?[ \t]*$/;
   function insert(box, text, from, to) {
     box.focus();
     box.setSelectionRange(from, to);

@@ -17,6 +17,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Task stamps
 
+### 0.1.2 (11 Nov 2026, beta)
+- The stamp is now "2026-11-11 15:45 CH": a colon in the time, nothing after the initials (Carl's choice, 11 Nov 2026). The first style ("2026-11-11 15-45 CH:") is still recognised.
+
 ### 0.1.1 (11 Nov 2026, beta)
 - Bullets in the task comment box, like a rich text list (Carl, 11 Nov 2026): the stamp is followed by a "- " line; Enter on a "- " line starts a new one (in the middle of a line it splits it); Enter on an empty "- " ends the list; Enter straight after a stamp you type starts a list; Shift+Enter is a plain new line; Backspace on an empty "- " takes it off. Undo works as normal. Empty "- " lines left at the end are taken off on Save.
 
@@ -130,6 +133,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Notes are read in the browser only; only the kinds of phrase found are kept, never the note text. Each patient's result is kept for a week; the count refreshes at most every 12 hours.
 
 ## Core library
+
+### 0.1.28 (11 Nov 2026, beta)
+- Script task stamps in the new style: "2026-11-11 15:45 Portal fill", on its own line, with the "- " points below.
 
 ### 0.1.27 (11 Nov 2026, beta)
 - Tasks added by scripts (Carl, 11 Nov 2026): the comment starts with a stamp, "2026-11-11 15-45 Portal fill:", then each statement on its own line starting "- ". `UPC.tasks.stamp(by)` and `UPC.tasks.comment(by, lines)`; `addToInvoice` / `addToPatient` take `by` (the script's name) and `comment` as lines.

@@ -165,7 +165,7 @@ async def main():
         check('Below expected: title, High, due today, for Carl, form token', b.get('title') == 'Feedback to look at: Below expected (22 of 35)' and b.get('priority') == '3'
               and b.get('dueDate') == '11-Nov-2026' and b.get('assignees') == ['31'] and b.get('token') == 'TT', b)
         c = b.get('comment', '')
-        check('the task holds when, the score, each answer as 1 to 5, the comment and the response number', 'answered 08-Nov-2026 11:00' in c and '- Score: 22 of 35, Below expected' in c and re.match(r'\d{4}-\d{2}-\d{2} \d{2}-\d{2} Feedback alerts:\n- ', c)
+        check('the task holds when, the score, each answer as 1 to 5, the comment and the response number', 'answered 08-Nov-2026 11:00' in c and '- Score: 22 of 35, Below expected' in c and re.match(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2} Feedback alerts\n- ", c)
               and QS[0] + ' 3 of 5' in c and QS[1] + ' 3 of 5' in c and QS[2] + ' 2 of 5' in c and 'Waited a long time to be seen' in c and 'Survey response 7002.' in c, c)
         cc = (t[203] or [{}])[0]
         check('Satisfactory with a comment: Medium', cc.get('title') == 'Feedback to look at: Satisfactory (28 of 35)' and cc.get('priority') == '2' and 'Parking was hard' in cc.get('comment', ''), cc)

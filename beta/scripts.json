@@ -8,7 +8,7 @@
     {
       "file": "core.user.js",
       "name": "UPC core library (beta)",
-      "version": "0.1.27"
+      "version": "0.1.28"
     },
     {
       "file": "alerts.user.js",
@@ -88,7 +88,7 @@
     {
       "file": "task-stamps.user.js",
       "name": "Halaxy task stamps (beta)",
-      "version": "0.1.1"
+      "version": "0.1.2"
     },
     {
       "file": "textarea-autogrow.user.js",
