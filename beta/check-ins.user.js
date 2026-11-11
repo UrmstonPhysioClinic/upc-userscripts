@@ -1,11 +1,11 @@
 // ==UserScript==
-// @name         Halaxy check-ins (beta)
+// @name         Halaxy open-ended patients (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.1
+// @version      0.1.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/check-ins.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/check-ins.user.js
-// @description  Patients > Check-ins (Carl only for now): patients left open-ended in their last note ("open return", "book again if needed" and so on), last seen 3 weeks or more ago, with nothing booked. A list with a count on the menu; sends nothing. Reads only.
+// @description  Patients > Open-ended patients (Carl only for now): patients left open-ended in their last note ("open return", "book again if needed" and so on), last seen 3 weeks or more ago, with nothing booked. A list with a count on the menu; sends nothing. Reads only.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
 // @grant        none
@@ -13,7 +13,7 @@
 // ==/UserScript==
 
 /*
- * Check-ins (Carl, 11 Nov 2026), the list only for now: who to send a short "how are things going?" with the booking link.
+ * Open-ended patients (Carl, 11 Nov 2026; named by Carl; first built as Check-ins, and the file keeps that name), the list only for now: who to send a short "how are things going?" with the booking link.
  *
  *  - One calendar request: patients whose last attended appointment was 3 weeks to 3 months ago, with nothing booked
  *    since and nothing booked ahead. Left out if their last appointment was cancelled or missed.
@@ -29,7 +29,7 @@
   if (window.__hxCheckIns) return;
   window.__hxCheckIns = true;
 
-  const VERSION = '0.1.1';
+  const VERSION = '0.1.2';
   const ROUTE = 'upc-check-ins';
   const MENU_CLS = 'upc-ci-menu';
   const ALLOWED = ['Carl Healy'];
@@ -170,7 +170,7 @@
     if (!allowed() || document.visibilityState !== 'visible' || !U() || U().http.pausedFor() > 0 || locked()) return;
     const last = store.get('result', null);
     if (last && Date.now() - last.at < REFRESH_EVERY && last.by === VERSION) return;
-    try { await checkLocked(); } catch (e) { console.warn('[UPC check-ins]', e); tellHealthCheck(e); }
+    try { await checkLocked(); } catch (e) { console.warn('[UPC open-ended patients]', e); tellHealthCheck(e); }
     paintBadge();
   }
   function paintBadge() {
@@ -207,13 +207,13 @@
     if (!root) return;
     const r = store.get('result', null);
     const base = U().base();
-    let h = '<div class="upc-ci"><h1>Check-ins</h1><div class="upc-ci-bar">' +
+    let h = '<div class="upc-ci"><h1>Open-ended patients</h1><div class="upc-ci-bar">' +
       '<button type="button" class="btn btn-outline-primary-light" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check again') + '</button>' +
       '<span class="text-muted">' + esc(state.running ? state.status : r ? 'Checked at ' + new Date(r.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + label(r.at) + '.' : '') + '</span></div>';
     if (state.error) h += '<p class="upc-err">' + esc(state.error) + '</p>';
     if (r) {
       const ok = r.rows.filter((x) => !x.error), bad = r.rows.filter((x) => x.error);
-      h += '<div class="card"><div class="card-header"><h2>Left open-ended (' + ok.length + ')</h2></div><div class="card-body p-0">' +
+      h += '<div class="card"><div class="card-header"><h2>Nothing booked (' + ok.length + ')</h2></div><div class="card-body p-0">' +
         (ok.length ? '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th>Patient</th><th>Last seen</th><th class="number">Days</th><th>Last note says</th></tr></thead><tbody>' +
           ok.map((x) => '<tr><td><a href="' + esc(base + '/patient/' + x.id) + '" target="_blank" rel="noopener">' + esc(x.name) + '</a></td>' +
             '<td class="upc-ci-date">' + esc(label(x.lastSeen)) + '</td><td class="number">' + Math.round((today() - new Date(x.lastSeen).setHours(0, 0, 0, 0)) / DAY) + '</td>' +
@@ -225,7 +225,7 @@
         '("open return", "book again if needed", "see how things go", "come back if needed" and similar). Left out: ' + (c.recent || 0) + ' seen in the last ' + AFTER_DAYS + ' days, ' +
         (c.ended || 0) + ' whose last appointment was cancelled or missed, ' + (c.none || 0) + ' whose last note doesn\'t leave it open. Nothing is sent from here yet.</p>';
     }
-    h += '<div class="text-muted upc-version">Check-ins ' + VERSION + '</div></div>';
+    h += '<div class="text-muted upc-version">Open-ended patients ' + VERSION + '</div></div>';
     root.innerHTML = h;
   }
 
@@ -262,7 +262,7 @@
     root.className = 'upc-native';
     root.setAttribute('data-upc-check-ins', '');
     root.addEventListener('click', (e) => { if (e.target.closest('[data-a=refresh]')) run(); });
-    state.unmount = U().ui.mountPage('Check-ins', root, MENU_CLS);
+    state.unmount = U().ui.mountPage('Open-ended patients', root, MENU_CLS);
     render();
     const r = store.get('result', null);
     if (!r || Date.now() - r.at > PAGE_FRESH || r.by !== VERSION) run();
@@ -276,11 +276,11 @@
   const route = () => (location.hash === '#' + ROUTE ? mount() : unmount());
 
   function start() {
-    if (!U()) { console.error('[UPC check-ins] needs the core library'); return; }
+    if (!U()) { console.error('[UPC open-ended patients] needs the core library'); return; }
     if (!allowed()) return;
     if (!document.getElementById('upc-check-ins-css')) { const st = document.createElement('style'); st.id = 'upc-check-ins-css'; st.textContent = CSS; document.head.appendChild(st); }
     // Under Patients, opening over Halaxy's Patient List (as Review requests does).
-    U().ui.ensureMenuItem('Check-ins', (section) => {
+    U().ui.ensureMenuItem('Open-ended patients', (section) => {
       const list = section && [...section.querySelectorAll('a.mainmenu-sublink')].find((a) => /^patient list$/i.test(U().clean(a.textContent)));
       return (list ? list.getAttribute('href').split('#')[0] : U().base() + '/patient/') + '#' + ROUTE;
     }, MENU_CLS, /^patients?$/i);
