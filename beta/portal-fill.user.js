@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy insurer portal fill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.14
+// @version      0.1.15
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
@@ -47,7 +47,7 @@
   if (window.__hxPortalFill) return;
   window.__hxPortalFill = true;
 
-  const VERSION = '0.1.14';
+  const VERSION = '0.1.15';
   const KEY = 'portal-claim';
   const MAX_AGE = 4 * 3600e3;
   const PORTALS = {
@@ -72,9 +72,45 @@
 
   function halaxy() {
     const U = () => window.UPC;
+    if (!/^\/a\/pr\/\d+\//.test(location.pathname)) return;
     const m = location.pathname.match(/\/invoice\/(?:\d+\/)?(\d+)\/?$/);
-    if (!m || !/^\/a\/pr\/\d+\//.test(location.pathname)) return;
-    const invoiceId = m[1];
+    const invoiceId = m ? m[1] : null;
+    // A fill that fails on the portal is reported from any Halaxy page open on this PC, not only the funder invoice
+    // (which may have been closed), so the task to Carl isn't missed.
+    const reportFailures = async () => {
+      if (document.visibilityState !== 'visible' || !U()) return;
+      const c = await shared('get', KEY);
+      if (!c || c.status !== 'failed' || (invoiceId && c.invoiceId === invoiceId)) return;   // the invoice's own page handles its own
+      if (Date.now() - (c.failedAt || 0) < 20000) return;   // give the funder invoice's own page (if open) the first go
+      // Claim it, then check no other tab claimed it at the same moment.
+      const me = Math.random().toString(36).slice(2);
+      c.status = 'reporting'; c.reporter = me;
+      await shared('set', KEY, c);
+      await sleep(400 + Math.random() * 400);
+      const again = await shared('get', KEY);
+      if (!again || again.reporter !== me) return;
+      await notifyOwner(c.invoiceId, c.shownNumber || c.number, PORTALS[c.kind] ? PORTALS[c.kind].name : 'insurer', c.reason || 'no reason given', 'on the portal', 'fill ' + c.at);
+      await shared('del', KEY);
+    };
+    const startReporting = () => { setInterval(() => { reportFailures().catch(() => {}); }, 10000); reportFailures().catch(() => {}); };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startReporting, { once: true }); else startReporting();
+
+    // A fill that fails: a task for Carl on the funder invoice (once per fill), so it's picked up.
+    async function notifyOwner(invId, number, portalName, reason, where, key) {
+      try {
+        await U().tasks.addToInvoice(invId, {
+          title: 'Portal fill stopped: ' + portalName + (number ? ', ' + number : ''), assignee: OWNER, priority: 2, due: U().dayLabel(Date.now()),
+          by: 'Portal fill', comment: ['The ' + portalName + ' portal fill stopped (' + where + '): ' + reason, 'Submit the claim by hand, or run the fill again once the cause is fixed',
+            'Portal fill ' + VERSION + (key ? ', ' + key : '')],
+          key: key || undefined,
+        });
+        return OWNER + ' has been sent a task in Halaxy and will pick it up.';
+      } catch (x) {
+        tellHealthCheck(x);
+        return 'A task for ' + OWNER + ' couldn\'t be added (' + (x.message || x) + '): please tell him.';
+      }
+    }
+    if (!invoiceId) return;
     const settings = () => Object.assign({}, DEFAULTS, GM_getValue('settings', {}));
 
     function tellHealthCheck(e) {
@@ -167,7 +203,7 @@
       const s = settings();
       const out = {
         v: 1, kind, forHost: PORTALS[kind].host, at: Date.now(), status: 'ready', progress: {},
-        invoiceId, invoiceUrl: location.origin + U().base() + '/invoice/' + invoiceId, number: noLeadingZero(inv.number),
+        invoiceId, invoiceUrl: location.origin + U().base() + '/invoice/' + invoiceId, number: noLeadingZero(inv.number), shownNumber: clean(inv.number),
         invoiceDate: invDate ? slash(invDate) : '', total: pounds(lines.reduce((t, l) => t + l.amount, 0)),
         membership, authorisation, condition,
         patient: { name: legal || nameOnly(det.fullName), legalFound: !!legal, dob: dob ? slash(dob) : '', address: [addr('firstline'), addr('secondline'), postcode(addr('postcode'))].filter(Boolean).join(', '),
@@ -238,27 +274,11 @@
       } catch (e) {
         if (tab) tab.close();
         tellHealthCheck(e);
-        note = (e.message || String(e)) + ' ' + await notifyOwner(kindName, e.message || String(e), 'Halaxy, before the portal was opened');
+        const number = clean(document.title).match(/UPC-?\d+/i);
+        note = (e.message || String(e)) + ' ' + await notifyOwner(invoiceId, number ? number[0] : '', kindName, e.message || String(e), 'Halaxy, before the portal was opened');
         noteErr = true;
       }
       busy = false; draw();
-    }
-
-    // A fill that fails: a task for Carl on the funder invoice (once per fill), so it's picked up.
-    async function notifyOwner(portalName, reason, where, key) {
-      const number = clean(document.title).match(/UPC-?\d+/i);
-      try {
-        await U().tasks.addToInvoice(invoiceId, {
-          title: 'Portal fill stopped: ' + portalName + (number ? ', ' + number[0] : ''), assignee: OWNER, priority: 2, due: U().dayLabel(Date.now()),
-          by: 'Portal fill', comment: ['The ' + portalName + ' portal fill stopped (' + where + '): ' + reason, 'Submit the claim by hand, or run the fill again once the cause is fixed',
-            'Portal fill ' + VERSION + (key ? ', ' + key : '')],
-          key: key || undefined,
-        });
-        return OWNER + ' has been sent a task in Halaxy and will pick it up.';
-      } catch (x) {
-        tellHealthCheck(x);
-        return 'A task for ' + OWNER + ' couldn\'t be added (' + (x.message || x) + '): please tell him.';
-      }
     }
 
     // Once the portal says it was submitted: offer to mark the funder invoice Issued.
@@ -276,9 +296,10 @@
       if (c.status === 'failed') {
         // Reported from whichever Halaxy tab sees it first; the task's key stops a second one.
         asking = true;
-        c.status = 'reporting';
+        c.status = 'reporting'; c.reporter = 'invoice page';
         await shared('set', KEY, c);
-        const told = await notifyOwner(PORTALS[c.kind].name, c.reason || 'no reason given', 'on the portal', 'fill ' + c.at);
+        const shown = clean(document.title).match(/UPC-?\d+/i);
+        const told = await notifyOwner(invoiceId, shown ? shown[0] : c.number, PORTALS[c.kind].name, c.reason || 'no reason given', 'on the portal', 'fill ' + c.at);
         await shared('del', KEY);
         clearInterval(watching); watching = null;
         note = 'The fill on the ' + PORTALS[c.kind].name + ' portal stopped: ' + (c.reason || '') + ' ' + told; noteErr = true;
@@ -408,7 +429,7 @@
     }
     // Anything unexpected: the fill stops and Halaxy sends Carl a task (Carl, 11 Nov 2026).
     const stop = async (message) => {
-      if (claim) { claim.status = 'failed'; claim.reason = message; await save(); }
+      if (claim) { claim.status = 'failed'; claim.reason = message; claim.failedAt = Date.now(); await save(); }
       say(message + ' The fill has stopped. ' + OWNER.split(' ')[0] + ' has been notified (a task in Halaxy) and will pick it up.', true, true);
     };
 

@@ -504,6 +504,29 @@ async def main():
         await portal.close()
         await member_tab.close()
 
+        # The funder invoice closed before the fill fails: another Halaxy page on the PC still sends Carl the task
+        S['tasks'][9001] = []
+        AXA_FORM_OVERRIDE['html'] = axa_form().replace('Charge per unit (required)', 'Unit price (required)')
+        inv_url = pg.url
+        async with ctx.expect_page() as newp:
+            await pg.click('[data-upc-portal-fill] button')
+        member_tab = await newp.value
+        await member_tab.wait_for_url('**/submit-invoice-updated/**', timeout=60000)
+        await pg.goto(inv_url.replace('/invoice/9001', '/invoice/9002'))
+        portal = await new_form_tab(ctx)
+        await portal.wait_for_function("document.getElementById('upc-pf-panel') && /has stopped/.test(document.getElementById('upc-pf-panel').textContent)", timeout=60000)
+        await pg.bring_to_front()
+        for _ in range(120):
+            if S['tasks'].get(9001) and 'shared:portal-claim' not in S['gm']: break
+            await asyncio.sleep(0.5)
+        t = S['tasks'].get(9001) or []
+        check('the funder invoice closed: another Halaxy page sends the task, on the right invoice, once', len(t) == 1 and t[0]['title'] == 'Portal fill stopped: AXA, UPC-01111'
+              and 'shared:portal-claim' not in S['gm'], t)
+        AXA_FORM_OVERRIDE.clear()
+        await portal.close()
+        await member_tab.close()
+        await pg.goto(inv_url)
+
         # While working, the page is covered and a real click doesn't reach it; after a minute stuck, the fill gives up
         S['bupa'].update({'logged': True, 'treatments': [], 'prepopulated': False, 'refuseSave': False, 'submitted': False, 'stall': True})
         S['tasks'][9002] = []
