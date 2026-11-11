@@ -12,7 +12,7 @@ with postcode, condition from the notes); AXA: membership page, then every field
 line, stopping before Submit; after Submit, Halaxy offers to mark the invoice Issued; Bupa: waits for the
 log-in, closes the cookie box, Create an invoice, set-up, Pre-Auth Summary, provider check, removes the
 pre-populated treatment, one fee per treatment, stops on Confirm and Submit; the claim is only given to the
-portal it is for; Bupa's saved log-in pressed once; a fill that fails (a changed page, a refused log-in) stops,
+portal it is for; the Bupa log-in left to the user; a fill that fails (a changed page) stops,
 says Carl has been notified, and Halaxy adds a task for him on the funder invoice.
 
 Run:  python3 tests/portal-fill/test_portal_fill.py
@@ -240,8 +240,8 @@ async def bupa(route):
         B['logged'] = not B.get('refuse')
         return await route.fulfill(body="<!doctype html><html><body><script>location.href = '/providers-online/';</script></body></html>", content_type='text/html')
     if not B['logged']:
-        # As Firefox's autofill would leave it: the saved username and password already in the boxes.
-        return await html("<!doctype html><html><body><h1>Log in</h1><form method='post' action='/providers-online/login.do'><input name='u' value='tester'><input type='password' name='pw' value='not-a-real-password'><button type='submit'>Log in</button></form></body></html>")
+        # Bupa's log-in is on another site (identity.provider.bupa.co.uk), where the script doesn't run: here, a page the user logs in on.
+        return await html("<!doctype html><html><body><h1>Log in</h1><form method='post' action='/providers-online/login.do'><input name='u'><input type='password' name='pw'><button type='submit'>Log in</button></form></body></html>")
     if p == '/providers-online/':
         return await html(bupa_page('<h1>Provider Home</h1>'))
     if p == '/providers-online/createClaims.do' and req.method == 'GET':
@@ -397,8 +397,11 @@ async def main():
         portal = await newp.value
         perr = []
         portal.on('pageerror', lambda e: perr.append(str(e)))
-        await portal.wait_for_url('**/createClaims.do', timeout=60000)
-        check('Bupa: the saved log-in pressed once', S['bupa'].get('logins') == 1, S['bupa'].get('logins'))
+        await portal.wait_for_timeout(3000)
+        check('Bupa: leaves the log-in to the user', S['bupa'].get('logins', 0) == 0 and await portal.evaluate("!document.getElementById('upc-pf-panel') || /Log in to Bupa/.test(document.getElementById('upc-pf-panel').textContent)"))
+        await portal.fill('input[name=u]', 'tester')
+        await portal.fill('input[name=pw]', 'not-a-real-password')
+        await portal.click('button[type=submit]')
         # The claim is only for Bupa: an AXA page can't read it
         axa_tab = await ctx.new_page()
         await axa_tab.goto('https://provider.axahealth.co.uk/payment-support-service/form/submit-invoice-updated/')
@@ -443,17 +446,6 @@ async def main():
         AXA_FORM_OVERRIDE.clear()
         await portal.close()
 
-        # Bupa refuses the saved log-in: tried once, then the fill stops and Carl gets a task
-        S['bupa'].update({'logged': False, 'refuse': True, 'logins': 0})
-        await pg2.bring_to_front()
-        async with ctx.expect_page() as newp:
-            await pg2.click('[data-upc-portal-fill] button')
-        portal = await newp.value
-        await portal.wait_for_function("document.getElementById('upc-pf-panel') && /has stopped/.test(document.getElementById('upc-pf-panel').textContent)", timeout=60000)
-        panel = await portal.evaluate("document.getElementById('upc-pf-panel').textContent")
-        check('Bupa: a refused log-in is tried once, then stops', S['bupa']['logins'] == 1 and "didn't accept the saved log-in" in panel, (S['bupa']['logins'], panel))
-        await pg2.wait_for_function("/has been sent a task/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=60000)
-        check('and Carl gets a task on that invoice', len(S['tasks'][9002]) == 1 and 'Bupa' in S['tasks'][9002][0]['title'], S['tasks'][9002])
         await ctx.close()
         await browser.close()
 

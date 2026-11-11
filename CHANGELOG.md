@@ -17,6 +17,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Portal fill
 
+### 0.1.2 (11 Nov 2026, beta)
+- Bupa: you log in yourself again. Bupa's log-in is on a separate site (identity.provider.bupa.co.uk), and Carl agreed logging in by hand is simpler and safer than having the script press it there. Once you're in, the fill carries on by itself from Providers Online.
+
 ### 0.1.1 (11 Nov 2026, beta)
 - Bupa: presses Log in once Firefox has filled in the saved log-in (Carl: "can you log in as part of the flow"). The password is never read or kept, only whether the box has something in it. If Bupa refuses it, the fill stops rather than trying again.
 - A fill that fails, in Halaxy or on the portal, now sends Carl a task on the funder invoice ("Portal fill stopped: ...", with the reason), and the person filling is told he has been notified and will pick it up (Carl, 11 Nov 2026). The Stop button doesn't.

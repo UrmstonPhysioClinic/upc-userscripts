@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy insurer portal fill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.1
+// @version      0.1.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
@@ -31,7 +31,8 @@
  *   - AXA: membership number, "Submit invoice", then the form: Therapist; payee details (Script settings, Portal
  *     fill: settings); ICS code NA; one fee per treatment line, Outpatient, 1 unit; "add another treatment line"
  *     for each further fee. The condition is highlighted to check.
- *   - Bupa: presses Log in once Firefox has filled in the saved log-in (never reads the password), closes the cookie box, Create an invoice, invoice number,
+ *   - Bupa: you log in (on Bupa's separate log-in site, identity.provider.bupa.co.uk, where the script doesn't run; Carl,
+ *     11 Nov 2026: simpler and safer than pressing it for you), then it carries on from Providers Online: closes the cookie box, Create an invoice, invoice number,
  *     first treatment date and pre-auth number, Next on the Pre-Auth Summary, checks Urmston Physio Clinic is the
  *     provider, removes any pre-populated treatment, then adds one fee per treatment (Consultant rooms, 1 session,
  *     the fee), leaving Bupa's impairment and procedure code as they come.
@@ -44,7 +45,7 @@
   if (window.__hxPortalFill) return;
   window.__hxPortalFill = true;
 
-  const VERSION = '0.1.1';
+  const VERSION = '0.1.2';
   const KEY = 'portal-claim';
   const MAX_AGE = 4 * 3600e3;
   const PORTALS = {
@@ -483,8 +484,7 @@
       const has = (re) => h.some((x) => re.test(x));
       if (has(/invoice has been submitted successfully/i)) return submitted();
       const pw = [...document.querySelectorAll('input[type=password]')].find(visible);
-      if (pw) return bupaLogIn(pw);
-      if (claim.progress.loginTried) { claim.progress.loginTried = false; await save(); }
+      if (pw) return say('Log in to Bupa. The fill carries on once you\'re in.');
       const cookie = document.getElementById('onetrust-reject-all-handler');
       if (visible(cookie)) { cookie.click(); await sleep(500); }
       const pr = claim.progress;
@@ -593,22 +593,6 @@
         if (link) { pr.stage = 'start'; await save(); return link.click(); }
       }
       say('Waiting for Bupa\'s Create an invoice page.');
-    }
-
-    // Bupa's log-in: Firefox fills in the saved username and password; the fill presses Log in once. The password
-    // is never read or kept, only whether the box has something in it.
-    async function bupaLogIn(pw) {
-      const pr = claim.progress;
-      if (pr.loginTried) return stop('Bupa didn\'t accept the saved log-in.');
-      const form = pw.form || pw.closest('form') || document;
-      const user = [...form.querySelectorAll('input[type=text], input[type=email], input:not([type])')].find(visible);
-      say('Logging in to Bupa...');
-      for (let i = 0; i < 20 && !(pw.value && (!user || user.value)); i++) await sleep(250);   // Firefox's autofill can take a moment
-      if (!pw.value || (user && !user.value)) return say('Firefox didn\'t fill in the Bupa log-in. Log in, and the fill carries on.');
-      const btn = [...form.querySelectorAll('button, input[type=submit]')].find((b) => visible(b) && (b.type === 'submit' || /log ?in|sign ?in/i.test(clean(b.textContent || b.value))));
-      if (!btn) return stop('Bupa\'s log-in page has changed (no Log in button).');
-      pr.loginTried = true; await save();
-      btn.click();
     }
 
     async function submitted() {
