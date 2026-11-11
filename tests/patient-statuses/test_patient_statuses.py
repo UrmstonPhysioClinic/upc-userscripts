@@ -55,6 +55,8 @@ def setup():
     patient(309, 'Patient I', 'current', [(-12, '', False)], [(-12, 'Not discharged yet, review in 2 weeks.')])  # negated: stays Current
     patient(310, 'Patient J', 'archived', [(-100, '', False)])                                 # Archived: left alone
     patient(311, 'Patient K', 'current', [(-50, '', False)], cal_status=False)                 # status not on the calendar: read from details
+    patient(312, 'Patient L', 'contact', [(9, '', 'fee')])                                     # Contact booked online, funded fee, no claim yet -> Claimant
+    patient(313, 'Patient M', 'contact', [])                                                   # just a contact: no appointments, left alone
 
 
 def page_html(user):
@@ -78,9 +80,12 @@ def edit_page(pid):
 def invoice_html(iid):
     inv = S['invoices'][iid]
     claim = ("<div id='card-invoice-parts-claim-view'><a href='/a/pr/555/organisation/1'>Bupa</a>"
-             "<a id='editClaimButton' href='/a/pr/555/patient/claim/1/%d/77/edit?invoice=%d'>Edit</a></div>" % (inv['pid'], iid)) if inv['funded'] else ''
+             "<a id='editClaimButton' href='/a/pr/555/patient/claim/1/%d/77/edit?invoice=%d'>Edit</a></div>" % (inv['pid'], iid)) if inv['funded'] is True else ''
+    item = 'Bup-IA (AA360)' if inv['funded'] else 'IA-IA'
+    line = ("<tr><td data-property='date'>01-Nov-2026</td><td data-property='itemNumber'>%s</td><td data-property='description'>Fee</td>"
+            "<td data-property='amount' class='money number'>£40.00</td><td><a href='/a/pr/555/invoice/line/%d/edit'>e</a></td></tr>" % (item, iid + 90000))
     return ("<html><head><title>Invoice UPC-%d | Halaxy</title></head><body><div id='card-invoice-view-patient'><a href='/a/pr/555/patient/%d'>P</a></div>%s"
-            "<table id='invoiceLines'><tbody></tbody></table></body></html>" % (iid, inv['pid'], claim))
+            "<table id='invoiceLines'><tbody>%s</tbody></table></body></html>" % (iid, inv['pid'], claim, line))
 
 
 async def halaxy(route):
@@ -91,6 +96,8 @@ async def halaxy(route):
     js = lambda o: route.fulfill(body=json.dumps(o), content_type='application/json')
     if p.endswith('/lookup/practitioner'):
         return await js([{'id': 11}])
+    if p.endswith('/funder/fee/data'):
+        return await js([{'feeNumber': 'Bup-IA (AA360)', 'funder': 'Bupa', 'status': 'Current'}, {'feeNumber': 'IA-IA', 'funder': 'Self-Funded', 'status': 'Current'}])
     if p.endswith('/calendar/json'):
         q = urllib.parse.parse_qs(u.query)
         lo, hi = int(q['start'][0]), int(q['end'][0])
@@ -152,6 +159,9 @@ async def main():
         check('discharged patient booked again, self-funded: Current', by.get('Patient D', [''] * 3)[1:3] == ['Discharged', 'Current'], by.get('Patient D'))
         check('self-funded last fee, still going: Current', by.get('Patient H', [''] * 3)[1:3] == ['Claimant', 'Current'], by.get('Patient H'))
         check('status not on the calendar: read from the patient\'s details', by.get('Patient K', [''] * 3)[2] == 'Discharged', by.get('Patient K'))
+        check('Contact booked online with a funded fee (no claim yet): Claimant, saying why', by.get('Patient L', [''] * 4)[1:3] == ['Contact', 'Claimant']
+              and 'Contact with an appointment' in by['Patient L'][3] and 'funded fee' in by['Patient L'][3], by.get('Patient L'))
+        check('a Contact with no appointments is left alone', 'Patient M' not in by, list(by))
         check('left alone: already right, Review, Archived, open-ended under 6 weeks, "not discharged yet"',
               not any(n in by for n in ['Patient E', 'Patient F', 'Patient G', 'Patient I', 'Patient J']), list(by))
         check('nothing changed before asking', not S['writes'], S['writes'])
@@ -175,8 +185,8 @@ async def main():
         conf = await pg.evaluate("document.querySelector('[data-upc-ps-confirm]').innerText")
         await pg.click('[data-upc-ps-confirm] [data-c=yes]')
         await pg.wait_for_function("!document.querySelector('[data-upc-patient-statuses] [data-a=all]') || !document.querySelector('[data-upc-patient-statuses] [data-a=all]').disabled", timeout=90000)
-        final = {pid: S['patients'][pid]['status'] for pid in (301, 302, 303, 304, 308, 311)}
-        check('Change all: asks first with the numbers, then changes the rest', 'Change' in conf and final == {301: 'discharged', 302: 'review', 303: 'claimant', 304: 'current', 308: 'current', 311: 'discharged'}, (conf, final))
+        final = {pid: S['patients'][pid]['status'] for pid in (301, 302, 303, 304, 308, 311, 312, 313)}
+        check('Change all: asks first with the numbers, then changes the rest', 'Change' in conf and final == {301: 'discharged', 302: 'review', 303: 'claimant', 304: 'current', 308: 'current', 311: 'discharged', 312: 'claimant', 313: 'contact'}, (conf, final))
         txt = await pg.evaluate("document.querySelector('[data-upc-patient-statuses]').innerText")
         check('the one changed meanwhile says why it was left', 'The status is now review, not claimant, so it was left alone' in txt, txt[:500])
         check('no page errors', not errors, errors)

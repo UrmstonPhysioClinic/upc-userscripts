@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.29
+// @version      1.1.30
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.29';
+  const VERSION = '1.1.30';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -236,8 +236,8 @@
     try {
       const fees = await getJSON('/funder/fee/data');
       const ok = Array.isArray(fees) && fees.length;
-      put('data-fees', 'Fee list', OA, ok ? keysMissing(fees, ['feeColour', 'funder', 'status']).map((k) => 'field ' + k) : ['no fees returned']);
-    } catch (e) { put('data-fees', 'Fee list', OA, [e.message]); }
+      put('data-fees', 'Fee list', OA.concat(['Patient statuses']), ok ? keysMissing(fees, ['feeColour', 'funder', 'status', 'feeNumber']).map((k) => 'field ' + k) : ['no fees returned']);
+    } catch (e) { put('data-fees', 'Fee list', OA.concat(['Patient statuses']), [e.message]); }
 
     let appts = [];
     try {

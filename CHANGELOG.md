@@ -21,6 +21,10 @@
 
 ## Patient statuses
 
+### 0.1.1 (11 Nov 2026, beta)
+- Contacts (only another patient's contact, hidden from searches) who have an appointment, say booked online, are moved to Current, Claimant or Discharged by the same rules (Carl, 11 Nov 2026).
+- Funded or not now also comes from the fee's own funder in Halaxy's fee list. The appointment type sets the fee, so an online booking counts as funded before any claim exists. A claim on the invoice still counts too.
+
 ### 0.1.0 (11 Nov 2026, beta)
 - New (Carl, 11 Nov 2026): Patients > Patient statuses, Carl only for now. Suggests Current, Claimant or Discharged where a status looks out of date, with why, and changes them only with Change or Change all after confirming. Booked: Current if the booked fee is self-funded, Claimant if funded (its invoice is linked to an insurance claim); this also brings back discharged patients who book again. Nothing booked: Discharged after 6 weeks without an appointment (open-ended patients too), or sooner if the last note says treatment has finished. Review is never suggested or changed (set by hand), nor any other status. The change is made on the patient's Edit page, only if it still shows what was listed. Once the suggestions prove right, the plan is to make the changes automatically.
 
@@ -205,6 +209,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - `UPC.notes.items` and `UPC.notes.text` (a patient's notes list and a note's text), `UPC.followUps.list` and `UPC.followUps.add` (Tasks & Follow-Ups), `UPC.patient.details`, `UPC.patient.invoices` and `UPC.patient.addLabel`. Confirmed against live captures, 10 Nov 2026.
 
 ## Health check
+
+### 1.1.30 (11 Nov 2026, beta)
+- The fee list check also needs feeNumber (Patient statuses matches the invoice's item code to it).
 
 ### 1.1.29 (11 Nov 2026, beta)
 - Patient statuses added; the patient Edit page check also looks for the status field.
