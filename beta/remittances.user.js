@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.2
+// @version      0.3.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -31,7 +31,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.3.2';
+  const VERSION = '0.3.3';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -646,12 +646,20 @@
         say('  Stopped: ' + x.error, true);
       }
     }
+    // A fixed comment Bank statement reads to group the invoices one payment covers (Carl, 11 Nov 2026):
+    // "Insurer reference 2455419; remittance total £ 120.00 over 3 invoices".
+    const remitComment = () => {
+      const n = attachable().length, paid = state.remit.totals && state.remit.totals.paid;
+      return [state.remit.reference ? 'Insurer reference ' + state.remit.reference : '',
+        (typeof paid === 'number' ? 'remittance total ' + fmt(paid) : 'remittance') + ' over ' + n + ' invoice' + (n === 1 ? '' : 's')]
+        .filter(Boolean).join('; ').replace(/^r/, 'R');
+    };
     if (state.attach !== false) {
       for (const x of attachable()) {
         try {
           const done = await UPC.files.attachToInvoice(x.invoiceId, state.file, {
             title: (state.remit.insurer || 'Insurer') + ' remittance' + (state.remit.date ? ' ' + state.remit.date : ''),
-            comments: state.remit.reference ? 'Insurer reference ' + state.remit.reference : '',
+            comments: remitComment(),
             category: UPC.files.CATEGORY.payment,
             skipIfAttached: true,
           });

@@ -3,17 +3,22 @@
     {
       "file": "health-check.user.js",
       "name": "Halaxy health check (beta)",
-      "version": "1.1.32"
+      "version": "1.1.33"
     },
     {
       "file": "core.user.js",
       "name": "UPC core library (beta)",
-      "version": "0.1.29"
+      "version": "0.1.30"
     },
     {
       "file": "alerts.user.js",
       "name": "Halaxy alerts (beta)",
       "version": "1.0.0"
+    },
+    {
+      "file": "bank-statement.user.js",
+      "name": "Halaxy bank statement (beta)",
+      "version": "0.1.0"
     },
     {
       "file": "bill-funder.user.js",
@@ -83,7 +88,7 @@
     {
       "file": "remittances.user.js",
       "name": "Halaxy remittances (beta)",
-      "version": "0.3.2"
+      "version": "0.3.3"
     },
     {
       "file": "review-requests.user.js",

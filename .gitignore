@@ -16,3 +16,4 @@ node_modules/
 
 # Test scratch
 tests/remittances/.fixtures/
+tests/bank-statement/.fixtures/

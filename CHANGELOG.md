@@ -1,5 +1,10 @@
 # Changelog
 
+## Bank statement
+
+### 0.1.0 (11 Nov 2026, beta)
+- New (Carl, 10 and 11 Nov 2026): Finances > Bank statement, Carl only for now. Open the month's Starling statement (PDF; read in the browser, nothing uploaded or kept). The reading is checked against the statement's running balance. Each insurer credit (a transfer from the old account naming an insurer counts as that insurer) is matched to the insurer's unpaid invoices dated on or before it: first the invoices one remittance covers (from the comment Remittances leaves on each, preferring the remittance whose reference is the bank reference), then one invoice for the whole amount, then the only set of invoices that adds up. Several answers are offered to choose from. After confirming, each invoice is marked paid as Direct Deposit on the bank date, with a note of the insurer, date and reference, and the result is checked. Recorded credits are remembered on the PC. This is the only place payments are recorded (Carl's rule: only once the bank shows the money).
+
 ## Branding
 
 ### 2.9.2 (11 Nov 2026, beta)
@@ -203,6 +208,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Core library
 
+### 0.1.30 (11 Nov 2026, beta)
+- New `UPC.invoice.payOffline(id, {method, date, amount, note})`: records a payment the way the invoice's Mark as Paid pop-up does, only if the invoice still has that much outstanding, and checks the outstanding went down by the amount. Used only by Bank statement.
+
 ### 0.1.29 (11 Nov 2026, beta)
 - `UPC.patient.setStatus(linkPaGId, from, to)`: sets the status on the patient's Edit page (patientdetailmain[linkPaG][customStatus], captured 11 Nov 2026) with everything else sent as Halaxy filled it, only if it still reads `from`, and checks it afterwards.
 
@@ -233,6 +241,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - `UPC.notes.items` and `UPC.notes.text` (a patient's notes list and a note's text), `UPC.followUps.list` and `UPC.followUps.add` (Tasks & Follow-Ups), `UPC.patient.details`, `UPC.patient.invoices` and `UPC.patient.addLabel`. Confirmed against live captures, 10 Nov 2026.
 
 ## Health check
+
+### 1.1.33 (11 Nov 2026, beta)
+- Checks the Mark as Paid pop-up (read only) has its fields and a Direct Deposit payment method, for Bank statement. Bank statement added to the script names.
 
 ### 1.1.32 (11 Nov 2026, beta)
 - The table builder check (only Custom Reports used it) is gone, with Custom Reports retired.
@@ -416,6 +427,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - The check goes through the core library's pacing and waits while Halaxy has asked scripts to pause.
 
 ## Remittances
+
+### 0.3.3 (11 Nov 2026, beta)
+- The comment on each invoice the remittance is attached to now reads "Insurer reference 2455419; remittance total £ 120.00 over 3 invoices", so Bank statement can tell which invoices one payment covers (Carl).
 
 ### 0.3.2 (11 Nov 2026, beta)
 - The "Bill excess" task comment is stamped "date time Remittances:", one point per line starting "- " (core 0.1.27).

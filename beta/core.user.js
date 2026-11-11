@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.29
+// @version      0.1.30
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.29';
+  const VERSION = '0.1.30';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -314,6 +314,32 @@
       const again = (await http.popup('/invoice/options/' + id)).doc.querySelector('form#frmInvoiceType');
       const wrong = Object.keys(changes).filter((k) => { const el = again && again.querySelector('[name="' + k + '"]'); return !el || String(el.value).trim() !== String(changes[k]); });
       if (wrong.length) throw new UPCError('Halaxy accepted the change, but invoice ' + id + ' does not show the new ' + (what || 'settings') + '.');
+    },
+    // Records a payment the way the invoice's "Mark as Paid" pop-up does (GET /invoicefunctions/{id}/pay/offline,
+    // form#paymentForm; capture 11 Nov 2026): method by its name in the list (e.g. 'Direct Deposit'), date
+    // '11-Sep-2026', amount in pence, a note; every other field as Halaxy filled it (no discount). Only if the invoice
+    // still has at least that much outstanding, and checks afterwards that the outstanding went down by the amount.
+    async payOffline(id, p) {
+      const before = await invoice.fetch(id);
+      if (before.outstanding === null) throw new UPCError('Could not read what is outstanding on invoice ' + (before.number || id) + ', so no payment was recorded.');
+      if (before.outstanding < p.amount) throw new UPCError(before.number + ' has only ' + money.fmt(before.outstanding) + ' outstanding, less than ' + money.fmt(p.amount) + ', so no payment was recorded.');
+      const path = '/invoicefunctions/' + encodeURIComponent(id) + '/pay/offline';
+      const { doc } = await http.popup(path);
+      const form = doc.querySelector('form#paymentForm') || doc.querySelector('form');
+      const need = ['form[paymentMethod]', 'form[paymentDate]', 'form[amount]', 'form[note]', 'form[_token]'];
+      const missing = need.filter((k) => !form || !form.querySelector('[name="' + k + '"]'));
+      if (missing.length) throw new UPCError('The Mark as Paid pop-up has changed (' + missing.join(', ') + ' not found), so no payment was recorded.');
+      const opt = [...form.querySelectorAll('select[name="form[paymentMethod]"] option')].find((o) => clean(o.textContent).toLowerCase() === String(p.method).toLowerCase());
+      if (!opt) throw new UPCError('"' + p.method + '" is not in the payment methods, so no payment was recorded.');
+      const set = { 'form[paymentMethod]': opt.value, 'form[paymentDate]': p.date, 'form[amount]': (p.amount / 100).toFixed(2), 'form[note]': p.note || '', 'form[invoiceDiscount]': '', 'form[discountPercentage]': '' };
+      const pairs = serialize(form).map(([k, v]) => [k, k in set ? set[k] : v]);
+      Object.keys(set).forEach((k) => { if (!pairs.some(([x]) => x === k) && form.querySelector('[name="' + k + '"]')) pairs.push([k, set[k]]); });
+      http.expectRefresh(await http.postForm(path, pairs), 'Recording the payment');
+      const after = await invoice.fetch(id);
+      if (after.outstanding === null || after.outstanding !== before.outstanding - p.amount) {
+        throw new UPCError('Halaxy accepted the payment, but ' + before.number + ' now shows ' + (after.outstanding === null ? 'no outstanding amount' : money.fmt(after.outstanding)) + ' outstanding instead of ' + money.fmt(before.outstanding - p.amount) + '. Please check it.');
+      }
+      return after;
     },
     async setStatus(id, status) {
       const { doc } = await http.popup('/invoice/options/' + id);
