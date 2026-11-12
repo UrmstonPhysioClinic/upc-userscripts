@@ -3,12 +3,17 @@
     {
       "file": "health-check.user.js",
       "name": "UPC System: Health check (beta)",
-      "version": "1.1.35"
+      "version": "1.1.36"
+    },
+    {
+      "file": "block-error-reporting.user.js",
+      "name": "UPC System: Block error reporting (beta)",
+      "version": "0.1.0"
     },
     {
       "file": "core.user.js",
       "name": "UPC System: Core library (beta)",
-      "version": "0.1.32"
+      "version": "0.1.33"
     },
     {
       "file": "alerts.user.js",
@@ -28,7 +33,7 @@
     {
       "file": "calendar-controls.user.js",
       "name": "UPC Calendar: Calendar controls (beta)",
-      "version": "2.12"
+      "version": "2.13"
     },
     {
       "file": "email-html.user.js",
@@ -39,7 +44,7 @@
     {
       "file": "feedback-alerts.user.js",
       "name": "UPC Patients: Feedback alerts (beta)",
-      "version": "0.1.3",
+      "version": "0.1.4",
       "was": "survey-feedback.user.js"
     },
     {
@@ -50,7 +55,7 @@
     {
       "file": "insurer-payments-due.user.js",
       "name": "UPC Billing: Insurer payments due (beta)",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "was": "funder-chaser.user.js"
     },
     {
@@ -68,18 +73,18 @@
     {
       "file": "open-ended-patients.user.js",
       "name": "UPC Patients: Open-ended patients (beta)",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "was": "check-ins.user.js"
     },
     {
       "file": "outstanding-actions.user.js",
       "name": "UPC Calendar: Outstanding actions (beta)",
-      "version": "0.5.4"
+      "version": "0.5.5"
     },
     {
       "file": "patient-statuses.user.js",
       "name": "UPC Patients: Patient statuses (beta)",
-      "version": "0.2.3"
+      "version": "0.2.4"
     },
     {
       "file": "portal-fill.user.js",
@@ -89,7 +94,7 @@
     {
       "file": "ready-to-bill.user.js",
       "name": "UPC Billing: Ready to bill (beta)",
-      "version": "0.3.2"
+      "version": "0.3.3"
     },
     {
       "file": "rebate-sync.user.js",
@@ -104,7 +109,7 @@
     {
       "file": "review-requests.user.js",
       "name": "UPC Patients: Review requests (beta)",
-      "version": "0.5.2"
+      "version": "0.5.3"
     },
     {
       "file": "script-settings.user.js",

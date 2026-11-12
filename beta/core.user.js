@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.32
+// @version      0.1.33
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.32';
+  const VERSION = '0.1.33';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -1292,6 +1292,41 @@
   };
 
 
+
+  // ------------------------------------------------------------------ background checks
+
+  // When background checks (menu counts, Patient statuses and the like) may run: in the visible tab, between 7 am and
+  // 9 pm, only while someone has used this PC in the last 30 minutes (any Halaxy tab), and not while Halaxy has asked
+  // us to wait. A PC left open overnight or unattended goes quiet. Checks fall due at their interval give or take 15%,
+  // so they don't run on an exact clock (Carl, 12 Nov 2026).
+  const BG = { from: 7, to: 21, idleMs: 30 * 60e3, key: 'upc-core:active' };
+  let activeMark = 0;
+  function markActive() {
+    const now = Date.now();
+    if (now - activeMark < 30e3) return;
+    activeMark = now;
+    try { localStorage.setItem(BG.key, String(now)); } catch (e) { /* storage blocked */ }
+  }
+  ['pointerdown', 'keydown', 'wheel', 'touchstart', 'mousemove'].forEach((t) => document.addEventListener(t, markActive, { capture: true, passive: true }));
+  const background = {
+    // Someone has used this PC (any Halaxy tab) in the last 30 minutes.
+    active() {
+      let at = activeMark;
+      try { at = Math.max(at, Number(localStorage.getItem(BG.key)) || 0); } catch (e) { /* storage blocked */ }
+      return Date.now() - at < BG.idleMs;
+    },
+    inHours() { const h = new Date().getHours(); return h >= BG.from && h < BG.to; },
+    ok() { return document.visibilityState === 'visible' && background.inHours() && background.active() && http.pausedFor() <= 0; },
+    // True when a check last run at lastMs is due again, everyMs give or take 15% (a different, fixed amount each time).
+    due(lastMs, everyMs) {
+      if (!lastMs) return true;
+      const f = 0.85 + 0.3 * (Math.abs(Math.sin(Number(lastMs) % 100000)) % 1);
+      return Date.now() - lastMs >= everyMs * f;
+    },
+    // A pause of min to max milliseconds, for spacing changes made without a person clicking.
+    pause(min, max) { return new Promise((r) => setTimeout(r, min + Math.random() * (max - min))); },
+  };
+
   // ------------------------------------------------------------------ who is signed in
 
   // Halaxy may not have filled in who's signed in when a script starts (HkUser.pracName empty for a few seconds: live,
@@ -1407,6 +1442,6 @@
 
   window.UPC = Object.freeze({
     version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, forms, notes, followUps, patient, tasks, surveys, reports, dayLabel, parseDay, rebate, files, load, ui,
-    user, storage, calendar, wording,
+    user, storage, calendar, wording, background,
   });
 })();

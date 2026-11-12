@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Insurer payments due (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.4
+// @version      0.1.5
 // @upc-was      funder-chaser.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/insurer-payments-due.user.js
@@ -31,14 +31,14 @@
   if (window.__hxFunderChaser) return;
   window.__hxFunderChaser = true;
 
-  const VERSION = '0.1.4';
+  const VERSION = '0.1.5';
   const ROUTE = 'upc-funder-chaser';
   const MENU_CLS = 'upc-fc-menu';
   const ALLOWED = ['Carl Healy'];
   const DAY = 86400e3;
   const OVERDUE_DAYS = 30;             // Carl, 11 Nov 2026: 30 days for every insurer to start with
   const LOOK_BACK_MONTHS = 18;         // how far back the report is read
-  const REFRESH_EVERY = 2 * 3600e3;    // menu count
+  const REFRESH_EVERY = 12 * 3600e3;   // menu count: twice a day (it reads 18 months of the Unpaid Invoices report)
   const PAGE_FRESH = 10 * 60e3;
   const KEY = 'upc-fc:';
 
@@ -88,10 +88,9 @@
   // ------------------------------------------------------------------ menu count
 
   async function refreshCount() {
-    if (!allowed() || document.visibilityState !== 'visible' || !U()) return;
-    if (U().http.pausedFor() > 0) return;
+    if (!allowed() || !U() || !U().background.ok()) return;   // visible tab, clinic hours, someone at the PC, Halaxy not busy
     const last = store.get('result', null);
-    if (last && Date.now() - last.at < REFRESH_EVERY && last.by === VERSION) return;
+    if (last && !U().background.due(last.at, REFRESH_EVERY) && last.by === VERSION) return;
     if (locked()) return;
     try { await checkLocked(); } catch (e) { console.warn('[UPC insurer payments due]', e); tellHealthCheck(e); }
     paintBadge();

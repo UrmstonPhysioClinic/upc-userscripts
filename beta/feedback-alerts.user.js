@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Feedback alerts (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.3
+// @version      0.1.4
 // @upc-was      survey-feedback.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/feedback-alerts.user.js
@@ -36,7 +36,7 @@
   if (window.__hxSurveyFeedback) return;
   window.__hxSurveyFeedback = true;
 
-  const VERSION = '0.1.3';
+  const VERSION = '0.1.4';
   const ALLOWED = ['Carl Healy'];   // Carl, 11 Nov 2026
   const ASSIGNEE = 'Carl Healy';
   const MAX_SCORE = 35;             // the Feedback Request template: 3 x 5 + 2 x 5 + 2 x 5
@@ -130,8 +130,8 @@
     try { return await check(beat); } finally { store.set('running', 0); paintBadge(); }
   }
   async function background() {
-    if (!allowed() || document.visibilityState !== 'visible' || !U() || U().http.pausedFor() > 0 || locked()) return;
-    if (Date.now() - store.get('last', 0) < CHECK_EVERY) return;
+    if (!allowed() || !U() || !U().background.ok() || locked()) return;   // visible tab, clinic hours, someone at the PC
+    if (!U().background.due(store.get('last', 0), CHECK_EVERY)) return;
     try { await checkLocked(); } catch (e) { tellHealthCheck(e); console.warn('[UPC feedback alerts]', e); store.set('lastError', { at: Date.now(), message: e.message || String(e) }); }
   }
 

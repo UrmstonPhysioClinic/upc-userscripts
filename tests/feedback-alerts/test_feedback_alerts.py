@@ -141,6 +141,7 @@ async def page(browser, keep=None):
     await ctx.clock.install(time=NOW)
     await ctx.route('https://eu.halaxy.com/**', halaxy)
     await ctx.add_init_script("window.__menu = []; window.GM_registerMenuCommand = (l, f) => window.__menu.push([l, f]);")
+    await ctx.add_init_script("try { localStorage.setItem('upc-core:active', String(Date.now())); } catch (e) {}")   # someone is using the PC
     await ctx.add_init_script(CORE)
     await ctx.add_init_script("document.addEventListener('DOMContentLoaded', function () {\n" + FB + "\n});")
     pg = await ctx.new_page()

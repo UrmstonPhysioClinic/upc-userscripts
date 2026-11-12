@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Patient statuses (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.3
+// @version      0.2.4
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
@@ -28,7 +28,8 @@
  *  - Funded or not (Carl: the latest fee): booked with an Insurance or Referral appointment type (the appointment's title
  *    starts with the type; its colour as a fallback), else the fee's own funder in Halaxy's fee list, or the invoice
  *    linked to an insurance claim.
- *  - Runs in the visible tab, at most every 3 hours (each patient's latest note read again only after a new appointment
+ *  - Runs in the visible tab, in clinic hours while someone is using the PC, about every 3 hours, at most 15 changes a
+ *    run a few seconds apart (each patient's latest note read again only after a new appointment
  *    or a change to its note), shared across tabs, only while Carl is signed in (so the changes
  *    are his in Halaxy's status history), and skips while Halaxy is busy. Changed on the patient's Edit page (core
  *    UPC.patient.setStatus), only if the status still reads what was seen, at most 40 a run.
@@ -40,7 +41,7 @@
   if (window.__hxPatientStatuses) return;
   window.__hxPatientStatuses = true;
 
-  const VERSION = '0.2.3';
+  const VERSION = '0.2.4';
   const ALLOWED = ['Carl Healy'];
   const DAY = 86400e3;
   const GAP_DAYS = 42;          // Carl, 11 Nov 2026: a gap counts; 6 weeks
@@ -51,7 +52,7 @@
   const FUNDED_TYPE = /insurance|referral/i;
   const KNOWN = MANAGED.concat(['review', 'archived', 'waiting list', 'blocked', 'deleted', 'deceased', 'contact', 'lead']);
   const NAME = { current: 'Current', claimant: 'Claimant', discharged: 'Discharged', contact: 'Contact' };
-  const EVERY = 3 * 3600e3, MAX_CHANGES = 40, LOG_SIZE = 100;
+  const EVERY = 3 * 3600e3, MAX_CHANGES = 15, LOG_SIZE = 100;   // at most 15 changes a run, a few seconds apart
   const KEY = 'upc-ps:';
 
   const U = () => window.UPC;
@@ -237,6 +238,7 @@
         if (!x.to) { log({ id: x.id, name: x.name, error: x.error }); continue; }
         if (n >= MAX_CHANGES) break;   // the rest next time
         if (U().http.pausedFor() > 0) break;
+        if (n) await U().background.pause(3000, 6000);   // a few seconds between changes, as a person would take
         beat();
         try {
           if (await U().patient.setStatus(x.id, x.from, x.to)) log({ id: x.id, name: x.name, from: x.from, to: x.to, why: x.why });
@@ -252,9 +254,9 @@
     }
   }
   async function tick() {
-    if (!allowed() || document.visibilityState !== 'visible' || !U() || U().http.pausedFor() > 0 || locked()) return;
+    if (!allowed() || !U() || !U().background.ok() || locked()) return;   // visible tab, clinic hours, someone at the PC
     const last = store.get('lastRun', null);
-    if (last && Date.now() - last.at < EVERY && last.by === VERSION) return;
+    if (last && !U().background.due(last.at, EVERY) && last.by === VERSION) return;
     try { await runOnce(); } catch (e) { console.warn('[UPC patient statuses]', e); store.set('lastRun', { at: Date.now(), by: VERSION, error: e.message || String(e) }); tellHealthCheck(e); }
   }
 
