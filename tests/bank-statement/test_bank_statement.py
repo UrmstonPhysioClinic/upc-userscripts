@@ -110,12 +110,17 @@ def fresh():
         961: ['Health Trust', 'Health Trust', '01-Oct-2026', 4500, []],   # named in the bank reference; an insurer not on our list
         907: ['Bupa', 'Bupa', '10-Oct-2026', 3500, []],                   # paid with a reused old reference (UPC-0800, paid long ago)
         # Vitality: two remittances without a reference add up; the one dated 4 days before the payment wins
-        941: ['Vitality', 'Vitality', '01-Oct-2026', 2500, [('Vitality remittance 2026-10-24', 'Remittance total £ 55.00 over 2 invoices')]],
-        942: ['Vitality', 'Vitality', '02-Oct-2026', 3000, [('Vitality remittance 2026-10-24', 'Remittance total £ 55.00 over 2 invoices')]],
+        # (its comment's payment date, 24-Oct, is used rather than the date in its title)
+        941: ['Vitality', 'Vitality', '01-Oct-2026', 2500, [('Vitality remittance 2026-10-20', 'Payment date 24-Oct-2026; remittance total £ 55.00 over 2 invoices; this invoice billed £ 25.00, paid £ 25.00')]],
+        942: ['Vitality', 'Vitality', '02-Oct-2026', 3000, [('Vitality remittance 2026-10-20', 'Payment date 24-Oct-2026; remittance total £ 55.00 over 2 invoices; this invoice billed £ 30.00, paid £ 30.00')]],
         944: ['Vitality', 'Vitality', '01-Jun-2026', 2000, [('Vitality remittance 2026-07-01', 'Remittance total £ 55.00 over 2 invoices')]],
         945: ['Vitality', 'Vitality', '02-Jun-2026', 3500, [('Vitality remittance 2026-07-01', 'Remittance total £ 55.00 over 2 invoices')]],
         # Simplyhealth: the only remittance that adds up is months away from the payment: offered, not ticked
-        951: ['Simplyhealth', 'Simplyhealth', '01-May-2026', 3300, [('Simplyhealth remittance 2026-06-01', 'Remittance total £ 33.00 over 1 invoice')]],
+        # (attached by hand, named by its date, no comment: the date comes from the file name)
+        951: ['Simplyhealth', 'Simplyhealth', '01-May-2026', 3300, [('2026-06-01.pdf', '')]],
+        # Cigna: the remittance paid £ 44.00 on these, but the excesses were never moved, so Halaxy still shows £ 60.00
+        971: ['Cigna', 'Cigna', '01-Oct-2026', 3000, [('Cigna remittance 2026-10-27', 'Insurer reference ZZ1; payment date 27-Oct-2026; remittance total £ 44.00 over 2 invoices; this invoice billed £ 30.00, paid £ 24.00')]],
+        972: ['Cigna', 'Cigna', '02-Oct-2026', 3000, [('Cigna remittance 2026-10-27', 'Insurer reference ZZ1; payment date 27-Oct-2026; remittance total £ 44.00 over 2 invoices; this invoice billed £ 30.00, paid £ 20.00')]],
     }
 
 
@@ -142,9 +147,10 @@ def invoice_html(iid):
     shown = bal - S['short'].get(iid, 0)
     rows = "<tr><td data-property='date'>%s</td><td data-property='itemNumber'>PHY</td><td data-property='amount'>%s</td><td><a href='/a/pr/555/invoice/line/%d/edit'>Edit</a></td></tr>" % (day, gbp(bal), iid * 10)
     atts = ''.join('<tr>\n<td>%s</td>\n<td>Payment</td>\n<td>%s</td>\n<td>%s</td>\n</tr>' % (day, t, c) for t, c in att)
+    pays = ''.join("<tr><td>%s</td><td>Direct Deposit (%s)</td><td>Paid</td><td>%s</td></tr>" % (f['form[paymentDate]'], f['form[note]'], gbp(round(float(f['form[amount]']) * 100))) for i, f in S['posts_all'] if i == iid)
     return ("<html><head><title>Invoice UPC-0%d | Halaxy</title></head><body><table id='invoiceLines'><tbody>%s<tr><td>Total</td><td>%s</td></tr></tbody></table>"
-            "<table id='invoicePayments'><tbody><tr><td>Outstanding</td><td>%s</td></tr></tbody></table>"
-            "<table id='invoiceAttachments'><tbody>%s</tbody></table></body></html>") % (iid, rows, gbp(bal), gbp(shown), atts)
+            "<table id='invoicePayments'><tbody>%s<tr><td></td><td></td><td>Outstanding</td><td>%s</td></tr></tbody></table>"
+            "<table id='invoiceAttachments'><tbody>%s</tbody></table></body></html>") % (iid, rows, gbp(bal), pays, gbp(shown), atts)
 
 
 PAY_FORM = """<form id="paymentForm" method="post">
@@ -182,9 +188,14 @@ async def halaxy(route):
         if req.method == 'GET':
             return await route.fulfill(body=json.dumps({'status': 'FORM', 'message': PAY_FORM % ('%.2f' % (bal / 100), '%.2f' % (bal / 100))}), content_type='application/json')
         f = dict(urllib.parse.parse_qsl(req.post_data or '', keep_blank_values=True))
+        if iid in S.get('failOnce', set()):   # Halaxy refuses it once
+            S['failOnce'].discard(iid)
+            return await route.fulfill(body=json.dumps({'status': 'FORM', 'errors': ['Payment could not be saved']}), content_type='application/json')
         S['posts'].append((iid, f))
+        S['posts_all'].append((iid, f))
         S['inv'][iid][3] = bal - round(float(f['form[amount]']) * 100)
-        return await route.fulfill(body=json.dumps({'status': 'REFRESH'}), content_type='application/json')
+        # As live (12 Nov 2026): recorded, but the answer is neither OK nor REFRESH.
+        return await route.fulfill(body=json.dumps({'status': 'POPUP', 'url': '/a/pr/555/invoice/%d' % iid}), content_type='text/html')
     m = __import__('re').match(r'^/a/pr/555/invoice/(\d+)/?$', p)
     if m:
         return await route.fulfill(body=invoice_html(int(m.group(1))), content_type='text/html')
@@ -231,7 +242,7 @@ async def main():
     make_statement(pdf)
     async with async_playwright() as p:
         browser = await p.chromium.launch()
-        S.update({'log': [], 'posts': [], 'inv': fresh(), 'short': {}, 'user': 'Carl Healy'})
+        S.update({'log': [], 'posts': [], 'posts_all': [], 'inv': fresh(), 'short': {}, 'user': 'Carl Healy'})
         ctx = await context(browser)
         pg = await ctx.new_page()
         errors = []
@@ -255,6 +266,7 @@ async def main():
         sh = by['Simplyhealth']
         check('remittance months from the payment: offered, not ticked', sh['radios'] == 1 and not sh['rec'] and 'check the date' in sh['cells'][4] and 'UPC-0951' in sh['cells'][4], sh)
         check('no answer: says so, greyed', by['Cigna']['off'] and 'Not matched' in by['Cigna']['cells'][4], by['Cigna'])
+        check('remittance paid it but the excess was never moved: says to run Remittances first', 'UPC-0971' in by['Cigna']['cells'][4] and 'UPC-0972' in by['Cigna']['cells'][4] and 'but Halaxy still shows £ 60.00' in by['Cigna']['cells'][4] and 'Remittances first' in by['Cigna']['cells'][4], by['Cigna']['cells'])
         ht = by['Health Trust']['cells']
         check('invoice number in the bank reference: matched, insurer taken from the invoice', 'UPC-0961' in ht[4] and 'invoice number in the bank reference' in ht[4] and by['Health Trust']['rec'], ht)
         reused = next((r['cells'] for r in rows if r['cells'][3] == '£ 35.00'), [])
@@ -282,7 +294,11 @@ async def main():
         await pg.click('[data-upc-bank-statement] [data-a=all]')
         await pg.wait_for_selector('[data-upc-bank-confirm]', timeout=10000)
         await pg.click('[data-upc-bank-confirm] [data-c=yes]')
-        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-bank-statement] tbody tr')].filter((tr) => /Recorded/.test(tr.textContent)).length === 7", timeout=60000)
+        try:
+            await pg.wait_for_function("[...document.querySelectorAll('[data-upc-bank-statement] tbody tr')].filter((tr) => /Recorded/.test(tr.textContent)).length === 7", timeout=180000)
+        except Exception:
+            print("rows when recording stalled:", [i for i, _ in S['posts']], await pg.evaluate("[...document.querySelectorAll('[data-upc-bank-statement] tbody tr')].map((tr) => tr.innerText.replace(/\\s+/g, ' ').slice(0, 300))"))
+            raise
         paid = {iid: f for iid, f in S['posts']}
         check('paid exactly the matched invoices', sorted(paid)[:7] == [901, 902, 907, 911, 921, 922, 931] and len(paid) == 11 and sorted(paid)[7] in (932, 933) and sorted(paid)[8:] == [941, 942, 961], sorted(paid))
         f = paid.get(902, {})
@@ -304,7 +320,7 @@ async def main():
         await ctx.close()
 
         # an invoice shows less outstanding than the report (paid meanwhile): not paid, error on its row
-        S.update({'log': [], 'posts': [], 'inv': fresh(), 'short': {911: 1000}, 'user': 'Carl Healy'})
+        S.update({'log': [], 'posts': [], 'posts_all': [], 'inv': fresh(), 'short': {911: 1000}, 'user': 'Carl Healy'})
         ctx = await context(browser)
         pg = await ctx.new_page()
         await pg.goto(URL)
@@ -317,8 +333,42 @@ async def main():
         check('less outstanding than expected: nothing recorded, says so', not S['posts'] and 'only £ 65.00 outstanding' in err, (err, S['posts']))
         await ctx.close()
 
+        # Recording stops part way (Halaxy refuses the second invoice, UPC-0901, once): nothing twice, and it carries on
+        S.update({'log': [], 'posts': [], 'posts_all': [], 'inv': fresh(), 'short': {}, 'user': 'Carl Healy', 'failOnce': {901}})
+        ctx = await context(browser)
+        pg = await ctx.new_page()
+        await pg.goto(URL)
+        await open_statement(pg, pdf)
+        await pg.click('[data-upc-bank-statement] tbody tr:nth-child(1) [data-rec]')
+        await pg.wait_for_selector('[data-upc-bank-confirm]', timeout=10000)
+        await pg.click('[data-upc-bank-confirm] [data-c=yes]')
+        try:
+            await pg.wait_for_function("document.querySelector('[data-upc-bank-statement] tbody tr:nth-child(1) .upc-err')", timeout=30000)
+        except Exception:
+            print("row when the stop was expected:", S['posts'], await pg.evaluate("document.querySelector('[data-upc-bank-statement] tbody tr:nth-child(1)').innerText"))
+            raise
+        check('stopped part way: the first invoice recorded, the second not', [i for i, _ in S['posts']] == [902], S['posts'])
+        # Opened again later: the rest is matched and recorded, the first never twice
+        perr = []
+        pg.on('pageerror', lambda e: perr.append(str(e)))
+        await pg.goto(URL)
+        await pg.reload()
+        try:
+            rows = await open_statement(pg, pdf)
+        except Exception as e:
+            print("on opening again:", perr, await pg.evaluate("document.querySelector('[data-upc-bank-statement]') && document.querySelector('[data-upc-bank-statement]').innerText.slice(0, 600)"))
+            raise
+        b = rows[0]['cells'][4]
+        check('opened again: says what was recorded, matches the rest', '£ 80.00 already recorded on UPC-0902' in b and 'UPC-0901 £ 40.00' in b and rows[0]['rec'], b)
+        await pg.click('[data-upc-bank-statement] tbody tr:nth-child(1) [data-rec]')
+        await pg.wait_for_selector('[data-upc-bank-confirm]', timeout=10000)
+        await pg.click('[data-upc-bank-confirm] [data-c=yes]')
+        await pg.wait_for_function("/Recorded/.test(document.querySelector('[data-upc-bank-statement] tbody tr:nth-child(1)').textContent)", timeout=30000)
+        check('the rest recorded, nothing twice', [i for i, _ in S['posts']] == [902, 901] and S['inv'][901][3] == 0 and S['inv'][902][3] == 0, S['posts'])
+        await ctx.close()
+
         # not Carl: nothing
-        S.update({'log': [], 'posts': [], 'inv': fresh(), 'short': {}, 'user': 'Someone Else'})
+        S.update({'log': [], 'posts': [], 'posts_all': [], 'inv': fresh(), 'short': {}, 'user': 'Someone Else'})
         ctx = await context(browser)
         pg = await ctx.new_page()
         await pg.goto(URL)

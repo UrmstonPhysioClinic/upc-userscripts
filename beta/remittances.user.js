@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.5
+// @version      0.3.6
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -31,7 +31,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.3.5';
+  const VERSION = '0.3.6';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -663,6 +663,7 @@
   const MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const todayLabel = () => { const d = new Date(); return String(d.getDate()).padStart(2, '0') + '-' + MON3[d.getMonth()] + '-' + d.getFullYear(); };
 
+  const isoLabel = (iso) => { const m = String(iso || '').match(/^(\d{4})-(\d\d)-(\d\d)$/); return m ? m[3] + '-' + MON3[+m[2] - 1] + '-' + m[1] : String(iso || ''); };
   const attachable = () => state.results.filter((r) => r.invoiceId && r.funder && r.funder.isFunder);
 
   async function apply() {
@@ -706,22 +707,31 @@
         say('  Stopped: ' + x.error, true);
       }
     }
-    // A fixed comment Bank statement reads to group the invoices one payment covers (Carl, 11 Nov 2026):
-    // "Insurer reference 2455419; remittance total £ 120.00 over 3 invoices".
-    const remitComment = () => {
+    // A fixed comment Bank statement reads (Carl, 11 and 12 Nov 2026): the reference (Bupa's BACS reference is the bank
+    // reference), the payment date (the money usually reaches the bank about 2 days later), the remittance total, and
+    // what was billed and paid on this invoice. "Insurer reference 2662551; payment date 28-Oct-2026; remittance total
+    // £ 216.00 over 3 invoices; this invoice billed £ 170.00, paid £ 136.00".
+    const remitComment = (x) => {
       const n = attachable().length, paid = state.remit.totals && state.remit.totals.paid;
+      const it = x.item;
+      const thisPaid = it.insurerTotal !== undefined && it.insurerTotal !== null ? it.insurerTotal : it.paid;
+      const billed = typeof x.halaxyTotal === 'number' ? x.halaxyTotal : it.claimed;
       return [state.remit.reference ? 'Insurer reference ' + state.remit.reference : '',
-        (typeof paid === 'number' ? 'remittance total ' + fmt(paid) : 'remittance') + ' over ' + n + ' invoice' + (n === 1 ? '' : 's')]
-        .filter(Boolean).join('; ').replace(/^r/, 'R');
+        state.remit.date ? 'payment date ' + isoLabel(state.remit.date) : '',
+        (typeof paid === 'number' ? 'remittance total ' + fmt(paid) : 'remittance') + ' over ' + n + ' invoice' + (n === 1 ? '' : 's'),
+        typeof billed === 'number' && typeof thisPaid === 'number' ? 'this invoice billed ' + fmt(billed) + ', paid ' + fmt(thisPaid) : '']
+        .filter(Boolean).join('; ').replace(/^r/, 'R').replace(/^p/, 'P');
     };
     if (state.attach !== false) {
       for (const x of attachable()) {
         try {
           const done = await UPC.files.attachToInvoice(x.invoiceId, state.file, {
             title: (state.remit.insurer || 'Insurer') + ' remittance' + (state.remit.date ? ' ' + state.remit.date : ''),
-            comments: remitComment(),
+            comments: remitComment(x),
             category: UPC.files.CATEGORY.payment,
             skipIfAttached: true,
+            // Attached by hand before Remittances, named by its date ("2026-09-30.pdf"): don't attach it again.
+            alsoSkipIf: state.remit.date ? [state.remit.date + '.pdf'] : [],
           });
           say(done === false ? 'The remittance is already attached to ' + x.item.invoice + '.' : 'Attached the remittance to ' + x.item.invoice + '.');
         } catch (e) {
