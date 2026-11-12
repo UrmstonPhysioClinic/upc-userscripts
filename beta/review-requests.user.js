@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Review requests (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.5.2
+// @version      0.5.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
@@ -44,7 +44,7 @@
   if (window.__hxReviewRequests) return;
   window.__hxReviewRequests = true;
 
-  const VERSION = '0.5.2';
+  const VERSION = '0.5.3';
   const ROUTE = 'upc-review-requests';
   const MENU_CLS = 'upc-rr-menu';
   const ALLOWED = ['Carl Healy'];          // Carl, 10 Nov 2026: just me for now
@@ -258,9 +258,9 @@
     try { return await check(beat); } finally { store.set('running', 0); store.set('progress', ''); }
   }
   async function refreshCount() {
-    if (!allowed() || document.visibilityState !== 'visible' || !U() || U().http.pausedFor() > 0 || locked()) return;
+    if (!allowed() || !U() || !U().background.ok() || locked()) return;   // visible tab, clinic hours, someone at the PC
     const last = store.get('result', null);
-    if (last && Date.now() - last.at < REFRESH_EVERY) return;
+    if (last && !U().background.due(last.at, REFRESH_EVERY)) return;
     try { await checkLocked(); } catch (e) { console.warn('[UPC review requests]', e); tellHealthCheck(e); }
     paintBadge();
   }

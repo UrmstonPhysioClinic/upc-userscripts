@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Open-ended patients (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.5
+// @version      0.1.6
 // @upc-was      check-ins.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/open-ended-patients.user.js
@@ -30,7 +30,7 @@
   if (window.__hxCheckIns) return;
   window.__hxCheckIns = true;
 
-  const VERSION = '0.1.5';
+  const VERSION = '0.1.6';
   const ROUTE = 'upc-check-ins';
   const MENU_CLS = 'upc-ci-menu';
   const ALLOWED = ['Carl Healy'];
@@ -140,9 +140,9 @@
     try { return await check(beat); } finally { store.set('running', 0); }
   }
   async function refreshCount() {
-    if (!allowed() || document.visibilityState !== 'visible' || !U() || U().http.pausedFor() > 0 || locked()) return;
+    if (!allowed() || !U() || !U().background.ok() || locked()) return;   // visible tab, clinic hours, someone at the PC
     const last = store.get('result', null);
-    if (last && Date.now() - last.at < REFRESH_EVERY && last.by === VERSION) return;
+    if (last && !U().background.due(last.at, REFRESH_EVERY) && last.by === VERSION) return;
     try { await checkLocked(); } catch (e) { console.warn('[UPC open-ended patients]', e); tellHealthCheck(e); }
     paintBadge();
   }

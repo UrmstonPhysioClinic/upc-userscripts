@@ -1,5 +1,11 @@
 # Changelog
 
+## Quieter background checks and blocked error reporting, 12 Nov 2026 (beta)
+- Core 0.1.33: `UPC.background`. Background checks (menu counts, Patient statuses, Feedback alerts, the health check's daily check) run only in the visible tab, between 7 am and 9 pm, while someone has used the PC in the last 30 minutes, and fall due at their interval give or take 15%, not on an exact clock (Carl, 12 Nov 2026). Outstanding actions and Calendar controls stop their regular checks when nobody has used the PC for 30 minutes.
+- Insurer payments due 0.1.5: menu count twice a day instead of every 2 hours.
+- Patient statuses 0.2.4: at most 15 changes a run, 3 to 6 seconds apart.
+- New: Block error reporting 0.1.0 (System). Stops Halaxy's error reporting service (Sentry) loading or sending anything from our PCs, so errors and requests from our scripts don't reach Halaxy. Loads straight after the health check.
+
 ## Names and groups, 12 Nov 2026 (beta)
 - Every script is now named "UPC <Group>: <Name>" (Billing, Patients, Calendar, Look, System), and Script settings and the loader panel list them under their groups (Carl, 12 Nov 2026). Every beta script's version goes up one step for the new name.
 - Files renamed to match their names: bill-funder to invoice-funder, funder-chaser to insurer-payments-due, check-ins to open-ended-patients, survey-feedback to feedback-alerts, halaxy-mobile to mobile-layout, textarea-autogrow to text-boxes, email-html-source to email-html. Each carries `@upc-was` with its old file name; `tools/promote.py` removes the old stable file when the new one is promoted.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Ready to bill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.2
+// @version      0.3.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
@@ -42,7 +42,7 @@
   if (window.__hxReadyToBill) return;
   window.__hxReadyToBill = true;
 
-  const VERSION = '0.3.2';
+  const VERSION = '0.3.3';
   const ROUTE = 'upc-ready-to-bill';
   const MENU_CLS = 'upc-rtb-menu';
   const ALLOWED = ['Carl Healy', 'Wendy Pritchard'];   // Carl, 7 Nov 2026: only the two of them
@@ -250,10 +250,9 @@
 
   // Shared by all tabs: one refresh at a time, at most every 2 hours, in the visible tab only.
   async function refreshCount() {
-    if (!allowed() || document.visibilityState !== 'visible' || !U()) return;
-    if (U().http.pausedFor() > 0) return;
+    if (!allowed() || !U() || !U().background.ok()) return;   // visible tab, clinic hours, someone at the PC, Halaxy not busy
     const last = store.get('result', null);
-    if (last && Date.now() - last.at < REFRESH_EVERY) return;
+    if (last && !U().background.due(last.at, REFRESH_EVERY)) return;
     if (locked()) return;
     try { await checkLocked(); } catch (e) { console.warn('[UPC ready to bill]', e); store.set('lastError', { at: Date.now(), message: e.message || String(e) }); tellHealthCheck(e); }
     paintBadge();
