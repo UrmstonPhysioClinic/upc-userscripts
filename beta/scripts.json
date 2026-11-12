@@ -14,7 +14,7 @@
     {
       "file": "core.user.js",
       "name": "UPC System: Core library (beta)",
-      "version": "0.1.38"
+      "version": "0.1.39"
     },
     {
       "file": "alerts.user.js",
@@ -24,7 +24,7 @@
     {
       "file": "bank-statement.user.js",
       "name": "UPC Billing: Bank statement (beta)",
-      "version": "0.1.5"
+      "version": "0.1.6"
     },
     {
       "file": "branding.user.js",
@@ -105,7 +105,7 @@
     {
       "file": "remittances.user.js",
       "name": "UPC Billing: Remittances (beta)",
-      "version": "0.3.9"
+      "version": "0.3.10"
     },
     {
       "file": "review-requests.user.js",

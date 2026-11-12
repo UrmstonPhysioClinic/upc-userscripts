@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.9
+// @version      0.3.10
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -31,7 +31,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.3.9';
+  const VERSION = '0.3.10';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -852,7 +852,7 @@
     // A fixed comment Bank statement reads (Carl, 11 and 12 Nov 2026): the reference (Bupa's BACS reference is the bank
     // reference), the payment date (the money usually reaches the bank about 2 days later), the remittance total, and
     // what was billed and paid on this invoice. "Insurer reference 2662551; payment date 28-Oct-2026; remittance total
-    // £ 216.00 over 3 invoices; this invoice billed £ 170.00, paid £ 136.00".
+    // £ 216.00 over 3 invoices; this invoice billed £ 170.00, paid £ 136.00; invoices UPC-38023, UPC-37981, UPC-37990".
     const remitComment = (x) => {
       const n = attachable().length, paid = state.remit.totals && state.remit.totals.paid;
       const it = x.item;
@@ -861,7 +861,10 @@
       return [state.remit.reference ? 'Insurer reference ' + state.remit.reference : '',
         state.remit.date ? 'payment date ' + isoLabel(state.remit.date) : '',
         (typeof paid === 'number' ? 'remittance total ' + fmt(paid) : 'remittance') + ' over ' + n + ' invoice' + (n === 1 ? '' : 's'),
-        typeof billed === 'number' && typeof thisPaid === 'number' ? 'this invoice billed ' + fmt(billed) + ', paid ' + fmt(thisPaid) : '']
+        typeof billed === 'number' && typeof thisPaid === 'number' ? 'this invoice billed ' + fmt(billed) + ', paid ' + fmt(thisPaid) : '',
+        // Every invoice the remittance covers (Carl, 12 Nov 2026), so Bank statement can gather the whole remittance from
+        // any one of them.
+        'invoices ' + attachable().map((y) => y.item.invoice).join(', ')]
         .filter(Boolean).join('; ').replace(/^r/, 'R').replace(/^p/, 'P');
     };
     if (state.attach !== false) {

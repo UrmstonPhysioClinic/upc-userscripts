@@ -144,6 +144,37 @@ def report_html():
     return "<html><body><table class='table-report'>%s<tbody>%s</tbody></table></body></html>" % (head, body)
 
 
+INC_COLS = [c for c in COLS if c != 'Invoice Status']
+
+
+def income_html(q):
+    # Halaxy's Income report (capture 12 Nov 2026): payments by payment date, one row per fee, the payment on its
+    # invoice's first row (a second payment on a later row that repeats the number unlinked).
+    import datetime as dt
+    day = lambda t: dt.datetime.strptime(t, '%d-%b-%Y')
+    pays = [(i, f['form[paymentDate]'], round(float(f['form[amount]']) * 100), 'Direct Deposit') for i, f in S['posts_all']] + S.get('hand', [])
+    pays = [x for x in pays if day(q['start']) <= day(x[1]) <= day(q['stop'])]
+    head = "<thead><tr><th colspan='12'>Fees &amp; Charges</th><th></th><th colspan='6'>Payments</th></tr><tr>%s</tr></thead>" % ''.join('<th>%s</th>' % c for c in INC_COLS)
+    body, seen = '', set()
+    for iid, when, amt, method in pays:
+        payer, funder = S['inv'][iid][0], S['inv'][iid][1]
+        first = iid not in seen
+        seen.add(iid)
+        v = {'Invoice / Deposit': ("<a href='/a/pr/555/invoice/%d'>UPC-0%d</a>" if first else 'UPC-0%d') % ((iid, iid) if first else (iid,)), 'Date': '01-Sep-2026' if first else '',
+             'Payer': payer if first else '', 'Funder': funder if first else '', 'Amount': '£ 40.00' if first else '', 'Payments': gbp(amt), 'Method': method, 'Payments Inc. Fees': gbp(amt)}
+        cells, dates = [], 0
+        for c in INC_COLS:
+            if c == 'Date':
+                dates += 1
+                cells.append(v['Date'] if dates == 1 else when)
+            else:
+                cells.append(v.get(c, '') if c else '')
+        body += '<tr>' + ''.join('<td>%s</td>' % x for x in cells) + '</tr>'
+        if first:   # a second fee row with no payment
+            body += '<tr>' + ''.join('<td>%s</td>' % ('UPC-0%d' % iid if c == 'Invoice / Deposit' else '£ 10.00' if c == 'Amount' else '') for c in INC_COLS) + '</tr>'
+    return "<html><body><table class='table table-report'>%s<tbody>%s</tbody></table></body></html>" % (head, body)
+
+
 def invoice_html(iid):
     payer, funder, day, bal, att = S['inv'][iid]
     shown = bal - S['short'].get(iid, 0)
@@ -185,7 +216,9 @@ async def halaxy(route):
     p = u.path
     S['log'].append((req.method, p))
     if p.endswith('/report/finance/0'):
-        return await route.fulfill(body=report_html(), content_type='text/html')
+        q = dict(urllib.parse.parse_qsl(u.query))
+        S.setdefault('reports', []).append(q.get('type'))
+        return await route.fulfill(body=income_html(q) if q.get('type') == '1' else report_html(), content_type='text/html')
     m = __import__('re').match(r'^/a/pr/555/invoicefunctions/(\d+)/pay/offline$', p)
     if m:
         iid = int(m.group(1))
@@ -297,7 +330,7 @@ async def main():
         btn = await pg.evaluate("document.querySelector('[data-upc-bank-statement] [data-a=all]').textContent")
         check('record button counts only the ones matched by evidence (invoice number, remittance)', btn == 'Record 3 payments', btn)
         reads = [x for x in S['log'] if x[1].endswith('/report/finance/0')]
-        check('one report request; nothing written while matching', len(reads) == 1 and not S['posts'] and not [x for x in S['log'] if x[0] == 'POST'], S['log'])
+        check('two report requests (unpaid invoices, payments recorded); nothing written while matching', len(reads) == 2 and sorted(S['reports']) == ['1', '5'] and not S['posts'] and not [x for x in S['log'] if x[0] == 'POST'], S['log'])
 
         # choose for Aviva, then cancel: nothing recorded
         for k in (1, 3, 4, 5):   # AXA, Bupa (reused reference), WPA, Aviva: amount only, ticked by hand
@@ -398,6 +431,29 @@ async def main():
             raise
         check('the rest recorded, nothing twice', [i for i, _ in S['posts']] == [902, 901] and S['inv'][901][3] == 0 and S['inv'][902][3] == 0, S['posts'])
         await ctx.close()
+
+        # Recorded in Halaxy by hand (Carl, 12 Nov 2026): Aviva's £ 60.00 on its bank date, Simplyhealth's £ 33.00 on its
+        # remittance's date 2 days before; a card payment the same day is not an insurer's. Shown as already recorded.
+        inv = fresh()
+        inv[931][3] = 0; inv[932][3] = 0; inv[951][3] = 0
+        S.update({'log': [], 'posts': [], 'posts_all': [], 'inv': inv, 'short': {}, 'user': 'Carl Healy', 'tasks': {}, 'reports': [],
+                  'hand': [(931, '25-Oct-2026', 2000, 'Direct Deposit'), (932, '25-Oct-2026', 4000, 'Direct Deposit'), (933, '25-Oct-2026', 6000, 'Card'),
+                           (951, '27-Oct-2026', 3300, 'Direct Deposit')]})
+        ctx = await context(browser)
+        pg = await ctx.new_page()
+        await pg.goto(URL)
+        rows = await open_statement(pg, pdf)
+        by = {r['cells'][1]: r for r in rows}
+        av, sh = by.get('Aviva', {'cells': [''] * 6}), by.get('Simplyhealth', {'cells': [''] * 6})
+        check('recorded by hand on the bank date: already in Halaxy, nothing to do', 'UPC-0931 £ 20.00' in av['cells'][4] and 'UPC-0932 £ 40.00' in av['cells'][4]
+              and 'Already in Halaxy' in av['cells'][5] and av['off'] and not av['rec'] and 'UPC-0933' not in av['cells'][4], av)
+        check('recorded by hand 2 days before the bank date: already in Halaxy', 'UPC-0951 £ 33.00' in sh['cells'][4] and 'Already in Halaxy' in sh['cells'][5] and 'Direct Deposit, 27-Oct-2026' in sh['cells'][4], sh)
+        others = [r['cells'][1] for r in rows if 'Already in Halaxy' in r['cells'][5]]
+        check('nothing else counts as recorded', sorted(others) == ['Aviva', 'Simplyhealth'] and by['WPA']['radios'] + (1 if by['WPA']['rec'] else 0) >= 1, others)
+        btn = await pg.evaluate("(document.querySelector('[data-upc-bank-statement] [data-a=all]') || {}).textContent")
+        check('the record button leaves them out', btn == 'Record 3 payments', btn)
+        await ctx.close()
+        S['hand'] = []
 
         # not Carl: nothing
         S.update({'log': [], 'posts': [], 'posts_all': [], 'inv': fresh(), 'short': {}, 'user': 'Someone Else'})
