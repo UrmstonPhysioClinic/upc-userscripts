@@ -603,6 +603,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Remittances
 
+### 0.3.5 (12 Nov 2026, beta)
+- Scanned remittances: the amount paid can be corrected as well as the invoice number (Carl, 12 Nov 2026: "in case the OCR misreads a 3 as an 8"). One box per line where the insurer lists lines (Aviva), otherwise one for the invoice. Re-check (or Enter) works out the deductions and the patient's share again, checks the invoice with Halaxy, and checks the amounts against the remittance's total again, so the warning goes once they add up. A mistyped amount is refused.
+
 ### 0.3.3 (11 Nov 2026, beta)
 - The comment on each invoice the remittance is attached to now reads "Insurer reference 2455419; remittance total £ 120.00 over 3 invoices", so Bank statement can tell which invoices one payment covers (Carl).
 

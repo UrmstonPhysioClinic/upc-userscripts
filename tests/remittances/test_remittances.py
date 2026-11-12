@@ -382,6 +382,37 @@ async def main():
             { lineId: '1', date: '05-Sep-2026', amount: 5500 }, { lineId: '2', date: '12-Sep-2026', amount: 4500 }, { lineId: '3', date: '19-Sep-2026', amount: 4500 }] }, item, 5500)""", it)
         check('Aviva: changes follow the per-line deductions', [(c['lineId'], c['to']) for c in prop.get('changes', [])] == [('2', 0), ('3', 3500)], prop)
 
+        # Correcting a scanned remittance by hand: per-line amounts (Aviva) and a single amount (AXA)
+        unit = await pg.evaluate("""(item) => { const it = JSON.parse(JSON.stringify(item)); upcRemittances.correctItem(it, { lines: [5500, 0, 3000] });
+            return { paid: it.paid, share: it.patientShare, reason: it.reason, ded: it.lines.map((l) => l.deduction) }; }""", it)
+        check('scanned correction: per-line amounts recompute the deductions and the patient\'s share', unit == {'paid': 8500, 'share': 6000, 'reason': 'excess', 'ded': [None, 4500, 1500]}, unit)
+        notes = await pg.evaluate("""() => { const r = { items: [{ paid: 3000 }, { paid: 12800 }], checks: { paidRead: 15800, paidTotal: 15000 }, notes: ['The amounts read add up to £ 158.00 but the remittance total is £ 150.00. Something was misread: check each line by eye.'] };
+            r.items[1].paid = 12000; upcRemittances.checkTotals(r); return r.notes; }""")
+        check('scanned correction: the totals check clears once the amounts add up', notes == [], notes)
+
+        RS = '[data-upc-remittances]'
+        await pg.set_input_files(RS + ' input[type=file]', str(pdfs['aviva']))
+        await pg.wait_for_function("document.querySelectorAll('[data-upc-remittances] input[data-line]').length === 3", timeout=120000)
+        vals = await pg.evaluate("[...document.querySelectorAll('[data-upc-remittances] input[data-line]')].map((i) => i.value)")
+        check('scanned remittance: each line\'s amount paid can be corrected', vals == ['55.00', '0.00', '35.00'], vals)
+        await pg.fill(RS + ' input[data-line="0:2"]', '3O.00')
+        await pg.click(RS + ' [data-act=recheck]')
+        msg = await pg.evaluate("document.querySelector('[data-upc-remittances] .upc-rem-status').textContent")
+        check('a mistyped amount is refused, nothing changed', 'is not an amount' in msg, msg)
+        await pg.fill(RS + ' input[data-line="0:2"]', '30.00')
+        await pg.press(RS + ' input[data-line="0:2"]', 'Enter')
+        await pg.wait_for_function("/Checked UPC-40031/.test(document.querySelector('[data-upc-remittances] .upc-rem-status').textContent)", timeout=30000)
+        after = await pg.evaluate("""({ status: document.querySelector('[data-upc-remittances] .upc-rem-status').textContent,
+            notes: [...document.querySelectorAll('[data-upc-remittances] .upc-rem-notes li')].map((l) => l.textContent),
+            vals: [...document.querySelectorAll('[data-upc-remittances] input[data-line]')].map((i) => i.value) })""")
+        check('changed amount re-checked: totals no longer agree, says so', 'at £ 85.00' in after['status'] and "still don't add up" in after['status']
+              and any('add up to £ 85.00 but the remittance total is £ 90.00' in n for n in after['notes']) and after['vals'] == ['55.00', '0.00', '30.00'], after)
+        await pg.fill(RS + ' input[data-line="0:2"]', '35.00')
+        await pg.click(RS + ' [data-act=recheck]')
+        await pg.wait_for_function("/now add up/.test(document.querySelector('[data-upc-remittances] .upc-rem-status').textContent)", timeout=30000)
+        notes = await pg.evaluate("[...document.querySelectorAll('[data-upc-remittances] .upc-rem-notes li')].map((l) => l.textContent)")
+        check('corrected back: the amounts add up again and the warning goes', not any('add up to' in n for n in notes), notes)
+
         # Halaxy says it is busy: everything pauses
         busy = await pg.evaluate("UPC.http.json('/busy-test').then(() => 'ok', e => e.message)")
         paused = await pg.evaluate('UPC.http.pausedFor()')
