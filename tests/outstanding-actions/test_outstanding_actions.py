@@ -120,6 +120,10 @@ def check(name, ok, detail=''):
     if not ok: FAILS.append(name)
 
 
+# The browser's clock: 6 pm today, so the mock day's appointments have finished (the test failed when run after midnight).
+EVENING = datetime.datetime.now().replace(hour=18, minute=0, second=0, microsecond=0)
+
+
 async def main():
     threading.Thread(target=http.server.ThreadingHTTPServer(('127.0.0.1', PORT), Mock).serve_forever, daemon=True).start()
     code = SCRIPT.read_text()
@@ -132,6 +136,7 @@ async def main():
                 resp = await r.fetch(url=r.request.url.replace('https://eu.halaxy.com', 'http://127.0.0.1:%d' % PORT))
                 await r.fulfill(response=resp)
             await ctx.route('https://eu.halaxy.com/**', route)
+            await ctx.clock.install(time=EVENING)   # the day's appointments are over, whatever time the test runs
             await ctx.add_init_script(code)
             pg = await ctx.new_page()
             errors = []
@@ -228,6 +233,7 @@ async def main():
             resp = await r.fetch(url=r.request.url.replace('https://eu.halaxy.com', 'http://127.0.0.1:%d' % PORT))
             await r.fulfill(response=resp)
         await ctx.route('https://eu.halaxy.com/**', route)
+        await ctx.clock.install(time=EVENING)
         await ctx.add_init_script(code)
         t1 = await ctx.new_page()
         await t1.goto('https://eu.halaxy.com/a/pr/%s/calendar' % PG)

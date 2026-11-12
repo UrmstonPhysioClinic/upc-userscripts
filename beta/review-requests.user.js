@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy review requests (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.5.0
+// @version      0.5.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
@@ -44,7 +44,7 @@
   if (window.__hxReviewRequests) return;
   window.__hxReviewRequests = true;
 
-  const VERSION = '0.5.0';
+  const VERSION = '0.5.1';
   const ROUTE = 'upc-review-requests';
   const MENU_CLS = 'upc-rr-menu';
   const ALLOWED = ['Carl Healy'];          // Carl, 10 Nov 2026: just me for now
@@ -65,28 +65,19 @@
   const LABEL = 'No review request';
   const DAY = 86400e3;
   const SAID_DAYS = 1, QUIET_DAYS = 14, MAX_DAYS = 28, MIN_AGE = 16;
-  const FINISHED = ['discharged', 'goals met', 'self-managing'];   // phrase kinds that say treatment has finished
+  const FINISHED = ['discharged', 'goals met', 'no further treatment', 'self-managing', 'see as needed'];   // phrase kinds that say treatment has finished
   const REFRESH_EVERY = 12 * 3600e3, PAGE_FRESH = 30 * 60e3, KEEP = 7 * DAY;
   const KEY = 'upc-rr:';
 
   const U = () => window.UPC;
-  const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const store = {
-    get(k, d) { try { const v = localStorage.getItem(KEY + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
-    set(k, v) { try { localStorage.setItem(KEY + k, JSON.stringify(v)); } catch (e) { /* storage blocked */ } },
-  };
+  const esc = (s) => U().esc(s);
+  const store = { get: (k, d) => U().storage(KEY).get(k, d), set: (k, v) => U().storage(KEY).set(k, v), del: (k) => U().storage(KEY).del(k) };   // core's per-PC storage
+
   const label = (ms) => U().dayLabel(ms);
   const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
 
-  function userName() {
-    const h = window.HkUser || {};
-    const named = String(h.pracName || (h.CalendarDefault || {}).pracName || '').trim();
-    if (named) return named;
-    const el = [...document.querySelectorAll('header *, nav *, .navbar *, #top *')]
-      .find((e) => !e.children.length && ALLOWED.some((n) => n.toLowerCase() === e.textContent.trim().toLowerCase()));
-    return el ? el.textContent.trim() : '';
-  }
-  const allowed = () => ALLOWED.some((n) => n.toLowerCase() === userName().toLowerCase());
+  // Who's signed in: the core library's check (Halaxy can fill the name in late, so it keeps looking for 20 seconds).
+  const allowed = () => !!U() && U().user.is(ALLOWED);
 
   // ------------------------------------------------------------------ reading the notes
 
@@ -96,10 +87,10 @@
     ['pain-free', /\bpain[- ]?free\b|\bno (more |further )?(pain|symptoms)\b|\bsymptom[- ]?free\b|\bresolved\b/i],
     ['back to sport or work', /\b(back|returned|return(ed)?)( fully)? to (running|run|football|rugby|netball|hockey|cycling|the gym|gym|sport|sports|training|full training|tennis|golf|swimming|climbing|dancing|yoga|work|full duties|normal activities)\b/i],
     ['race or event done', /\b(ran|completed|finished|did)\b(\s+[\w'-]+){0,3}?\s+(race|marathon|half marathon|half|10k|5k|parkrun|ultra|triathlon)\b/i],
-    ['goals met', /\bgoals? (met|achieved|reached)\b|\bachieved (all )?(his |her |their )?goals?\b/i],
-    ['discharged', /\bdischarg(ed|e)\b|\bno (further|more) (treatment|physio|physiotherapy|sessions?|appointments?) (needed|required|necessary)\b|\bsee (as|when) (needed|required)\b|\bprn\b|\bsos\b/i],
-    ['self-managing', /\bself[- ]?manag|\bindependent(ly)? (with|managing)|\bcontinue (with )?(home )?(exercises|hep|programme|program) independently\b/i],
   ];
+  // Treatment finished: the core library's wording (shared with Patient statuses), plus "see as needed", which here
+  // counts as finished too (a good outcome with an open door is still worth a review request).
+  const good = () => GOOD.concat(U().wording.FINISHED, U().wording.OPEN_ENDED.filter(([k]) => k === 'see as needed'));
   const NICE = [
     ['very happy', /\b(really|very|so) (pleased|happy)\b|\bdelighted\b|\bthrilled\b|\bfeeling great\b|\bmuch better\b|\b(massive|huge|great|significant)(ly)? (improvement|progress|improved)\b/i],
     ['thanks', /\bthank(s| you)\b/i],
@@ -107,26 +98,25 @@
   ];
   // Against: only what says this course went badly or isn't over. Notes describe symptoms all the time
   // ("worse on stairs", "no need for a scan"), so plain mentions don't count (live list, 10 Nov 2026).
-  const RULES = 3;   // bump when the phrase lists or other signs change, so patients are read again
+  const RULES = 4;   // bump when the phrase lists or other signs change, so patients are read again
   const BAD = [
     ['not fully better', /\bnot (yet )?(100\s*%|fully|completely|quite)\s*(better|recovered|resolved|right|there|improved|pain[- ]?free)\b|\bno (better|improvement)\b|\bslow progress\b|\bminimal (change|improvement)\b/i],
     ['worse or flare-up', /\b(getting|feeling|feels|felt|been|is|was|now|much|slightly) worse\b|\b(has|have) (got|gotten|become) worse\b|\bworsen(ed|ing)\b|\b(had|having|has had|another) (a )?flare[- ]?up\b|\bflared( up)?\b|\bstill (painful|sore|struggling|symptomatic)\b|\bdeteriorat/i],
     ['referred on', /\b(re-?)?refer(red|ral)? (back )?(on(ward)? )?(to|for) (the |a |an |his |her |their )?(gp|doctor|consultant|orthopaedic|ortho|surgeon|specialist|msk|cats|mri|scan|x-?ray|ultrasound|injection|a&e|hospital|rheumatolog\w*|podiatr\w*)\b|\bonward referral\b|\bawaiting (an? |his |her |their )?(mri|scan|x-?ray|surgery|operation|consultant|injection|results)\b/i],
     ['unhappy or cost', /\bunhappy\b|\bdissatisfied\b|\bcomplain|\bcan(no|')t afford\b|\btoo expensive\b/i],
   ];
-  const NEGATION = /\b(not|no longer|never|isn'?t|wasn'?t|hasn'?t|without|unable to)\b[^.]{0,20}$/i;
   function phrases(text) {
     const found = { good: [], nice: [], bad: [] };
     const scan = (list, into, negatable) => list.forEach(([name, re]) => {
       const g = new RegExp(re.source, 'gi');
       let m;
       while ((m = g.exec(text))) {
-        if (negatable && NEGATION.test(text.slice(Math.max(0, m.index - 30), m.index))) continue;
+        if (negatable && U().wording.NEGATION.test(text.slice(Math.max(0, m.index - 30), m.index))) continue;
         if (!into.includes(name)) into.push(name);
         break;
       }
     });
-    scan(GOOD, found.good, true);
+    scan(good(), found.good, true);
     scan(NICE, found.nice, true);
     scan(BAD, found.bad, true);
     return found;
@@ -135,14 +125,13 @@
 
   // ------------------------------------------------------------------ the check
 
+  // Appointments from the calendar: the core library reads one standard window per page and shares it with the other
+  // scripts that read long windows (Patient statuses, Open-ended patients, Review requests).
   async function calendar(fromMs, toMs, say) {
     say('Reading the calendar...');
-    const pracs = await U().http.json('/lookup/practitioner?clinic=&include_id=&type=');
-    const qs = new URLSearchParams({ start: Math.floor(fromMs / 1000), end: Math.floor(toMs / 1000) });
-    (Array.isArray(pracs) ? pracs : []).forEach((p, i) => qs.append('practitioners[' + i + '][id]', p.id));
-    const cal = await U().http.json('/calendar/json?' + qs.toString());
-    return ((cal && cal.payload && cal.payload.events) || []).filter((e) => e.type === 'appointment' && e.linkPaGId);
+    return U().calendar.appointments(fromMs, toMs);
   }
+
 
   // One patient: read notes, the latest Progress Update form and their latest Feedback Request survey; then (only if
   // it looks good) labels, age and invoices.
@@ -446,7 +435,7 @@
     root.className = 'upc-native';
     root.setAttribute('data-upc-review-requests', '');
     root.addEventListener('click', (e) => {
-      if (e.target.closest('[data-a=refresh]')) run();
+      if (e.target.closest('[data-a=refresh]')) { U().calendar.forget(); run(); }
       const s = e.target.closest('[data-send]');
       if (s) act('send', s.dataset.send);
       const k = e.target.closest('[data-skip]');
@@ -483,8 +472,9 @@
     setTimeout(refreshCount, 5000);
     setInterval(refreshCount, 30 * 60e3);
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
-  else start();
+  const begin = () => { if (U()) U().user.whenAllowed(ALLOWED, start); else start(); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', begin, { once: true });
+  else begin();
 
   window.upcReviewRequests = { version: VERSION, phrases, check, allowed };
 })();

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy patient statuses (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.1
+// @version      0.2.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
@@ -28,7 +28,8 @@
  *  - Funded or not (Carl: the latest fee): booked with an Insurance or Referral appointment type (the appointment's title
  *    starts with the type; its colour as a fallback), else the fee's own funder in Halaxy's fee list, or the invoice
  *    linked to an insurance claim.
- *  - Runs in the visible tab, at most every 30 minutes, shared across tabs, only while Carl is signed in (so the changes
+ *  - Runs in the visible tab, at most every 3 hours (each patient's latest note read again only after a new appointment
+ *    or a change to its note), shared across tabs, only while Carl is signed in (so the changes
  *    are his in Halaxy's status history), and skips while Halaxy is busy. Changed on the patient's Edit page (core
  *    UPC.patient.setStatus), only if the status still reads what was seen, at most 40 a run.
  *  - "Patient statuses: recent changes" (Script settings, or the Tampermonkey menu) lists the last 100 changes and any
@@ -39,7 +40,7 @@
   if (window.__hxPatientStatuses) return;
   window.__hxPatientStatuses = true;
 
-  const VERSION = '0.2.1';
+  const VERSION = '0.2.2';
   const ALLOWED = ['Carl Healy'];
   const DAY = 86400e3;
   const GAP_DAYS = 42;          // Carl, 11 Nov 2026: a gap counts; 6 weeks
@@ -50,66 +51,39 @@
   const FUNDED_TYPE = /insurance|referral/i;
   const KNOWN = MANAGED.concat(['review', 'archived', 'waiting list', 'blocked', 'deleted', 'deceased', 'contact', 'lead']);
   const NAME = { current: 'Current', claimant: 'Claimant', discharged: 'Discharged', contact: 'Contact' };
-  const EVERY = 30 * 60e3, MAX_CHANGES = 40, LOG_SIZE = 100;
+  const EVERY = 3 * 3600e3, MAX_CHANGES = 40, LOG_SIZE = 100;
   const KEY = 'upc-ps:';
 
   const U = () => window.UPC;
-  const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const store = {
-    get(k, d) { try { const v = localStorage.getItem(KEY + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
-    set(k, v) { try { localStorage.setItem(KEY + k, JSON.stringify(v)); } catch (e) { /* storage blocked */ } },
-  };
+  const esc = (s) => U().esc(s);
+  const store = { get: (k, d) => U().storage(KEY).get(k, d), set: (k, v) => U().storage(KEY).set(k, v), del: (k) => U().storage(KEY).del(k) };   // core's per-PC storage
+
   const label = (ms) => U().dayLabel(ms);
   const norm = (s) => String(s || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
 
-  function userName() {
-    const h = window.HkUser || {};
-    const named = String(h.pracName || (h.CalendarDefault || {}).pracName || '').trim();
-    if (named) return named;
-    const btn = document.getElementById('activeUser');
-    if (btn && btn.textContent.trim()) return btn.textContent.replace(/\s+/g, ' ').trim();
-    const el = [...document.querySelectorAll('header *, nav *, .navbar *, #top *, #headerWrapper *')]
-      .find((e) => !e.children.length && ALLOWED.some((n) => n.toLowerCase() === e.textContent.trim().toLowerCase()));
-    return el ? el.textContent.trim() : '';
-  }
-  const allowed = () => ALLOWED.some((n) => n.toLowerCase() === userName().toLowerCase());
-  // Halaxy may not have filled in who's signed in when this script starts (it starts early in the load order: live,
-  // 11 Nov 2026), so keep looking for 20 seconds before deciding it isn't for this person.
-  function whenAllowed(fn) {
-    if (allowed()) return fn();
-    const t0 = Date.now();
-    const timer = setInterval(() => {
-      if (allowed()) { clearInterval(timer); fn(); } else if (Date.now() - t0 > 20000) clearInterval(timer);
-    }, 500);
-  }
+  // Who's signed in: the core library's check (Halaxy can fill the name in late, so it keeps looking for 20 seconds).
+  const allowed = () => !!U() && U().user.is(ALLOWED);
+  const whenAllowed = (fn) => U().user.whenAllowed(ALLOWED, fn);
 
-  // Treatment finished, in the last note. "See as needed" and similar open-ended wording don't count: those patients
-  // are discharged by the 6-week gap instead.
-  const FINISHED = /\bdischarg(ed|e)\b|\bgoals? (met|achieved|reached)\b|\bno (further|more) (treatment|physio|physiotherapy|sessions?|appointments?) (needed|required|necessary)\b|\bself[- ]?manag/i;
-  const NEGATION = /\b(not|no longer|never|isn'?t|wasn'?t|hasn'?t|without|unable to|not yet|before)\b[^.]{0,20}$/i;
-  function saysFinished(text) {
-    const g = new RegExp(FINISHED.source, 'gi');
-    let m;
-    while ((m = g.exec(text))) {
-      if (!NEGATION.test(text.slice(Math.max(0, m.index - 30), m.index))) return m[0].toLowerCase();
-    }
-    return '';
-  }
+  // Treatment finished, in the last note (the core library's wording, shared with Review requests). "See as needed" and
+  // other open-ended wording don't count: those patients are discharged by the 6-week gap instead.
+  const saysFinished = (text) => U().wording.finished(text)[0] || '';
 
+
+  // Appointments from the calendar: the core library reads one standard window per page and shares it with the other
+  // scripts that read long windows (Patient statuses, Open-ended patients, Review requests).
   async function calendar(fromMs, toMs, say) {
     say('Reading the calendar...');
-    const pracs = await U().http.json('/lookup/practitioner?clinic=&include_id=&type=');
-    const qs = new URLSearchParams({ start: Math.floor(fromMs / 1000), end: Math.floor(toMs / 1000) });
-    (Array.isArray(pracs) ? pracs : []).forEach((p, i) => qs.append('practitioners[' + i + '][id]', p.id));
-    const cal = await U().http.json('/calendar/json?' + qs.toString());
-    return ((cal && cal.payload && cal.payload.events) || []).filter((e) => e.type === 'appointment' && e.linkPaGId);
+    return U().calendar.appointments(fromMs, toMs);
   }
+
 
   async function check(say) {
     say = say || (() => {});
     const now = Date.now();
     const funded = store.get('funded2', {});     // invoice id -> true (funded) / false (self-funded)
-    const finished = store.get('finished', {});  // note id -> wording found ('' if none)
+    const finished = store.get('finished2', {});  // note id -> kind of wording found ('' if none)
+    const latest = store.get('latest', {});      // patient -> { key: last appointment and note status, note: { noteId, date } }
     const events = await calendar(now - BACK_DAYS * DAY, now + AHEAD_DAYS * DAY, say);
     const startMs = (e) => (typeof e.start === 'number' ? e.start * 1000 : Date.parse(e.start));
     const byPatient = new Map();
@@ -195,12 +169,20 @@
             to = 'discharged';
             why = 'No appointment for ' + Math.floor(gap / 7) + ' weeks (last ' + label(startMs(last)) + '), nothing booked';
           } else if (status !== 'discharged') {
-            tell('Reading ' + name + '\'s last note');
-            const items = await U().notes.items(id);
-            const note = items.find((x) => x.noteId && x.entity === 'note' && (x.category === 'appointment' || x.category === 'note'));
+            // The latest note is read again only when the last appointment or its note's status has changed since.
+            const seenKey = String(last.id) + '|' + String(last.noteStatusCss || '');
+            let note = latest[id] && latest[id].key === seenKey ? latest[id].note : undefined;
+            if (note === undefined) {
+              tell('Reading ' + name + '\'s last note');
+              const items = await U().notes.items(id);
+              const found = items.find((x) => x.noteId && x.entity === 'note' && (x.category === 'appointment' || x.category === 'note'));
+              note = found ? { noteId: found.noteId, date: found.date || null } : null;
+              latest[id] = { key: seenKey, note };
+              store.set('latest', latest);
+            }
             let said = '';
             if (note) {
-              if (!(note.noteId in finished)) { finished[note.noteId] = saysFinished(await U().notes.text(note.noteId)); store.set('finished', finished); }
+              if (!(note.noteId in finished)) { finished[note.noteId] = saysFinished(await U().notes.text(note.noteId)); store.set('finished2', finished); }
               said = finished[note.noteId];
             }
             if (said) { to = 'discharged'; why = 'Last note (' + label(note.date || startMs(last)) + ') says "' + said + '", nothing booked'; }
@@ -219,6 +201,8 @@
         rows.push({ id, name, from: status, to: '', why: '', error: e.message || String(e) });
       }
     }
+    Object.keys(latest).forEach((k) => { if (!byPatient.has(k) && !byPatient.has(Number(k))) delete latest[k]; });   // patients no longer in the window
+    store.set('latest', latest);
     const order = { discharged: 0, claimant: 1, current: 2, '': 3 };
     rows.forEach((r) => { if (r.from === 'contact' && r.to) r.why = 'Contact with an appointment (not found in searches). ' + r.why; });
     rows.sort((a, b) => order[a.to] - order[b.to] || a.name.localeCompare(b.name));
@@ -284,7 +268,7 @@
     const l = store.get('log', []), last = store.get('lastRun', null);
     const when = (ms) => label(ms) + ' ' + new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
     dlg.root.setAttribute('data-upc-ps-log', '');
-    dlg.body.innerHTML = '<p class="text-muted">Statuses are kept up to date by themselves while ' + esc(ALLOWED[0]) + ' is signed in, every 30 minutes. ' +
+    dlg.body.innerHTML = '<p class="text-muted">Statuses are kept up to date by themselves while ' + esc(ALLOWED[0]) + ' is signed in, every 3 hours. ' +
       (last ? 'Last checked ' + esc(when(last.at)) + (last.error ? ': <span class="upc-err">' + esc(last.error) + '</span>' : ', ' + (last.changed || 0) + ' changed.') : 'Not checked yet.') + '</p>' +
       (l.length ? '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th>When</th><th>Patient</th><th>Change</th><th>Why</th></tr></thead><tbody>' +
         l.map((x) => '<tr><td>' + esc(when(x.at)) + '</td><td><a href="' + esc(base + '/patient/' + x.id) + '" target="_blank" rel="noopener">' + esc(x.name) + '</a></td>' +

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy ready to bill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.0
+// @version      0.3.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
@@ -42,7 +42,7 @@
   if (window.__hxReadyToBill) return;
   window.__hxReadyToBill = true;
 
-  const VERSION = '0.3.0';
+  const VERSION = '0.3.1';
   const ROUTE = 'upc-ready-to-bill';
   const MENU_CLS = 'upc-rtb-menu';
   const ALLOWED = ['Carl Healy', 'Wendy Pritchard'];   // Carl, 7 Nov 2026: only the two of them
@@ -57,11 +57,9 @@
   const MAX_EXCESS = 200000;               // over £ 2,000 is taken as a typing slip: use the fallback   // Carl, 10 Nov 2026: only these can be billed before treatment ends
 
   const U = () => window.UPC;
-  const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const store = {
-    get(k, d) { try { const v = localStorage.getItem(KEY + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
-    set(k, v) { try { localStorage.setItem(KEY + k, JSON.stringify(v)); } catch (e) { /* storage blocked */ } },
-  };
+  const esc = (s) => U().esc(s);
+  const store = { get: (k, d) => U().storage(KEY).get(k, d), set: (k, v) => U().storage(KEY).set(k, v), del: (k) => U().storage(KEY).del(k) };   // core's per-PC storage
+
   const fmt = (c) => U().money.fmt(c);
   const label = (ms) => U().dayLabel(ms);
   const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
@@ -76,17 +74,9 @@
 
   // ------------------------------------------------------------------ who may see it
 
-  function userName() {
-    const h = window.HkUser || {};
-    const c = h.CalendarDefault || {};
-    const named = String(h.pracName || c.pracName || '').trim();
-    if (named) return named;
-    // Fallback: the signed-in name in Halaxy's top bar.
-    const el = [...document.querySelectorAll('header *, nav *, .navbar *, #top *')]
-      .find((e) => !e.children.length && ALLOWED.some((n) => n.toLowerCase() === e.textContent.trim().toLowerCase()));
-    return el ? el.textContent.trim() : '';
-  }
-  const allowed = () => ALLOWED.some((n) => n.toLowerCase() === userName().toLowerCase());
+  // Who's signed in: the core library's check (Halaxy can fill the name in late, so it keeps looking for 20 seconds).
+  const userName = () => U().user.name(ALLOWED);
+  const allowed = () => !!U() && U().user.is(ALLOWED);
 
   // ------------------------------------------------------------------ the check
 
@@ -518,8 +508,9 @@
     setTimeout(refreshCount, 3000);
     setInterval(refreshCount, 10 * 60e3);
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
-  else start();
+  const begin = () => { if (U()) U().user.whenAllowed(ALLOWED, start); else start(); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', begin, { once: true });
+  else begin();
 
   // For tests and diagnostics.
   window.upcReadyToBill = { version: VERSION, check, isLastWorkingDay, allowed, userName };

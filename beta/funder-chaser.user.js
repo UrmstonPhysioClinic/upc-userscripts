@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy insurer payments due (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.2
+// @version      0.1.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/funder-chaser.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/funder-chaser.user.js
@@ -30,7 +30,7 @@
   if (window.__hxFunderChaser) return;
   window.__hxFunderChaser = true;
 
-  const VERSION = '0.1.2';
+  const VERSION = '0.1.3';
   const ROUTE = 'upc-funder-chaser';
   const MENU_CLS = 'upc-fc-menu';
   const ALLOWED = ['Carl Healy'];
@@ -42,37 +42,18 @@
   const KEY = 'upc-fc:';
 
   const U = () => window.UPC;
-  const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const store = {
-    get(k, d) { try { const v = localStorage.getItem(KEY + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
-    set(k, v) { try { localStorage.setItem(KEY + k, JSON.stringify(v)); } catch (e) { /* storage blocked */ } },
-  };
+  const esc = (s) => U().esc(s);
+  const store = { get: (k, d) => U().storage(KEY).get(k, d), set: (k, v) => U().storage(KEY).set(k, v), del: (k) => U().storage(KEY).del(k) };   // core's per-PC storage
+
   const fmt = (c) => U().money.fmt(c);
   const label = (ms) => U().dayLabel(ms);
   const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
   const insurer = (funder) => !!funder && !/self/i.test(funder);
   const payerIsFunder = (payer, funder) => { const p = String(payer).toLowerCase(), f = String(funder).toLowerCase(); return !!p && !!f && (p.includes(f) || f.includes(p)); };
 
-  function userName() {
-    const h = window.HkUser || {};
-    const named = String(h.pracName || (h.CalendarDefault || {}).pracName || '').trim();
-    if (named) return named;
-    const btn = document.getElementById('activeUser');
-    if (btn && btn.textContent.trim()) return btn.textContent.replace(/\s+/g, ' ').trim();
-    const el = [...document.querySelectorAll('header *, nav *, .navbar *, #top *, #headerWrapper *')]
-      .find((e) => !e.children.length && ALLOWED.some((n) => n.toLowerCase() === e.textContent.trim().toLowerCase()));
-    return el ? el.textContent.trim() : '';
-  }
-  const allowed = () => ALLOWED.some((n) => n.toLowerCase() === userName().toLowerCase());
-  // Halaxy may not have filled in who's signed in when this script starts (it starts early in the load order: live,
-  // 11 Nov 2026), so keep looking for 20 seconds before deciding it isn't for this person.
-  function whenAllowed(fn) {
-    if (allowed()) return fn();
-    const t0 = Date.now();
-    const timer = setInterval(() => {
-      if (allowed()) { clearInterval(timer); fn(); } else if (Date.now() - t0 > 20000) clearInterval(timer);
-    }, 500);
-  }
+  // Who's signed in: the core library's check (Halaxy can fill the name in late, so it keeps looking for 20 seconds).
+  const allowed = () => !!U() && U().user.is(ALLOWED);
+  const whenAllowed = (fn) => U().user.whenAllowed(ALLOWED, fn);
 
   // ------------------------------------------------------------------ the check
 

@@ -185,7 +185,11 @@ async def main():
         before = len(S['log'])
         await pg.reload()
         await pg.wait_for_timeout(12000)
-        check('not again within 30 minutes (shared, across loads)', not [x for x in S['log'][before:] if 'calendar' in x[1]], S['log'][before:])
+        check('not again within 3 hours (shared, across loads)', not [x for x in S['log'][before:] if 'calendar' in x[1]], S['log'][before:])
+        before = len(S['log'])
+        await pg.evaluate("window.upcPatientStatuses.check()")
+        again = [x[1] for x in S['log'][before:]]
+        check('checking again: latest notes not read again when nothing has changed', any('calendar' in x for x in again) and not [x for x in again if x.startswith('/a/pr/555/note/menu/') or '/note/menu/' in x], again)
         check('no page errors', not errors, errors)
         await ctx.close()
 

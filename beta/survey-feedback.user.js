@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Halaxy feedback alerts (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.1
+// @version      0.1.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/survey-feedback.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/survey-feedback.user.js
@@ -35,7 +35,7 @@
   if (window.__hxSurveyFeedback) return;
   window.__hxSurveyFeedback = true;
 
-  const VERSION = '0.1.1';
+  const VERSION = '0.1.2';
   const ALLOWED = ['Carl Healy'];   // Carl, 11 Nov 2026
   const ASSIGNEE = 'Carl Healy';
   const MAX_SCORE = 35;             // the Feedback Request template: 3 x 5 + 2 x 5 + 2 x 5
@@ -47,23 +47,15 @@
   const NOTHING = /^(no|nope|none|nothing|nil|n\/?a|na|-+|\.+|no thanks?( you)?|no comments?|nothing (to add|else)|not really|all good|all fine|fine|ok(ay)?)[.!]*$/i;
 
   const U = () => window.UPC;
-  const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const store = {
-    get(k, d) { try { const v = localStorage.getItem(KEY + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
-    set(k, v) { try { localStorage.setItem(KEY + k, JSON.stringify(v)); } catch (e) { /* storage blocked */ } },
-  };
+  const esc = (s) => U().esc(s);
+  const store = { get: (k, d) => U().storage(KEY).get(k, d), set: (k, v) => U().storage(KEY).set(k, v), del: (k) => U().storage(KEY).del(k) };   // core's per-PC storage
+
   const label = (ms) => U().dayLabel(ms);
   const time = (ms) => label(ms) + ' ' + new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   const BAND = { excellent: 'Excellent', satisfactory: 'Satisfactory', below: 'Below expected' };
 
-  function userName() {
-    const h = window.HkUser || {};
-    const named = String(h.pracName || (h.CalendarDefault || {}).pracName || '').trim();
-    if (named) return named;
-    const btn = document.getElementById('activeUser');
-    return btn ? btn.textContent.replace(/\s+/g, ' ').trim() : '';
-  }
-  const allowed = () => ALLOWED.some((n) => n.toLowerCase() === userName().toLowerCase());
+  // Who's signed in: the core library's check (Halaxy can fill the name in late, so it keeps looking for 20 seconds).
+  const allowed = () => !!U() && U().user.is(ALLOWED);
 
   function tellHealthCheck(e) {
     const message = (e && e.message) || String(e);
@@ -236,8 +228,9 @@
     setTimeout(background, 8000);
     setInterval(background, 15 * 60e3);
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
-  else start();
+  const begin = () => { if (U()) U().user.whenAllowed(ALLOWED, start); else start(); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', begin, { once: true });
+  else begin();
 
   window.upcSurveyFeedback = { version: VERSION, check, allowed, answerText, meaningful };
 })();

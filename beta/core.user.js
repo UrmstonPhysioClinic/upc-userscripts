@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.30
+// @version      0.1.31
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.30';
+  const VERSION = '0.1.31';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -417,8 +417,10 @@
   }
 
   // Works out the steps for one funder line: which patient invoice line it came from, and checks
-  // both invoices agree. Read-only.
-  async function planMove(funderInvoiceId, funderLineId, newRebate) {
+  // both invoices agree. Read-only. opts.overrides: other fields to change on the patient fee in the same save (Rebate
+  // sync, when the fee's amount is changed with its rebate), with opts.fee the fee's new amount (pence).
+  async function planMove(funderInvoiceId, funderLineId, newRebate, opts) {
+    opts = opts || {};
     const funder = await invoice.fetch(funderInvoiceId);
     const line = funder.lines.find((l) => l.lineId === String(funderLineId));
     if (!line) throw new UPCError('Line ' + funderLineId + ' is not on invoice ' + funder.number + '.');
@@ -443,11 +445,13 @@
     const pFields = Object.fromEntries(await lineForm(cands[0].lineId));
     const origRebate = money.cents(pFields['form[rebate]']);
     if (origRebate !== line.amount) throw new UPCError('The invoices already disagree (patient rebate ' + money.fmt(origRebate) + ', funder line ' + money.fmt(line.amount) + '). Sort that out by hand first.');
-    const fee = money.cents(pFields['form[amount]']);
+    const fee = opts.fee !== undefined && opts.fee !== null ? opts.fee : money.cents(pFields['form[amount]']);
+    if (newRebate === null || newRebate === undefined || isNaN(newRebate)) throw new UPCError('The new funder amount is not a valid amount.');
     if (newRebate < 0) throw new UPCError('The new funder amount cannot be negative.');
     if (fee !== null && newRebate > fee) throw new UPCError('The new funder amount (' + money.fmt(newRebate) + ') is more than the fee (' + money.fmt(fee) + ').');
     return { funderInvoiceId: funder.id, funderNumber: funder.number, funderLineId: line.lineId, patientInvoiceId: patient.id, patientNumber: patient.number,
-      patientLineId: cands[0].lineId, date: line.date, patientDate: cands[0].date, item: line.item, fee, origRebate, newRebate };
+      patientLineId: cands[0].lineId, date: line.date, patientDate: cands[0].date, item: line.item, fee, origRebate, newRebate,
+      overrides: Object.assign({}, opts.overrides || {}) };
   }
 
   // Carries out a plan from planMove: revert the funder line, change the rebate on the patient
@@ -478,8 +482,10 @@
     say('Setting the rebate to ' + money.fmt(newRebate));
     try {
       const fresh = await lineForm(patientLineId);
-      const pairs = fresh.map(([k, v]) => [k, k === 'form[rebate]' ? money.plain(newRebate) : v]);
-      if (!fresh.some(([k]) => k === 'form[rebate]')) pairs.push(['form[rebate]', money.plain(newRebate)]);
+      const set = Object.assign({}, plan.overrides || {}, { 'form[rebate]': money.plain(newRebate) });
+      delete set['form[_token]'];
+      const pairs = fresh.map(([k, v]) => [k, k in set ? set[k] : v]);
+      Object.keys(set).forEach((k) => { if (!fresh.some(([x]) => x === k)) pairs.push([k, set[k]]); });
       http.expectRefresh(await http.postForm('/invoice/line/' + patientLineId + '/edit', pairs), 'Saving the new rebate');
     } catch (e) {
       say('Saving the rebate failed, putting the original back on ' + plan.funderNumber);
@@ -1285,7 +1291,122 @@
     },
   };
 
+
+  // ------------------------------------------------------------------ who is signed in
+
+  // Halaxy may not have filled in who's signed in when a script starts (HkUser.pracName empty for a few seconds: live,
+  // 11 Nov 2026), so whenAllowed keeps looking for 20 seconds, and the name in the top bar is a fallback.
+  const user = {
+    name(known) {
+      const h = window.HkUser || {};
+      const named = String(h.pracName || (h.CalendarDefault || {}).pracName || '').trim();
+      if (named) return named;
+      const btn = document.getElementById('activeUser');
+      if (btn && clean(btn.textContent)) return clean(btn.textContent);
+      const list = (known || []).map((n) => n.toLowerCase());
+      if (!list.length) return '';
+      const el = [...document.querySelectorAll('header *, nav *, .navbar *, #top *, #headerWrapper *')]
+        .find((e) => !e.children.length && list.includes(e.textContent.trim().toLowerCase()));
+      return el ? el.textContent.trim() : '';
+    },
+    // True when the signed-in person is one of `names` ('Carl Healy').
+    is(names) { const me = user.name(names).toLowerCase(); return !!me && names.some((n) => n.toLowerCase() === me); },
+    // Runs fn once the signed-in person is one of `names`; gives up after 20 seconds.
+    whenAllowed(names, fn) {
+      if (user.is(names)) { fn(); return; }
+      const t0 = Date.now();
+      const timer = setInterval(() => { if (user.is(names)) { clearInterval(timer); fn(); } else if (Date.now() - t0 > 20000) clearInterval(timer); }, 500);
+    },
+    // Initials from a name ('Carl Healy' -> 'CH').
+    initials(name) { const w = clean(name).split(' ').filter(Boolean); return w.length ? (w[0][0] + (w.length > 1 ? w[w.length - 1][0] : '')).toUpperCase() : ''; },
+  };
+
+  // ------------------------------------------------------------------ per-PC working state
+
+  // localStorage under a prefix ('upc-rtb:'), shared by this PC's Halaxy tabs. Never note text, form or survey answers.
+  function storage(prefix) {
+    return {
+      get(k, d) { try { const v = localStorage.getItem(prefix + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+      set(k, v) { try { localStorage.setItem(prefix + k, JSON.stringify(v)); } catch (e) { /* storage blocked or full */ } },
+      del(k) { try { localStorage.removeItem(prefix + k); } catch (e) { /* storage blocked */ } },
+    };
+  }
+
+  // ------------------------------------------------------------------ calendar
+
+  // Appointments (with a patient) from Halaxy's calendar, every practitioner. Several scripts read long windows (Patient
+  // statuses, Open-ended patients, Review requests), so on each page one standard window (200 days back to 125 ahead) is
+  // read once and shared for 15 minutes; a window outside it is read on its own.
+  const CAL = { back: 200, ahead: 125, freshMs: 15 * 60e3 };
+  let calShared = null;   // { at, from, to, promise }
+  async function calendarRead(fromMs, toMs) {
+    const pracs = await http.json('/lookup/practitioner?clinic=&include_id=&type=');
+    const qs = new URLSearchParams({ start: Math.floor(fromMs / 1000), end: Math.floor(toMs / 1000) });
+    (Array.isArray(pracs) ? pracs : []).forEach((p, i) => qs.append('practitioners[' + i + '][id]', p.id));
+    const cal = await http.json('/calendar/json?' + qs.toString());
+    if (!cal || !cal.payload || !Array.isArray(cal.payload.events)) throw new UPCError('Halaxy\'s calendar data has changed (no events list).');
+    return cal.payload.events.filter((e) => e.type === 'appointment' && e.linkPaGId);
+  }
+  const calendar = {
+    // Forget the shared window, so the next read asks Halaxy again (a person pressing "Check now").
+    forget() { calShared = null; },
+    async appointments(fromMs, toMs) {
+      const day0 = new Date(); day0.setHours(0, 0, 0, 0);
+      const from = day0.getTime() - CAL.back * 86400e3, to = day0.getTime() + (CAL.ahead + 1) * 86400e3;
+      if (fromMs < from || toMs > to) return calendarRead(fromMs, toMs);
+      if (!calShared || Date.now() - calShared.at > CAL.freshMs || calShared.from !== from) {
+        calShared = { at: Date.now(), from, to, promise: calendarRead(from, to) };
+        calShared.promise.catch(() => { calShared = null; });
+      }
+      const all = await calShared.promise;
+      return all.filter((e) => Number(e.start) * 1000 >= fromMs && Number(e.start) * 1000 < toMs);
+    },
+  };
+
+  // ------------------------------------------------------------------ note wording
+
+  // Phrases in clinical notes, shared so every script reads a note the same way. Only the kind's name is ever kept,
+  // never the words. A phrase just after "not", "no longer" and similar doesn't count ("not yet discharged").
+  const IF_NEEDED = '(if|when|as) (needed|required|necessary|nec|req|reqd|appropriate)|if (any|further) (problems|issues|concerns|symptoms)|if (it |things |symptoms |pain )?(gets? worse|worsens?|returns?|recurs?|flares?( up)?)|prn|sos';
+  const wording = {
+    NEGATION: /\b(not|no longer|never|isn'?t|wasn'?t|hasn'?t|without|unable to|not yet|before|no need to)\b[^.]{0,20}$/i,
+    // Treatment has finished.
+    FINISHED: [
+      ['discharged', /\bdischarg(ed|e)\b/i],
+      ['goals met', /\bgoals? (met|achieved|reached)\b|\bachieved (all )?(his |her |their )?goals?\b/i],
+      ['no further treatment', /\bno (further|more) (treatment|physio|physiotherapy|sessions?|appointments?) (needed|required|necessary)\b/i],
+      ['self-managing', /\bself[- ]?manag|\bindependent(ly)? (with|managing)|\bcontinue (with )?(home )?(exercises|hep|programme|program) independently\b/i],
+    ],
+    // Left open: the patient may come back.
+    OPEN_ENDED: [
+      ['open return', /\bopen (return|review|f\/?u|follow[- ]?up)\b|\bleft open\b|\bopen[- ]ended\b/i],
+      ['open appointment', /\bopen (appointment|appt|booking)\b/i],
+      ['book again if needed', new RegExp('\\b(re-?)?book (again|in|back|another( session| appointment| appt)?|a follow[- ]?up)?\\s*(' + IF_NEEDED + ')\\b', 'i')],
+      ['come back if needed', new RegExp('\\b(come|coming|call|ring|get|getting|contact|be) (back|in touch|us)\\s*(' + IF_NEEDED + ')\\b|\\b(to |will )?(contact|call|ring|email|e-?mail|text|message) (us|clinic|the clinic|me)?\\s*(' + IF_NEEDED + ')\\b|\\bget in touch\\b', 'i')],
+      ['see how things go', /\bsee how (things|it|he|she|they|pt|patient|symptoms|knee|back|shoulder|ankle|hip|neck)?\s*(go(es)?|get(s)? on|progress(es)?|settle(s)?)\b|\bwait and see\b/i],
+      ['see as needed', /\b(see|review|f\/?u|follow[- ]?up) (as|when|if) (needed|required|necessary|nec|req|reqd)\b|\bprn\b|\bsos\b/i],
+    ],
+    // The kinds in `list` ([[name, regex]]) found in text, in list order; with negatable (default), negated ones don't count.
+    find(text, list, negatable) {
+      const t = String(text || '');
+      const found = [];
+      list.forEach(([name, re]) => {
+        const g = new RegExp(re.source, 'gi');
+        let m;
+        while ((m = g.exec(t))) {
+          if (negatable !== false && wording.NEGATION.test(t.slice(Math.max(0, m.index - 30), m.index))) continue;
+          if (!found.includes(name)) found.push(name);
+          break;
+        }
+      });
+      return found;
+    },
+    finished(text) { return wording.find(text, wording.FINISHED); },
+    openEnded(text) { return wording.find(text, wording.OPEN_ENDED); },
+  };
+
   window.UPC = Object.freeze({
     version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, forms, notes, followUps, patient, tasks, surveys, reports, dayLabel, parseDay, rebate, files, load, ui,
+    user, storage, calendar, wording,
   });
 })();
