@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Bank statement (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.5
+// @version      0.1.6
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
@@ -31,14 +31,16 @@
  *    that adds up to it. One answer is ticked; several are offered to choose from; none says so.
  *  - Record (after confirming): each invoice is marked paid with its balance, "Direct Deposit" (Carl), the bank date,
  *    and a note naming the insurer, bank date and reference (core UPC.invoice.payOffline, which checks the result).
- *    Credits already recorded on this PC are remembered and shown as done.
+ *    Credits already recorded on this PC are remembered and shown as done; credits already recorded in Halaxy by any
+ *    means (Halaxy's Income report: the insurer's payments, not card or online, dated 10 days before to 3 days after
+ *    the bank date, adding up to it) are shown as "Already in Halaxy" with nothing to do.
  */
 (() => {
   'use strict';
   if (window.__hxBankStatement) return;
   window.__hxBankStatement = true;
 
-  const VERSION = '0.1.5';
+  const VERSION = '0.1.6';
   const ROUTE = 'upc-bank-statement';
   const MENU_CLS = 'upc-bank-menu';
   const ALLOWED = ['Carl Healy'];
@@ -48,6 +50,10 @@
   const NEAR_BEFORE = 3, NEAR_AFTER = 14;   // days the bank date may be before / after the remittance's date
   const USUAL_DAYS = 5;   // Carl, 12 Nov 2026: Bupa (and AXA) almost always pay 2 days after the remittance date
   const MAX_AGE_DAYS = 120;   // invoices dated more than this before a payment are not matched to it
+  // A payment recorded in Halaxy counts as this bank line's if dated up to this many days before the bank date (recorded
+  // on the remittance's date, say) or after it.
+  const RECORDED_BEFORE = 10, RECORDED_AFTER = 3;
+  const PATIENT_METHODS = /^(card|online payment|discount|stripe|gift card|debt written off|cash)\b/i;   // not how insurers pay
   const PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/';
   const KEY = 'upc-bank:';
   const INSURERS = [
@@ -194,7 +200,10 @@
       // What the insurer paid on this invoice ("this invoice billed £ 170.00, paid £ 136.00", 0.3.6).
       const pm = row.match(/this invoice billed £\s?([\d,]+\.\d\d),\s*paid £\s?([\d,]+\.\d\d)/i);
       const paid = pm ? Math.round(parseFloat(pm[2].replace(/,/g, '')) * 100) : null;
-      if (key && !out.some((x) => x.key === key)) out.push({ key, ref: ref || '', date, paid });
+      // Every invoice the remittance covers ("invoices UPC-38023, UPC-37981", Remittances 0.3.10), as digits.
+      const im = row.match(/\binvoices\s+((?:UPC-?\d+(?:,\s*)?)+)/i);
+      const numbers = im ? numbersIn(im[1]) : [];
+      if (key && !out.some((x) => x.key === key)) out.push({ key, ref: ref || '', date, paid, numbers });
     });
     return out;
   }
@@ -213,7 +222,49 @@
       if (!byId.has(l.invoiceId)) byId.set(l.invoiceId, { id: String(l.invoiceId), number: l.invoice, when: U().parseDay(l.date), insurer: insurerOf(l.funder + ' ' + l.payer) || l.funder, balance: l.balance, status: l.invoiceStatus });
     });
     const open = [...byId.values()].filter((i) => i.balance > 0 && i.when !== null);
+    // Payments already recorded in Halaxy around the statement's dates (Halaxy's Income report, one request), so a
+    // bank line recorded by hand or on another PC shows as already recorded, not matched again (Carl, 12 Nov 2026).
+    let pays = [];
+    say('Reading the payments recorded in Halaxy...');
+    try {
+      const day = 86400e3;
+      pays = (await U().reports.paymentLines(U().dayLabel(isoMs(statement.from) - RECORDED_BEFORE * day - 3 * day), U().dayLabel(isoMs(statement.to) + RECORDED_AFTER * day)))
+        .filter((p) => !PATIENT_METHODS.test(p.method) && U().parseDay(p.date) !== null)
+        .map((p, k) => ({ k, invoiceId: p.invoiceId, number: p.invoice, amount: p.amount, method: p.method, date: p.date, when: U().parseDay(p.date),
+          insurer: payerIsFunder(p.payer, p.funder) ? insurerOf(p.funder + ' ' + p.payer) || p.funder : '' }));
+    } catch (e) {
+      state.warn = 'Couldn\'t check which payments are already recorded in Halaxy (' + (e.message || e) + '), so check each one before recording.';
+      if (/has changed/.test(e.message || '')) document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: 'bank-statement.user.js', message: e.message }) }));
+    }
+    const usedPay = new Set();
+    // The payments that look like this bank line already recorded: our invoice numbers in the bank reference, or the
+    // insurer's payments dated from RECORDED_BEFORE days before to RECORDED_AFTER days after it that add up to it (one
+    // day's payments first, the nearest day first; else the only set that adds up).
+    const recordedFor = (c, insurer, sameDay) => {
+      const free = pays.filter((p) => !usedPay.has(p.k));
+      if (c.numbers.length) {
+        const named = free.filter((p) => c.numbers.includes(numberOf(p.number)));
+        if (named.length && named.reduce((t, p) => t + p.amount, 0) === c.amount) return named;
+      }
+      if (!insurer) return null;
+      const gap = (p) => Math.round((isoMs(c.date) - p.when) / 86400e3);
+      const pool = free.filter((p) => p.insurer === insurer && (sameDay ? gap(p) === 0 : gap(p) >= -RECORDED_AFTER && gap(p) <= RECORDED_BEFORE))
+        .sort((a, b) => Math.abs(gap(a)) - Math.abs(gap(b)) || gap(a) - gap(b));
+      const days = [...new Set(pool.map((p) => p.date))];
+      for (const d of days) { const g = pool.filter((p) => p.date === d); if (g.reduce((t, p) => t + p.amount, 0) === c.amount) return g; }
+      const sets = subsets(pool.slice(0, 12).map((p) => Object.assign({}, p, { balance: p.amount })), c.amount, 2);
+      return sets.length === 1 ? sets[0] : null;
+    };
     const done = store.get('done', {});
+    // Payments dated the bank date are settled first, for every bank line, then the rest of the window: so a payment
+    // recorded on its own bank date is never taken by a neighbouring line of the same amount.
+    const recorded = new Map();
+    const lines0 = statement.credits.slice().sort((a, b) => a.date.localeCompare(b.date)).filter((c) => !(done[c.key] && done[c.key].partial));
+    [true, false].forEach((sameDay) => lines0.forEach((c) => {
+      if (recorded.has(c.key)) return;
+      const rec = recordedFor(c, c.insurer, sameDay);
+      if (rec) { rec.forEach((p) => usedPay.add(p.k)); recorded.set(c.key, rec); }
+    }));
     const used = new Set();
     const results = [];
     const credits = statement.credits.slice().sort((a, b) => a.date.localeCompare(b.date));
@@ -227,9 +278,20 @@
       const namedFits = named.length === c.numbers.length && named.length && named.reduce((t, i) => t + i.balance, 0) === c.amount &&
         named.every((i) => i.when <= isoMs(c.date) + 86400e3) && (!c.insurer || named.every((i) => i.insurer === c.insurer));
       if (!c.insurer && namedFits) r.insurer = named[0].insurer;
+      const prev = done[c.key];
+      // Already recorded in Halaxy (by hand, on another PC, or by this script).
+      const rec = recorded.get(c.key);
+      if (rec && (r.insurer || rec.some((p) => p.insurer))) {
+        if (!r.insurer) r.insurer = (rec.find((p) => p.insurer) || {}).insurer;
+        const dates = [...new Set(rec.map((p) => p.date))], methods = [...new Set(rec.map((p) => p.method))];
+        r.state = prev ? 'done' : 'recorded'; r.doneAt = prev && prev.at;
+        r.invoices = rec.map((p) => ({ id: p.invoiceId, number: p.number, amount: p.amount }));
+        r.how = 'already recorded in Halaxy: ' + methods.join(', ') + ', ' + dates.join(', ');
+        results.push(r);
+        continue;
+      }
       if (!r.insurer && !done[c.key]) continue;   // names an invoice that isn't an unpaid insurer invoice (a patient paying, say): not ours here
       results.push(r);
-      const prev = done[c.key];
       if (prev && !prev.partial) { r.state = 'done'; r.doneAt = prev.at; r.invoices = prev.invoices; if (!r.insurer) r.insurer = (prev.insurer || ''); continue; }
       // Recording stopped part way last time: match what is still to record.
       const already = prev && prev.partial ? prev.invoices.reduce((t, i) => t + i.amount, 0) : 0;
@@ -252,7 +314,12 @@
       for (const i of recent) {
         let keys = [];
         try { keys = await remittancesOf(i); } catch (e) { keys = []; }
-        keys.forEach((k) => { if (!groups.has(k.key)) groups.set(k.key, { key: k.key, ref: k.ref, date: k.date, list: [], paid: [] }); groups.get(k.key).list.push(i); groups.get(k.key).paid.push(k.paid); });
+        keys.forEach((k) => { if (!groups.has(k.key)) groups.set(k.key, { key: k.key, ref: k.ref, date: k.date, numbers: k.numbers, list: [], paid: [] }); groups.get(k.key).list.push(i); groups.get(k.key).paid.push(k.paid); });
+      }
+      // A remittance that lists its invoices gathers all of them, even one outside the recent invoices looked at.
+      for (const g of groups.values()) {
+        if (!g.numbers || !g.numbers.length) continue;
+        open.filter((i) => i.insurer === c.insurer && !used.has(i.id) && g.numbers.includes(numberOf(i.number)) && !g.list.includes(i)).forEach((i) => { g.list.push(i); g.paid.push(null); });
       }
       const target = c.amount - already;
       let byRemit = [...groups.values()].filter((g) => g.list.reduce((t, i) => t + i.balance, 0) === target);
@@ -353,7 +420,7 @@
     .upc-bank .upc-bank-set a { margin-right: 6px; white-space: nowrap; }
     .upc-bank tr.upc-off td { color: var(--vs-viewData-label-color, #6c757d); }
   `;
-  const state = { unmount: null, busy: false, status: '', error: '', statement: null, results: null };
+  const state = { unmount: null, busy: false, status: '', error: '', warn: '', statement: null, results: null };
   let root = null;
 
   function setHtml(r, k) {
@@ -366,6 +433,7 @@
     let h = '<div class="upc-bank"><h1>Bank statement</h1>';
     h += '<div class="upc-bank-drop" tabindex="0" role="button" data-a="choose">' + (state.busy ? esc(state.status) : 'Drop the month\'s Starling statement (PDF) here, or click to choose it') + '<input type="file" accept="application/pdf" hidden></div>';
     if (state.error) h += '<p class="upc-err">' + esc(state.error) + '</p>';
+    if (state.warn) h += '<p class="upc-err">' + esc(state.warn) + '</p>';
     if (st) {
       h += '<p class="text-muted">' + st.rows + ' transactions, ' + esc(isoLabel(st.from)) + ' to ' + esc(isoLabel(st.to)) + '. ' +
         (st.bad ? '<span class="upc-err">The running balance didn\'t add up on ' + st.bad + ' of ' + st.checked + ' rows, so the statement may not have been read correctly: check before recording.</span>' : 'Read correctly (checked against the running balance on ' + st.checked + ' rows).') + '</p>';
@@ -377,14 +445,16 @@
         (rs.length ? '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th>Bank date</th><th>Insurer</th><th>Reference</th><th class="number">Amount</th><th>Invoices</th><th></th></tr></thead><tbody>' +
           rs.map((r, k) => {
             let inv = '', act = '';
-            if (r.state === 'done') { inv = (r.invoices || []).map((i) => esc(i.number) + ' ' + fmt(i.amount)).join(', '); act = '<span class="upc-ok">Recorded ' + esc(U().dayLabel(r.doneAt)) + '</span>'; }
+            const linked = () => (r.invoices || []).map((i) => (i.id ? '<a href="' + esc(U().base() + '/invoice/' + i.id) + '" target="_blank" rel="noopener">' + esc(i.number) + '</a>' : esc(i.number)) + ' ' + fmt(i.amount)).join(', ');
+            if (r.state === 'done') { inv = linked(); act = '<span class="upc-ok">Recorded' + (r.doneAt ? ' ' + esc(U().dayLabel(r.doneAt)) : '') + '</span>'; }
+            else if (r.state === 'recorded') { inv = linked() + '<div class="text-muted">' + esc(r.how) + '</div>'; act = '<span class="upc-ok">Already in Halaxy</span>'; }
             else if (r.state === 'matched') { inv = '<div class="upc-bank-set">' + setHtml(r, 0) + '</div><div class="text-muted">' + esc(r.how) + '</div>'; act = '<button type="button" class="btn btn-outline-primary-light" data-rec="' + k + '"' + (state.busy ? ' disabled' : '') + '>Record</button>'; }
             else if (r.state === 'choose') {
               inv = '<div class="text-muted">' + esc(r.how) + ': choose one</div>' + r.options.map((o, j) => '<label class="upc-bank-set d-block"><input type="radio" name="upc-bank-' + k + '" data-pick="' + k + ':' + j + '"' + (r.pick === j ? ' checked' : '') + '> ' + setHtml(r, j) + (r.labels && r.labels[j] ? ' <span class="text-muted">(' + esc(r.labels[j]) + ')</span>' : '') + '</label>').join('');
               act = r.pick !== null ? '<button type="button" class="btn btn-outline-primary-light" data-rec="' + k + '"' + (state.busy ? ' disabled' : '') + '>Record</button>' : '';
             } else inv = '<span class="text-muted">Not matched: ' + esc(r.how || '') + '</span>';
             if (r.error) act += '<div class="upc-err">' + esc(r.error) + '</div>';
-            return '<tr class="' + (r.state === 'done' || r.state === 'none' ? 'upc-off' : '') + '"><td class="upc-bank-date">' + esc(isoLabel(r.date)) + '</td><td>' + esc(r.insurer) + '</td><td>' + esc(r.ref) + '</td>' +
+            return '<tr class="' + (r.state === 'done' || r.state === 'recorded' || r.state === 'none' ? 'upc-off' : '') + '"><td class="upc-bank-date">' + esc(isoLabel(r.date)) + '</td><td>' + esc(r.insurer) + '</td><td>' + esc(r.ref) + '</td>' +
               '<td class="number">' + fmt(r.amount) + '</td><td>' + inv + '</td><td>' + act + '</td></tr>';
           }).join('') + '</tbody></table>' : '<p class="text-muted m-3">No insurer payments on this statement.</p>') + '</div></div>';
       h += '<p class="text-muted">Each payment is recorded on its invoices as ' + METHOD + ', dated the day it reached the bank, with a note of the insurer, date and reference. Nothing is recorded until you confirm. ' +
@@ -396,7 +466,7 @@
 
   async function open(file) {
     if (state.busy || !file) return;
-    state.busy = true; state.error = ''; state.results = null; state.statement = null; state.status = 'Reading the statement...';
+    state.busy = true; state.error = ''; state.warn = ''; state.results = null; state.statement = null; state.status = 'Reading the statement...';
     render();
     try {
       state.statement = await readStatement(file);

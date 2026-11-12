@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.38
+// @version      0.1.39
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.38';
+  const VERSION = '0.1.39';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -747,6 +747,17 @@
     return grid;
   }
 
+  // A Halaxy finance report's table: its column names (the last header row) and its body rows as a grid.
+  async function reportTable(path, what) {
+    const doc = await http.html(path);
+    const table = doc.querySelector('table.table-report');
+    if (!table) throw new UPCError('Halaxy\'s ' + what + ' report has changed (its table was not found).');
+    const all = [...table.rows];
+    const head = table.tHead ? [...table.tHead.rows] : all.filter((r) => r.cells.length && [...r.cells].every((c) => c.tagName === 'TH'));
+    const body = all.filter((r) => !head.includes(r));
+    const hg = cellGrid(head);
+    return { names: (hg[hg.length - 1] || []).map((c) => clean(c && c.textContent)), body, grid: cellGrid(body) };
+  }
   const reports = {
     // Halaxy's Unpaid Invoices report (Reports > Finance, type 5) from `start` ('09-May-2026'): one row per
     // fee line of every unpaid invoice, active or issued. Columns confirmed live 10 Nov 2026. An invoice's later
@@ -757,20 +768,12 @@
         ['incomeType', 'paymentMethods'], ['invoicestatuses', 'active'], ['invoicestatuses', 'issued'], ['displayNames', '1'],
         ['plTaxTypeStatus', 'exclusive'], ['lineStatus', 'write-off'], ['lineStatus', 'voided'],
         ['usedDepositOption', 'all'], ['creditSummaryOption', 'summary'], ['clicked', String(Date.now())]]);
-      const doc = await http.html('/report/finance/0?' + p.toString());
-      const table = doc.querySelector('table.table-report');
-      if (!table) throw new UPCError('Halaxy\'s Unpaid Invoices report has changed (its table was not found).');
-      const all = [...table.rows];
-      const head = table.tHead ? [...table.tHead.rows] : all.filter((r) => r.cells.length && [...r.cells].every((c) => c.tagName === 'TH'));
-      const body = all.filter((r) => !head.includes(r));
-      const hg = cellGrid(head);
-      const names = (hg[hg.length - 1] || []).map((c) => clean(c && c.textContent));
+      const { names, body, grid } = await reportTable('/report/finance/0?' + p.toString(), 'Unpaid Invoices');
       const col = (n) => names.indexOf(n);
       const need = ['Invoice / Deposit', 'Date', 'Payer ID', 'Payer', 'Funder', 'Fee', 'Appointment Status', 'Invoice Status', 'Amount'];
       const missing = need.filter((n) => col(n) < 0);
       if (missing.length) throw new UPCError('Halaxy\'s Unpaid Invoices report has changed (' + missing.join(', ') + ' not found).');
       const balanceCol = names.lastIndexOf('Balance');
-      const grid = cellGrid(body);
       const out = [];
       let last = null;
       grid.forEach((row, ri) => {
@@ -802,6 +805,39 @@
         ['date', 'invoiceStatus', 'payerId', 'payer', 'funder'].forEach((k) => { const v = (ls.find((l) => l[k]) || {})[k]; if (v) ls.forEach((l) => { l[k] = v; }); });
         const withBal = ls.filter((l) => l.balance !== null && l.balance !== undefined);
         if (withBal.length) { const b = withBal[withBal.length - 1].balance; ls.forEach((l) => { l.balance = b; }); }
+      });
+      return out;
+    },
+    // Every payment recorded in Halaxy between two days (Halaxy's Income report, Finance type 1, filtered by the payment's
+    // date; capture 12 Nov 2026): one entry per payment, { invoiceId, invoice, payer, funder, date (dd-Mon-yyyy, the
+    // payment's), method, amount (pence) }. An invoice with several fees has a row per fee; its first row links the
+    // invoice and gives the payer and funder; a second payment sits on a later row, which repeats the number unlinked.
+    async paymentLines(start, stop) {
+      const p = new URLSearchParams([['type', '1'], ['tyropm', '19'], ['start', start], ['stop', stop], ['altDate', ''], ['transferStart', ''],
+        ['transferStop', ''], ['transferAltDate', ''], ['startExpiry', ''], ['stopExpiry', ''], ['aa', ''], ['pr', ''], ['loc', ''], ['clinic', ''],
+        ['overdueDays', ''], ['payer', 'All'], ['patient', ''], ['organisation', ''], ['autopm', ''], ['showTotalMode', '0'], ['ecat', ''], ['aob', ''],
+        ['incomeType', 'paymentMethods'], ['displayNames', '1'], ['rstat', ''], ['rtype', ''], ['rstype', ''], ['xc', ''], ['rc', ''], ['qc', ''],
+        ['plTaxTypeStatus', 'exclusive'], ['lineStatus', 'write-off'], ['lineStatus', 'voided'], ['usedDepositOption', 'all'],
+        ['creditSummaryOption', 'summary'], ['clicked', String(Date.now())]]);
+      const { names, body, grid } = await reportTable('/report/finance/0?' + p.toString(), 'Income');
+      const col = (n) => names.indexOf(n);
+      const invCol = col('Invoice / Deposit'), payCol = col('Payments'), dateCol = names.lastIndexOf('Date'), methodCol = col('Method');
+      const missing = ['Invoice / Deposit', 'Payer', 'Funder', 'Payments', 'Method'].filter((n) => col(n) < 0);
+      if (dateCol <= col('Date')) missing.push('the payment Date');
+      if (missing.length) throw new UPCError('Halaxy\'s Income report has changed (' + missing.join(', ') + ' not found).');
+      const num = (t) => (String(t || '').match(/UPC-?0*(\d+)/i) || [])[1] || '';
+      const out = [];
+      let cur = null;
+      grid.forEach((row, ri) => {
+        if ([...body[ri].cells].some((td) => (td.colSpan || 1) > 3)) return;   // totals and headings
+        const cell = (i) => (i < 0 ? '' : clean(row[i] && row[i].textContent));
+        const link = row[invCol] && row[invCol].querySelector('a[href*="/invoice/"]');
+        const text = cell(invCol);
+        if (link) cur = { invoiceId: (link.getAttribute('href').match(/\/invoice\/(\d+)/) || [])[1] || null, invoice: text, payer: cell(col('Payer')), funder: cell(col('Funder')) };
+        else if (text && (!cur || num(text) !== num(cur.invoice))) cur = { invoiceId: null, invoice: text, payer: cell(col('Payer')), funder: cell(col('Funder')) };
+        if (!cur) return;
+        const method = cell(methodCol), amount = money.cents(cell(payCol));
+        if (method && amount !== null) out.push(Object.assign({}, cur, { date: cell(dateCol), method, amount }));
       });
       return out;
     },

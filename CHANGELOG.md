@@ -1,5 +1,10 @@
 # Changelog
 
+## Bank statement knows what's already recorded, 12 Nov 2026 (beta)
+- Bank statement 0.1.6: reads the payments already recorded in Halaxy (Halaxy's Income report, one request) and shows a bank line as "Already in Halaxy", with nothing to do, when the insurer's payments recorded around its date add up to it (Direct Deposit and the like, not card or online; from 10 days before the bank date to 3 after, the same day first), or our invoice numbers in its reference were paid that amount (Carl, 12 Nov 2026: once a payment was recorded by hand, it had looked further back for something else to match). Works for payments recorded by hand, on another PC, or by Bank statement itself. A remittance whose comment lists its invoices gathers all of them, even ones outside the recent invoices it looks at.
+- Core 0.1.39: `UPC.reports.paymentLines(start, stop)` reads Halaxy's Income report: each payment's invoice, payer, funder, date, method and amount.
+- Remittances 0.3.10: the comment on each attached remittance also lists every invoice it covers ("...; invoices UPC-38023, UPC-37981").
+
 ## Put back as it was when something fails, 12 Nov 2026 (beta)
 - Core 0.1.38: moving part of a fee between a funder invoice and a patient invoice is now all or nothing (Carl, 12 Nov 2026: a job shouldn't be left half done). If Halaxy refuses any step after something was changed, the fee is put back exactly as it was (rebate, the line billed back to the same funder invoice on its own date, Issued again if it was) and the message says so. If putting it back fails too, it says exactly what to check.
 - Remittances 0.3.9: when one fee of an invoice can't be moved, the fees already moved on that invoice are moved back too, so the invoice is as it was before Remittances started on it, and a task "Remittances stopped on UPC-...: please check" is added for Carl on the funder invoice saying why.
