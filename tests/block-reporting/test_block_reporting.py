@@ -1,19 +1,20 @@
 """
-Test for Block error reporting: a mock Halaxy page that loads Sentry from its CDN, sets it up, and sends reports by
-fetch, XMLHttpRequest and sendBeacon, plus a Sentry script added by code.
+Test for Block reporting to Halaxy: a mock Halaxy page that loads Sentry and Userpilot, sets them up, and sends
+reports by fetch, XMLHttpRequest, sendBeacon and WebSocket, plus a Sentry script added by code.
 
 Checks: Sentry's script never runs; Halaxy's own calls to Sentry work quietly (no page errors) and the real Sentry
-can't replace the stand-in; nothing reaches Sentry's servers; Halaxy's own requests still work.
+can't replace the stand-in; nothing reaches Sentry's or Userpilot's servers; Halaxy's own requests still work;
+Userpilot can be let through from the setting.
 Chromium only here (Firefox's extra beforescriptexecute layer isn't covered).
 
-Run:  python3 tests/block-error-reporting/test_block_error_reporting.py
+Run:  python3 tests/block-reporting/test_block_reporting.py
 """
 import asyncio, sys
 from pathlib import Path
 from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
-CODE = (ROOT / 'beta' / 'block-error-reporting.user.js').read_text()
+CODE = (ROOT / 'beta' / 'block-reporting.user.js').read_text()
 FAILS = []
 
 
@@ -23,16 +24,19 @@ def check(name, ok, detail=''):
         FAILS.append(name)
 
 
+UP_JS = "window.__userpilotRan = (window.__userpilotRan || 0) + 1;"
 SENTRY_JS = "window.__sentryRan = (window.__sentryRan || 0) + 1; window.Sentry = { init: function () { window.__realInit = true; } };"
 
 PAGE = """<!doctype html><html><head>
 <script src="https://browser.sentry-cdn.com/7.99.0/bundle.tracing.min.js" crossorigin="anonymous"></script>
+<script src="https://js.userpilot.io/sdk/latest.js"></script>
 <script>
   window.__errors = [];
   window.addEventListener('error', function (e) { window.__errors.push(String(e.message)); });
   Sentry.init({ dsn: 'https://abc@o1.ingest.sentry.io/1', release: 'x' });
   Sentry.setUser({ id: 1 });
   Sentry.getCurrentScope().setTag('a', 'b');
+  userpilot.identify('11', { name: 'x' }); userpilot.reload();
   window.__afterInit = true;
 </script>
 </head><body><h1>Mock Halaxy</h1>
@@ -45,6 +49,8 @@ PAGE = """<!doctype html><html><head>
   var y = new XMLHttpRequest(); y.open('GET', '/a/pr/1/ok'); y.onload = function () { window.__normalXhr = y.responseText; }; y.send();
   var s = document.createElement('script'); s.src = 'https://js.sentry-cdn.com/abc123.min.js'; document.head.appendChild(s);
   var t = document.createElement('script'); t.setAttribute('src', 'https://browser.sentry-cdn.com/7.99.0/bundle.min.js'); document.head.appendChild(t);
+  var w = new WebSocket('wss://analytex-eu.userpilot.io/socket'); w.send('x'); window.__ws = w.readyState;
+  fetch('https://analytex-eu.userpilot.io/v1/track', { method: 'POST', body: 'x' }).then(function (r) { window.__upFetch = r.status; });
   window.Sentry = { init: function () { window.__replaced = true; } };
   Sentry.init({});
 </script>
@@ -61,6 +67,8 @@ async def main():
             hits.append(route.request.url)
             if 'sentry-cdn.com' in route.request.url:
                 return await route.fulfill(body=SENTRY_JS, content_type='application/javascript')
+            if 'js.userpilot.io' in route.request.url:
+                return await route.fulfill(body=UP_JS, content_type='application/javascript')
             await route.fulfill(body='{}', content_type='application/json')
 
         async def halaxy(route):
@@ -70,6 +78,7 @@ async def main():
 
         await ctx.route('**/*sentry*/**', sentry)
         await ctx.route('https://*.sentry.io/**', sentry)
+        await ctx.route('https://*.userpilot.io/**', sentry)
         await ctx.route('https://eu.halaxy.com/**', halaxy)
         await ctx.add_init_script(CODE)
         pg = await ctx.new_page()
@@ -80,14 +89,33 @@ async def main():
         await pg.wait_for_timeout(800)
         r = await pg.evaluate("""({ ran: window.__sentryRan || 0, realInit: !!window.__realInit, replaced: !!window.__replaced, after: !!window.__afterInit,
             fetch: window.__fetchStatus, fetchReq: window.__fetchReq, beacon: window.__beacon, normal: window.__normal, normalXhr: window.__normalXhr,
-            errs: window.__errors, blocked: window.__upcBlockErrorReporting.blocked, typeofSentry: typeof Sentry })""")
+            errs: window.__errors, upRan: window.__userpilotRan || 0, ws: window.__ws, upFetch: window.__upFetch, blocked: window.__upcBlockReporting.blocked, typeofSentry: typeof Sentry })""")
         ingest = [h for h in hits if 'ingest' in h]
         check("Sentry's script never runs (in the page's HTML, or added by code)", r['ran'] == 0 and not r['realInit'], (r, hits))
         check("Halaxy's own calls to Sentry work quietly", r['after'] and not errors and not r['errs'] and r['typeofSentry'] == 'function', (errors, r['errs']))
         check('the real Sentry cannot replace the stand-in', not r['replaced'], r)
         check("nothing reaches Sentry's servers (fetch, XMLHttpRequest, sendBeacon)", not ingest and r['fetch'] == 200 and r['fetchReq'] == 200 and r['beacon'] is True and r['blocked']['requests'] >= 4, (ingest, r))
         check("Halaxy's own requests still work", r['normal'] == 'fine' and r['normalXhr'] == 'fine', r)
+        check("Userpilot: script never runs, its connection never opens, nothing reaches its servers", r['upRan'] == 0 and r['ws'] == 0 and r['upFetch'] == 200 and not [h for h in hits if 'userpilot' in h and 'js.userpilot.io/sdk' not in h], (r, hits))
+        # (The browser may still download a script file written into the page's HTML before anything can stop it; it
+        #  is never run, and that download carries nothing from the page.)
         check('nothing fetched from Sentry\'s CDN for scripts added by code', not [h for h in hits if 'js.sentry-cdn.com' in h or h.endswith('/bundle.min.js')], hits)
+        await ctx.close()
+
+        # Userpilot let through from the setting (Sentry still blocked)
+        hits.clear()
+        ctx = await browser.new_context()
+        await ctx.route('**/*sentry*/**', sentry)
+        await ctx.route('https://*.sentry.io/**', sentry)
+        await ctx.route('https://*.userpilot.io/**', sentry)
+        await ctx.route('https://eu.halaxy.com/**', halaxy)
+        await ctx.add_init_script("window.GM_getValue = (k, d) => (k === 'allowUserpilot' ? true : d); window.GM_setValue = () => {}; window.GM_registerMenuCommand = () => {};")
+        await ctx.add_init_script(CODE)
+        pg = await ctx.new_page()
+        await pg.goto('https://eu.halaxy.com/a/pr/1/calendar')
+        await pg.wait_for_timeout(1500)
+        r = await pg.evaluate("({ up: window.__userpilotRan || 0, sentry: window.__sentryRan || 0 })")
+        check('Userpilot let through from the setting; Sentry still blocked', r == {'up': 1, 'sentry': 0} and not [h for h in hits if 'ingest' in h], (r, hits))
         await browser.close()
     print('\n%d failed' % len(FAILS) if FAILS else '\nAll passed')
     sys.exit(1 if FAILS else 0)

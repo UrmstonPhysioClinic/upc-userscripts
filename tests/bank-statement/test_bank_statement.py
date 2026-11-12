@@ -125,9 +125,15 @@ def report_html():
     for iid, (payer, funder, day, bal, _) in S['inv'].items():
         if bal <= 0:
             continue
-        v = {'Invoice / Deposit': "<a href='/a/pr/555/invoice/%d'>UPC-0%d</a>" % (iid, iid), 'Date': day, 'Payer ID': str(iid), 'Payer': payer,
-             'Funder': funder, 'Fee': 'Follow-Up', 'Appointment Status': 'Attended', 'Invoice Status': 'Issued', 'Amount': gbp(bal), 'Balance': gbp(bal)}
-        body += '<tr>' + ''.join('<td>%s</td>' % (v.get(c, '') if c else '') for c in COLS) + '</tr>'
+        # As live (12 Nov 2026): an invoice with two fees has a second row with the invoice-level cells blank and the
+        # balance on the last row. Every invoice of £ 50.00 or more is shown as two fees.
+        parts = [bal - 2000, 2000] if bal >= 5000 else [bal]
+        for k, a in enumerate(parts):
+            first, lastrow = k == 0, k == len(parts) - 1
+            v = {'Invoice / Deposit': "<a href='/a/pr/555/invoice/%d'>UPC-0%d</a>" % (iid, iid) if first else '', 'Date': day if first else '',
+                 'Payer ID': str(iid) if first else '', 'Payer': payer if first else '', 'Funder': funder if first else '', 'Fee': 'Follow-Up',
+                 'Appointment Status': 'Attended', 'Invoice Status': 'Issued' if first else '', 'Amount': gbp(a), 'Balance': gbp(bal) if lastrow else ''}
+            body += '<tr>' + ''.join('<td>%s</td>' % (v.get(c, '') if c else '') for c in COLS) + '</tr>'
     return "<html><body><table class='table-report'>%s<tbody>%s</tbody></table></body></html>" % (head, body)
 
 

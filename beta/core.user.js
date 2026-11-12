@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.33
+// @version      0.1.34
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.33';
+  const VERSION = '0.1.34';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -624,8 +624,9 @@
 
   const reports = {
     // Halaxy's Unpaid Invoices report (Reports > Finance, type 5) from `start` ('09-May-2026'): one row per
-    // fee line of every unpaid invoice, active or issued. Columns confirmed live 10 Nov 2026. Invoice-level
-    // cells (date, status, balance) are only on an invoice's first line; they are carried to its other lines.
+    // fee line of every unpaid invoice, active or issued. Columns confirmed live 10 Nov 2026. An invoice's later
+    // fee rows leave the Invoice cell blank, and invoice-level cells (date, status, balance) appear on only one of
+    // its rows; every line returned carries its invoice and the invoice's values.
     async unpaidLines(start) {
       const p = new URLSearchParams([['type', '5'], ['start', start], ['unpaid', '0'], ['overdue', 'all'], ['showTotalMode', '0'],
         ['incomeType', 'paymentMethods'], ['invoicestatuses', 'active'], ['invoicestatuses', 'issued'], ['displayNames', '1'],
@@ -651,10 +652,14 @@
         if ([...body[ri].cells].some((td) => (td.colSpan || 1) > 3)) return;   // totals and headings
         const cell = (n) => { const i = typeof n === 'number' ? n : col(n); return i < 0 ? '' : clean(row[i] && row[i].textContent); };
         const link = row[col('Invoice / Deposit')] && row[col('Invoice / Deposit')].querySelector('a[href*="/invoice/"]');
-        const invoiceId = link ? (link.getAttribute('href').match(/\/invoice\/(\d+)/) || [])[1] || null : null;
-        const same = last && last.invoiceId === invoiceId && last.invoice === cell('Invoice / Deposit');
+        let invoiceId = link ? (link.getAttribute('href').match(/\/invoice\/(\d+)/) || [])[1] || null : null;
+        const text = cell('Invoice / Deposit');
+        // An invoice's second and later fees leave the Invoice cell blank (live, 12 Nov 2026: UPC-37737, two fees):
+        // they belong to the invoice above.
+        if (!invoiceId && last && last.invoiceId && (!text || text === last.invoice)) invoiceId = last.invoiceId;
+        const same = !!last && !!invoiceId && last.invoiceId === invoiceId;
         const line = {
-          invoiceId, invoice: cell('Invoice / Deposit'),
+          invoiceId, invoice: text || (same ? last.invoice : ''),
           date: cell('Date') || (same ? last.date : ''), invoiceStatus: cell('Invoice Status') || (same ? last.invoiceStatus : ''),
           balance: balanceCol >= 0 && cell(balanceCol) ? money.cents(cell(balanceCol)) : (same ? last.balance : null),
           payerId: cell('Payer ID') || (same ? last.payerId : ''), payer: cell('Payer') || (same ? last.payer : ''),
@@ -663,6 +668,15 @@
         };
         out.push(line);
         last = line;
+      });
+      // Invoice-level cells sit on one of an invoice's lines only (the balance on its last line, live 12 Nov 2026), so
+      // every line gets the invoice's values, whichever line carries them.
+      const byInv = new Map();
+      out.forEach((l) => { if (l.invoiceId) { if (!byInv.has(l.invoiceId)) byInv.set(l.invoiceId, []); byInv.get(l.invoiceId).push(l); } });
+      byInv.forEach((ls) => {
+        ['date', 'invoiceStatus', 'payerId', 'payer', 'funder'].forEach((k) => { const v = (ls.find((l) => l[k]) || {})[k]; if (v) ls.forEach((l) => { l[k] = v; }); });
+        const withBal = ls.filter((l) => l.balance !== null && l.balance !== undefined);
+        if (withBal.length) { const b = withBal[withBal.length - 1].balance; ls.forEach((l) => { l.balance = b; }); }
       });
       return out;
     },

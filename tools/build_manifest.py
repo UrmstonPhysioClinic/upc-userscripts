@@ -18,7 +18,7 @@ def header_value(text, key):
 # Scripts the loader starts before the rest, in this order. The health check goes first so it
 # can catch errors from every other script, then the core library other scripts use.
 # Everything else follows alphabetically.
-FIRST = ['health-check.user.js', 'block-error-reporting.user.js', 'core.user.js']   # error reporting blocked before anything else can fail
+FIRST = ['health-check.user.js', 'block-reporting.user.js', 'core.user.js']   # reporting to Halaxy blocked before anything else can fail
 
 
 def manifest(channel):
