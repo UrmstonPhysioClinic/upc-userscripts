@@ -58,7 +58,8 @@ TX = [
 ]
 
 
-def make_statement(path):
+def make_statement(path, tx=None):
+    tx = tx or TX
     c = canvas.Canvas(str(path), pagesize=A4)
     c.setFont('Helvetica', 8)
     def header(y):
@@ -71,7 +72,7 @@ def make_statement(path):
     c.drawString(40, 800, 'Business account statement')
     header(760)
     y, bal = 740, 100000
-    for k, (d, t, desc, i, o) in enumerate(TX):
+    for k, (d, t, desc, i, o) in enumerate(tx):
         if k == 6:   # page 2: no header
             c.showPage(); c.setFont('Helvetica', 8); y = 800
         bal += (i or 0) - (o or 0)
@@ -152,7 +153,7 @@ def income_html(q):
     # invoice's first row (a second payment on a later row that repeats the number unlinked).
     import datetime as dt
     day = lambda t: dt.datetime.strptime(t, '%d-%b-%Y')
-    pays = [(i, f['form[paymentDate]'], round(float(f['form[amount]']) * 100), 'Direct Deposit') for i, f in S['posts_all']] + S.get('hand', [])
+    pays = [(i, f['form[paymentDate]'], round(float(f['form[amount]']) * 100), 'Direct Deposit') for i, f in S['posts_all']] + [h[:4] for h in S.get('hand', [])]
     pays = [x for x in pays if day(q['start']) <= day(x[1]) <= day(q['stop'])]
     head = "<thead><tr><th colspan='12'>Fees &amp; Charges</th><th></th><th colspan='6'>Payments</th></tr><tr>%s</tr></thead>" % ''.join('<th>%s</th>' % c for c in INC_COLS)
     body, seen = '', set()
@@ -181,6 +182,7 @@ def invoice_html(iid):
     rows = "<tr><td data-property='date'>%s</td><td data-property='itemNumber'>PHY</td><td data-property='amount'>%s</td><td><a href='/a/pr/555/invoice/line/%d/edit'>Edit</a></td></tr>" % (day, gbp(bal), iid * 10)
     atts = ''.join('<tr>\n<td>%s</td>\n<td>Payment</td>\n<td>%s</td>\n<td>%s</td>\n</tr>' % (day, t, c) for t, c in att)
     pays = ''.join("<tr><td>%s</td><td>Direct Deposit (%s)</td><td>Paid</td><td>%s</td></tr>" % (f['form[paymentDate]'], f['form[note]'], gbp(round(float(f['form[amount]']) * 100))) for i, f in S['posts_all'] if i == iid)
+    pays += ''.join("<tr><td>%s</td><td>%s%s</td><td>Paid</td><td>%s</td></tr>" % (h[1], h[3], ' (%s)' % h[4] if len(h) > 4 else '', gbp(h[2])) for h in S.get('hand', []) if h[0] == iid)
     # As live (12 Nov 2026): paid in full, the page is a "Receipt" with no Outstanding row.
     kind = 'Receipt' if shown <= 0 else 'Invoice'
     outst = '' if shown <= 0 else "<tr><td></td><td></td><td>Outstanding</td><td>%s</td></tr>" % gbp(shown)
@@ -454,6 +456,44 @@ async def main():
         check('the record button leaves them out', btn == 'Record 3 payments', btn)
         await ctx.close()
         S['hand'] = []
+
+        # A payment whose note names another bank line is never this one's (Aviva: notes say 25-Sep); a payment by hand
+        # dated before the statement starts may be last month's (Bupa: 30-Sep)
+        inv = fresh()
+        for i in (931, 932, 901, 902):
+            inv[i][3] = 0
+        S.update({'log': [], 'posts': [], 'posts_all': [], 'inv': inv, 'short': {}, 'user': 'Carl Healy', 'tasks': {}, 'reports': [],
+                  'hand': [(931, '25-Oct-2026', 2000, 'Direct Deposit', 'Aviva, bank 25-Sep-2026, ref AV0001'), (932, '25-Oct-2026', 4000, 'Direct Deposit', 'Aviva, bank 25-Sep-2026, ref AV0001'),
+                           (901, '30-Sep-2026', 4000, 'Direct Deposit'), (902, '30-Sep-2026', 8000, 'Direct Deposit')]})
+        ctx = await context(browser)
+        pg = await ctx.new_page()
+        await pg.goto(URL)
+        rows = await open_statement(pg, pdf)
+        by = {}
+        for r in rows:
+            by.setdefault(r['cells'][1], r)
+        check('a payment whose note names another bank line is not this one', 'Already in Halaxy' not in by['Aviva']['cells'][5], by['Aviva'])
+        bu = by['Bupa']
+        check('recorded by hand before the statement starts: not marked, says to check, nothing ticked', 'Already in Halaxy' not in bu['cells'][5] and 'last month' in bu['cells'][4] and not bu['rec'], bu)
+        await ctx.close()
+
+        # Two Simplyhealth payments of £ 33.00 two days apart, one recorded by hand: neither is marked, both say check
+        pdf2 = FIX / 'statement2.pdf'
+        make_statement(pdf2, TX + [('31/10/2026', 'DIRECT CREDIT', 'Simplyhealth (SH13)', 3300, None)])
+        inv = fresh()
+        inv[951][3] = 0
+        S.update({'log': [], 'posts': [], 'posts_all': [], 'inv': inv, 'short': {}, 'user': 'Carl Healy', 'tasks': {}, 'reports': [],
+                  'hand': [(951, '29-Oct-2026', 3300, 'Direct Deposit')]})
+        ctx = await context(browser)
+        pg = await ctx.new_page()
+        await pg.goto(URL)
+        rows = await open_statement(pg, pdf2)
+        sh = [r for r in rows if r['cells'][1] == 'Simplyhealth']
+        check('same insurer, same amount, one recorded by hand: neither marked, both say check which',
+              len(sh) == 2 and all('Already in Halaxy' not in r['cells'][5] and 'check which is recorded' in r['cells'][4] and not r['rec'] for r in sh), sh)
+        await ctx.close()
+        S['hand'] = []
+        pdf2.unlink()
 
         # not Carl: nothing
         S.update({'log': [], 'posts': [], 'posts_all': [], 'inv': fresh(), 'short': {}, 'user': 'Someone Else'})

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Bank statement (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.6
+// @version      0.1.7
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
@@ -40,7 +40,7 @@
   if (window.__hxBankStatement) return;
   window.__hxBankStatement = true;
 
-  const VERSION = '0.1.6';
+  const VERSION = '0.1.7';
   const ROUTE = 'upc-bank-statement';
   const MENU_CLS = 'upc-bank-menu';
   const ALLOWED = ['Carl Healy'];
@@ -53,6 +53,9 @@
   // A payment recorded in Halaxy counts as this bank line's if dated up to this many days before the bank date (recorded
   // on the remittance's date, say) or after it.
   const RECORDED_BEFORE = 10, RECORDED_AFTER = 3;
+  // A payment recorded by hand (no note naming its bank line) only counts if dated this close to the bank date: on it,
+  // or on the remittance's date a few days before.
+  const HAND_BEFORE = 5, HAND_AFTER = 1;
   const PATIENT_METHODS = /^(card|online payment|discount|stripe|gift card|debt written off|cash)\b/i;   // not how insurers pay
   const PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/';
   const KEY = 'upc-bank:';
@@ -237,34 +240,97 @@
       if (/has changed/.test(e.message || '')) document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: 'bank-statement.user.js', message: e.message }) }));
     }
     const usedPay = new Set();
+    // Which bank line a recorded payment belongs to, from its note on the invoice: Bank statement writes "Bupa, bank
+    // 05-Oct-2026, ref 2455419" (the payment row reads "Direct Deposit (<note>)"). { bank, ref }, or null when the
+    // payment has no such note (recorded by hand). Read only for payments that look like a match.
+    const notes = new Map();   // invoice id -> its payment rows
+    const bankOf = async (p) => {
+      if (!p.invoiceId) return null;
+      if (!notes.has(p.invoiceId)) { let rows = []; try { rows = (await U().invoice.fetch(p.invoiceId)).paymentRows || []; } catch (e) { rows = []; } notes.set(p.invoiceId, rows); }
+      const rows = notes.get(p.invoiceId).map((t) => { const m = t.match(/\bbank (\d\d-[A-Za-z]{3}-\d{4})(?:, ref ([^)]*))?/i); return { t, bank: m ? m[1] : '', ref: m && m[2] ? m[2].trim() : '' }; });
+      const amt = fmt(p.amount).replace(/^£\s*/, '');
+      let mine = rows.filter((r) => r.t.includes(p.date) && r.t.includes(amt));
+      if (!mine.length) mine = rows.filter((r) => r.t.includes(p.date));
+      if (!mine.length && rows.length === 1) mine = rows;
+      const tags = [...new Set(mine.map((r) => r.bank + '|' + r.ref))];
+      if (tags.length !== 1 || !mine[0].bank) return null;
+      return { bank: mine[0].bank, ref: mine[0].ref };
+    };
+    const belongs = (tag, c) => tag.bank === isoLabel(c.date) && (!tag.ref || !c.ref || normRef(tag.ref) === normRef(c.ref));
     // The payments that look like this bank line already recorded: our invoice numbers in the bank reference, or the
     // insurer's payments dated from RECORDED_BEFORE days before to RECORDED_AFTER days after it that add up to it (one
-    // day's payments first, the nearest day first; else the only set that adds up).
-    const recordedFor = (c, insurer, sameDay) => {
-      const free = pays.filter((p) => !usedPay.has(p.k));
+    // day's payments first, the nearest day first; else the only set that adds up). `skip`: payments known to be another
+    // bank line's.
+    const candidateFor = (c, sameDay, skip) => {
+      const free = pays.filter((p) => !usedPay.has(p.k) && !skip.has(p.k));
       if (c.numbers.length) {
         const named = free.filter((p) => c.numbers.includes(numberOf(p.number)));
         if (named.length && named.reduce((t, p) => t + p.amount, 0) === c.amount) return named;
       }
-      if (!insurer) return null;
+      if (!c.insurer) return null;
       const gap = (p) => Math.round((isoMs(c.date) - p.when) / 86400e3);
-      const pool = free.filter((p) => p.insurer === insurer && (sameDay ? gap(p) === 0 : gap(p) >= -RECORDED_AFTER && gap(p) <= RECORDED_BEFORE))
-        .sort((a, b) => Math.abs(gap(a)) - Math.abs(gap(b)) || gap(a) - gap(b));
+      const pool = free.filter((p) => p.insurer === c.insurer && (sameDay ? gap(p) === 0 : gap(p) >= -RECORDED_AFTER && gap(p) <= RECORDED_BEFORE))
+        .sort((x, y) => Math.abs(gap(x)) - Math.abs(gap(y)) || gap(x) - gap(y));
       const days = [...new Set(pool.map((p) => p.date))];
       for (const d of days) { const g = pool.filter((p) => p.date === d); if (g.reduce((t, p) => t + p.amount, 0) === c.amount) return g; }
       const sets = subsets(pool.slice(0, 12).map((p) => Object.assign({}, p, { balance: p.amount })), c.amount, 2);
       return sets.length === 1 ? sets[0] : null;
+    };
+    // A candidate, checked against the payments' notes: every payment's note names this bank line (sure); a payment
+    // whose note names another bank line is set aside and it looks again; payments with no note (by hand) are taken
+    // only if dated close to the bank date (HAND_BEFORE / HAND_AFTER days), and then checked for clashes below.
+    const recordedFor = async (c, sameDay) => {
+      const skip = new Set();
+      for (let tries = 0; tries < 6; tries++) {
+        const cand = candidateFor(c, sameDay, skip);
+        if (!cand) return null;
+        let elsewhere = false, hand = false;
+        for (const p of cand) {
+          if (p.tag === undefined) p.tag = await bankOf(p);
+          if (p.tag && !belongs(p.tag, c)) { skip.add(p.k); elsewhere = true; }
+          else if (!p.tag) hand = true;
+        }
+        if (elsewhere) continue;
+        if (hand) {
+          const gap = (p) => Math.round((isoMs(c.date) - p.when) / 86400e3);
+          if (cand.some((p) => !p.tag && (gap(p) > HAND_BEFORE || gap(p) < -HAND_AFTER))) return null;
+        }
+        return { list: cand, hand };
+      }
+      return null;
     };
     const done = store.get('done', {});
     // Payments dated the bank date are settled first, for every bank line, then the rest of the window: so a payment
     // recorded on its own bank date is never taken by a neighbouring line of the same amount.
     const recorded = new Map();
     const lines0 = statement.credits.slice().sort((a, b) => a.date.localeCompare(b.date)).filter((c) => !(done[c.key] && done[c.key].partial));
-    [true, false].forEach((sameDay) => lines0.forEach((c) => {
-      if (recorded.has(c.key)) return;
-      const rec = recordedFor(c, c.insurer, sameDay);
-      if (rec) { rec.forEach((p) => usedPay.add(p.k)); recorded.set(c.key, rec); }
-    }));
+    for (const sameDay of [true, false]) {
+      for (const c of lines0) {
+        if (recorded.has(c.key)) continue;
+        if (!sameDay) say('Checking what is already recorded in Halaxy...');
+        const rec = await recordedFor(c, sameDay);
+        if (rec) { rec.list.forEach((p) => usedPay.add(p.k)); recorded.set(c.key, rec); }
+      }
+    }
+    // A match made only from payments recorded by hand (no note) is not certain when another bank line could be the
+    // same payment: one on this statement from the same insurer for the same amount, dated close to those payments and
+    // not itself recorded for sure; or one on last month's statement (a payment dated before this statement starts).
+    // Neither is marked; both say to check which is recorded (Carl, 12 Nov 2026).
+    const doubt = new Map();   // credit key -> text
+    recorded.forEach((rec, key) => {
+      if (!rec.hand) return;
+      const c = statement.credits.find((x) => x.key === key);
+      const near = (d) => rec.list.some((p) => { const g = Math.round((isoMs(d.date) - p.when) / 86400e3); return g <= HAND_BEFORE && g >= -HAND_AFTER; });
+      const rivals = statement.credits.filter((d) => d.key !== key && d.insurer === c.insurer && d.amount === c.amount && near(d) && !(recorded.has(d.key) && !recorded.get(d.key).hand));
+      const early = rec.list.some((p) => p.when < isoMs(statement.from));
+      if (!rivals.length && !early) return;
+      const what = rec.list.map((p) => p.number + ' ' + fmt(p.amount) + ' (' + p.date + ')').join(', ');
+      const why = rivals.length ? 'recorded by hand in Halaxy: ' + what + ', but ' + (rivals.length === 1 ? 'the ' + isoLabel(rivals[0].date) + ' payment' : rivals.length + ' other payments') + ' of the same amount could be that one too: check which is recorded'
+        : 'recorded by hand in Halaxy: ' + what + ', dated before this statement starts, so it may be last month\'s payment: check';
+      doubt.set(key, why);
+      rivals.forEach((d) => { if (!doubt.has(d.key)) doubt.set(d.key, 'the ' + isoLabel(c.date) + ' payment of the same amount may be the one recorded by hand in Halaxy (' + what + '): check which is recorded'); });
+    });
+    doubt.forEach((t, key) => recorded.delete(key));
     const used = new Set();
     const results = [];
     const credits = statement.credits.slice().sort((a, b) => a.date.localeCompare(b.date));
@@ -280,16 +346,17 @@
       if (!c.insurer && namedFits) r.insurer = named[0].insurer;
       const prev = done[c.key];
       // Already recorded in Halaxy (by hand, on another PC, or by this script).
-      const rec = recorded.get(c.key);
+      const rec = recorded.get(c.key) && recorded.get(c.key).list;
       if (rec && (r.insurer || rec.some((p) => p.insurer))) {
         if (!r.insurer) r.insurer = (rec.find((p) => p.insurer) || {}).insurer;
         const dates = [...new Set(rec.map((p) => p.date))], methods = [...new Set(rec.map((p) => p.method))];
         r.state = prev ? 'done' : 'recorded'; r.doneAt = prev && prev.at;
         r.invoices = rec.map((p) => ({ id: p.invoiceId, number: p.number, amount: p.amount }));
-        r.how = 'already recorded in Halaxy: ' + methods.join(', ') + ', ' + dates.join(', ');
+        r.how = 'already recorded in Halaxy: ' + methods.join(', ') + ', ' + dates.join(', ') + (recorded.get(c.key).hand ? ' (by hand)' : ' (its note names this payment)');
         results.push(r);
         continue;
       }
+      if (doubt.has(c.key)) r.doubt = doubt.get(c.key);
       if (!r.insurer && !done[c.key]) continue;   // names an invoice that isn't an unpaid insurer invoice (a patient paying, say): not ours here
       results.push(r);
       if (prev && !prev.partial) { r.state = 'done'; r.doneAt = prev.at; r.invoices = prev.invoices; if (!r.insurer) r.insurer = (prev.insurer || ''); continue; }
@@ -360,6 +427,12 @@
       if (setAside) r.how = setAside + (r.how || '');
       if (already) r.how = fmt(already) + ' already recorded on ' + r.recorded.map((i) => i.number).join(', ') + '; the rest: ' + (r.how || '');
       if (r.state === 'matched') r.options[0].forEach((i) => used.add(i.id));
+      // Possibly recorded already: never ticked, and says so first.
+      if (r.doubt) {
+        if (r.state === 'matched') r.state = 'choose';
+        if (r.state === 'none') r.state = 'check';
+        r.how = r.doubt + (r.state === 'choose' ? '; if it isn\'t, ' + (r.how || '') : '');
+      }
       r.pick = r.state === 'matched' ? 0 : null;
     }
     return results;
@@ -447,10 +520,11 @@
             let inv = '', act = '';
             const linked = () => (r.invoices || []).map((i) => (i.id ? '<a href="' + esc(U().base() + '/invoice/' + i.id) + '" target="_blank" rel="noopener">' + esc(i.number) + '</a>' : esc(i.number)) + ' ' + fmt(i.amount)).join(', ');
             if (r.state === 'done') { inv = linked(); act = '<span class="upc-ok">Recorded' + (r.doneAt ? ' ' + esc(U().dayLabel(r.doneAt)) : '') + '</span>'; }
+            else if (r.state === 'check') { inv = '<span class="upc-err">' + esc(r.how) + '</span>'; act = '<span class="upc-err">Check</span>'; }
             else if (r.state === 'recorded') { inv = linked() + '<div class="text-muted">' + esc(r.how) + '</div>'; act = '<span class="upc-ok">Already in Halaxy</span>'; }
             else if (r.state === 'matched') { inv = '<div class="upc-bank-set">' + setHtml(r, 0) + '</div><div class="text-muted">' + esc(r.how) + '</div>'; act = '<button type="button" class="btn btn-outline-primary-light" data-rec="' + k + '"' + (state.busy ? ' disabled' : '') + '>Record</button>'; }
             else if (r.state === 'choose') {
-              inv = '<div class="text-muted">' + esc(r.how) + ': choose one</div>' + r.options.map((o, j) => '<label class="upc-bank-set d-block"><input type="radio" name="upc-bank-' + k + '" data-pick="' + k + ':' + j + '"' + (r.pick === j ? ' checked' : '') + '> ' + setHtml(r, j) + (r.labels && r.labels[j] ? ' <span class="text-muted">(' + esc(r.labels[j]) + ')</span>' : '') + '</label>').join('');
+              inv = '<div class="' + (r.doubt ? 'upc-err' : 'text-muted') + '">' + esc(r.how) + ': choose one</div>' + r.options.map((o, j) => '<label class="upc-bank-set d-block"><input type="radio" name="upc-bank-' + k + '" data-pick="' + k + ':' + j + '"' + (r.pick === j ? ' checked' : '') + '> ' + setHtml(r, j) + (r.labels && r.labels[j] ? ' <span class="text-muted">(' + esc(r.labels[j]) + ')</span>' : '') + '</label>').join('');
               act = r.pick !== null ? '<button type="button" class="btn btn-outline-primary-light" data-rec="' + k + '"' + (state.busy ? ' disabled' : '') + '>Record</button>' : '';
             } else inv = '<span class="text-muted">Not matched: ' + esc(r.how || '') + '</span>';
             if (r.error) act += '<div class="upc-err">' + esc(r.error) + '</div>';
