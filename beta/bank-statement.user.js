@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Bank statement (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.3
+// @version      0.1.4
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
@@ -38,7 +38,7 @@
   if (window.__hxBankStatement) return;
   window.__hxBankStatement = true;
 
-  const VERSION = '0.1.3';
+  const VERSION = '0.1.4';
   const ROUTE = 'upc-bank-statement';
   const MENU_CLS = 'upc-bank-menu';
   const ALLOWED = ['Carl Healy'];
@@ -46,6 +46,7 @@
   const LOOK_BACK_MONTHS = 18;
   const NEAR_BEFORE = 3, NEAR_AFTER = 14;   // days the bank date may be before / after the remittance's date
   const USUAL_DAYS = 5;   // Carl, 12 Nov 2026: Bupa (and AXA) almost always pay 2 days after the remittance date
+  const MAX_AGE_DAYS = 120;   // invoices dated more than this before a payment are not matched to it
   const PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/';
   const KEY = 'upc-bank:';
   const INSURERS = [
@@ -240,7 +241,9 @@
       }
       const setAside = c.numbers.length ? 'the bank reference names ' + (String(c.desc).match(/\bUPC[\s-]?\d{2,}\b/gi) || []).join(', ') + ', which doesn\'t fit (paid already, or another amount); ' : '';
       say('Matching ' + c.insurer + ' ' + fmt(c.amount) + ' (' + n + ' of ' + credits.length + ')...');
-      const cand = open.filter((i) => i.insurer === c.insurer && !used.has(i.id) && i.when <= isoMs(c.date) + 86400e3).sort((a, b) => b.when - a.when);
+      // Only invoices dated in the few months before the payment: an older unpaid invoice that happens to add up is
+      // not evidence (Carl, 12 Nov 2026: once a payment's own invoices are paid, it reached further back).
+      const cand = open.filter((i) => i.insurer === c.insurer && !used.has(i.id) && i.when <= isoMs(c.date) + 86400e3 && i.when >= isoMs(c.date) - MAX_AGE_DAYS * 86400e3).sort((a, b) => b.when - a.when);
       // 1. The invoices covered by one remittance (Remittances attaches the same PDF to each) that add up to it: the
       //    strongest evidence. 2. One invoice for the whole amount. 3. Any set of invoices that adds up to it.
       const recent = cand.slice(0, 30);
@@ -274,10 +277,11 @@
         r.how = (sure ? '' : 'check the date: ') + 'the invoices on the remittance with ' + g.key + dated(g) + (sameRef.length === 1 ? ' (the same reference as the bank)' : '');
         r.options = [g.list];
       } else if (byRemit.length > 1) { r.state = 'choose'; r.how = 'more than one remittance adds up to it'; r.options = byRemit.map((g) => g.list); r.labels = byRemit.map((g) => g.key + dated(g)); }
-      else if (single.length === 1) { r.state = 'matched'; r.how = 'one invoice for the whole amount'; r.options = [single]; }
+      // Amount alone is weak evidence (£ 40.00 fits many invoices): offered to tick, never ticked.
+      else if (single.length === 1) { r.state = 'choose'; r.how = 'one invoice for the whole amount, but no remittance links them: tick it only if it is right'; r.options = [single]; }
       else {
         const sets = single.length > 1 ? single.map((i) => [i]) : subsets(recent.slice(0, 24), target, 4);
-        if (sets.length === 1) { r.state = 'matched'; r.how = 'the only set of ' + c.insurer + ' invoices that adds up to it'; r.options = sets; }
+        if (sets.length === 1) { r.state = 'choose'; r.how = 'the only set of ' + c.insurer + ' invoices that adds up to it, but no remittance links them: tick it only if it is right'; r.options = sets; }
         else if (sets.length) { r.state = 'choose'; r.how = 'more than one set of invoices adds up to it'; r.options = sets; }
         else if (notMoved.length === 1) {
           const g = notMoved[0];

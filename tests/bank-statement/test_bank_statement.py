@@ -117,7 +117,9 @@ def fresh():
         945: ['Vitality', 'Vitality', '02-Jun-2026', 3500, [('Vitality remittance 2026-07-01', 'Remittance total £ 55.00 over 2 invoices')]],
         # Simplyhealth: the only remittance that adds up is months away from the payment: offered, not ticked
         # (attached by hand, named by its date, no comment: the date comes from the file name)
-        951: ['Simplyhealth', 'Simplyhealth', '01-May-2026', 3300, [('2026-06-01.pdf', '')]],
+        951: ['Simplyhealth', 'Simplyhealth', '15-Jul-2026', 3300, [('2026-06-01.pdf', '')]],
+        # An old unpaid Aviva invoice for exactly £ 60.00: more than 120 days before the payment, never offered
+        981: ['Aviva', 'Aviva', '01-Jan-2026', 6000, []],
         # Cigna: the remittance paid £ 44.00 on these, but the excesses were never moved, so Halaxy still shows £ 60.00
         971: ['Cigna', 'Cigna', '01-Oct-2026', 3000, [('Cigna remittance 2026-10-27', 'Insurer reference ZZ1; payment date 27-Oct-2026; remittance total £ 44.00 over 2 invoices; this invoice billed £ 30.00, paid £ 24.00')]],
         972: ['Cigna', 'Cigna', '02-Oct-2026', 3000, [('Cigna remittance 2026-10-27', 'Insurer reference ZZ1; payment date 27-Oct-2026; remittance total £ 44.00 over 2 invoices; this invoice billed £ 30.00, paid £ 20.00')]],
@@ -148,9 +150,12 @@ def invoice_html(iid):
     rows = "<tr><td data-property='date'>%s</td><td data-property='itemNumber'>PHY</td><td data-property='amount'>%s</td><td><a href='/a/pr/555/invoice/line/%d/edit'>Edit</a></td></tr>" % (day, gbp(bal), iid * 10)
     atts = ''.join('<tr>\n<td>%s</td>\n<td>Payment</td>\n<td>%s</td>\n<td>%s</td>\n</tr>' % (day, t, c) for t, c in att)
     pays = ''.join("<tr><td>%s</td><td>Direct Deposit (%s)</td><td>Paid</td><td>%s</td></tr>" % (f['form[paymentDate]'], f['form[note]'], gbp(round(float(f['form[amount]']) * 100))) for i, f in S['posts_all'] if i == iid)
-    return ("<html><head><title>Invoice UPC-0%d | Halaxy</title></head><body><table id='invoiceLines'><tbody>%s<tr><td>Total</td><td>%s</td></tr></tbody></table>"
-            "<table id='invoicePayments'><tbody>%s<tr><td></td><td></td><td>Outstanding</td><td>%s</td></tr></tbody></table>"
-            "<table id='invoiceAttachments'><tbody>%s</tbody></table></body></html>") % (iid, rows, gbp(bal), pays, gbp(shown), atts)
+    # As live (12 Nov 2026): paid in full, the page is a "Receipt" with no Outstanding row.
+    kind = 'Receipt' if shown <= 0 else 'Invoice'
+    outst = '' if shown <= 0 else "<tr><td></td><td></td><td>Outstanding</td><td>%s</td></tr>" % gbp(shown)
+    return ("<html><head><title>%s UPC-0%d | Halaxy</title></head><body><table id='invoiceLines'><tbody>%s<tr><td>Total</td><td>%s</td></tr></tbody></table>"
+            "<table id='invoicePayments'><tbody>%s%s</tbody></table>"
+            "<table id='invoiceAttachments'><tbody>%s</tbody></table></body></html>") % (kind, iid, rows, gbp(bal), pays, outst, atts)
 
 
 PAY_FORM = """<form id="paymentForm" method="post">
@@ -258,7 +263,8 @@ async def main():
         check('reference and amount shown', by['Bupa']['cells'][2:4] == ['2455419', '£ 120.00'], by['Bupa']['cells'])
         check('shared remittance first, the one with the bank\'s reference (not another remittance or the single £ 120.00 invoice)', 'UPC-0901' in by['Bupa']['cells'][4] and 'UPC-0902' in by['Bupa']['cells'][4]
               and 'UPC-0903' not in by['Bupa']['cells'][4] and 'reference 2455419, dated 30-Sep-2026, 5 days before the payment (the same reference as the bank)' in by['Bupa']['cells'][4], by['Bupa']['cells'])
-        check('one invoice for the whole amount; one dated after the credit left out', 'UPC-0911' in by['AXA']['cells'][4] and 'UPC-0912' not in by['AXA']['cells'][4] and 'one invoice' in by['AXA']['cells'][4], by['AXA']['cells'])
+        check('one invoice for the whole amount (offered, not ticked: amount alone); one dated after the credit left out', 'UPC-0911' in by['AXA']['cells'][4] and 'UPC-0912' not in by['AXA']['cells'][4] and 'one invoice' in by['AXA']['cells'][4] and by['AXA']['radios'] == 1 and not by['AXA']['rec'], by['AXA'])
+        check('an old unpaid invoice for the same amount (over 120 days before) is never offered', 'UPC-0981' not in by['Aviva']['cells'][4], by['Aviva']['cells'])
         check('transfer from the old account naming WPA: the only set that adds up', 'UPC-0921' in by['WPA']['cells'][4] and 'UPC-0922' in by['WPA']['cells'][4] and 'UPC-0923' not in by['WPA']['cells'][4], by['WPA']['cells'])
         check('several answers: offered to choose, nothing ticked', by['Aviva']['radios'] == 2 and not by['Aviva']['rec'] and 'choose' in by['Aviva']['cells'][4], by['Aviva'])
         v = by['Vitality']['cells'][4]
@@ -274,12 +280,13 @@ async def main():
         check('a patient paying by transfer (names a patient invoice) is left out', not any('£ 120.00' == r['cells'][3] and r['cells'][1] != 'Bupa' for r in rows) and len(rows) == 9, [r['cells'][:4] for r in rows])
         check('the patient\'s own invoice is never offered', not any('UPC-0905' in r['cells'][4] for r in rows), rows)
         btn = await pg.evaluate("document.querySelector('[data-upc-bank-statement] [data-a=all]').textContent")
-        check('record button counts the matched ones', btn == 'Record 6 payments', btn)
+        check('record button counts only the ones matched by evidence (invoice number, remittance)', btn == 'Record 3 payments', btn)
         reads = [x for x in S['log'] if x[1].endswith('/report/finance/0')]
         check('one report request; nothing written while matching', len(reads) == 1 and not S['posts'] and not [x for x in S['log'] if x[0] == 'POST'], S['log'])
 
         # choose for Aviva, then cancel: nothing recorded
-        await pg.click('[data-upc-bank-statement] input[data-pick="5:0"]')
+        for k in (1, 3, 4, 5):   # AXA, Bupa (reused reference), WPA, Aviva: amount only, ticked by hand
+            await pg.click('[data-upc-bank-statement] input[data-pick="%d:0"]' % k)
         btn = await pg.evaluate("document.querySelector('[data-upc-bank-statement] [data-a=all]').textContent")
         check('a chosen answer joins the button', btn == 'Record 7 payments', btn)
         await pg.click('[data-upc-bank-statement] [data-a=all]')
@@ -325,6 +332,7 @@ async def main():
         pg = await ctx.new_page()
         await pg.goto(URL)
         await open_statement(pg, pdf)
+        await pg.click('[data-upc-bank-statement] input[data-pick="1:0"]')   # AXA: amount only, ticked by hand
         await pg.click('[data-upc-bank-statement] tbody tr:nth-child(2) [data-rec]')
         await pg.wait_for_selector('[data-upc-bank-confirm]', timeout=10000)
         await pg.click('[data-upc-bank-confirm] [data-c=yes]')
@@ -363,7 +371,11 @@ async def main():
         await pg.click('[data-upc-bank-statement] tbody tr:nth-child(1) [data-rec]')
         await pg.wait_for_selector('[data-upc-bank-confirm]', timeout=10000)
         await pg.click('[data-upc-bank-confirm] [data-c=yes]')
-        await pg.wait_for_function("/Recorded/.test(document.querySelector('[data-upc-bank-statement] tbody tr:nth-child(1)').textContent)", timeout=30000)
+        try:
+            await pg.wait_for_function("/Recorded/.test(document.querySelector('[data-upc-bank-statement] tbody tr:nth-child(1)').textContent)", timeout=90000)
+        except Exception:
+            print("row when the rest was expected:", S['posts'], await pg.evaluate("document.querySelector('[data-upc-bank-statement] tbody tr:nth-child(1)').innerText"))
+            raise
         check('the rest recorded, nothing twice', [i for i, _ in S['posts']] == [902, 901] and S['inv'][901][3] == 0 and S['inv'][902][3] == 0, S['posts'])
         await ctx.close()
 
