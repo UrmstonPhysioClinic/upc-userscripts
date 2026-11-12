@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.36
+// @version      0.1.37
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.36';
+  const VERSION = '0.1.37';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -250,6 +250,12 @@
         if (!pend && !Array.from(tr.children).some((c) => /^(Outstanding|Available)$/.test(clean(c.textContent)))) inv.paymentRows.push(t);   // each payment row's text
       });
     }
+    // Paid in full: Halaxy shows the invoice as a "Receipt" and leaves out the Outstanding row (live, 12 Nov 2026:
+    // UPC-38023), so nothing is outstanding.
+    if (inv.outstanding === null && (/^receipt\b/i.test(title) || Array.from(doc.querySelectorAll('.badge, .status, .label, span, div')).some((e) => !e.children.length && /^paid in full$/i.test(clean(e.textContent))))) {
+      inv.outstanding = 0;
+      inv.paidInFull = true;
+    }
     const att = doc.querySelector('#invoiceAttachments');
     if (att) {
       // Each attachment as its whole row (created date, type, file name, comment): the first cell is
@@ -344,7 +350,7 @@
       const after = await invoice.fetch(id);
       if (after.outstanding !== null && after.outstanding === before.outstanding - p.amount) return after;
       if (after.outstanding === before.outstanding && sendErr) throw sendErr;
-      throw new UPCError(before.number + ' now shows ' + (after.outstanding === null ? 'no outstanding amount' : money.fmt(after.outstanding)) + ' outstanding, not ' + money.fmt(before.outstanding - p.amount) + ' as expected after recording ' + money.fmt(p.amount) + '. Please check it.');
+      throw new UPCError(before.number + ' now shows ' + (after.outstanding === null ? 'no outstanding amount' : money.fmt(after.outstanding) + ' outstanding') + ', not ' + money.fmt(before.outstanding - p.amount) + ' as expected after recording ' + money.fmt(p.amount) + '. Please check it.');
     },
     async setStatus(id, status) {
       const { doc } = await http.popup('/invoice/options/' + id);

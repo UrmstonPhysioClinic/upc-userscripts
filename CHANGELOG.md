@@ -1,5 +1,9 @@
 # Changelog
 
+## Bank statement: paid in full, and safer matching, 12 Nov 2026 (beta)
+- Fix (core 0.1.37): an invoice paid in full shows as a "Receipt" with no Outstanding row, so after recording a payment that cleared it, Bank statement said it couldn't check it and stopped before the next invoice on the same bank line (Carl, 12 Nov 2026: UPC-38023 recorded, UPC-37981 not). A Receipt, or an invoice marked Paid in full, now counts as nothing outstanding. Pressing Record again carries on: the invoice already recorded is skipped.
+- Bank statement 0.1.4: only invoices dated in the 120 days before a payment are matched to it, and an amount on its own (one invoice, or the only set that adds up) is offered to tick, never ticked. Once a payment's own invoices were paid, it had reached back to older unpaid invoices that happened to add up (Carl, 12 Nov 2026). Ticked by itself only with evidence: our invoice number in the bank reference, or the invoices one remittance covers.
+
 ## Excess moves on Issued invoices, 12 Nov 2026 (beta)
 - Fix (core 0.1.36): moving an excess on a funder invoice marked Issued stopped part way. The fee came off, but Halaxy only offers Active invoices when billing a funder, so it couldn't go back on (Carl, 12 Nov 2026: UPC-38023 and UPC-37983 left with a fee waiting on the patient invoice). An Issued funder invoice is now set back to Active for the change and marked Issued again afterwards, even if something fails in between. Rebate sync and Remittances both use this. New `UPC.rebate.resume` bills a fee left waiting back to its funder invoice with its own date.
 - Remittances 0.3.8: an invoice left part-way is recognised ("Finish": the fee waiting on the patient invoice, within the remittance's dates, missing from the funder invoice) and finished first with one confirmation, then checked again. Bupa rows already moved are counted as done, so the rest of the fix is offered as usual.
