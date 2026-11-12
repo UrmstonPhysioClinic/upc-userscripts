@@ -9,7 +9,7 @@ Tampermonkey userscripts for Halaxy (eu.halaxy.com), used at Urmston Physio Clin
 - Work on a branch and open a pull request. Never push to `main` directly. Claude merges its own pull requests once the checks pass; Carl does not handle pull requests or merges.
 - Changes go to `beta/` first. Promote to `stable/` only when Carl confirms beta works on live Halaxy. Stable and beta files differ only in `@name` (" (beta)" suffix) and `@updateURL`/`@downloadURL`.
 - Bump `@version` (and the `VERSION` constant) in every changed script, then run `python3 tools/build_manifest.py`. The loader only fetches a script when its version in `scripts.json` changes.
-- Run `python3 tests/check_scripts.py` and the relevant test in `tests/` before opening a PR (`tests/loader/test_loader.py` for any loader change); `python3 tools/run_tests.py` runs everything. GitHub runs all tests on every PR: merge only when they pass.
+- Run `python3 tests/check_scripts.py` and the relevant test in `tests/` before opening a PR (`tests/loader/test_loader.py` for any loader change); `python3 tools/run_tests.py` runs everything. GitHub runs all tests on every PR, in five groups at once (add a new test folder to a group in `.github/workflows/tests.yml`; a check fails otherwise): merge only when they pass.
 - The PCs install only `loader/upc-loader.user.js`. Never ask Carl to install a script individually: adding it to `stable/` and `beta/` (and the manifests) is the install.
 
 ## Conventions
