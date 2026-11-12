@@ -1,5 +1,10 @@
 # Changelog
 
+## Bank statement: certain about what's already recorded, 12 Nov 2026 (beta)
+- Bank statement 0.1.7 (Carl, 12 Nov 2026: "as robust as possible"):
+  - A recorded payment's note decides whose it is. Bank statement notes the insurer, bank date and reference on each payment it records; a payment whose note names this bank line makes it certain, and one whose note names another bank line is never counted for this one (read from the invoice, only for payments that look like a match).
+  - A payment recorded by hand (no such note) counts only if dated on the bank date or up to 5 days before it (the remittance's date), and only when nothing else could be it. If another payment on the statement from the same insurer for the same amount is close by, or the payment is dated before the statement starts (it may be last month's), neither is marked: each says to check which is recorded, and nothing is ticked.
+
 ## Bank statement knows what's already recorded, 12 Nov 2026 (beta)
 - Bank statement 0.1.6: reads the payments already recorded in Halaxy (Halaxy's Income report, one request) and shows a bank line as "Already in Halaxy", with nothing to do, when the insurer's payments recorded around its date add up to it (Direct Deposit and the like, not card or online; from 10 days before the bank date to 3 after, the same day first), or our invoice numbers in its reference were paid that amount (Carl, 12 Nov 2026: once a payment was recorded by hand, it had looked further back for something else to match). Works for payments recorded by hand, on another PC, or by Bank statement itself. A remittance whose comment lists its invoices gathers all of them, even ones outside the recent invoices it looks at.
 - Core 0.1.39: `UPC.reports.paymentLines(start, stop)` reads Halaxy's Income report: each payment's invoice, payer, funder, date, method and amount.
