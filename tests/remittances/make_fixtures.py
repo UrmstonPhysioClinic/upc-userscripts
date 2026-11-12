@@ -60,7 +60,11 @@ def bupa():
         for x, t in zip(cols, ['Your invoice', 'Patient name', 'Treatment', 'Charge', 'Benefit', 'Benefit prev', 'Credit', 'Debit', '']):
             c.drawString(x, y, t)
         rows = [('UPC-400', '11', 'Patient, One', ['10/09/26', '24/09/26'], ['120.00', '80.00', '0.00', '80.00', '0.00'], '2'),
-                ('UPC-400', '12', 'Patient, Two', ['15/09/26'], ['60.00', '60.00', '0.00', '60.00', '0.00'], '')]
+                ('UPC-400', '12', 'Patient, Two', ['15/09/26'], ['60.00', '60.00', '0.00', '60.00', '0.00'], ''),
+                # one invoice over three rows, as Bupa does (live, 12 Nov 2026)
+                ('UPC-400', '13', 'Patient, Three', ['24/09/26'], ['50.00', '40.00', '0.00', '40.00', '0.00'], '1'),
+                ('UPC-400', '13', 'Patient, Three', ['01/10/26', '09/10/26'], ['80.00', '64.00', '0.00', '64.00', '0.00'], '1'),
+                ('UPC-400', '13', 'Patient, Three', ['16/10/26'], ['40.00', '32.00', '0.00', '32.00', '0.00'], '1')]
         yy = y - 22
         for inv, tail, name, dates, money, note in rows:
             c.drawString(cols[0], yy, inv)
@@ -76,9 +80,10 @@ def bupa():
                 c.drawString(cols[8], yy, note)
             yy -= 40
         c.drawString(40, yy - 10, 'Balance payable')
-        c.drawString(480, yy - 10, '£ 140.00')
+        c.drawString(480, yy - 10, '£ 276.00')
         c.drawString(40, yy - 40, 'Notes:')
-        c.drawString(40, yy - 54, '2      The unpaid balance of the invoice includes the patient\'s excess due under the terms of their scheme.')
+        c.drawString(40, yy - 54, '1      This account has been assessed under the terms of the patient\'s scheme. Any outstanding treatment costs are due from the patient.')
+        c.drawString(40, yy - 68, '2      The unpaid balance of the invoice includes the patient\'s excess due under the terms of their scheme.')
     return _text_pdf(d)
 
 

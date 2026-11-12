@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.6
+// @version      0.3.7
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -31,7 +31,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.3.6';
+  const VERSION = '0.3.7';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -239,12 +239,25 @@
           dates.push(...datesIn(rows[j]));
         }
         const share = charge - payable;
-        out.items.push({
+        const sorted = dates.slice().sort();
+        const range = { from: sorted[0] || null, to: sorted[sorted.length - 1] || null, invoiced: charge, paid: payable };
+        const item = {
           invoice: 'UPC-' + digits, claimed: charge, paid: credit, previouslyPaid: previous, insurerTotal: payable,
-          patientShare: share > 0 && code ? share : 0, providerShortfall: share > 0 && !code ? share : 0, dates, lines: null,
-          reason: share > 0 ? (code ? 'excess' : 'other') : null,
+          patientShare: share > 0 && code ? share : 0, providerShortfall: share > 0 && !code ? share : 0, dates, lines: null, ranges: [range],
+          reason: share > 0 ? (code ? 'excess' : 'other') : null, codes: code ? [code] : [],
           reasonText: code ? 'Note ' + code + (noteText[code] ? ': ' + noteText[code].slice(0, 90) + (noteText[code].length > 90 ? '...' : '') : '') : '',
-        });
+        };
+        // Bupa gives each treatment, or run of treatments, of an invoice its own row (live, 12 Nov 2026: UPC-38023 on
+        // three rows): the rows of one invoice are added together, keeping each row's dates and amounts.
+        const same = out.items.find((x) => x.invoice === item.invoice);
+        if (!same) { out.items.push(item); return; }
+        ['claimed', 'paid', 'previouslyPaid', 'insurerTotal', 'patientShare', 'providerShortfall'].forEach((k) => { same[k] = (same[k] || 0) + (item[k] || 0); });
+        same.dates.push(...item.dates);
+        same.ranges.push(range);
+        if (code && !same.codes.includes(code)) { same.codes.push(code); }
+        const owed = same.patientShare > 0, prov = same.providerShortfall > 0;
+        same.reason = prov && owed ? 'other' : owed ? 'excess' : prov ? 'other' : null;   // a mix of the two is left to a person
+        same.reasonText = same.codes.map((c) => 'Note ' + c + (noteText[c] ? ': ' + noteText[c].slice(0, 90) + (noteText[c].length > 90 ? '...' : '') : '')).join('; ');
       });
       return out;
     },
@@ -411,6 +424,7 @@
   // Uses per-line figures when the remittance gives them, otherwise takes the shortfall from the
   // earliest lines first.
   // Days between two ISO dates (2026-09-09); Infinity if either is missing.
+  const isoShift = (iso, days) => { const d = new Date(Date.parse(iso) + days * 86400e3); return d.toISOString().slice(0, 10); };
   const isoGap = (a, b) => (a && b ? Math.round(Math.abs(Date.parse(a) - Date.parse(b)) / 86400e3) : Infinity);
   // A funder line for a remittance line: the same date first, otherwise the one within two days
   // (Halaxy sometimes dates a fee a day out on the funder invoice, and the date is corrected afterwards).
@@ -443,6 +457,27 @@
         changes.push({ lineId: l.lineId, date: l.date, from: l.amount, to: rl.paid });
       }
       if (sum(changes.map((c) => c.from - c.to)) !== shortfall) return { error: 'The per-line deductions do not add up to the shortfall of ' + fmt(shortfall) + '.' };
+      return { changes };
+    }
+    // Bupa: each row gives its own shortfall for a date or run of dates: shared over the funder lines in that run, in
+    // proportion to their amounts.
+    if (item.ranges && item.ranges.length > 1) {
+      const pool = lines.slice();
+      for (const rg of item.ranges) {
+        const sf = (rg.invoiced || 0) - (rg.paid || 0);
+        const inRun = pool.filter((l) => { const d = halaxyDateIso(l.date); return d && rg.from && d >= isoShift(rg.from, -2) && d <= isoShift(rg.to || rg.from, 2); });
+        inRun.forEach((l) => pool.splice(pool.indexOf(l), 1));
+        if (sf <= 0) continue;
+        const total = sum(inRun.map((l) => l.amount));
+        if (!inRun.length || total !== rg.invoiced) return { error: 'The lines on ' + funder.number + ' from ' + rg.from + ' to ' + (rg.to || rg.from) + ' don\'t add up to the ' + fmt(rg.invoiced) + ' Bupa was billed for them.' };
+        let left = sf;
+        inRun.forEach((l, k) => {
+          const take = k === inRun.length - 1 ? left : Math.round(sf * l.amount / total);
+          if (take > 0) changes.push({ lineId: l.lineId, date: l.date, from: l.amount, to: l.amount - take });
+          left -= take;
+        });
+      }
+      if (sum(changes.map((c) => c.from - c.to)) !== shortfall) return { error: 'The rows\' shortfalls do not add up to the shortfall of ' + fmt(shortfall) + '.' };
       return { changes };
     }
     let left = shortfall;

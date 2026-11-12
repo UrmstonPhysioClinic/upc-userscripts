@@ -363,9 +363,15 @@ async def main():
 
         b = await read('bupa')
         inv = {i['invoice']: i for i in b['items']}
-        check('Bupa: wrapped invoice numbers joined', sorted(inv) == ['UPC-40011', 'UPC-40012'], sorted(inv))
+        check('Bupa: wrapped invoice numbers joined', sorted(inv) == ['UPC-40011', 'UPC-40012', 'UPC-40013'], sorted(inv))
+        t = inv.get('UPC-40013', {})
+        check('Bupa: one invoice over three rows read as one, amounts added', (t.get('claimed'), t.get('insurerTotal'), t.get('patientShare'), t.get('reason'), len(t.get('ranges') or [])) == (17000, 13600, 3400, 'excess', 3) and 'appears more than once' not in ' '.join(b['notes']), (t, b['notes']))
+        prop = await pg.evaluate("""(item) => upcRemittances.proposeLines({ number: 'UPC-40013', lines: [
+            { lineId: 'a', date: '25-Sep-2026', amount: 5000 }, { lineId: 'b', date: '02-Oct-2026', amount: 4000 }, { lineId: 'c', date: '10-Oct-2026', amount: 4000 },
+            { lineId: 'd', date: '16-Oct-2026', amount: 4000 }] }, item, 3400)""", t)
+        check('Bupa: each row\'s shortfall goes on the fees in its dates (Halaxy\'s a day out allowed)', [(c['lineId'], c['to']) for c in prop.get('changes', [])] == [('a', 4000), ('b', 3200), ('c', 3200), ('d', 3200)], prop)
         check('Bupa: excess read with its note', inv.get('UPC-40011', {}).get('patientShare') == 4000 and inv['UPC-40011']['reason'] == 'excess' and inv['UPC-40011']['dates'] == ['2026-09-10', '2026-09-24'], inv.get('UPC-40011'))
-        check('Bupa: totals cross-check', b['checks']['paidRead'] == b['checks']['paidTotal'] == 14000 and not b['notes'], b)
+        check('Bupa: totals cross-check', b['checks']['paidRead'] == b['checks']['paidTotal'] == 27600 and not b['notes'], b)
 
         a = await read('axa')
         inv = {i['invoice']: i for i in a['items']}

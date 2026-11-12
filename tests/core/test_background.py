@@ -46,8 +46,10 @@ async def main():
         browser = await p.chromium.launch()
         log = []
         ctx, pg = await page_at(browser, datetime.datetime(2026, 11, 11, 12, 0, tzinfo=LON), log)
+        # (The browser can report a mouse movement as the page opens, so start from 31 minutes of nothing.)
+        await pg.clock.fast_forward(31 * 60 * 1000)
         r = await pg.evaluate("({ active: UPC.background.active(), hours: UPC.background.inHours(), ok: UPC.background.ok() })")
-        check('nobody has used the PC: not active, so no background checks', r == {'active': False, 'hours': True, 'ok': False}, r)
+        check('nobody has used the PC for 30 minutes: not active, so no background checks', r == {'active': False, 'hours': True, 'ok': False}, r)
         await pg.mouse.move(50, 50)
         await pg.mouse.move(80, 90)
         r = await pg.evaluate("({ active: UPC.background.active(), ok: UPC.background.ok() })")
