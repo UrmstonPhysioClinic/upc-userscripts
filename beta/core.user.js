@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.34
+// @version      0.1.35
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.34';
+  const VERSION = '0.1.35';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -205,7 +205,7 @@
   function parseInvoice(doc, id) {
     const title = clean(doc.title);
     const num = (title.match(/UPC-?\d+/i) || [''])[0].toUpperCase().replace(/^UPC-?/, 'UPC-');
-    const inv = { id: String(id), number: num || title, lines: [], payments: [], pending: [], attachments: [], total: null, outstanding: null };
+    const inv = { id: String(id), number: num || title, lines: [], payments: [], paymentRows: [], pending: [], attachments: [], total: null, outstanding: null };
     const table = doc.querySelector('#invoiceLines');
     if (table) {
       table.querySelectorAll('tr').forEach((tr) => {
@@ -247,6 +247,7 @@
         else if (link && /^Invoice\b/.test(clean(tds[1] && tds[1].textContent))) {
           inv.payments.push({ funderInvoiceId: link, amount: money.lastInText(t), status: clean(tds[2] && tds[2].textContent) });
         }
+        if (!pend && !Array.from(tr.children).some((c) => /^(Outstanding|Available)$/.test(clean(c.textContent)))) inv.paymentRows.push(t);   // each payment row's text
       });
     }
     const att = doc.querySelector('#invoiceAttachments');
@@ -320,7 +321,7 @@
     // '11-Sep-2026', amount in pence, a note; every other field as Halaxy filled it (no discount). Only if the invoice
     // still has at least that much outstanding, and checks afterwards that the outstanding went down by the amount.
     async payOffline(id, p) {
-      const before = await invoice.fetch(id);
+      const before = p.before || await invoice.fetch(id);   // p.before: the invoice just read by the caller
       if (before.outstanding === null) throw new UPCError('Could not read what is outstanding on invoice ' + (before.number || id) + ', so no payment was recorded.');
       if (before.outstanding < p.amount) throw new UPCError(before.number + ' has only ' + money.fmt(before.outstanding) + ' outstanding, less than ' + money.fmt(p.amount) + ', so no payment was recorded.');
       const path = '/invoicefunctions/' + encodeURIComponent(id) + '/pay/offline';
@@ -334,12 +335,16 @@
       const set = { 'form[paymentMethod]': opt.value, 'form[paymentDate]': p.date, 'form[amount]': (p.amount / 100).toFixed(2), 'form[note]': p.note || '', 'form[invoiceDiscount]': '', 'form[discountPercentage]': '' };
       const pairs = serialize(form).map(([k, v]) => [k, k in set ? set[k] : v]);
       Object.keys(set).forEach((k) => { if (!pairs.some(([x]) => x === k) && form.querySelector('[name="' + k + '"]')) pairs.push([k, set[k]]); });
-      http.expectRefresh(await http.postForm(path, pairs), 'Recording the payment');
+      // Halaxy records the payment but doesn't answer with OK or REFRESH (live, 12 Nov 2026: shown as "not accepted"
+      // although it was recorded), so the invoice itself is the answer: read it back. Only the form coming back
+      // (Halaxy refusing it) counts as not accepted.
+      let answer = null, sendErr = null;
+      try { answer = await http.postForm(path, pairs); } catch (e) { sendErr = e; }
+      if (answer && answer.status === 'FORM') http.expectRefresh(answer, 'Recording the payment');
       const after = await invoice.fetch(id);
-      if (after.outstanding === null || after.outstanding !== before.outstanding - p.amount) {
-        throw new UPCError('Halaxy accepted the payment, but ' + before.number + ' now shows ' + (after.outstanding === null ? 'no outstanding amount' : money.fmt(after.outstanding)) + ' outstanding instead of ' + money.fmt(before.outstanding - p.amount) + '. Please check it.');
-      }
-      return after;
+      if (after.outstanding !== null && after.outstanding === before.outstanding - p.amount) return after;
+      if (after.outstanding === before.outstanding && sendErr) throw sendErr;
+      throw new UPCError(before.number + ' now shows ' + (after.outstanding === null ? 'no outstanding amount' : money.fmt(after.outstanding)) + ' outstanding, not ' + money.fmt(before.outstanding - p.amount) + ' as expected after recording ' + money.fmt(p.amount) + '. Please check it.');
     },
     async setStatus(id, status) {
       const { doc } = await http.popup('/invoice/options/' + id);
@@ -532,12 +537,13 @@
     // Attaches a file to an invoice the way the attach button does: open the pop-up, upload the
     // file to Halaxy's file store, then save it against the invoice with a title and category.
     // Checks the invoice lists one more attachment afterwards.
-    // Returns false, attaching nothing, when opts.skipIfAttached and a file with this title is already on the invoice.
+    // Returns false, attaching nothing, when opts.skipIfAttached and a file with this title (or any name in
+    // opts.alsoSkipIf) is already on the invoice.
     async attachToInvoice(invoiceId, file, opts) {
       opts = opts || {};
       const before = await invoice.fetch(invoiceId);
       const wanted = String(opts.title || file.name || 'Attachment').replace(/\.pdf$/i, '');
-      if (opts.skipIfAttached && before.attachments.some((r) => r.includes(wanted))) return false;
+      if (opts.skipIfAttached && before.attachments.some((r) => r.includes(wanted) || (opts.alsoSkipIf || []).some((t) => t && r.includes(t)))) return false;
       const { doc } = await http.popup('/file/upload/invoice/' + invoiceId);
       const form = doc.querySelector('form#fileupload, form.js-file-edit-form');
       const uploadUrl = form && form.getAttribute('data-upload-url');

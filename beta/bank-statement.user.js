@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Bank statement (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.2
+// @version      0.1.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
@@ -38,13 +38,14 @@
   if (window.__hxBankStatement) return;
   window.__hxBankStatement = true;
 
-  const VERSION = '0.1.2';
+  const VERSION = '0.1.3';
   const ROUTE = 'upc-bank-statement';
   const MENU_CLS = 'upc-bank-menu';
   const ALLOWED = ['Carl Healy'];
   const METHOD = 'Direct Deposit';
   const LOOK_BACK_MONTHS = 18;
   const NEAR_BEFORE = 3, NEAR_AFTER = 14;   // days the bank date may be before / after the remittance's date
+  const USUAL_DAYS = 5;   // Carl, 12 Nov 2026: Bupa (and AXA) almost always pay 2 days after the remittance date
   const PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/';
   const KEY = 'upc-bank:';
   const INSURERS = [
@@ -179,12 +180,19 @@
       const title = (row.match(/\b([A-Za-z]+ remittance(?: \d{4}-\d\d-\d\d| \d\d-[A-Za-z]{3}-\d{4})?)/) || [])[1];
       const file = (row.match(/\bpayment\b.*?([\w .()-]+\.pdf)\b/i) || [])[1];
       const key = ref ? 'reference ' + ref : title || (file && file.trim());
-      // The remittance's own date is in the title Remittances gives it ("Bupa remittance 2026-10-08").
-      const iso = title && (title.match(/(\d{4})-(\d\d)-(\d\d)$/) || []);
-      const hx = title && (title.match(/(\d\d)-([A-Za-z]{3})-(\d{4})$/) || []);
-      const date = iso && iso[1] ? iso[1] + '-' + iso[2] + '-' + iso[3]
-        : hx && hx[1] && MON.indexOf(hx[2]) >= 0 ? hx[3] + '-' + String(MON.indexOf(hx[2]) + 1).padStart(2, '0') + '-' + hx[1] : '';
-      if (key && !out.some((x) => x.key === key)) out.push({ key, ref: ref || '', date });
+      // The remittance's payment date: from Remittances' comment ("payment date 28-Oct-2026", 0.3.6), else the date in
+      // its title ("Bupa remittance 2026-10-08") or in a file name attached by hand ("2026-09-30.pdf").
+      const toIso = (t) => {
+        const iso = String(t || '').match(/(\d{4})-(\d\d)-(\d\d)/);
+        if (iso) return iso[1] + '-' + iso[2] + '-' + iso[3];
+        const hx = String(t || '').match(/(\d\d)-([A-Za-z]{3})-(\d{4})/);
+        return hx && MON.indexOf(hx[2]) >= 0 ? hx[3] + '-' + String(MON.indexOf(hx[2]) + 1).padStart(2, '0') + '-' + hx[1] : '';
+      };
+      const date = toIso((row.match(/payment date\s+(\d\d-[A-Za-z]{3}-\d{4})/i) || [])[1]) || toIso(title) || toIso(file);
+      // What the insurer paid on this invoice ("this invoice billed £ 170.00, paid £ 136.00", 0.3.6).
+      const pm = row.match(/this invoice billed £\s?([\d,]+\.\d\d),\s*paid £\s?([\d,]+\.\d\d)/i);
+      const paid = pm ? Math.round(parseFloat(pm[2].replace(/,/g, '')) * 100) : null;
+      if (key && !out.some((x) => x.key === key)) out.push({ key, ref: ref || '', date, paid });
     });
     return out;
   }
@@ -219,7 +227,11 @@
       if (!c.insurer && namedFits) r.insurer = named[0].insurer;
       if (!r.insurer && !done[c.key]) continue;   // names an invoice that isn't an unpaid insurer invoice (a patient paying, say): not ours here
       results.push(r);
-      if (done[c.key]) { r.state = 'done'; r.doneAt = done[c.key].at; r.invoices = done[c.key].invoices; if (!r.insurer) r.insurer = (done[c.key].insurer || ''); continue; }
+      const prev = done[c.key];
+      if (prev && !prev.partial) { r.state = 'done'; r.doneAt = prev.at; r.invoices = prev.invoices; if (!r.insurer) r.insurer = (prev.insurer || ''); continue; }
+      // Recording stopped part way last time: match what is still to record.
+      const already = prev && prev.partial ? prev.invoices.reduce((t, i) => t + i.amount, 0) : 0;
+      if (prev && prev.partial) { r.recorded = prev.invoices; if (!r.insurer) r.insurer = prev.insurer || ''; }
       if (namedFits) {
         r.state = 'matched'; r.pick = 0; r.options = [named];
         r.how = 'the invoice number' + (named.length === 1 ? '' : 's') + ' in the bank reference';
@@ -236,19 +248,25 @@
       for (const i of recent) {
         let keys = [];
         try { keys = await remittancesOf(i); } catch (e) { keys = []; }
-        keys.forEach((k) => { if (!groups.has(k.key)) groups.set(k.key, { key: k.key, ref: k.ref, date: k.date, list: [] }); groups.get(k.key).list.push(i); });
+        keys.forEach((k) => { if (!groups.has(k.key)) groups.set(k.key, { key: k.key, ref: k.ref, date: k.date, list: [], paid: [] }); groups.get(k.key).list.push(i); groups.get(k.key).paid.push(k.paid); });
       }
-      let byRemit = [...groups.values()].filter((g) => g.list.reduce((t, i) => t + i.balance, 0) === c.amount);
+      const target = c.amount - already;
+      let byRemit = [...groups.values()].filter((g) => g.list.reduce((t, i) => t + i.balance, 0) === target);
+      // The remittance says these invoices were paid this amount, but Halaxy still shows more on them: the excess has
+      // not been moved to the patient yet (a remittance attached by hand, before Remittances).
+      const notMoved = !byRemit.length ? [...groups.values()].filter((g) => g.paid.every((x) => x !== null) && g.paid.reduce((t, x) => t + x, 0) === target) : [];
       // The bank reference being the remittance's own reference settles it. Otherwise the payment usually reaches the
       // bank within a few days of the remittance's date (Carl, 11 Nov 2026): a remittance in that window is preferred,
       // and one far from it is only offered, not ticked.
       byRemit.forEach((g) => { g.gap = g.date ? Math.round((isoMs(c.date) - isoMs(g.date)) / 86400e3) : null; g.near = g.gap !== null && g.gap >= -NEAR_BEFORE && g.gap <= NEAR_AFTER; });
       const sameRef = byRemit.filter((g) => g.ref && c.ref && normRef(c.ref).includes(normRef(g.ref)));
       const near = byRemit.filter((g) => g.near);
+      const usual = byRemit.filter((g) => g.gap !== null && g.gap >= 0 && g.gap <= USUAL_DAYS);   // Bupa and AXA: usually 2 days after
       if (sameRef.length === 1) byRemit = sameRef;
       else if (near.length === 1) byRemit = near;
+      else if (usual.length === 1) byRemit = usual;
       const dated = (g) => g.date ? ', dated ' + isoLabel(g.date) + (g.gap === 0 ? ', the day of the payment' : ', ' + Math.abs(g.gap) + ' day' + (Math.abs(g.gap) === 1 ? '' : 's') + (g.gap > 0 ? ' before' : ' after') + ' the payment') : '';
-      const single = cand.filter((i) => i.balance === c.amount);
+      const single = cand.filter((i) => i.balance === target);
       if (byRemit.length === 1) {
         const g = byRemit[0];
         const sure = sameRef.length === 1 || g.near || !g.date;
@@ -258,12 +276,17 @@
       } else if (byRemit.length > 1) { r.state = 'choose'; r.how = 'more than one remittance adds up to it'; r.options = byRemit.map((g) => g.list); r.labels = byRemit.map((g) => g.key + dated(g)); }
       else if (single.length === 1) { r.state = 'matched'; r.how = 'one invoice for the whole amount'; r.options = [single]; }
       else {
-        const sets = single.length > 1 ? single.map((i) => [i]) : subsets(recent.slice(0, 24), c.amount, 4);
+        const sets = single.length > 1 ? single.map((i) => [i]) : subsets(recent.slice(0, 24), target, 4);
         if (sets.length === 1) { r.state = 'matched'; r.how = 'the only set of ' + c.insurer + ' invoices that adds up to it'; r.options = sets; }
         else if (sets.length) { r.state = 'choose'; r.how = 'more than one set of invoices adds up to it'; r.options = sets; }
-        else r.how = 'no unpaid ' + c.insurer + ' invoices add up to it (has the remittance been through Remittances?)';
+        else if (notMoved.length === 1) {
+          const g = notMoved[0];
+          r.how = 'the remittance with ' + g.key + ' paid this on ' + g.list.map((i) => i.number).join(', ') + ', but Halaxy still shows ' +
+            fmt(g.list.reduce((t, i) => t + i.balance, 0)) + ' on them: move the excess to the patient with Remittances first, then open the statement again';
+        } else r.how = 'no unpaid ' + c.insurer + ' invoices add up to it (has the remittance been through Remittances? An excess not yet moved to the patient leaves the invoice showing more than the insurer paid)';
       }
       if (setAside) r.how = setAside + (r.how || '');
+      if (already) r.how = fmt(already) + ' already recorded on ' + r.recorded.map((i) => i.number).join(', ') + '; the rest: ' + (r.how || '');
       if (r.state === 'matched') r.options[0].forEach((i) => used.add(i.id));
       r.pick = r.state === 'matched' ? 0 : null;
     }
@@ -274,17 +297,23 @@
 
   async function record(r, say) {
     const set = r.options[r.pick];
-    if (!set || set.reduce((t, i) => t + i.balance, 0) !== r.amount) throw new (U().Error)('The invoices chosen don\'t add up to ' + fmt(r.amount) + '.');
+    const before = (r.recorded || []).slice();
+    const target = r.amount - before.reduce((t, i) => t + i.amount, 0);
+    if (!set || set.reduce((t, i) => t + i.balance, 0) !== target) throw new (U().Error)('The invoices chosen don\'t add up to ' + fmt(target) + '.');
     const note = r.insurer + ', bank ' + isoLabel(r.date) + (r.ref ? ', ref ' + r.ref : '');
-    const paid = [];
+    const paid = before;
+    // Progress is saved after each invoice, so a stop part way can carry on from where it stopped.
+    const save = (partial) => { const d = store.get('done', {}); d[r.key] = { at: Date.now(), invoices: paid, insurer: r.insurer, partial }; store.set('done', d); };
     for (const i of set) {
+      // Already recorded from this bank line (an earlier try that stopped part way): don't record it twice.
+      const now = await U().invoice.fetch(i.id);
+      if (now.paymentRows.some((t) => t.includes(note))) { paid.push({ id: i.id, number: i.number, amount: i.balance, already: true }); save(true); continue; }
       say('Recording ' + fmt(i.balance) + ' on ' + i.number + '...');
-      await U().invoice.payOffline(i.id, { method: METHOD, date: isoLabel(r.date), amount: i.balance, note });
+      await U().invoice.payOffline(i.id, { method: METHOD, date: isoLabel(r.date), amount: i.balance, note, before: now });
       paid.push({ id: i.id, number: i.number, amount: i.balance });
+      save(true);
     }
-    const done = store.get('done', {});
-    done[r.key] = { at: Date.now(), invoices: paid, insurer: r.insurer };
-    store.set('done', done);
+    save(false);
     r.state = 'done'; r.doneAt = Date.now(); r.invoices = paid;
   }
 
