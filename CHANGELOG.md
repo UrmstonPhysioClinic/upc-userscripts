@@ -608,6 +608,9 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 
 ## Remittances
 
+### 0.3.7 (12 Nov 2026, beta)
+- Fix: Bupa lists each treatment, or run of treatments, of an invoice on its own row; only the first row was used ("appears more than once"), so an invoice over several rows was read as billed and paid for its first row only (Carl, 12 Nov 2026: UPC-38023 on three rows, read as £ 50.00 billed). The rows of one invoice are now added together, and each row's shortfall goes on the fees in that row's dates, shared in proportion to their amounts (a fee Halaxy dates a day or two out still counts). Notes 1 ("due from the patient") and 2 (excess) both count as the patient's to pay; a mix with an unexplained shortfall is left to a person.
+
 ### 0.3.5 (12 Nov 2026, beta)
 - Scanned remittances: the amount paid can be corrected as well as the invoice number (Carl, 12 Nov 2026: "in case the OCR misreads a 3 as an 8"). One box per line where the insurer lists lines (Aviva), otherwise one for the invoice. Re-check (or Enter) works out the deductions and the patient's share again, checks the invoice with Halaxy, and checks the amounts against the remittance's total again, so the warning goes once they add up. A mistyped amount is refused.
 
