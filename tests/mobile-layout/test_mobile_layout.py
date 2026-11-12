@@ -3,7 +3,7 @@ import asyncio, pathlib, sys
 from playwright.async_api import async_playwright
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-SCRIPT = (ROOT / 'beta' / 'halaxy-mobile.user.js').read_text()
+SCRIPT = (ROOT / 'beta' / 'mobile-layout.user.js').read_text()
 FAILS = []
 def check(name, ok, detail=''):
     print(('PASS ' if ok else 'FAIL ') + name + ('' if ok else '  ' + str(detail)))

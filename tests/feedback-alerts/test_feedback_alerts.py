@@ -1,5 +1,5 @@
 """
-Test for Feedback alerts (beta/survey-feedback.user.js) and core's surveys, patient search and patient tasks,
+Test for Feedback alerts (beta/feedback-alerts.user.js) and core's surveys, patient search and patient tasks,
 against a mock Halaxy. Invented patients only ("Patient A" ...).
 
 Responses: A Excellent; B Below expected with a comment; C Satisfactory with a comment; D Satisfactory with
@@ -11,7 +11,7 @@ answers and response number; nothing for A, D, F or G; F counted on Reports > Su
 added; nothing stored holds names or answers; a second PC adds no duplicates; a second check opens only new
 responses; the results pop-up; only Carl's sign-in makes any requests.
 
-Run:  python3 tests/survey-feedback/test_survey_feedback.py
+Run:  python3 tests/feedback-alerts/test_feedback_alerts.py
 Needs: Python 3 with Playwright (Chromium).
 """
 import asyncio, datetime, json, re, sys, urllib.parse
@@ -21,7 +21,7 @@ from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
 CORE = (ROOT / 'beta' / 'core.user.js').read_text()
-FB = (ROOT / 'beta' / 'survey-feedback.user.js').read_text()
+FB = (ROOT / 'beta' / 'feedback-alerts.user.js').read_text()
 LON = ZoneInfo('Europe/London')
 NOW = datetime.datetime(2026, 11, 11, 12, 0, tzinfo=LON)
 MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']

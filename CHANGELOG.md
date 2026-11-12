@@ -1,5 +1,10 @@
 # Changelog
 
+## Names and groups, 12 Nov 2026 (beta)
+- Every script is now named "UPC <Group>: <Name>" (Billing, Patients, Calendar, Look, System), and Script settings and the loader panel list them under their groups (Carl, 12 Nov 2026). Every beta script's version goes up one step for the new name.
+- Files renamed to match their names: bill-funder to invoice-funder, funder-chaser to insurer-payments-due, check-ins to open-ended-patients, survey-feedback to feedback-alerts, halaxy-mobile to mobile-layout, textarea-autogrow to text-boxes, email-html-source to email-html. Each carries `@upc-was` with its old file name; `tools/promote.py` removes the old stable file when the new one is promoted.
+- Loader 1.3.0: lists scripts under their groups, and moves a renamed script's switch (on or off on that PC) and saved settings to the new file name. Script settings 0.1.1 lists by group too.
+
 ## Bank statement
 
 ### 0.1.1 (11 Nov 2026, beta)
@@ -517,7 +522,7 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Not due yet, held for the excess (a new claim with fewer than 2 fees, until the intake form's excess can be read) and did-not-attend-only patients are greyed at the bottom, with links to their invoices.
 - A count of due patients on the menu item, refreshed at most every 2 hours in the visible tab and shared by all tabs. One report, one list and one calendar request per check, plus each patient's first and latest invoice (cached for a week). Read-only.
 
-## Bill funder
+## Invoice Funder (was Bill funder)
 
 ### 0.8.1 (11 Nov 2026, beta)
 - The "Billed." line gives the funder invoice's own total. It showed one fee's amount (£ 40.00 for five fees, Carl, 11 Nov 2026), read from the patient invoice's payment row. A warning shows if the funder invoice total differs from the fees chosen.
@@ -636,7 +641,7 @@ Existing scripts moved here from earlier chats, code unchanged. Only the header 
 - Chat alert 1.4
 - HTML source for emails 0.3
 
-## Outstanding Actions
+## Outstanding actions
 
 ### 0.5.3 (9 Nov 2026, beta)
 - The hover state is no longer see-through on live Halaxy: a white backing sits behind the notice, out of reach of Halaxy's button styles (0.5.2's fill lost to Halaxy's hover style).
@@ -669,7 +674,7 @@ Existing scripts moved here from earlier chats, code unchanged. Only the header 
 ### 0.1.0 (6 Nov 2026)
 - First version: attended appointments with an unpublished note, unpaid self-funded invoices (over £0), grouped per appointment, on every Halaxy page.
 
-## Rebate Sync
+## Rebate sync
 
 ### 0.3.0 (11 Nov 2026, beta)
 - Runs on the core library: its requests are paced like every other script's, and the revert, rebate and re-bill steps are the same ones Remittances uses (tested).

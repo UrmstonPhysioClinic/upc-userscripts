@@ -6,7 +6,7 @@ Checks: open-ended wording in the latest note, 3 weeks to 3 months after the las
 not cancelled or missed; negations; only the latest note counts; Review Request marked; the menu count; note text
 not stored; cached between checks; Carl only.
 
-Run:  python3 tests/check-ins/test_check_ins.py
+Run:  python3 tests/open-ended-patients/test_open_ended_patients.py
 """
 import asyncio, datetime, json, re, sys, urllib.parse
 from pathlib import Path
@@ -14,7 +14,7 @@ from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
 CORE = (ROOT / 'beta' / 'core.user.js').read_text()
-CI = (ROOT / 'beta' / 'check-ins.user.js').read_text()
+CI = (ROOT / 'beta' / 'open-ended-patients.user.js').read_text()
 MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 hx = lambda d: '%02d-%s-%d' % (d.day, MON[d.month - 1], d.year)
 NOW = datetime.datetime(2026, 11, 11, 12, 0, tzinfo=datetime.timezone.utc)

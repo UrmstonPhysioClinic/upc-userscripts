@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Halaxy scripts
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.2.0
+// @version      1.3.0
 // @description  Runs all of the clinic's Halaxy scripts from GitHub (and the insurer portal fill on the Bupa and AXA provider sites). Install once per PC: new and updated scripts arrive by themselves.
 // @match        https://*.halaxy.com/*
 // @match        https://provider.axahealth.co.uk/*
@@ -56,7 +56,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.2.0';
+  const VERSION = '1.3.0';
   const RAW = 'https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/';
   const CHECK_EVERY_MINUTES = 10;
   const RETRY_STALE_MINUTES = 2;   // GitHub can serve an old file for a few minutes after a change
@@ -294,6 +294,32 @@
     try { new Function(code); return true; } catch (e) { return !(e instanceof SyntaxError); }   // eval may be blocked: then trust it
   }
 
+  // Moves a renamed script's switch (on or off on this PC) and its saved settings (GM_* values) to its new file name.
+  function moveScript(from, to) {
+    try {
+      const off = local.get('off', {});
+      if (off[from]) { off[to] = true; delete off[from]; local.set('off', off); pcCopy(); }
+      const pre = 'upc-gm:' + from + ':', now = 'upc-gm:' + to + ':';
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith(pre)) keys.push(k); }
+      keys.forEach((k) => {
+        const nk = now + k.slice(pre.length);
+        if (localStorage.getItem(nk) === null) localStorage.setItem(nk, localStorage.getItem(k));
+        localStorage.removeItem(k);
+      });
+    } catch (e) { /* storage blocked: the script starts with its defaults */ }
+  }
+
+  // Scripts are named "UPC <Group>: <Name>"; lists show them under their group, in this order.
+  const GROUPS = ['Billing', 'Patients', 'Calendar', 'Look', 'System'];
+  function grouped(list) {
+    const parse = (n) => { const m = String(n || '').replace(/\s*\(beta\)\s*$/i, '').match(/^UPC (\w+): (.+)$/); return m ? { group: m[1], short: m[2] } : { group: 'Other', short: String(n || '').replace(/\s*\(beta\)\s*$/i, '') }; };
+    const rank = (g) => { const i = GROUPS.indexOf(g); return i < 0 ? GROUPS.length : i; };
+    const rows = list.map((s) => Object.assign({ short: parse(s.name).short, group: parse(s.name).group }, s));
+    rows.sort((a, b) => rank(a.group) - rank(b.group) || a.short.localeCompare(b.short));
+    return rows;
+  }
+
   let checking = null;
   function checkForUpdates() {
     if (checking) return checking;
@@ -309,6 +335,8 @@
         let stale = false;
 
         for (const item of manifest.scripts) {
+          // A renamed script ("was" in the list): keep this PC's switch and the script's saved settings.
+          if (item.was && !oldBy[item.file] && oldBy[item.was] && onHalaxy) moveScript(item.was, item.file);
           const have = oldBy[item.file];
           if (have && have.version === item.version && GM_getValue(codeKey(item.file), null)) {
             next.push(have);
@@ -364,7 +392,7 @@
     return Object.assign({
       version: VERSION, channel, chosen: local.get('channel', 'stable') === 'beta' ? 'beta' : 'stable',
       lastCheck: local.get('lastCheck:' + channel, 0),
-      scripts: (idx ? idx.scripts : []).map((x) => ({ file: x.file, name: x.name, version: x.version, on: !off[x.file],
+      scripts: grouped(idx ? idx.scripts : []).map((x) => ({ file: x.file, name: x.name, group: x.group, short: x.short, version: x.version, on: !off[x.file],
         status: ran[x.file] ? 'running' : applies(x.meta, location.href) ? (off[x.file] ? 'off' : 'next') : 'unused' })),
       problems: local.get('lastProblems:' + channel, []).concat(errors.map((x) => x.file + ' stopped with an error: ' + x.message)),
     }, extra || {});
@@ -414,6 +442,7 @@
         h2 { font-size: 16px; margin: 0 0 4px; }
         .muted { color: #5b6478; font-size: 12.5px; }
         .row { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid #eceef3; }
+        .grp { margin-top: 12px; padding-bottom: 2px; font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: #5b6478; }
         .row:first-child { border-top: 0; }
         .row label { flex: 1; display: flex; align-items: center; gap: 8px; cursor: pointer; }
         .ver { color: #5b6478; font-variant-numeric: tabular-nums; font-size: 12.5px; white-space: nowrap; }
@@ -455,9 +484,12 @@
       $('.status').textContent = 'Loader ' + VERSION + '. Last checked for updates: ' + time(local.get('lastCheck:' + channel, 0)) + '.';
       sh.querySelectorAll('input[name="ch"]').forEach((r) => { r.checked = r.value === channel; });
       const list = idx && idx.scripts.length ? idx.scripts : null;
-      $('.list').innerHTML = list ? list.map((s) => {
+      let last = '';
+      $('.list').innerHTML = list ? grouped(list).map((s) => {
         const here = ran[s.file] ? 'running on this page' : (applies(s.meta, location.href) ? (off[s.file] ? 'switched off' : 'starts on next page') : 'not used on this page');
-        return `<div class="row"><label><input type="checkbox" data-file="${esc(s.file)}" ${off[s.file] ? '' : 'checked'}> ${esc(s.name)}</label>` +
+        const head = s.group !== last ? `<div class="grp">${esc(s.group)}</div>` : '';
+        last = s.group;
+        return head + `<div class="row"><label><input type="checkbox" data-file="${esc(s.file)}" ${off[s.file] ? '' : 'checked'}> ${esc(s.short)}</label>` +
           `<span class="ver">${esc(s.version)} · ${here}</span></div>`;
       }).join('') : '<p class="muted">No scripts saved yet. Check for updates to fetch them.</p>';
       const probs = local.get('lastProblems:' + channel, []).concat(errors.map((e) => e.file + ' stopped with an error: ' + e.message));

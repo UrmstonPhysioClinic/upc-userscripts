@@ -1,10 +1,11 @@
 // ==UserScript==
-// @name         Halaxy insurer payments due (beta)
+// @name         UPC Billing: Insurer payments due (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.3
+// @version      0.1.4
+// @upc-was      funder-chaser.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/funder-chaser.user.js
-// @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/funder-chaser.user.js
+// @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/insurer-payments-due.user.js
+// @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/insurer-payments-due.user.js
 // @description  Finances > Insurer payments due (Carl only for now): insurer invoices marked Issued that still aren't paid 30 days after their invoice date, with a count on the menu. Reads only.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
@@ -30,7 +31,7 @@
   if (window.__hxFunderChaser) return;
   window.__hxFunderChaser = true;
 
-  const VERSION = '0.1.3';
+  const VERSION = '0.1.4';
   const ROUTE = 'upc-funder-chaser';
   const MENU_CLS = 'upc-fc-menu';
   const ALLOWED = ['Carl Healy'];
@@ -103,7 +104,7 @@
   function tellHealthCheck(e) {
     const message = (e && e.message) || String(e);
     if (!/has changed/.test(message)) return;
-    document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: 'funder-chaser.user.js', message }) }));
+    document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: 'insurer-payments-due.user.js', message }) }));
   }
   function paintBadge() {
     const a = document.querySelector('a.' + MENU_CLS);

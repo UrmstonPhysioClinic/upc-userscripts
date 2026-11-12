@@ -95,8 +95,10 @@ async def main():
         root = "document.querySelector('[data-upc-dialog=\"upc-script-settings\"]')"
         groups = await pg.evaluate("[..." + root + ".querySelectorAll('.upc-ss-group')].map(g => g.innerText.replace(/\\s+/g, ' ').trim())")
         check('options grouped under the script name', groups == ['Fixture options Fixture: show results Fixture: on (click to turn off)'], groups)
-        rows = await pg.evaluate("[..." + root + ".querySelectorAll('tbody tr')].map(r => r.innerText.replace(/\\s+/g, ' ').trim())")
+        rows = await pg.evaluate("[..." + root + ".querySelectorAll('tbody tr:not(.upc-ss-grp)')].map(r => r.innerText.replace(/\\s+/g, ' ').trim())")
         check('scripts on this PC with versions', any('Fixture options' in r and '1.0 · running on this page' in r for r in rows) and len(rows) == 3, rows)
+        heads = await pg.evaluate("[..." + root + ".querySelectorAll('tbody tr.upc-ss-grp')].map(r => r.innerText.trim())")
+        check('listed under their groups ("UPC <Group>: <Name>"), shown by name only', heads == ['System', 'Other'] and any(r.startswith('Core library 0.1') for r in rows), (heads, rows))
         look = await pg.evaluate("(() => { const r = " + root + "; return { native: r.classList.contains('upc-native'), shadow: !!r.shadowRoot, table: r.querySelector('table').className,"
                                  " radio: [...r.querySelectorAll('input[name=upc-ss-chan]')].filter(x => x.checked).map(x => x.value) }; })()")
         check('Halaxy look, stable ticked', look['native'] and not look['shadow'] and look['table'].startswith('table table-striped table-bordered') and look['radio'] == ['stable'], look)

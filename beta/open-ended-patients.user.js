@@ -1,10 +1,11 @@
 // ==UserScript==
-// @name         Halaxy open-ended patients (beta)
+// @name         UPC Patients: Open-ended patients (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.4
+// @version      0.1.5
+// @upc-was      check-ins.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/check-ins.user.js
-// @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/check-ins.user.js
+// @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/open-ended-patients.user.js
+// @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/open-ended-patients.user.js
 // @description  Patients > Open-ended patients (Carl only for now): patients left open-ended in their last note ("open return", "book again if needed" and so on), last seen 3 weeks or more ago, with nothing booked. A list with a count on the menu; sends nothing. Reads only.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
@@ -29,7 +30,7 @@
   if (window.__hxCheckIns) return;
   window.__hxCheckIns = true;
 
-  const VERSION = '0.1.4';
+  const VERSION = '0.1.5';
   const ROUTE = 'upc-check-ins';
   const MENU_CLS = 'upc-ci-menu';
   const ALLOWED = ['Carl Healy'];
@@ -127,7 +128,7 @@
   function tellHealthCheck(e) {
     const message = (e && e.message) || String(e);
     if (!/has changed/.test(message)) return;
-    document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: 'check-ins.user.js', message }) }));
+    document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: 'open-ended-patients.user.js', message }) }));
   }
 
   // ------------------------------------------------------------------ menu count

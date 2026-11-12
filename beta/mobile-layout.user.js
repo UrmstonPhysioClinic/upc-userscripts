@@ -1,10 +1,11 @@
 // ==UserScript==
-// @name         Halaxy mobile layout (beta)
+// @name         UPC Look: Mobile layout (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      2.18
+// @version      2.19
+// @upc-was      halaxy-mobile.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/halaxy-mobile.user.js
-// @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/halaxy-mobile.user.js
+// @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/mobile-layout.user.js
+// @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/mobile-layout.user.js
 // @description  Makes Halaxy usable on a phone: fitted layout on every page, slide-out menu, phone-sized calendar. Does nothing on screens wider than a phone (add ?hxm=1 to a Halaxy address to try it on a PC).
 // @match        https://*.halaxy.com/a/*
 // @run-at       document-start
@@ -19,7 +20,7 @@
   const IS_PHONE = Math.min(screen.width, screen.height) <= 600 || /[?&]hxm=1\b/.test(location.search);
   if (!IS_PHONE || window.top !== window.self || window.__hxMobile) return;
   window.__hxMobile = true;
-  const VERSION = '2.18';
+  const VERSION = '2.19';
 
   const KEY = 'hxl.desktop';
   let wantDesktop = false;

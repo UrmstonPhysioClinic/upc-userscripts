@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Halaxy patient statuses (beta)
+// @name         UPC Patients: Patient statuses (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.2
+// @version      0.2.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
@@ -40,7 +40,7 @@
   if (window.__hxPatientStatuses) return;
   window.__hxPatientStatuses = true;
 
-  const VERSION = '0.2.2';
+  const VERSION = '0.2.3';
   const ALLOWED = ['Carl Healy'];
   const DAY = 86400e3;
   const GAP_DAYS = 42;          // Carl, 11 Nov 2026: a gap counts; 6 weeks

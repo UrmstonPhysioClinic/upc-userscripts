@@ -26,7 +26,11 @@ def manifest(channel):
     files = sorted((ROOT / channel).glob('*.user.js'), key=lambda p: (FIRST.index(p.name) if p.name in FIRST else len(FIRST), p.name))
     for p in files:
         text = p.read_text()
-        scripts.append({'file': p.name, 'name': header_value(text, 'name'), 'version': header_value(text, 'version')})
+        entry = {'file': p.name, 'name': header_value(text, 'name'), 'version': header_value(text, 'version')}
+        was = header_value(text, 'upc-was')   # renamed from: the loader moves this PC's switch and settings across
+        if was:
+            entry['was'] = was
+        scripts.append(entry)
     return json.dumps({'scripts': scripts}, indent=2) + '\n'
 
 
