@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.4
+// @version      0.3.5
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -31,7 +31,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.3.4';
+  const VERSION = '0.3.5';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -365,6 +365,44 @@
     return r;
   }
 
+  // A scanned remittance corrected by hand (Carl, 12 Nov 2026: "in case the OCR misreads a 3 as an 8"): the invoice
+  // number, and what the insurer paid, either in total or per line (Aviva). Deductions, the patient's share and the
+  // reason follow from the corrected amounts.
+  function correctItem(item, fix) {
+    if (fix.invoice) item.invoice = fix.invoice;
+    if (Array.isArray(fix.lines) && item.lines && item.lines.length) {
+      const wasExcess = item.reason === 'excess' || (item.patientShare !== null && item.patientShare !== undefined);
+      item.lines.forEach((l, k) => {
+        if (fix.lines[k] === undefined || fix.lines[k] === null) return;
+        l.paid = fix.lines[k];
+        const d = l.invoiced !== null && l.invoiced !== undefined ? l.invoiced - l.paid : null;
+        l.deduction = d ? d : null;
+      });
+      item.paid = sum(item.lines.map((l) => l.paid || 0));
+      const deducted = sum(item.lines.map((l) => l.deduction || 0));
+      item.patientShare = wasExcess && deducted > 0 ? deducted : null;
+      item.reason = deducted > 0 ? (wasExcess ? 'excess' : 'other') : null;
+    } else if (fix.paid !== undefined && fix.paid !== null) {
+      item.paid = fix.paid;
+      if (item.lines && item.lines.length === 1) item.lines[0].paid = fix.paid;
+    }
+    delete item.insurerTotal;
+    item.corrected = true;
+    return item;
+  }
+  // The amounts read against the remittance's own total, again (after a correction).
+  function checkTotals(r) {
+    if (!r || !r.checks) return r;
+    r.checks.paidRead = sum(r.items.map((it) => it.paid));
+    r.notes = r.notes.filter((n) => !/^The amounts read add up to /.test(n));
+    if (r.checks.paidTotal !== null && r.checks.paidRead !== r.checks.paidTotal) {
+      r.notes.push('The amounts read add up to ' + fmt(r.checks.paidRead) + ' but the remittance total is ' + fmt(r.checks.paidTotal) + '. Something was misread: check each line by eye.');
+    }
+    return r;
+  }
+  const amountIn = (v) => { const t = String(v || '').replace(/[£,\s]/g, ''); return /^\d+(\.\d{1,2})?$/.test(t) ? Math.round(parseFloat(t) * 100) : null; };
+  const plain = (c) => (c === null || c === undefined ? '' : (c / 100).toFixed(2));
+
   // ================================================================== matching with Halaxy
 
   const halaxyDateIso = (s) => isoDate(String(s || '').replace(/-/g, ' ')) || isoDate(s);
@@ -477,6 +515,8 @@
     .upc-rem .upc-rem-chg { margin-top: 2px; }
     .upc-rem .upc-rem-fix { display: inline-flex; align-items: center; gap: 4px; }
     .upc-rem .upc-rem-fix .form-control { width: 110px; height: auto; padding: 1px 6px; }
+    .upc-rem .upc-rem-amt { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin: 0 0 3px; font-weight: normal; }
+    .upc-rem .upc-rem-amt .form-control, .upc-rem .upc-rem-amt-one { width: 90px; height: auto; padding: 1px 6px; text-align: right; display: inline-block; }
     .upc-rem .upc-rem-apply { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px; }
     .upc-rem .upc-rem-apply .btn { margin: 0; }
     .upc-rem .upc-rem-apply label { margin: 0; display: flex; align-items: center; gap: 4px; }
@@ -508,11 +548,18 @@
         const it = x.item;
         const label = { ok: 'Paid in full', fix: 'Excess', manual: 'By hand', check: 'Check', done: 'Done', failed: 'Failed' }[x.status];
         let link = x.invoiceId ? '<a href="' + esc(UPC.base() + '/invoice/' + x.invoiceId) + '" target="_blank" rel="noopener">' + esc(it.invoice) + '</a>' : esc(it.invoice);
+        const paidShown = fmt(it.insurerTotal !== undefined && it.insurerTotal !== null ? it.insurerTotal : it.paid);
+        let paidCell = paidShown;
         if (r.scanned && !['done', 'failed'].includes(x.status) && !state.busy) {
-          link += '<div class="upc-rem-chg text-muted">Read as ' + esc(it.invoice) + '. Wrong? <span class="upc-rem-fix"><input class="form-control" data-num="' + i + '" value="' + esc(it.invoice) + '" aria-label="Correct invoice number"> <button type="button" class="btn btn-outline-primary-light" data-act="recheck" data-i="' + i + '">Re-check</button></span></div>';
+          // Scanned: the invoice number and the amounts can be corrected against the paper copy, then checked again.
+          link += '<div class="upc-rem-chg text-muted">Read as ' + esc(it.invoice) + '. Wrong? Correct the number or the amounts, then <span class="upc-rem-fix"><input class="form-control" data-num="' + i + '" value="' + esc(it.invoice) + '" aria-label="Correct invoice number"> <button type="button" class="btn btn-outline-primary-light" data-act="recheck" data-i="' + i + '">Re-check</button></span></div>';
+          paidCell = it.lines && it.lines.length > 1
+            ? it.lines.map((l, k) => '<label class="upc-rem-amt"><span class="text-muted">' + esc(l.date ? UPC.dayLabel(Date.parse(l.date)) : 'Line ' + (k + 1)) + '</span> <input class="form-control" data-line="' + i + ':' + k + '" value="' + esc(plain(l.paid || 0)) + '" inputmode="decimal" aria-label="Paid for ' + esc(l.date || 'line ' + (k + 1)) + '"></label>').join('') +
+              '<div class="text-muted">' + paidShown + '</div>'
+            : '<input class="form-control upc-rem-amt-one" data-paid="' + i + '" value="' + esc(plain(it.paid)) + '" inputmode="decimal" aria-label="Correct the amount paid for ' + esc(it.invoice) + '">';
         }
         html += '<tr><td>' + (x.status === 'fix' ? '<input type="checkbox" data-i="' + i + '" ' + (x.selected !== false ? 'checked' : '') + ' aria-label="Apply to ' + esc(it.invoice) + '">' : '') + '</td>' +
-          '<td>' + link + '</td><td class="number">' + fmt(x.halaxyTotal) + '</td><td class="number">' + fmt(it.insurerTotal !== undefined && it.insurerTotal !== null ? it.insurerTotal : it.paid) + '</td>' +
+          '<td>' + link + '</td><td class="number">' + fmt(x.halaxyTotal) + '</td><td class="number">' + paidCell + '</td>' +
           '<td class="number">' + (x.shortfall ? fmt(x.shortfall) : '') + '</td>' +
           '<td><span class="upc-tag t-' + x.status + '">' + label + '</span> ' + esc(x.message) +
           (x.changes.length ? '<div class="upc-rem-chg">' + x.changes.map((c) => esc(c.date) + ': funder ' + fmt(c.from) + ' to ' + fmt(c.to) + ', patient pays ' + fmt(c.from - c.to)).join('<br>') + '</div>' : '') +
@@ -564,17 +611,30 @@
     }
   }
 
-  // A scanned invoice number was misread: try the corrected one.
+  // A scanned line was misread: check it again with the corrected invoice number and amounts.
   async function recheck(i) {
+    if (state.busy) return;
     const input = sh.querySelector('input[data-num="' + i + '"]');
     const digits = input && String(input.value).replace(/\D/g, '');
-    if (!digits || state.busy) return;
+    if (!digits) { status('Enter the invoice number, for example UPC-37536.'); return; }
     const item = state.results[i].item;
-    item.invoice = 'UPC-' + digits;
-    item.corrected = true;
+    const fix = { invoice: 'UPC-' + digits };
+    const one = sh.querySelector('input[data-paid="' + i + '"]');
+    const many = [...sh.querySelectorAll('input[data-line^="' + i + ':"]')];
+    const bad = [one, ...many].filter((el) => el && amountIn(el.value) === null);
+    if (bad.length) { status('"' + bad[0].value + '" is not an amount. Enter it as on the paper copy, for example 35.00.'); bad[0].focus(); return; }
+    if (one) fix.paid = amountIn(one.value);
+    if (many.length) { fix.lines = []; many.forEach((el) => { fix.lines[+el.dataset.line.split(':')[1]] = amountIn(el.value); }); }
+    correctItem(item, fix);
+    checkTotals(state.remit);
     state.busy = true;
     status('Checking ' + item.invoice + ' in Halaxy...');
-    try { state.results[i] = await matchItem(item); } finally { state.busy = false; render(); status('Checked ' + item.invoice + '.'); }
+    try { state.results[i] = await matchItem(item); } finally {
+      state.busy = false;
+      render();
+      const r = state.remit;
+      status('Checked ' + item.invoice + ' at ' + fmt(item.paid) + '.' + (r.checks && r.checks.paidTotal !== null ? (r.checks.paidRead === r.checks.paidTotal ? ' The amounts now add up to the remittance total.' : ' The amounts still don\'t add up to the remittance total.') : ''));
+    }
   }
 
   function confirmApply(list) {
@@ -681,7 +741,12 @@
       if (act && act.dataset.act === 'apply') apply();
       if (act && act.dataset.act === 'recheck') recheck(+act.dataset.i);
     });
-    sh.addEventListener('keydown', (e) => { if (e.target.classList && e.target.classList.contains('upc-rem-drop') && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); $('.upc-rem-drop input').click(); } });
+    sh.addEventListener('keydown', (e) => {
+      if (e.target.classList && e.target.classList.contains('upc-rem-drop') && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); $('.upc-rem-drop input').click(); }
+      const ds = e.target.dataset || {};
+      const idx = ds.num !== undefined ? ds.num : ds.paid !== undefined ? ds.paid : ds.line !== undefined ? ds.line.split(':')[0] : null;
+      if (idx !== null && e.key === 'Enter') { e.preventDefault(); recheck(+idx); }   // Enter in a correction box checks again
+    });
     sh.addEventListener('change', (e) => {
       const t = e.target;
       if (t.type === 'file') handleFile(t.files[0]);
@@ -728,5 +793,5 @@
   else start();
 
   // For tests and diagnostics: the reading and matching steps on their own.
-  window.upcRemittances = { version: VERSION, readPdf, toRows, understand, detect, matchItem, proposeLines, isoDate };
+  window.upcRemittances = { version: VERSION, readPdf, toRows, understand, detect, matchItem, proposeLines, isoDate, correctItem, checkTotals, amountIn };
 })();
