@@ -1,4 +1,6 @@
 # Runs every test on each pull request and on main, so "merge once the checks pass" is checked by GitHub.
+# The tests are split into five groups that run at the same time on separate machines (about 6 minutes instead of
+# about 17 in a row). Every test folder must be in exactly one group: the "all tests in a group" job checks that.
 name: tests
 on:
   pull_request:
@@ -9,12 +11,24 @@ permissions:
 jobs:
   tests:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        group:
+          - invoice-funder
+          - portal-fill
+          - bank-statement remittances
+          - review-requests loader patient-statuses ready-to-bill rebate-sync
+          - alerts block-reporting calendar-controls core feedback-alerts forecourt-lights health-check insurer-payments-due mobile-layout open-ended-patients outstanding-actions script-settings task-stamps
+    name: tests (${{ matrix.group }})
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: pip
+          cache-dependency-path: .github/workflows/tests.yml
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
@@ -22,5 +36,21 @@ jobs:
         run: |
           pip install playwright reportlab Pillow astral
           python -m playwright install --with-deps chromium
-      - name: Run all tests
-        run: python tools/run_tests.py
+      - name: Run this group's tests
+        run: python tools/run_tests.py ${{ matrix.group }}
+  every-test-in-a-group:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check every test folder is in a group
+        run: |
+          python3 - <<'EOF'
+          import pathlib, re
+          wf = pathlib.Path('.github/workflows/tests.yml').read_text()
+          groups = ' '.join(re.findall(r'^          - ([a-z0-9 -]+)$', wf, re.M)).split()
+          folders = sorted(p.name for p in pathlib.Path('tests').iterdir() if p.is_dir() and not p.name.startswith(('.', '_')) and list(p.glob('test_*.py')))
+          missing = [f for f in folders if f not in groups]
+          twice = sorted({g for g in groups if groups.count(g) > 1})
+          print('missing:', missing, 'twice:', twice)
+          assert not missing and not twice
+          EOF
