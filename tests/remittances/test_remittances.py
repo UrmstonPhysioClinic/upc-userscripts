@@ -172,6 +172,8 @@ async def halaxy(route):
                                                           "<input name='form[feeItemNumber]' value='PHY'><input name='form[_token]' value='tok-line'></form>" % (line['date'], fee / 100, reb / 100)})
         assert form.get('form[_token]') == 'tok-line', form
         if kind != 'p':
+            if S.pop('failLineDateOnce', False):
+                return await js({'status': 'FORM', 'message': '<form></form>', 'errors': ['Date could not be saved']})
             S['linedates'] = S.get('linedates', 0) + 1
             line['date'] = form['form[date]']
             return await js({'status': 'REFRESH'})
@@ -207,6 +209,8 @@ async def halaxy(route):
             # Halaxy only offers Active organisation invoices
             radios = ''.join("<input type='radio' name='form[orgInvoice]' value='%d'>" % fid for fid, f in S['funders'].items() if f.get('status', '') != 'issued')
             return await js({'status': 'FORM', 'message': "<form id='organisationBillForm'>%s</form>" % radios})
+        if S.pop('failClaimOnce', False):
+            return await js({'status': 'FORM', 'message': '<form></form>', 'errors': ['Could not bill the funder']})
         fid = int(form['form[orgInvoice]'])
         pend = p['pending'].pop(0)
         S['next_line'] += 1
@@ -306,6 +310,26 @@ async def main():
         check('excess proposed on earliest line', 'Excess' in rows[1] and '02-Oct-2026: funder £ 60.00 to £ 24.00, patient pays £ 36.00' in rows[1], rows[1])
         check('provider shortfall left for a person', 'By hand' in rows[2] and 'Provider shortfall' in rows[2], rows[2])
 
+        # Apply, but Halaxy refuses the date correction on the re-billed line: everything put back as it was, and a task
+        # for Carl (Carl, 12 Nov 2026)
+        S['failLineDateOnce'] = True
+        await pg.evaluate("document.querySelector('[data-upc-remittances]').querySelector('[data-act=apply]').click()")
+        await pg.evaluate("document.querySelector('[data-upc-remit-confirm] [data-a=yes]').click()")
+        await pg.wait_for_function("(document.querySelector('[data-upc-remittances] .upc-log') || {}).innerText && /Stopped:[\\s\\S]*Task added/.test(document.querySelector('[data-upc-remittances] .upc-log').innerText) && document.querySelector('[data-upc-remittances] .upc-log').innerText.includes('Finished')", timeout=300000)
+        log0 = await pg.evaluate("document.querySelector('[data-upc-remittances] .upc-log').innerText")
+        f2, p2 = S['funders'][102], S['patients'][202]
+        check('a failed move is put back: funder invoice as it was, same dates', sorted((l['amount'], l['date']) for l in f2['lines']) == [(6000, '02-Oct-2026'), (6000, '09-Oct-2026'), (6000, '16-Oct-2026')], f2['lines'])
+        check('a failed move is put back: patient rebate as it was, nothing waiting, Issued again',
+              [l['rebate'] for l in p2['lines']] == [6000, 6000, 6000] and not p2['pending'] and f2['status'] == 'issued', (p2, f2['status']))
+        tk = S['tasks'].get(102, [])
+        check('says it was put back, and a task for Carl on the funder invoice', 'Everything on UPC-40002 was put back as it was' in log0 and len(tk) == 1
+              and tk[0].get('form[title]') == 'Remittances stopped on UPC-40002: please check' and tk[0].get('form[linkPrGs][]') == '31' and 'put back as it was' in str(tk[0].get('form[comment]')), (log0[-600:], tk))
+        check('no excess task when the move failed', 202 not in S['tasks'], S['tasks'])
+        S['tasks'].clear(); S['statuses'] = []; S['linedates'] = 0
+        await pg.set_input_files('[data-upc-remittances] input[type=file]', str(pdfs['wpa']))
+        await pg.wait_for_function("document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr').length === 3 && !document.querySelector('[data-upc-remittances] [data-act=apply]').disabled", timeout=60000)
+        await pg.wait_for_timeout(300)
+
         # Apply
         S['log'].clear()
         await pg.evaluate("document.querySelector('[data-upc-remittances]').querySelector('[data-act=apply]').click()")
@@ -359,6 +383,23 @@ async def main():
         check('fee the insurer paid nothing for stays on the funder invoice at £0.00, correctly dated',
               res == 'ok' and [l['amount'] for l in f3] == [0] and [l['date'] for l in f3] == ['02-Oct-2026'], (res, f3))
         check('patient owes the fee, nothing left waiting to bill', not p3['pending'] and [l['rebate'] for l in p3['lines']] == [0], p3)
+        # A move that fails part way is put back as it was, at either stage (Carl, 12 Nov 2026)
+        S['funders'][104] = {'id': 104, 'number': 'UPC-40004', 'lines': [{'lineId': 1041, 'pid': 204, 'plineId': 2041, 'date': '02-Oct-2026', 'item': 'PHY', 'amount': 6000}], 'status': ''}
+        S['patients'][204] = {'id': 204, 'number': 'UPC-30004', 'lines': [{'lineId': 2041, 'date': '02-Oct-2026', 'item': 'PHY', 'fee': 6000, 'rebate': 6000}], 'pending': []}
+        f4, p4 = S['funders'][104], S['patients'][204]
+        as_was = lambda: [(l['amount'], l['date']) for l in f4['lines']] == [(6000, '02-Oct-2026')] and [l['rebate'] for l in p4['lines']] == [6000] and not p4['pending']
+        move = """(to) => UPC.invoice.fetch('104').then((f) => UPC.rebate.plan('104', f.lines[0].lineId, to)).then((plan) => UPC.rebate.apply(plan))
+            .then((r) => ({ ok: true, newLineId: r.newLineId }), (e) => ({ ok: false, message: e.message, undone: e.undone }))"""
+        S['failClaimOnce'] = True
+        r = await pg.evaluate(move, 2400)
+        check('re-billing refused: rebate put back, fee billed back to the funder on its own date', not r['ok'] and r['undone'] is True and 'Everything was put back as it was' in r['message'] and as_was(), (r, f4, p4))
+        S['failLineDateOnce'] = True
+        r = await pg.evaluate(move, 2400)
+        check('date correction refused: re-billed line taken off, rebate put back, original billed back', not r['ok'] and r['undone'] is True and as_was(), (r, f4, p4))
+        r = await pg.evaluate(move, 2400)
+        back = await pg.evaluate("""(id) => UPC.rebate.plan('104', id, 6000).then((plan) => UPC.rebate.apply(plan)).then(() => 'ok', (e) => e.message)""", r.get('newLineId'))
+        check('a finished move can be moved back by its new line (as Remittances does when a later fee fails)', r['ok'] and back == 'ok' and as_was(), (r, back, f4, p4))
+
         posts = S.get('task_posts', 0)
         again = await pg.evaluate("""(async () => { const t = await (await fetch('/a/pr/555/task/invoice/202/list-data')).json();
             return UPC.tasks.addToInvoice('202', { title: t[0].title, assignee: 'Carl Healy', priority: 2, due: '09-Nov-2026', comment: 'x' }); })()""")

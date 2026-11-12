@@ -1,5 +1,11 @@
 # Changelog
 
+## Put back as it was when something fails, 12 Nov 2026 (beta)
+- Core 0.1.38: moving part of a fee between a funder invoice and a patient invoice is now all or nothing (Carl, 12 Nov 2026: a job shouldn't be left half done). If Halaxy refuses any step after something was changed, the fee is put back exactly as it was (rebate, the line billed back to the same funder invoice on its own date, Issued again if it was) and the message says so. If putting it back fails too, it says exactly what to check.
+- Remittances 0.3.9: when one fee of an invoice can't be moved, the fees already moved on that invoice are moved back too, so the invoice is as it was before Remittances started on it, and a task "Remittances stopped on UPC-...: please check" is added for Carl on the funder invoice saying why.
+- Rebate sync 0.3.2: when a change stops, it is put back (core) and a task "Rebate sync stopped on UPC-...: please check" is added for Carl on the funder invoice.
+- Bank statement 0.1.5: every invoice on a bank line is checked before any payment is recorded, so a surprise (an invoice now showing a different amount) stops it with nothing recorded. If Halaxy refuses a payment part way, it lists what was recorded and adds a task for Carl; Record again carries on from there. Recorded payments aren't taken off by the script yet: that needs a capture of Halaxy's payment delete.
+
 ## Bank statement: paid in full, and safer matching, 12 Nov 2026 (beta)
 - Fix (core 0.1.37): an invoice paid in full shows as a "Receipt" with no Outstanding row, so after recording a payment that cleared it, Bank statement said it couldn't check it and stopped before the next invoice on the same bank line (Carl, 12 Nov 2026: UPC-38023 recorded, UPC-37981 not). A Receipt, or an invoice marked Paid in full, now counts as nothing outstanding. Pressing Record again carries on: the invoice already recorded is skipped.
 - Bank statement 0.1.4: only invoices dated in the 120 days before a payment are matched to it, and an amount on its own (one invoice, or the only set that adds up) is offered to tick, never ticked. Once a payment's own invoices were paid, it had reached back to older unpaid invoices that happened to add up (Carl, 12 Nov 2026). Ticked by itself only with evidence: our invoice number in the bank reference, or the invoices one remittance covers.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Rebate sync (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.1
+// @version      0.3.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/rebate-sync.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/rebate-sync.user.js
@@ -16,7 +16,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '0.3.1';
+  const VERSION = '0.3.2';
   const MONEY_FIELDS = ['form[amount]', 'form[rebate]', 'form[tax]', 'form[taxManual]'];
 
   const snapshots = {};      // lineId -> { fields: [[name, value]], at }
@@ -174,6 +174,18 @@
     } catch (e) {
       render(`<p class="upc-err upc-gap">${esc(e.message || e)}</p>`);
       d.buttons([['Reload', () => location.reload(), true]]);
+      // A task for Carl to look at why it failed (Carl, 12 Nov 2026). The core library has already put it back as it
+      // was if it could; the message says which.
+      try {
+        const d0 = new Date(), due = String(d0.getDate()).padStart(2, '0') + '-' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d0.getMonth()] + '-' + d0.getFullYear();
+        await U().tasks.addToInvoice(plan.funderInvoiceId, {
+          title: 'Rebate sync stopped on ' + plan.funderNumber + ': please check', assignee: 'Carl Healy', priority: 3, due, by: 'Rebate sync',
+          comment: ['Changing the ' + plan.date + ' fee from ' + money(plan.origRebate) + ' to ' + money(plan.newRebate) + ' (patient invoice ' + plan.patientNumber + ') stopped: ' + (e.message || e),
+            e.undone === false ? 'It could NOT all be put back: check both invoices.' : 'Everything was put back as it was.'],
+        });
+        steps.push('Task added for Carl Healy on ' + plan.funderNumber + '.');
+        render(`<p class="upc-err upc-gap">${esc(e.message || e)}</p>`);
+      } catch (te) { /* the error is on screen */ }
     } finally {
       busy = false;
     }

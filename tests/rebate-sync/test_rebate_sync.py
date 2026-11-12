@@ -144,12 +144,26 @@ async def halaxy(route):
         if req.method == 'GET':
             radios = ''.join("<input type='radio' name='form[orgInvoice]' value='%d'>" % fid for fid, f in S['funders'].items() if f.get('status', '') != 'issued')   # Active only, as Halaxy
             return await js({'status': 'FORM', 'message': "<form id='organisationBillForm'>%s</form>" % radios})
+        if S.pop('failClaimOnce', False):
+            return await js({'status': 'FORM', 'message': '<form></form>', 'errors': ['Could not bill the funder']})
         fid = int(form['form[orgInvoice]'])
         pend = p['pending'].pop(0)
         S['next_line'] += 1
         slipped = (datetime.datetime.strptime(pend['date'], '%d-%b-%Y') + datetime.timedelta(days=1)).strftime('%d-%b-%Y')   # Halaxy slips the date
         S['funders'][fid]['lines'].append({'lineId': S['next_line'], 'pid': p['id'], 'plineId': pend['plineId'], 'date': slipped, 'item': 'PHY', 'amount': pend['amount']})
         return await js({'status': 'REFRESH'})
+    m = re.search(r'/task/invoice/(\d+)/list-data$', path)
+    if m:
+        return await js([{'id': k, 'title': t.get('form[title]'), 'status': 'Open'} for k, t in enumerate(S.setdefault('tasks', {}).get(int(m.group(1)), []))])
+    m = re.search(r'/task/new/invoice/(\d+)$', path)
+    if m:
+        if req.method == 'GET':
+            return await js({'status': 'FORM', 'message': "<form id='form_task_edit' name='form' method='post'><input name='form[title]' value=''>"
+                             "<input type='radio' name='form[actionerType]' value='1' checked><select name='form[linkPrGs][]' multiple><option value='31'>Carl Healy</option></select>"
+                             "<input type='radio' name='form[priority]' value='2' checked><input type='radio' name='form[priority]' value='3'>"
+                             "<input name='form[displayDueDate]' value=''><textarea name='form[comment]'></textarea><input type='hidden' name='form[_token]' value='tok-task'></form>"})
+        S.setdefault('tasks', {}).setdefault(int(m.group(1)), []).append(form)
+        return await js({'status': 'POPUP', 'url': '/a/pr/555/task/list/invoice/%s' % m.group(1)})
     m = re.search(r'/invoice/(?:\d+/)?(\d+)/?$', path)
     if m and req.method == 'GET':
         i = int(m.group(1))
@@ -264,6 +278,27 @@ async def main():
         await edit(pg, 902, 'amount', '45.00')
         txt = await dialog_text(pg)
         check('invoices already disagree: not saved, says why, nothing changed', 'Not saved' in txt and 'disagree' in txt and not [x for x in S['log'] if '/remove' in x[2] or x[1] == 'POST'], (txt, S['log']))
+        await ctx.close()
+
+        # 6. Halaxy refuses the re-bill part way (Issued funder invoice): everything put back, Issued again, a task for Carl
+        S.clear(); S.update(fresh())
+        S['funders'][101]['status'] = 'issued'
+        S['failClaimOnce'] = True
+        ctx = await context(browser)
+        pg = await ctx.new_page()
+        await pg.goto('https://eu.halaxy.com/a/pr/555/invoice/201')
+        await edit(pg, 901, 'rebate', '45.00')
+        await dialog_text(pg)
+        await press(pg, 'Update both')
+        await pg.wait_for_function("!!document.querySelector('.upc-err') && /Task added/.test(document.body.textContent)", timeout=60000)
+        txt = await pg.evaluate("document.body.textContent")
+        f, pt = S['funders'][101], S['patients'][201]
+        check('stopped part way: put back as it was (funder £ 60.00 on its date, rebate £ 60.00, nothing waiting)',
+              [(l['amount'], l['date']) for l in f['lines']] == [(6000, '02-Oct-2026')] and pt['lines'][0]['rebate'] == 6000 and not pt['pending'], (f, pt))
+        check('stopped part way: Issued again', f['status'] == 'issued', S.get('statuses'))
+        tk = S.get('tasks', {}).get(101, [])
+        check('says so, and a task for Carl on the funder invoice', 'Everything was put back as it was' in txt and len(tk) == 1 and tk[0].get('form[title]') == 'Rebate sync stopped on UPC-40001: please check'
+              and tk[0].get('form[linkPrGs][]') == '31' and 'Everything was put back' in tk[0].get('form[comment]', ''), (txt[-400:], tk))
         await ctx.close()
         await browser.close()
     print('\n%d failed' % len(FAILS) if FAILS else '\nAll passed')

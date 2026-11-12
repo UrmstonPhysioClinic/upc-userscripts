@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.8
+// @version      0.3.9
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -31,7 +31,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.3.8';
+  const VERSION = '0.3.9';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -794,10 +794,12 @@
     for (const x of list) {
       say(x.item.invoice + ':');
       const moved = {};   // per patient invoice: { number, lines, owes }
+      const doneMoves = [];   // this invoice's fees moved so far, to put back if a later one fails
       try {
         for (const c of x.changes) {
           const plan = await UPC.rebate.plan(x.invoiceId, c.lineId, c.to);
           const res = await UPC.rebate.apply(plan, (t) => say('  ' + t));
+          doneMoves.push({ c, plan, res });
           const m = moved[plan.patientInvoiceId] || (moved[plan.patientInvoiceId] = { number: plan.patientNumber, lines: [], owes: null });
           m.lines.push((plan.patientDate || plan.date) + ' ' + fmt(c.from - c.to) + ' (' + (state.remit.insurer || 'insurer') + ' paid ' + fmt(c.to) + ')');
           if (res && res.patientOutstanding !== null && res.patientOutstanding !== undefined) m.owes = res.patientOutstanding;
@@ -819,9 +821,32 @@
           }
         }
       } catch (e) {
+        // All or nothing for each invoice (Carl, 12 Nov 2026): the fee that failed was put back by the core library;
+        // the fees already moved on this invoice are moved back too, newest first. Then a task for Carl.
+        const failed = e.message || String(e);
+        const left = e.undone === false ? [failed] : [];
+        for (const d of doneMoves.slice().reverse()) {
+          try {
+            say('  Moving the ' + (d.plan.patientDate || d.plan.date) + ' fee back to ' + fmt(d.c.from) + ' on ' + x.item.invoice);
+            const back = await UPC.rebate.plan(x.invoiceId, d.res.newLineId, d.c.from);
+            await UPC.rebate.apply(back, (t) => say('    ' + t));
+          } catch (u) {
+            left.push('the ' + (d.plan.patientDate || d.plan.date) + ' fee is still at ' + fmt(d.c.to) + ' on ' + x.item.invoice + ' (should be ' + fmt(d.c.from) + '; ' + (u.message || u) + ')');
+          }
+        }
+        const putBack = !left.length;
         x.status = 'failed';
-        x.error = e.message || String(e);
+        x.error = failed.replace(/ Everything was put back as it was\.$/, '') + (putBack ? ' Everything on ' + x.item.invoice + ' was put back as it was.' : ' Not everything could be put back: see the task on ' + x.item.invoice + '.');
         say('  Stopped: ' + x.error, true);
+        try {
+          await UPC.tasks.addToInvoice(x.invoiceId, {
+            title: 'Remittances stopped on ' + x.item.invoice + ': please check', assignee: TASK_FOR, priority: 3, due: todayLabel(), by: 'Remittances',
+            comment: ['Moving the excess (' + fmt(x.shortfall) + ') stopped: ' + failed,
+              putBack ? 'Everything was put back as it was before Remittances started on this invoice.' : 'Not put back: ' + left.join('; '),
+              'From the ' + (state.remit.insurer || 'insurer') + ' remittance' + (state.remit.date ? ' ' + state.remit.date : '') + (state.remit.reference ? ', ref ' + state.remit.reference : '')],
+          });
+          say('  Task added for ' + TASK_FOR + ' on ' + x.item.invoice + '.');
+        } catch (te) { say('  The task could not be added (' + (te.message || te) + '). Please note this one by hand.', true); }
       }
     }
     // A fixed comment Bank statement reads (Carl, 11 and 12 Nov 2026): the reference (Bupa's BACS reference is the bank

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.37
+// @version      0.1.38
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.37';
+  const VERSION = '0.1.38';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -537,59 +537,111 @@
     if (patient0.pending.length) throw new UPCError(patient0.number + ' already has an amount waiting to be billed to a funder. Nothing was changed.');
     return withActive(funderInvoiceId, plan.funderNumber, say, () => moveSteps(plan, funder, say));
   }
+  // Takes a funder line off its invoice (Halaxy's "Revert the fee back to the patient"): it then waits on the patient invoice.
+  async function revertLine(lineId) {
+    const removeJson = await http.json('/invoice/line/' + lineId + '/remove?clicked=' + Date.now());
+    const m = String(removeJson && removeJson.message).match(/case\s+'delete'\s*:[\s\S]*?url\s*=\s*"([^"]+)"/);
+    if (!m) throw new UPCError('Could not find Halaxy\'s revert option for this line.');
+    http.expectRefresh(await http.json(m[1]), 'Reverting the funder line');
+  }
+  // Saves fields on a patient fee (the fee edit pop-up), everything else as Halaxy filled it.
+  async function saveLineFields(lineId, set, what) {
+    const fresh = await lineForm(lineId);
+    const want = Object.assign({}, set);
+    delete want['form[_token]'];
+    const pairs = fresh.map(([k, v]) => [k, k in want ? want[k] : v]);
+    Object.keys(want).forEach((k) => { if (!fresh.some(([x]) => x === k)) pairs.push([k, want[k]]); });
+    http.expectRefresh(await http.postForm('/invoice/line/' + lineId + '/edit', pairs), what);
+  }
+
+  // The steps of a move. If any step fails after something was changed, everything is put back as it was (Carl,
+  // 12 Nov 2026: "any work that was started reverted back to the original state"): the error says whether that
+  // worked (error.undone true), or exactly what is left (error.undone false).
   async function moveSteps(plan, funder, say) {
     const { funderInvoiceId, funderLineId, patientInvoiceId, patientLineId, origRebate, newRebate } = plan;
-    let patient;
-    say('Reverting the ' + plan.date + ' line to ' + plan.patientNumber);
-    const removeJson = await http.json('/invoice/line/' + funderLineId + '/remove?clicked=' + Date.now());
-    const m = String(removeJson && removeJson.message).match(/case\s+'delete'\s*:[\s\S]*?url\s*=\s*"([^"]+)"/);
-    if (!m) throw new UPCError('Could not find Halaxy\'s revert option for this line. Nothing was changed.');
-    http.expectRefresh(await http.json(m[1]), 'Reverting the funder line');
-
-    patient = await invoice.fetch(patientInvoiceId);
-    if (patient.pending.length !== 1 || patient.pending[0].amount !== origRebate) {
-      throw new UPCError('After reverting, ' + patient.number + ' does not show ' + money.fmt(origRebate) + ' waiting to bill. Open it and use Invoice Funder to re-bill it to ' + plan.funderNumber + '.');
-    }
-
-    say('Setting the rebate to ' + money.fmt(newRebate));
+    let stage = 'start';
+    const origFields = {};
     try {
-      const fresh = await lineForm(patientLineId);
-      const set = Object.assign({}, plan.overrides || {}, { 'form[rebate]': money.plain(newRebate) });
-      delete set['form[_token]'];
-      const pairs = fresh.map(([k, v]) => [k, k in set ? set[k] : v]);
-      Object.keys(set).forEach((k) => { if (!fresh.some(([x]) => x === k)) pairs.push([k, set[k]]); });
-      http.expectRefresh(await http.postForm('/invoice/line/' + patientLineId + '/edit', pairs), 'Saving the new rebate');
-    } catch (e) {
-      say('Saving the rebate failed, putting the original back on ' + plan.funderNumber);
-      await rebill(patientInvoiceId, funderInvoiceId, origRebate).catch(() => {});
-      throw e;
-    }
+      // What the patient fee shows now, to put back if needed.
+      const before = await lineForm(patientLineId);
+      Object.keys(Object.assign({ 'form[rebate]': 1 }, plan.overrides || {})).forEach((k) => { const p = before.find(([x]) => x === k); if (p) origFields[k] = p[1]; });
 
-    // Re-bill what the funder now owes, £0 included, so the fee stays on the funder invoice at that
-    // amount (Carl, 9 Nov 2026: a £0.00 line, never a missing one). Halaxy offers £0 to bill like any amount.
-    say('Re-billing ' + money.fmt(newRebate) + ' to ' + plan.funderNumber);
-    await rebill(patientInvoiceId, funderInvoiceId, newRebate);
+      say('Reverting the ' + plan.date + ' line to ' + plan.patientNumber);
+      await revertLine(funderLineId);
+      stage = 'reverted';
+      const patient = await invoice.fetch(patientInvoiceId);
+      if (patient.pending.length !== 1 || patient.pending[0].amount !== origRebate) {
+        throw new UPCError('After reverting, ' + patient.number + ' does not show ' + money.fmt(origRebate) + ' waiting to bill.');
+      }
 
-    let fAfter = await invoice.fetch(funderInvoiceId);
-    const before = new Set(funder.lines.map((l) => l.lineId));
-    const added = fAfter.lines.filter((l) => !before.has(l.lineId) && l.patientInvoiceId === patientInvoiceId && l.item === plan.item);
-    const problems = [];
-    if (fAfter.lines.some((l) => l.lineId === funderLineId)) problems.push('the original line is still on ' + fAfter.number);
-    {
+      say('Setting the rebate to ' + money.fmt(newRebate));
+      stage = 'rebate';   // from here the rebate may have changed
+      await saveLineFields(patientLineId, Object.assign({}, plan.overrides || {}, { 'form[rebate]': money.plain(newRebate) }), 'Saving the new rebate');
+
+      // Re-bill what the funder now owes, £0 included, so the fee stays on the funder invoice at that
+      // amount (Carl, 9 Nov 2026: a £0.00 line, never a missing one). Halaxy offers £0 to bill like any amount.
+      say('Re-billing ' + money.fmt(newRebate) + ' to ' + plan.funderNumber);
+      await rebill(patientInvoiceId, funderInvoiceId, newRebate);
+      stage = 'rebilled';
+
+      let fAfter = await invoice.fetch(funderInvoiceId);
+      const known = new Set(funder.lines.map((l) => l.lineId));
+      const added = fAfter.lines.filter((l) => !known.has(l.lineId) && l.patientInvoiceId === patientInvoiceId && l.item === plan.item);
       const nl = added.filter((l) => l.amount === newRebate);
-      if (nl.length !== 1) problems.push('no new ' + money.fmt(newRebate) + ' line found on ' + fAfter.number);
-      else if (plan.patientDate && nl[0].date !== plan.patientDate) {
+      if (fAfter.lines.some((l) => l.lineId === funderLineId)) throw new UPCError('The original line is still on ' + fAfter.number + '.');
+      if (nl.length !== 1) throw new UPCError('No new ' + money.fmt(newRebate) + ' line found on ' + fAfter.number + '.');
+      if (plan.patientDate && nl[0].date !== plan.patientDate) {
         // Halaxy can give the re-billed line the wrong date too: set it to the patient fee's date.
         say('Correcting the date Halaxy gave the re-billed line: ' + nl[0].date + ' to ' + plan.patientDate);
-        try { await invoice.setLineDate(nl[0].lineId, plan.patientDate); fAfter = await invoice.fetch(funderInvoiceId); }
-        catch (e) { problems.push('the re-billed line on ' + fAfter.number + ' is dated ' + nl[0].date + ' instead of ' + plan.patientDate + ' (' + (e.message || e) + ')'); }
+        await invoice.setLineDate(nl[0].lineId, plan.patientDate);
+        fAfter = await invoice.fetch(funderInvoiceId);
       }
+      const pAfter = await invoice.fetch(patientInvoiceId);
+      if (fAfter.total !== funder.total - origRebate + newRebate) throw new UPCError(fAfter.number + ' total is ' + money.fmt(fAfter.total) + ', expected ' + money.fmt(funder.total - origRebate + newRebate) + '.');
+      if (pAfter.pending.length) throw new UPCError(pAfter.number + ' still has an amount waiting to bill.');
+      return { funderTotal: fAfter.total, patientOutstanding: pAfter.outstanding, newLineId: nl[0].lineId };
+    } catch (e) {
+      const why = (e && e.message) || String(e);
+      if (stage === 'start') { const err = new UPCError(why + ' Nothing was changed.'); err.undone = true; throw err; }
+      say('Stopped (' + why + '). Putting ' + plan.funderNumber + ' and ' + plan.patientNumber + ' back as they were...');
+      try {
+        await undoMove(plan, funder, stage, origFields, say);
+      } catch (u) {
+        const err = new UPCError(why + ' Putting it back also failed: ' + ((u && u.message) || u) + ' Check ' + plan.funderNumber + ' (the ' + plan.date + ' fee should be ' + money.fmt(origRebate) +
+          ') and ' + plan.patientNumber + ' (its rebate should be ' + money.fmt(origRebate) + ', with nothing waiting to bill).');
+        err.undone = false;
+        throw err;
+      }
+      const err = new UPCError(why + ' Everything was put back as it was.');
+      err.undone = true;
+      throw err;
     }
-    const pAfter = await invoice.fetch(patientInvoiceId);
-    if (fAfter.total !== funder.total - origRebate + newRebate) problems.push(fAfter.number + ' total is ' + money.fmt(fAfter.total) + ', expected ' + money.fmt(funder.total - origRebate + newRebate));
-    if (pAfter.pending.length) problems.push(pAfter.number + ' still has an amount waiting to bill');
-    if (problems.length) throw new UPCError('Changes were made but the result looks wrong: ' + problems.join('; ') + '. Check ' + plan.patientNumber + ' and ' + fAfter.number + ' before trying again.');
-    return { funderTotal: fAfter.total, patientOutstanding: pAfter.outstanding };
+  }
+
+  // Puts a move back: the re-billed line (if any) taken off again, the patient fee's fields as they were, the original
+  // amount billed back to the same funder invoice with the original line's date, then checked against how it was.
+  async function undoMove(plan, funder, stage, origFields, say) {
+    const { funderInvoiceId, patientInvoiceId, patientLineId, origRebate } = plan;
+    if (stage === 'rebilled') {
+      const f = await invoice.fetch(funderInvoiceId);
+      const known = new Set(funder.lines.map((l) => l.lineId));
+      const added = f.lines.filter((l) => !known.has(l.lineId) && l.patientInvoiceId === patientInvoiceId);
+      if (added.length !== 1) throw new UPCError('Could not tell which line was re-billed to ' + f.number + '.');
+      say('  Taking the re-billed line off again');
+      await revertLine(added[0].lineId);
+    }
+    if (stage === 'rebate' || stage === 'rebilled') {
+      say('  Setting the rebate back to ' + money.fmt(origRebate));
+      await saveLineFields(patientLineId, origFields, 'Putting the rebate back');
+    }
+    say('  Billing ' + money.fmt(origRebate) + ' back to ' + plan.funderNumber);
+    await rebill(patientInvoiceId, funderInvoiceId, origRebate);
+    const f = await invoice.fetch(funderInvoiceId);
+    const known = new Set(funder.lines.map((l) => l.lineId));
+    const back = f.lines.filter((l) => !known.has(l.lineId) && l.patientInvoiceId === patientInvoiceId && l.amount === origRebate);
+    if (back.length === 1 && back[0].date !== plan.date) await invoice.setLineDate(back[0].lineId, plan.date);
+    const f2 = await invoice.fetch(funderInvoiceId), p2 = await invoice.fetch(patientInvoiceId);
+    if (f2.total !== funder.total || p2.pending.length) throw new UPCError(f2.number + ' shows ' + money.fmt(f2.total) + ' (was ' + money.fmt(funder.total) + ')' + (p2.pending.length ? ' and ' + p2.number + ' still has an amount waiting to bill' : '') + '.');
   }
 
   const rebate = { plan: planMove, apply: applyMove, resume: resumeMove };
