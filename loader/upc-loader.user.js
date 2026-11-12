@@ -485,7 +485,9 @@
       sh.querySelectorAll('input[name="ch"]').forEach((r) => { r.checked = r.value === channel; });
       const list = idx && idx.scripts.length ? idx.scripts : null;
       let last = '';
-      $('.list').innerHTML = list ? grouped(list).map((s) => {
+      const rows = list ? grouped(list) : [];
+      if (rows.every((r) => r.group === 'Other')) last = 'Other';   // no grouped names yet (stable before promotion): no headings
+      $('.list').innerHTML = list ? rows.map((s) => {
         const here = ran[s.file] ? 'running on this page' : (applies(s.meta, location.href) ? (off[s.file] ? 'switched off' : 'starts on next page') : 'not used on this page');
         const head = s.group !== last ? `<div class="grp">${esc(s.group)}</div>` : '';
         last = s.group;

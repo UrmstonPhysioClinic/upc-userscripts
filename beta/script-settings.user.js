@@ -108,7 +108,7 @@
     } else {
       h += '<div class="upc-ss-chan">' + ['stable', 'beta'].map((c) => '<label><input type="radio" name="upc-ss-chan" value="' + c + '"' + (st.chosen === c ? ' checked' : '') + '> ' +
         (c === 'stable' ? 'Stable (clinic PCs)' : 'Beta (testing new changes)') + '</label>').join('') + '</div>';
-      let last = '';
+      let last = st.scripts.every((x) => parseName(x.name).group === 'Other') ? 'Other' : '';   // no grouped names: no headings
       h += st.scripts.length ? '<table class="table table-striped table-bordered w-100"><tbody>' + sortGrouped(st.scripts, (x) => x.name).map((o) => o.x).map((x) =>
         ((parseName(x.name).group !== last && (last = parseName(x.name).group)) ? '<tr class="upc-ss-grp"><th colspan="2">' + esc(last) + '</th></tr>' : '') +
         '<tr><td><label><input type="checkbox" data-file="' + esc(x.file) + '"' + (x.on ? ' checked' : '') + '> ' + esc(shortName(x.name)) + '</label></td>' +
