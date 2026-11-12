@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Bank statement (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.4
+// @version      0.1.5
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
@@ -38,11 +38,12 @@
   if (window.__hxBankStatement) return;
   window.__hxBankStatement = true;
 
-  const VERSION = '0.1.4';
+  const VERSION = '0.1.5';
   const ROUTE = 'upc-bank-statement';
   const MENU_CLS = 'upc-bank-menu';
   const ALLOWED = ['Carl Healy'];
   const METHOD = 'Direct Deposit';
+  const TASK_FOR = 'Carl Healy';
   const LOOK_BACK_MONTHS = 18;
   const NEAR_BEFORE = 3, NEAR_AFTER = 14;   // days the bank date may be before / after the remittance's date
   const USUAL_DAYS = 5;   // Carl, 12 Nov 2026: Bupa (and AXA) almost always pay 2 days after the remittance date
@@ -308,12 +309,28 @@
     const paid = before;
     // Progress is saved after each invoice, so a stop part way can carry on from where it stopped.
     const save = (partial) => { const d = store.get('done', {}); d[r.key] = { at: Date.now(), invoices: paid, insurer: r.insurer, partial }; store.set('done', d); };
+    // Check every invoice first, so anything unexpected stops it before a single payment is recorded (Carl, 12 Nov
+    // 2026: a job shouldn't be left half done).
+    const now = [];
     for (const i of set) {
-      // Already recorded from this bank line (an earlier try that stopped part way): don't record it twice.
-      const now = await U().invoice.fetch(i.id);
-      if (now.paymentRows.some((t) => t.includes(note))) { paid.push({ id: i.id, number: i.number, amount: i.balance, already: true }); save(true); continue; }
+      say('Checking ' + i.number + '...');
+      const inv = await U().invoice.fetch(i.id);
+      const already = inv.paymentRows.some((t) => t.includes(note));   // an earlier try that stopped part way
+      if (!already && inv.outstanding !== i.balance) {
+        throw new (U().Error)(i.number + ' now shows ' + (inv.outstanding === null ? 'no outstanding amount' : fmt(inv.outstanding) + ' outstanding') + ', not ' + fmt(i.balance) + '. Nothing was recorded.');
+      }
+      now.push({ i, inv, already });
+    }
+    for (const { i, inv, already } of now) {
+      if (already) { paid.push({ id: i.id, number: i.number, amount: i.balance, already: true }); save(true); continue; }
       say('Recording ' + fmt(i.balance) + ' on ' + i.number + '...');
-      await U().invoice.payOffline(i.id, { method: METHOD, date: isoLabel(r.date), amount: i.balance, note, before: now });
+      try {
+        await U().invoice.payOffline(i.id, { method: METHOD, date: isoLabel(r.date), amount: i.balance, note, before: inv });
+      } catch (e) {
+        e.partway = paid.length > 0;
+        if (e.partway) e.message += ' Already recorded from this payment: ' + paid.map((x) => x.number + ' ' + fmt(x.amount)).join(', ') + '.';
+        throw e;
+      }
       paid.push({ id: i.id, number: i.number, amount: i.balance });
       save(true);
     }
@@ -412,7 +429,25 @@
     for (const r of list) {
       r.error = '';
       try { await record(r, (t) => { state.status = t; render(); }); }
-      catch (e) { r.error = 'Not all recorded: ' + (e.message || e) + ' Check the invoices before trying again.'; }
+      catch (e) {
+        const part = !!e.partway;
+        r.error = (part ? 'Stopped part way: ' : 'Not recorded: ') + (e.message || e) + (part ? ' Recording again carries on from where it stopped.' : '');
+        // A task for Carl to look at why it stopped. A payment already recorded can't be taken off by the script
+        // yet (Halaxy's payment delete hasn't been captured), so it says which ones were.
+        if (part) {
+          const set = r.options[r.pick] || [];
+          const first = set[0];
+          if (first) {
+            try {
+              await U().tasks.addToInvoice(first.id, {
+                title: 'Bank statement stopped on ' + r.insurer + ' ' + fmt(r.amount) + ' (' + isoLabel(r.date) + '): please check', assignee: TASK_FOR, priority: 3, due: U().dayLabel(Date.now()), by: 'Bank statement',
+                comment: ['Recording the ' + r.insurer + ' payment of ' + fmt(r.amount) + ' (bank ' + isoLabel(r.date) + (r.ref ? ', ref ' + r.ref : '') + ') on ' + set.map((i) => i.number).join(', ') + ' stopped: ' + (e.message || e)],
+              });
+              r.error += ' Task added for ' + TASK_FOR + '.';
+            } catch (te) { /* the error is on screen */ }
+          }
+        }
+      }
       render();
     }
     state.busy = false;

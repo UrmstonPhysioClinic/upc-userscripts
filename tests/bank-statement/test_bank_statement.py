@@ -201,6 +201,21 @@ async def halaxy(route):
         S['inv'][iid][3] = bal - round(float(f['form[amount]']) * 100)
         # As live (12 Nov 2026): recorded, but the answer is neither OK nor REFRESH.
         return await route.fulfill(body=json.dumps({'status': 'POPUP', 'url': '/a/pr/555/invoice/%d' % iid}), content_type='text/html')
+    m = __import__('re').match(r'^/a/pr/555/task/invoice/(\d+)/list-data$', p)
+    if m:
+        return await route.fulfill(body=json.dumps([{'id': k, 'title': t.get('form[title]'), 'status': 'Open'} for k, t in enumerate(S.setdefault('tasks', {}).get(int(m.group(1)), []))]), content_type='application/json')
+    m = __import__('re').match(r'^/a/pr/555/task/new/invoice/(\d+)$', p)
+    if m:
+        iid = int(m.group(1))
+        if req.method == 'GET':
+            form_html = ("<form id='form_task_edit' name='form' method='post'><input name='form[title]' value=''>"
+                         "<input type='radio' name='form[actionerType]' value='1' checked><select name='form[linkPrGs][]' multiple><option value='31'>Carl Healy</option></select>"
+                         "<input type='radio' name='form[priority]' value='1'><input type='radio' name='form[priority]' value='2' checked><input type='radio' name='form[priority]' value='3'>"
+                         "<input name='form[displayDueDate]' value=''><textarea name='form[comment]'></textarea><input type='hidden' name='form[_token]' value='tok-task'></form>")
+            return await route.fulfill(body=json.dumps({'status': 'FORM', 'title': 'Add task for invoice', 'message': form_html}), content_type='application/json')
+        f = dict(urllib.parse.parse_qsl(req.post_data or '', keep_blank_values=True))
+        S.setdefault('tasks', {}).setdefault(iid, []).append(f)
+        return await route.fulfill(body=json.dumps({'status': 'POPUP', 'url': '/a/pr/555/task/list/invoice/%d' % iid}), content_type='application/json')
     m = __import__('re').match(r'^/a/pr/555/invoice/(\d+)/?$', p)
     if m:
         return await route.fulfill(body=invoice_html(int(m.group(1))), content_type='text/html')
@@ -247,7 +262,7 @@ async def main():
     make_statement(pdf)
     async with async_playwright() as p:
         browser = await p.chromium.launch()
-        S.update({'log': [], 'posts': [], 'posts_all': [], 'inv': fresh(), 'short': {}, 'user': 'Carl Healy'})
+        S.update({'log': [], 'posts': [], 'posts_all': [], 'inv': fresh(), 'short': {}, 'user': 'Carl Healy', 'tasks': {}})
         ctx = await context(browser)
         pg = await ctx.new_page()
         errors = []
@@ -327,7 +342,7 @@ async def main():
         await ctx.close()
 
         # an invoice shows less outstanding than the report (paid meanwhile): not paid, error on its row
-        S.update({'log': [], 'posts': [], 'posts_all': [], 'inv': fresh(), 'short': {911: 1000}, 'user': 'Carl Healy'})
+        S.update({'log': [], 'posts': [], 'posts_all': [], 'inv': fresh(), 'short': {911: 1000}, 'user': 'Carl Healy', 'tasks': {}})
         ctx = await context(browser)
         pg = await ctx.new_page()
         await pg.goto(URL)
@@ -338,11 +353,12 @@ async def main():
         await pg.click('[data-upc-bank-confirm] [data-c=yes]')
         await pg.wait_for_function("document.querySelector('[data-upc-bank-statement] tbody tr:nth-child(2) .upc-err')", timeout=30000)
         err = await pg.evaluate("document.querySelector('[data-upc-bank-statement] tbody tr:nth-child(2) .upc-err').textContent")
-        check('less outstanding than expected: nothing recorded, says so', not S['posts'] and 'only £ 65.00 outstanding' in err, (err, S['posts']))
+        check('less outstanding than expected: nothing recorded, says so', not S['posts'] and 'now shows £ 65.00 outstanding' in err and 'Nothing was recorded' in err, (err, S['posts']))
+        check('nothing recorded: no task needed', not S.get('tasks'), S.get('tasks'))
         await ctx.close()
 
         # Recording stops part way (Halaxy refuses the second invoice, UPC-0901, once): nothing twice, and it carries on
-        S.update({'log': [], 'posts': [], 'posts_all': [], 'inv': fresh(), 'short': {}, 'user': 'Carl Healy', 'failOnce': {901}})
+        S.update({'log': [], 'posts': [], 'posts_all': [], 'inv': fresh(), 'short': {}, 'user': 'Carl Healy', 'failOnce': {901}, 'tasks': {}})
         ctx = await context(browser)
         pg = await ctx.new_page()
         await pg.goto(URL)
@@ -356,6 +372,10 @@ async def main():
             print("row when the stop was expected:", S['posts'], await pg.evaluate("document.querySelector('[data-upc-bank-statement] tbody tr:nth-child(1)').innerText"))
             raise
         check('stopped part way: the first invoice recorded, the second not', [i for i, _ in S['posts']] == [902], S['posts'])
+        err = await pg.evaluate("document.querySelector('[data-upc-bank-statement] tbody tr:nth-child(1) .upc-err').textContent")
+        tk = [t for ts in S.get('tasks', {}).values() for t in ts]
+        check('part way: says which were recorded, and a task for Carl', 'Stopped part way' in err and 'UPC-0902 £ 80.00' in err and 'Task added for Carl Healy' in err
+              and len(tk) == 1 and tk[0].get('form[title]', '').startswith('Bank statement stopped on') and tk[0].get('form[linkPrGs][]') == '31' and tk[0].get('form[priority]') == '3', (err, tk))
         # Opened again later: the rest is matched and recorded, the first never twice
         perr = []
         pg.on('pageerror', lambda e: perr.append(str(e)))
