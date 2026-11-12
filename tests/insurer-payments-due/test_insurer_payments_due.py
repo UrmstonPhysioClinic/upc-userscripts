@@ -51,10 +51,12 @@ def report_html():
     body = ''
     for iid, payer, funder, day, status, amounts, bal in invoices():
         for k, a in enumerate(amounts):
-            first = k == 0
-            v = {'Invoice / Deposit': "<a href='/a/pr/555/invoice/%d'>UPC-0%d</a>" % (iid, iid), 'Date': hx(d(day)) if first else '',
-                 'Payer ID': str(iid), 'Payer': payer, 'Funder': funder, 'Fee': 'Follow-Up', 'Appointment Status': 'Attended',
-                 'Invoice Status': status if first else '', 'Amount': gbp(a), 'Balance': gbp(bal) if first else ''}
+            # As live (12 Nov 2026): an invoice's later fee rows leave the invoice-level cells blank, and its balance
+            # is on its last row.
+            first, lastrow = k == 0, k == len(amounts) - 1
+            v = {'Invoice / Deposit': "<a href='/a/pr/555/invoice/%d'>UPC-0%d</a>" % (iid, iid) if first else '', 'Date': hx(d(day)) if first else '',
+                 'Payer ID': str(iid) if first else '', 'Payer': payer if first else '', 'Funder': funder if first else '', 'Fee': 'Follow-Up', 'Appointment Status': 'Attended',
+                 'Invoice Status': status if first else '', 'Amount': gbp(a), 'Balance': gbp(bal) if lastrow else ''}
             body += '<tr>' + ''.join('<td>%s</td>' % (v.get(c, '') if c else '') for c in cols) + '</tr>'
     body += "<tr><td colspan='13'>Total</td><td>£999.00</td></tr>"
     return "<html><body><table class='table-report'>%s<tbody>%s</tbody></table></body></html>" % (head, body)

@@ -1,10 +1,14 @@
 # Changelog
 
+## Reports read correctly; reporting to Halaxy blocked, 12 Nov 2026 (beta)
+- Fix (core 0.1.34): an invoice with more than one fee was read from Halaxy's Unpaid Invoices report as its first fee only, with no balance (Carl, 12 Nov 2026: UPC-37737, 2 fees for £ 80.00, shown as 1 fee for £ 40.00 with nothing still to pay). Halaxy leaves the invoice cell blank on an invoice's later fee rows and puts the balance on its last row; every fee row now belongs to its invoice and carries its balance. This also affected Insurer payments due (fees, amount, still to pay), Bank statement (such invoices couldn't be matched) and Ready to bill (later fees of an invoice not counted). The tests now use Halaxy's real layout.
+- Block reporting to Halaxy 0.2.0 (was Block error reporting): Userpilot (Halaxy's product analytics, tours and announcements) is blocked too, in the same three ways, including its connection (Carl, 12 Nov 2026). It can be let through again on a PC from Script settings ("Halaxy's tours and announcements").
+
 ## Quieter background checks and blocked error reporting, 12 Nov 2026 (beta)
 - Core 0.1.33: `UPC.background`. Background checks (menu counts, Patient statuses, Feedback alerts, the health check's daily check) run only in the visible tab, between 7 am and 9 pm, while someone has used the PC in the last 30 minutes, and fall due at their interval give or take 15%, not on an exact clock (Carl, 12 Nov 2026). Outstanding actions and Calendar controls stop their regular checks when nobody has used the PC for 30 minutes.
 - Insurer payments due 0.1.5: menu count twice a day instead of every 2 hours.
 - Patient statuses 0.2.4: at most 15 changes a run, 3 to 6 seconds apart.
-- New: Block error reporting 0.1.0 (System). Stops Halaxy's error reporting service (Sentry) loading or sending anything from our PCs, so errors and requests from our scripts don't reach Halaxy. Loads straight after the health check.
+- New: Block error reporting 0.1.0 (System; now Block reporting to Halaxy). Stops Halaxy's error reporting service (Sentry) loading or sending anything from our PCs, so errors and requests from our scripts don't reach Halaxy. Loads straight after the health check.
 
 ## Names and groups, 12 Nov 2026 (beta)
 - Every script is now named "UPC <Group>: <Name>" (Billing, Patients, Calendar, Look, System), and Script settings and the loader panel list them under their groups (Carl, 12 Nov 2026). Every beta script's version goes up one step for the new name.

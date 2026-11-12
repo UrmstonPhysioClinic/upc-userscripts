@@ -35,13 +35,13 @@ That is the only install. Scripts added to this repository later reach every PC 
 | Look | HTML source for emails | A `<>` button on email editors to edit the body as raw HTML with a live preview. | |
 | Look | Mobile layout | On a phone: Halaxy fitted to the screen on every page, a slide-out menu, a phone-sized calendar, and a button to switch to the desktop layout. Does nothing on PCs. | |
 | Look | Toast alerts | Halaxy's alert banners float in the corner instead of pushing the page about. | |
-| System | Block error reporting | Stops Halaxy's error reporting service (Sentry) loading or sending anything from our PCs, so errors and requests from our scripts stay on the PC. Halaxy works as before. |
+| System | Block reporting to Halaxy | Stops the services Halaxy's pages report through (Sentry error reports, Userpilot analytics, tours and announcements) loading or sending anything from our PCs, so errors, clicks and requests from our scripts stay on the PC. Userpilot can be let through again per PC in Script settings. |
 | System | Core library | Shared helpers the other scripts use, including request pacing so our traffic stays modest. Does nothing on its own. | |
 | System | Health check | Checks that what our scripts rely on in Halaxy is still there, notes Halaxy updates, and collects script errors and update problems. Shows a small notice at the bottom centre only when something needs looking at, and only to Carl Healy (it still collects on every sign-in); Script settings > Health check: show results at any time. | |
 | System | Script settings | "Script settings" in Halaxy's account menu: every script's options (instead of the Tampermonkey menu), which scripts run on this PC, stable or beta, and updates. Needs loader 1.1.0. | |
 | Retiring | Custom Reports (retiring) | Reports menu item: invoices, appointments or patients with any filters, chosen columns and saved views. Read-only. Retired 11 Nov 2026 (Carl): removed from beta; leaves stable when Insurer payments due goes to stable, as Ready to bill, Insurer payments due and the other tools now cover what it was used for. | |
 
-Scripts are named "UPC <Group>: <Name>" and listed under their group in Script settings and the loader panel. Beta only for now (waiting for Carl's check on live Halaxy): Bank statement, Block error reporting, Insurer payments due, Portal fill, Patient statuses, Open-ended patients, Mobile layout.
+Scripts are named "UPC <Group>: <Name>" and listed under their group in Script settings and the loader panel. Beta only for now (waiting for Carl's check on live Halaxy): Bank statement, Block reporting to Halaxy, Insurer payments due, Portal fill, Patient statuses, Open-ended patients, Mobile layout.
 
 ## How it works
 

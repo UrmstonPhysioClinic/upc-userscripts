@@ -113,12 +113,13 @@ def report_html():
     body = ''
     for iid, inv in S['invoices'].items():
         for k, l in enumerate(inv['lines']):
-            first = k == 0
-            v = {'Invoice / Deposit': "<a href='/a/pr/555/invoice/%d'>UPC-%d</a>" % (iid, iid), 'Date': hx(l['day']) if first else '',
-                 'Due Date': '', 'Practitioner': 'Prac One', 'Payer ID': inv['payerId'], 'Payer': inv['payer'], 'Funder': inv['funder'],
+            # As live (12 Nov 2026): later fee rows leave the invoice-level cells blank; the balance is on the last row.
+            first, lastrow = k == 0, k == len(inv['lines']) - 1
+            v = {'Invoice / Deposit': "<a href='/a/pr/555/invoice/%d'>UPC-%d</a>" % (iid, iid) if first else '', 'Date': hx(l['day']) if first else '',
+                 'Due Date': '', 'Practitioner': 'Prac One', 'Payer ID': inv['payerId'] if first else '', 'Payer': inv['payer'] if first else '', 'Funder': inv['funder'] if first else '',
                  'Category': 'Treatment', 'Fee': 'Follow-Up Physiotherapy Consultation', 'Quantity': '', 'Appointment Status': l['status'],
                  'Invoice Status': inv['status'] if first else '', 'Tax': '£0.00', 'Amount': gbp(l['amount']),
-                 'Balance': gbp(sum(x['amount'] for x in inv['lines'])) if first else ''}
+                 'Balance': gbp(sum(x['amount'] for x in inv['lines'])) if lastrow else ''}
             body += '<tr>' + ''.join('<td>%s</td>' % (v.get(c, '') if c else '') for c in cols) + '</tr>'
     body += "<tr><td colspan='13'>Total</td><td>£999.00</td></tr>"
     return "<html><body><table class='table-report'>%s<tbody>%s</tbody></table></body></html>" % (head, body)

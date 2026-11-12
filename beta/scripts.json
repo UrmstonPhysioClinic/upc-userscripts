@@ -3,17 +3,18 @@
     {
       "file": "health-check.user.js",
       "name": "UPC System: Health check (beta)",
-      "version": "1.1.36"
+      "version": "1.1.37"
     },
     {
-      "file": "block-error-reporting.user.js",
-      "name": "UPC System: Block error reporting (beta)",
-      "version": "0.1.0"
+      "file": "block-reporting.user.js",
+      "name": "UPC System: Block reporting to Halaxy (beta)",
+      "version": "0.2.0",
+      "was": "block-error-reporting.user.js"
     },
     {
       "file": "core.user.js",
       "name": "UPC System: Core library (beta)",
-      "version": "0.1.33"
+      "version": "0.1.34"
     },
     {
       "file": "alerts.user.js",
