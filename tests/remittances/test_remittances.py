@@ -33,7 +33,7 @@ PG = '555'
 def fresh_state():
     s = {'next_line': 900, 'funders': {}, 'patients': {}, 'attachments': {}, 'log': [], 'busy_once': False, 'slip': {}, 'tasks': {}}
     def add(fid, num, pid, pnum, dates, amount=6000):
-        s['funders'][fid] = {'id': fid, 'number': num, 'lines': []}
+        s['funders'][fid] = {'id': fid, 'number': num, 'lines': [], 'status': ''}
         s['patients'][pid] = {'id': pid, 'number': pnum, 'lines': [], 'pending': []}
         for d in dates:
             s['next_line'] += 1
@@ -48,6 +48,9 @@ def fresh_state():
     add(101, 'UPC-40001', 201, 'UPC-30001', ['01-Oct-2026'])
     add(102, 'UPC-40002', 202, 'UPC-30002', ['02-Oct-2026', '09-Oct-2026', '16-Oct-2026'])
     add(103, 'UPC-40003', 203, 'UPC-30003', ['02-Oct-2026'])
+    # Marked Issued (submitted to the insurer): Halaxy won't offer it when billing a funder (live, 12 Nov 2026).
+    s['funders'][102]['status'] = 'issued'
+    s['statuses'] = []
     return s
 
 S = fresh_state()
@@ -188,11 +191,21 @@ async def halaxy(route):
         f['lines'].remove(line)
         S['patients'][line['pid']]['pending'].append({'amount': line['amount'], 'plineId': line['plineId'], 'date': line['date'], 'fid': f['id']})
         return await js({'status': 'REFRESH'})
+    m = re.search(r'/invoice/options/(\d+)$', path)
+    if m:
+        f = S['funders'][int(m.group(1))]
+        if req.method == 'GET':
+            opts = ''.join("<option value='%s'%s>%s</option>" % (v, ' selected' if f['status'] == v else '', t) for v, t in (('', 'Active'), ('issued', 'Issued'), ('deleted', 'Deleted'), ('write-off', 'Write-off')))
+            return await js({'status': 'FORM', 'message': "<form id='frmInvoiceType'><select name='form[status]'>%s</select><input name='form[displayDate]' value='1'><input type='hidden' name='form[_token]' value='tok-opt'></form>" % opts})
+        f['status'] = form['form[status]']
+        S['statuses'].append((f['id'], f['status']))
+        return await js({'status': 'REFRESH'})
     m = re.search(r'/invoicefunctions/(\d+)/claim/77/?$', path)
     if m:
         p = S['patients'][int(m.group(1))]
         if req.method == 'GET':
-            radios = ''.join("<input type='radio' name='form[orgInvoice]' value='%d'>" % fid for fid in S['funders'])
+            # Halaxy only offers Active organisation invoices
+            radios = ''.join("<input type='radio' name='form[orgInvoice]' value='%d'>" % fid for fid, f in S['funders'].items() if f.get('status', '') != 'issued')
             return await js({'status': 'FORM', 'message': "<form id='organisationBillForm'>%s</form>" % radios})
         fid = int(form['form[orgInvoice]'])
         pend = p['pending'].pop(0)
@@ -307,6 +320,7 @@ async def main():
         newl = [l for l in S['funders'][102]['lines'] if l['amount'] == 2400]
         check('re-billed funder line dated as the patient fee (Halaxy\'s slip corrected)', [l['date'] for l in newl] == ['01-Oct-2026'] and S.get('linedates') == 1, newl)
         check('nothing left waiting to bill', not S['patients'][202]['pending'])
+        check('an Issued funder invoice is set to Active for the change and marked Issued again', S['statuses'] == [(102, ''), (102, 'issued')] and S['funders'][102]['status'] == 'issued', S['statuses'])
         tk = S['tasks'].get(202, [])
         today = datetime.date.today().strftime('%d-%b-%Y')
         t0 = tk[0] if tk else {}
@@ -350,6 +364,27 @@ async def main():
             return UPC.tasks.addToInvoice('202', { title: t[0].title, assignee: 'Carl Healy', priority: 2, due: '09-Nov-2026', comment: 'x' }); })()""")
         check('the same task is not added twice', again is False and S.get('task_posts') == posts and len(S['tasks'][202]) == 1, (again, S.get('task_posts'), posts))
 
+        # A move that stopped part way (taken off an Issued funder invoice, rebate changed, not billed back): seen,
+        # finished, then nothing more to do
+        f1, p1 = S['funders'][101], S['patients'][201]
+        f1['status'] = 'issued'
+        # (a second fee on the same invoice, still in place, as on UPC-38023)
+        p1['lines'].append({'lineId': 990, 'date': '08-Oct-2026', 'item': 'PHY', 'fee': 6000, 'rebate': 6000})
+        f1['lines'].append({'lineId': 991, 'pid': 201, 'plineId': 990, 'date': '08-Oct-2026', 'item': 'PHY', 'amount': 6000})
+        gone = f1['lines'].pop(0)
+        p1['lines'][0]['rebate'] = 4000
+        p1['pending'].append({'amount': 4000, 'plineId': gone['plineId'], 'date': gone['date'], 'fid': 101})
+        S['statuses'] = []
+        item = {'invoice': 'UPC-40001', 'claimed': 12000, 'paid': 10000, 'insurerTotal': 10000, 'patientShare': 2000, 'reason': 'excess', 'dates': ['2026-10-01', '2026-10-08'],
+                'ranges': [{'from': '2026-10-01', 'to': '2026-10-01', 'invoiced': 6000, 'paid': 4000}, {'from': '2026-10-08', 'to': '2026-10-08', 'invoiced': 6000, 'paid': 6000}]}
+        r1 = await pg.evaluate("(item) => upcRemittances.matchItem(item).then((r) => ({ status: r.status, message: r.message, resume: r.resume }))", item)
+        check('part-way move found: finish it', r1['status'] == 'resume' and 'UPC-30001' in r1['message'] and r1['resume'][0]['amount'] == 4000, r1)
+        fin = await pg.evaluate("UPC.rebate.resume('101', '201', { from: '2026-10-01', to: '2026-10-01' }).then((r) => r, (e) => e.message)")
+        check('finished: billed back to the same Issued invoice, its own date, Issued again, nothing waiting',
+              isinstance(fin, dict) and sorted((l['amount'], l['date']) for l in f1['lines']) == [(4000, '01-Oct-2026'), (6000, '08-Oct-2026')] and not p1['pending'] and S['statuses'] == [(101, ''), (101, 'issued')] and f1['status'] == 'issued', (fin, f1, S['statuses']))
+        r2 = await pg.evaluate("(item) => upcRemittances.matchItem(item).then((r) => ({ status: r.status, message: r.message }))", item)
+        check('checked again: already what the insurer paid, nothing more to do', r2['status'] == 'ok', r2)
+
         # Reading the other layouts
         async def read(name):
             import base64
@@ -369,6 +404,10 @@ async def main():
         prop = await pg.evaluate("""(item) => upcRemittances.proposeLines({ number: 'UPC-40013', lines: [
             { lineId: 'a', date: '25-Sep-2026', amount: 5000 }, { lineId: 'b', date: '02-Oct-2026', amount: 4000 }, { lineId: 'c', date: '10-Oct-2026', amount: 4000 },
             { lineId: 'd', date: '16-Oct-2026', amount: 4000 }] }, item, 3400)""", t)
+        prop2 = await pg.evaluate("""(item) => upcRemittances.proposeLines({ number: 'UPC-40013', lines: [
+            { lineId: 'a', date: '25-Sep-2026', amount: 4000 }, { lineId: 'b', date: '02-Oct-2026', amount: 4000 }, { lineId: 'c', date: '10-Oct-2026', amount: 4000 },
+            { lineId: 'd', date: '16-Oct-2026', amount: 4000 }] }, item, 2400)""", t)
+        check('Bupa: a row already moved (finished part-way run) is left alone, the rest proposed', [(c['lineId'], c['to']) for c in prop2.get('changes', [])] == [('b', 3200), ('c', 3200), ('d', 3200)], prop2)
         check('Bupa: each row\'s shortfall goes on the fees in its dates (Halaxy\'s a day out allowed)', [(c['lineId'], c['to']) for c in prop.get('changes', [])] == [('a', 4000), ('b', 3200), ('c', 3200), ('d', 3200)], prop)
         check('Bupa: excess read with its note', inv.get('UPC-40011', {}).get('patientShare') == 4000 and inv['UPC-40011']['reason'] == 'excess' and inv['UPC-40011']['dates'] == ['2026-09-10', '2026-09-24'], inv.get('UPC-40011'))
         check('Bupa: totals cross-check', b['checks']['paidRead'] == b['checks']['paidTotal'] == 27600 and not b['notes'], b)
