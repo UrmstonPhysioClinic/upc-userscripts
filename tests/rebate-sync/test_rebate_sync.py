@@ -129,11 +129,20 @@ async def halaxy(route):
         f['lines'].remove(line)
         S['patients'][line['pid']]['pending'].append({'amount': line['amount'], 'plineId': line['plineId'], 'date': line['date']})
         return await js({'status': 'REFRESH'})
+    m = re.search(r'/invoice/options/(\d+)$', path)
+    if m:
+        f = S['funders'][int(m.group(1))]
+        if req.method == 'GET':
+            opts = ''.join("<option value='%s'%s>%s</option>" % (v, ' selected' if f.get('status', '') == v else '', t) for v, t in (('', 'Active'), ('issued', 'Issued')))
+            return await js({'status': 'FORM', 'message': "<form id='frmInvoiceType'><select name='form[status]'>%s</select><input type='hidden' name='form[_token]' value='t'></form>" % opts})
+        f['status'] = form['form[status]']
+        S.setdefault('statuses', []).append((f['id'], f['status']))
+        return await js({'status': 'REFRESH'})
     m = re.search(r'/invoicefunctions/(\d+)/claim/77/?$', path)
     if m:
         p = S['patients'][int(m.group(1))]
         if req.method == 'GET':
-            radios = ''.join("<input type='radio' name='form[orgInvoice]' value='%d'>" % fid for fid in S['funders'])
+            radios = ''.join("<input type='radio' name='form[orgInvoice]' value='%d'>" % fid for fid, f in S['funders'].items() if f.get('status', '') != 'issued')   # Active only, as Halaxy
             return await js({'status': 'FORM', 'message': "<form id='organisationBillForm'>%s</form>" % radios})
         fid = int(form['form[orgInvoice]'])
         pend = p['pending'].pop(0)
@@ -209,8 +218,9 @@ async def main():
         check('no page errors', not errors, errors)
         await ctx.close()
 
-        # 2. Funder invoice: line 60.00 -> 0.00 leaves a £ 0.00 line
+        # 2. Funder invoice (marked Issued): line 60.00 -> 0.00 leaves a £ 0.00 line
         S.clear(); S.update(fresh())
+        S['funders'][101]['status'] = 'issued'
         ctx = await context(browser)
         pg = await ctx.new_page()
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/invoice/201/101')
@@ -221,6 +231,7 @@ async def main():
         f = S['funders'][101]['lines']
         check('funder line set to £ 0.00: a £ 0.00 line stays (never a missing one)', len(f) == 1 and f[0]['amount'] == 0 and f[0]['date'] == '02-Oct-2026', f)
         check('patient rebate £ 0.00', S['patients'][201]['lines'][0]['rebate'] == 0, S['patients'][201])
+        check('Issued funder invoice: Active for the change, then Issued again', S.get('statuses') == [(101, ''), (101, 'issued')] and S['funders'][101]['status'] == 'issued', S.get('statuses'))
         await ctx.close()
 
         # 3. A fee not billed yet: Halaxy's normal save

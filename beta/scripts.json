@@ -14,7 +14,7 @@
     {
       "file": "core.user.js",
       "name": "UPC System: Core library (beta)",
-      "version": "0.1.35"
+      "version": "0.1.36"
     },
     {
       "file": "alerts.user.js",
@@ -105,7 +105,7 @@
     {
       "file": "remittances.user.js",
       "name": "UPC Billing: Remittances (beta)",
-      "version": "0.3.7"
+      "version": "0.3.8"
     },
     {
       "file": "review-requests.user.js",

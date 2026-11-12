@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.7
+// @version      0.3.8
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -31,7 +31,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.3.7';
+  const VERSION = '0.3.8';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -469,6 +469,7 @@
         inRun.forEach((l) => pool.splice(pool.indexOf(l), 1));
         if (sf <= 0) continue;
         const total = sum(inRun.map((l) => l.amount));
+        if (inRun.length && total === rg.paid) continue;   // already moved
         if (!inRun.length || total !== rg.invoiced) return { error: 'The lines on ' + funder.number + ' from ' + rg.from + ' to ' + (rg.to || rg.from) + ' don\'t add up to the ' + fmt(rg.invoiced) + ' Bupa was billed for them.' };
         let left = sf;
         inRun.forEach((l, k) => {
@@ -491,6 +492,35 @@
     return { changes };
   }
 
+  // Each Bupa row's fees on the funder invoice: 'todo' (still what was billed), 'done' (already what was paid) or 'bad'.
+  function rangeStates(funder, item) {
+    if (!item.ranges || !item.ranges.length || item.ranges.some((r) => !r.from)) return null;
+    const pool = funder.lines.slice().sort((a, b) => (halaxyDateIso(a.date) || '').localeCompare(halaxyDateIso(b.date) || ''));
+    return item.ranges.map((rg) => {
+      const inRun = pool.filter((l) => { const d = halaxyDateIso(l.date); return d && d >= isoShift(rg.from, -2) && d <= isoShift(rg.to || rg.from, 2); });
+      inRun.forEach((l) => pool.splice(pool.indexOf(l), 1));
+      const t = sum(inRun.map((l) => l.amount));
+      return { invoiced: rg.invoiced, paid: rg.paid, state: inRun.length && t === rg.invoiced ? 'todo' : inRun.length && t === rg.paid ? 'done' : 'bad' };
+    });
+  }
+  // Amounts waiting on the patient invoices of this funder invoice for a fee within the remittance's dates that is
+  // no longer on the funder invoice: a move that stopped after taking the fee off.
+  async function waitingFees(funder, item) {
+    const ids = [...new Set(funder.lines.map((l) => l.patientInvoiceId).filter(Boolean))];
+    const ds = (item.dates || []).filter(Boolean).sort();
+    const from = ds[0], to = ds[ds.length - 1];
+    const out = [];
+    for (const id of ids) {
+      let p;
+      try { p = await UPC.invoice.fetch(id); } catch (e) { continue; }
+      if (p.pending.length !== 1) continue;
+      const onFunder = funder.lines.filter((l) => l.patientInvoiceId === String(id));
+      const missing = p.lines.filter((pl) => { const d = halaxyDateIso(pl.date); return (!from || (d >= isoShift(from, -2) && d <= isoShift(to, 2))) && !onFunder.some((fl) => fl.item === pl.item && Math.abs(isoGap(halaxyDateIso(fl.date), d)) <= 2); });
+      if (missing.length === 1) out.push({ patientInvoiceId: String(id), number: p.number, amount: p.pending[0].amount, date: missing[0].date, from, to });
+    }
+    return out;
+  }
+
   async function matchItem(item) {
     const res = { item, status: 'check', message: '', invoiceId: null, funder: null, changes: [] };
     let row;
@@ -504,7 +534,20 @@
     const total = funder.total;
     res.halaxyTotal = total;
     const insurerPays = item.insurerTotal !== undefined && item.insurerTotal !== null ? item.insurerTotal : item.paid;
-    if (item.claimed !== null && item.claimed !== undefined && item.claimed !== total) {
+    // Rows already moved (a run that stopped part way, or by hand): each Bupa row's fees show either what was billed
+    // (still to do) or what was paid (done).
+    const rs = rangeStates(funder, item);
+    const doneShare = rs ? sum(rs.filter((r) => r.state === 'done').map((r) => r.invoiced - r.paid)) : 0;
+    const explained = rs && rs.every((r) => r.state !== 'bad') && sum(rs.map((r) => (r.state === 'done' ? r.paid : r.invoiced))) === total;
+    if (item.claimed !== null && item.claimed !== undefined && item.claimed !== total && !explained) {
+      // Stopped part way last time: a fee taken off this invoice is still waiting on its patient invoice.
+      const waiting = await waitingFees(funder, item);
+      if (waiting.length) {
+        res.status = 'resume';
+        res.resume = waiting;
+        res.message = 'Stopped part way last time: ' + waiting.map((w) => fmt(w.amount) + ' is waiting on ' + w.number).join(', ') + ' to go back on ' + funder.number + '. Apply finishes it, then checks this invoice again.';
+        return res;
+      }
       res.message = 'Insurer was billed ' + fmt(item.claimed) + ' but the Halaxy invoice is ' + fmt(total) + '.';
       return res;
     }
@@ -514,7 +557,7 @@
     if (shortfall < 0) { res.message = 'Insurer paid ' + fmt(-shortfall) + ' more than the invoice.'; return res; }
     if (item.reason === 'provider') { res.status = 'manual'; res.message = 'Provider shortfall of ' + fmt(shortfall) + ': not chargeable to the patient. Decide by hand.'; return res; }
     if (item.reason !== 'excess') { res.message = 'Paid ' + fmt(shortfall) + ' less, with no excess or patient share given. Check by hand.'; return res; }
-    if (item.patientShare && item.patientShare !== shortfall) { res.message = 'Patient share ' + fmt(item.patientShare) + ' does not match the shortfall of ' + fmt(shortfall) + '. Check by hand.'; return res; }
+    if (item.patientShare && item.patientShare - doneShare !== shortfall) { res.message = 'Patient share ' + fmt(item.patientShare) + ' does not match the shortfall of ' + fmt(shortfall) + '. Check by hand.'; return res; }
     if (funder.outstanding !== total) { res.status = 'manual'; res.message = 'A payment is already recorded on ' + funder.number + ', so it will not be changed automatically.'; return res; }
     const p = proposeLines(funder, item, shortfall);
     if (p.error) { res.message = p.error; return res; }
@@ -544,6 +587,7 @@
     .upc-rem .upc-rem-notes ul { margin: 4px 0 0; padding-left: 20px; }
     .upc-rem .upc-tag { display: inline-block; border-radius: 4.8px; padding: 0 6px; font-weight: 600; border: 1px solid transparent; }
     .upc-rem .t-ok, .upc-rem .t-done { background: #e3f4e8; border-color: #9fd3ad; color: #14532d; }
+    .upc-rem .t-resume { background: #fff8db; border-color: #e0b400; color: #6b5200; }
     .upc-rem .t-fix { background: var(--vs-status-badge-neutral-bg-color, #f0f0f5); border-color: var(--vs-theme-primary, #0e0793); color: var(--vs-theme-primary, #0e0793); }
     .upc-rem .t-manual { background: #fff3e0; border-color: #ffd8a8; color: #8a4b00; }
     .upc-rem .t-check, .upc-rem .t-failed { background: #fdecea; border-color: var(--vs-balance-negative-color, #ec6b65); color: #a01818; }
@@ -581,7 +625,7 @@
         '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th></th><th>Invoice</th><th class="number">Halaxy</th><th class="number">Insurer paid</th><th class="number">Difference</th><th>Result</th></tr></thead><tbody>';
       state.results.forEach((x, i) => {
         const it = x.item;
-        const label = { ok: 'Paid in full', fix: 'Excess', manual: 'By hand', check: 'Check', done: 'Done', failed: 'Failed' }[x.status];
+        const label = { ok: 'Paid in full', fix: 'Excess', resume: 'Finish', manual: 'By hand', check: 'Check', done: 'Done', failed: 'Failed' }[x.status];
         let link = x.invoiceId ? '<a href="' + esc(UPC.base() + '/invoice/' + x.invoiceId) + '" target="_blank" rel="noopener">' + esc(it.invoice) + '</a>' : esc(it.invoice);
         const paidShown = fmt(it.insurerTotal !== undefined && it.insurerTotal !== null ? it.insurerTotal : it.paid);
         let paidCell = paidShown;
@@ -593,7 +637,7 @@
               '<div class="text-muted">' + paidShown + '</div>'
             : '<input class="form-control upc-rem-amt-one" data-paid="' + i + '" value="' + esc(plain(it.paid)) + '" inputmode="decimal" aria-label="Correct the amount paid for ' + esc(it.invoice) + '">';
         }
-        html += '<tr><td>' + (x.status === 'fix' ? '<input type="checkbox" data-i="' + i + '" ' + (x.selected !== false ? 'checked' : '') + ' aria-label="Apply to ' + esc(it.invoice) + '">' : '') + '</td>' +
+        html += '<tr><td>' + (x.status === 'fix' || x.status === 'resume' ? '<input type="checkbox" data-i="' + i + '" ' + (x.selected !== false ? 'checked' : '') + ' aria-label="Apply to ' + esc(it.invoice) + '">' : '') + '</td>' +
           '<td>' + link + '</td><td class="number">' + fmt(x.halaxyTotal) + '</td><td class="number">' + paidCell + '</td>' +
           '<td class="number">' + (x.shortfall ? fmt(x.shortfall) : '') + '</td>' +
           '<td><span class="upc-tag t-' + x.status + '">' + label + '</span> ' + esc(x.message) +
@@ -602,10 +646,11 @@
       });
       html += '</tbody></table>';
       const n = fixes.filter((x) => x.selected !== false).length;
+      const nr = state.results.filter((x) => x.status === 'resume' && x.selected !== false).length;
       const toAttach = attachable().length;
-      // Nothing to fix (all paid in full): the button attaches the remittance on its own.
-      const label = n ? 'Apply ' + n + ' excess fix' + (n === 1 ? '' : 'es') : 'Attach remittance to ' + toAttach + ' invoice' + (toAttach === 1 ? '' : 's');
-      const can = !state.busy && !state.applied && (n || (state.attach !== false && toAttach));
+      // Part-way moves are finished first, on their own; then the excess fixes; with nothing to fix, the button attaches.
+      const label = nr ? 'Finish ' + nr + ' invoice' + (nr === 1 ? '' : 's') + ' left part-way' : n ? 'Apply ' + n + ' excess fix' + (n === 1 ? '' : 'es') : 'Attach remittance to ' + toAttach + ' invoice' + (toAttach === 1 ? '' : 's');
+      const can = !state.busy && !state.applied && (nr || n || (state.attach !== false && toAttach));
       html += '<div class="upc-rem-apply"><button type="button" class="btn btn-primary" data-act="apply" ' + (can ? '' : 'disabled') + '>' + label + '</button>' +
         '<label><input type="checkbox" data-act="attach" ' + (state.attach !== false ? 'checked' : '') + '> Attach the remittance to each matched invoice</label></div></div></div>';
     }
@@ -701,9 +746,46 @@
   const isoLabel = (iso) => { const m = String(iso || '').match(/^(\d{4})-(\d\d)-(\d\d)$/); return m ? m[3] + '-' + MON3[+m[2] - 1] + '-' + m[1] : String(iso || ''); };
   const attachable = () => state.results.filter((r) => r.invoiceId && r.funder && r.funder.isFunder);
 
+  // Finishes moves that stopped part way, then checks those invoices again; the rest of their fix is applied with
+  // Apply after that, as usual.
+  async function finishResumes(list) {
+    const lines = list.map((x) => '<li>' + esc(x.item.invoice) + ': ' + x.resume.map((w) => 'bill ' + fmt(w.amount) + ' (the ' + esc(w.date) + ' fee) on ' + esc(w.number) + ' back to it').join(', ') + '</li>').join('');
+    if (!(await confirmSimple('Finish ' + list.length + ' invoice' + (list.length === 1 ? '' : 's') + ' left part-way?', '<p>These were stopped part way last time. Each fee waiting on the patient invoice is billed back to its funder invoice (set back to Active for the change if it is Issued, then Issued again) and given its own date. Nothing else is changed.</p><ul>' + lines + '</ul>'))) return;
+    state.busy = true;
+    const say = (t, err) => { state.log.push({ t, err }); render(); };
+    for (const x of list) {
+      say(x.item.invoice + ':');
+      try {
+        for (const w of x.resume) await UPC.rebate.resume(x.invoiceId, w.patientInvoiceId, { from: w.from, to: w.to }, (t) => say('  ' + t));
+        say('  Finished. Checking ' + x.item.invoice + ' again...');
+        const i = state.results.indexOf(x);
+        state.results[i] = await matchItem(x.item);
+        say('  ' + state.results[i].message);
+      } catch (e) {
+        x.status = 'failed';
+        x.error = e.message || String(e);
+        say('  Stopped: ' + x.error, true);
+      }
+    }
+    state.busy = false;
+    say('Done. Apply the remaining fixes when you are ready.');
+  }
+  function confirmSimple(title, html) {
+    return new Promise((resolve) => {
+      let answered = false;
+      const done = (v) => { if (!answered) { answered = true; resolve(v); } };
+      const dlg = UPC.ui.dialog({ title, small: true, onClose: () => done(false) });
+      dlg.root.setAttribute('data-upc-remit-confirm', '');
+      dlg.body.innerHTML = html + '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-a="no">Cancel</button><button type="button" class="btn btn-primary" data-a="yes">Finish</button></div>';
+      dlg.body.addEventListener('click', (e) => { const a = e.target.closest('[data-a]'); if (!a) return; done(a.dataset.a === 'yes'); dlg.close(); });
+    });
+  }
+
   async function apply() {
     const list = state.results.filter((x) => x.status === 'fix' && x.selected !== false);
+    const resumes = state.results.filter((x) => x.status === 'resume' && x.selected !== false);
     if (state.busy || state.applied) return;
+    if (resumes.length) { await finishResumes(resumes); return; }
     if (!list.length && (state.attach === false || !attachable().length)) return;
     // Excess fixes ask first; attaching alone is what the button says it does.
     if (list.length && !(await confirmApply(list))) return;
@@ -838,5 +920,5 @@
   else start();
 
   // For tests and diagnostics: the reading and matching steps on their own.
-  window.upcRemittances = { version: VERSION, readPdf, toRows, understand, detect, matchItem, proposeLines, isoDate, correctItem, checkTotals, amountIn };
+  window.upcRemittances = { version: VERSION, readPdf, toRows, understand, detect, matchItem, proposeLines, isoDate, correctItem, checkTotals, amountIn, rangeStates };
 })();

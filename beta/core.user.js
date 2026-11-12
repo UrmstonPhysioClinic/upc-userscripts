@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.35
+// @version      0.1.36
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.35';
+  const VERSION = '0.1.36';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -421,6 +421,63 @@
     http.expectRefresh(await http.postForm(href, [['form[orgInvoice]', funderInvoiceId]]), 'Re-billing to the funder');
   }
 
+  // Halaxy only offers Active organisation invoices when billing a funder, so a fee can be taken off an Issued
+  // invoice but not put back (live, 12 Nov 2026: UPC-38023 and UPC-37983 left part-way). An Issued funder invoice is
+  // set back to Active for the change and marked Issued again afterwards, whatever happens in between.
+  async function withActive(funderInvoiceId, number, say, fn) {
+    const was = await invoice.status(funderInvoiceId);
+    if (was === 'issued') { say('Setting ' + number + ' back to Active while it is changed'); await invoice.setStatus(funderInvoiceId, ''); }
+    let result, failure = null;
+    try { result = await fn(); } catch (e) { failure = e; }
+    if (was === 'issued') {
+      try { say('Marking ' + number + ' Issued again'); await invoice.setStatus(funderInvoiceId, 'issued'); }
+      catch (e) {
+        const more = 'Could not mark ' + number + ' Issued again (' + (e.message || e) + '): mark it Issued by hand (cogwheel, Status).';
+        throw new UPCError(failure ? (failure.message || failure) + ' ' + more : more);
+      }
+    }
+    if (failure) throw failure;
+    return result;
+  }
+
+  // Finishes a move that stopped after the fee was taken off the funder invoice: the amount waiting on the patient
+  // invoice is billed back to the same funder invoice and given its fee's date. opts.from / opts.to (ISO dates) limit
+  // which of the patient's fees it can be (those the remittance covers).
+  async function resumeMove(funderInvoiceId, patientInvoiceId, opts, say) {
+    opts = opts || {}; say = say || (() => {});
+    const p = await invoice.fetch(patientInvoiceId);
+    if (p.pending.length !== 1) throw new UPCError(p.number + ' has ' + p.pending.length + ' amounts waiting to bill, not one. Finish it by hand.');
+    const amount = p.pending[0].amount;
+    const funder = await invoice.fetch(funderInvoiceId);
+    if (funder.outstanding !== funder.total) throw new UPCError(funder.number + ' already has a payment recorded, so it was not changed.');
+    const days = (iso) => Math.round(Date.parse(iso + 'T12:00:00Z') / 86400e3);
+    const inWindow = (d) => {
+      if (!opts.from) return true;
+      const t = halaxyDay(d);
+      if (t === null) return false;
+      const x = Math.round((t + 12 * 3600e3) / 86400e3);   // the fee's day, whatever the clock change
+      return x >= days(opts.from) - 2 && x <= days(opts.to || opts.from) + 2;
+    };
+    const onFunder = funder.lines.filter((l) => l.patientInvoiceId === String(patientInvoiceId));
+    const missing = p.lines.filter((pl) => inWindow(pl.date) && !onFunder.some((fl) => fl.item === pl.item && dayGap(fl.date, pl.date) <= 2));
+    if (missing.length !== 1) throw new UPCError('Could not tell which fee on ' + p.number + ' is waiting to go back on ' + funder.number + ' (' + missing.length + ' possible). Finish it by hand.');
+    return withActive(funderInvoiceId, funder.number, say, async () => {
+      say('Billing ' + money.fmt(amount) + ' (the ' + missing[0].date + ' fee) back to ' + funder.number);
+      await rebill(patientInvoiceId, funderInvoiceId, amount);
+      let fAfter = await invoice.fetch(funderInvoiceId);
+      const before = new Set(funder.lines.map((l) => l.lineId));
+      const added = fAfter.lines.filter((l) => !before.has(l.lineId) && l.patientInvoiceId === String(patientInvoiceId));
+      if (added.length !== 1 || added[0].amount !== amount) throw new UPCError('Billed, but ' + funder.number + ' does not show one new ' + money.fmt(amount) + ' line. Check it.');
+      if (added[0].date !== missing[0].date) {
+        say('Correcting the date Halaxy gave it: ' + added[0].date + ' to ' + missing[0].date);
+        await invoice.setLineDate(added[0].lineId, missing[0].date);
+      }
+      const pAfter = await invoice.fetch(patientInvoiceId);
+      if (pAfter.pending.length) throw new UPCError(pAfter.number + ' still shows an amount waiting to bill. Check it.');
+      return { amount, date: missing[0].date };
+    });
+  }
+
   // Works out the steps for one funder line: which patient invoice line it came from, and checks
   // both invoices agree. Read-only. opts.overrides: other fields to change on the patient fee in the same save (Rebate
   // sync, when the fee's amount is changed with its rebate), with opts.fee the fee's new amount (pence).
@@ -470,9 +527,13 @@
     if (!fLine || fLine.amount !== origRebate) throw new UPCError('The line on ' + plan.funderNumber + ' has changed since it was checked. Nothing was changed.');
     if (funder.total === null || funder.outstanding === null) throw new UPCError('Could not find an outstanding balance on ' + funder.number + ', so nothing was changed.');
     if (funder.outstanding !== funder.total) throw new UPCError(funder.number + ' already has a payment recorded, so it was not changed.');
-    let patient = await invoice.fetch(patientInvoiceId);
-    if (patient.pending.length) throw new UPCError(patient.number + ' already has an amount waiting to be billed to a funder. Nothing was changed.');
-
+    const patient0 = await invoice.fetch(patientInvoiceId);
+    if (patient0.pending.length) throw new UPCError(patient0.number + ' already has an amount waiting to be billed to a funder. Nothing was changed.');
+    return withActive(funderInvoiceId, plan.funderNumber, say, () => moveSteps(plan, funder, say));
+  }
+  async function moveSteps(plan, funder, say) {
+    const { funderInvoiceId, funderLineId, patientInvoiceId, patientLineId, origRebate, newRebate } = plan;
+    let patient;
     say('Reverting the ' + plan.date + ' line to ' + plan.patientNumber);
     const removeJson = await http.json('/invoice/line/' + funderLineId + '/remove?clicked=' + Date.now());
     const m = String(removeJson && removeJson.message).match(/case\s+'delete'\s*:[\s\S]*?url\s*=\s*"([^"]+)"/);
@@ -525,7 +586,7 @@
     return { funderTotal: fAfter.total, patientOutstanding: pAfter.outstanding };
   }
 
-  const rebate = { plan: planMove, apply: applyMove };
+  const rebate = { plan: planMove, apply: applyMove, resume: resumeMove };
 
   // ------------------------------------------------------------------ files
 
