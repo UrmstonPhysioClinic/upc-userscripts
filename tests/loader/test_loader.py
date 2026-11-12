@@ -28,7 +28,7 @@ def script(name, version, body, run_at=None, match='https://*.halaxy.com/*', ext
 
 
 def start_script(version, broken=False):
-    return script('Start', version,
+    return script('UPC Billing: Start', version,
                   "window.__start = (window.__start || []).concat(['%s']);"
                   "window.__startBeforePage = !window.__pageScript;%s" % (version, ' this is not javascript(' if broken else ''),
                   run_at='document-start')
@@ -41,7 +41,7 @@ def reset_repo():
     REPO.clear()
     stable = {
         'start.user.js': start_script('1.0'),
-        'idle.user.js': script('Idle', '1.0', "window.__idle = !!document.body; document.body.setAttribute('data-idle', '1');"),
+        'idle.user.js': script('UPC Look: Idle', '1.0', "window.__idle = !!document.body; document.body.setAttribute('data-idle', '1');"),
         'appsonly.user.js': script('Apps only', '1.0', 'window.__appsOnly = true;', match='https://eu.halaxy.com/*',
                                    extra='// @exclude      https://eu.halaxy.com/book/*'),
         'gm.user.js': script('GM', '1.0', "var c = GM_getValue('count', 0) + 1; GM_setValue('count', c); window.__count = c;"
@@ -59,7 +59,11 @@ def manifest(ch):
     out = []
     for f, code in sorted(REPO[ch].items()):
         ver = [l.split()[-1] for l in code.splitlines() if '@version' in l][0]
-        out.append({'file': f, 'name': f, 'version': ver})
+        entry = {'file': f, 'name': f, 'version': ver}
+        was = [l.split()[-1] for l in code.splitlines() if '@upc-was' in l]
+        if was:
+            entry['was'] = was[0]
+        out.append(entry)
     return json.dumps({'scripts': out})
 
 
@@ -168,7 +172,7 @@ async def main():
         ASK = '''(t, d) => new Promise((res) => { document.addEventListener('upc-loader-state', (e) => res(JSON.parse(e.detail)), { once: true });
                  document.dispatchEvent(new CustomEvent(t, { detail: d ? JSON.stringify(d) : '' })); })'''
         st = await pg.evaluate('(' + ASK + ')("upc-loader-get")')
-        check('loader state for Script settings', st['version'] == '1.2.0' and st['channel'] == 'stable' and st['chosen'] == 'stable'
+        check('loader state for Script settings', st['version'] == '1.3.0' and st['channel'] == 'stable' and st['chosen'] == 'stable'
               and any(x['file'] == 'start.user.js' and x['status'] == 'running' and x['on'] for x in st['scripts'])
               and any(x['file'] == 'appsonly.user.js' for x in st['scripts']) and any('throws.user.js' in p for p in st['problems']), st)
         st = await pg.evaluate('(' + ASK + ')("upc-loader-do", { act: "switch", file: "idle.user.js", on: false })')
@@ -249,7 +253,21 @@ async def main():
         off = await pg.evaluate("JSON.parse(localStorage.getItem('upc-loader:off'))")
         note = await pg.evaluate(panel + ".querySelector('.note').hidden")
         check('panel switch saves and asks for a refresh', off == {'idle.user.js': True} and note is False, (off, note))
+        heads = await pg.evaluate("[..." + panel + ".querySelectorAll('.grp')].map(g => g.textContent)")
+        check('panel lists scripts under their groups (Billing, Patients, Calendar, Look, System, then others)', heads == ['Billing', 'Look', 'Other'] and rows[0].startswith('Start'), (heads, rows))
         await pg.evaluate("localStorage.removeItem('upc-loader:off')")
+
+        # 11b. A renamed script keeps this PC's switch and its saved settings.
+        await pg.evaluate("localStorage.setItem('upc-loader:off', JSON.stringify({'gm.user.js': true}))")
+        before = await pg.evaluate("JSON.parse(localStorage.getItem('upc-gm:gm.user.js:count'))")
+        REPO['stable']['gm2.user.js'] = REPO['stable'].pop('gm.user.js').replace('// @version      1.0', '// @version      1.0\n// @upc-was      gm.user.js')
+        await expire_check()
+        await load()
+        moved = await pg.evaluate("({ off: JSON.parse(localStorage.getItem('upc-loader:off')), count: JSON.parse(localStorage.getItem('upc-gm:gm2.user.js:count')), old: localStorage.getItem('upc-gm:gm.user.js:count') })")
+        check('renamed script: switched off stays off, settings moved across', moved['off'] == {'gm2.user.js': True} and moved['count'] == before and moved['old'] is None, (before, moved))
+        await pg.evaluate("localStorage.removeItem('upc-loader:off')")
+        s = await load()
+        check('renamed script switched back on: carries on from its saved settings', s['count'] == before + 1, (before, s['count']))
         await ctx.close()
 
         # 12. The real repository, both channels: every script loads on a Halaxy page with no syntax errors.

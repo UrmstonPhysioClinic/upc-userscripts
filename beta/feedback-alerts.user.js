@@ -1,10 +1,11 @@
 // ==UserScript==
-// @name         Halaxy feedback alerts (beta)
+// @name         UPC Patients: Feedback alerts (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.2
+// @version      0.1.3
+// @upc-was      survey-feedback.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/survey-feedback.user.js
-// @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/survey-feedback.user.js
+// @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/feedback-alerts.user.js
+// @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/feedback-alerts.user.js
 // @description  Feedback Request survey responses that need a look (Below expected, or Satisfactory with a comment) become a Halaxy task for Carl on the patient's profile. Carl only.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
@@ -35,7 +36,7 @@
   if (window.__hxSurveyFeedback) return;
   window.__hxSurveyFeedback = true;
 
-  const VERSION = '0.1.2';
+  const VERSION = '0.1.3';
   const ALLOWED = ['Carl Healy'];   // Carl, 11 Nov 2026
   const ASSIGNEE = 'Carl Healy';
   const MAX_SCORE = 35;             // the Feedback Request template: 3 x 5 + 2 x 5 + 2 x 5
@@ -60,7 +61,7 @@
   function tellHealthCheck(e) {
     const message = (e && e.message) || String(e);
     if (!/has changed/.test(message)) return;
-    document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: 'survey-feedback.user.js', message }) }));
+    document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: 'feedback-alerts.user.js', message }) }));
   }
 
   // Halaxy shows a scored answer as "weighted score - choice" ("15 - 5" for 5 on a question that counts triple: live,

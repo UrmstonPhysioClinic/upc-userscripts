@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Halaxy review requests (beta)
+// @name         UPC Patients: Review requests (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.5.1
+// @version      0.5.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
@@ -44,7 +44,7 @@
   if (window.__hxReviewRequests) return;
   window.__hxReviewRequests = true;
 
-  const VERSION = '0.5.1';
+  const VERSION = '0.5.2';
   const ROUTE = 'upc-review-requests';
   const MENU_CLS = 'upc-rr-menu';
   const ALLOWED = ['Carl Healy'];          // Carl, 10 Nov 2026: just me for now

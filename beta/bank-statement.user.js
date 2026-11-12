@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Halaxy bank statement (beta)
+// @name         UPC Billing: Bank statement (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.1
+// @version      0.1.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
@@ -38,7 +38,7 @@
   if (window.__hxBankStatement) return;
   window.__hxBankStatement = true;
 
-  const VERSION = '0.1.1';
+  const VERSION = '0.1.2';
   const ROUTE = 'upc-bank-statement';
   const MENU_CLS = 'upc-bank-menu';
   const ALLOWED = ['Carl Healy'];

@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Halaxy health check (beta)
+// @name         UPC System: Health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.34
+// @version      1.1.35
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,17 +31,32 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.34';
+  const VERSION = '1.1.35';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
 
+  // Shown names (the part after "UPC <Group>: "). Old file names stay while stable still has them.
   const NAMES = {
-    'alerts.user.js': 'Alerts', 'bill-funder.user.js': 'Bill funder', 'arrival-chime.user.js': 'Arrival chime', 'chat-alert.user.js': 'Chat alert',
-    'branding.user.js': 'Branding', 'calendar-controls.user.js': 'Calendar controls', 'core.user.js': 'Core library', 'custom-reports.user.js': 'Custom Reports',
-    'forecourt-lights.user.js': 'Forecourt lights', 'script-settings.user.js': 'Script settings', 'review-requests.user.js': 'Review requests', 'survey-feedback.user.js': 'Feedback alerts', 'portal-fill.user.js': 'Portal fill', 'task-stamps.user.js': 'Task stamps', 'halaxy-mobile.user.js': 'Mobile layout', 'funder-chaser.user.js': 'Insurer payments due', 'check-ins.user.js': 'Open-ended patients', 'patient-statuses.user.js': 'Patient statuses', 'bank-statement.user.js': 'Bank statement', 'email-html-source.user.js': 'HTML source for emails', 'health-check.user.js': 'Health check',
-    'outstanding-actions.user.js': 'Outstanding Actions', 'ready-to-bill.user.js': 'Ready to bill', 'rebate-sync.user.js': 'Rebate Sync', 'remittances.user.js': 'Remittances',
-    'textarea-autogrow.user.js': 'Auto-expanding text boxes', 'toast-alerts.user.js': 'Toast alerts',
+    // System
+    'core.user.js': 'Core library', 'health-check.user.js': 'Health check', 'script-settings.user.js': 'Script settings',
+    // Billing
+    'invoice-funder.user.js': 'Invoice Funder', 'ready-to-bill.user.js': 'Ready to bill', 'portal-fill.user.js': 'Portal fill', 'remittances.user.js': 'Remittances',
+    'rebate-sync.user.js': 'Rebate sync', 'bank-statement.user.js': 'Bank statement', 'insurer-payments-due.user.js': 'Insurer payments due',
+    // Patients
+    'patient-statuses.user.js': 'Patient statuses', 'open-ended-patients.user.js': 'Open-ended patients', 'review-requests.user.js': 'Review requests',
+    'feedback-alerts.user.js': 'Feedback alerts',
+    // Calendar
+    'calendar-controls.user.js': 'Calendar controls', 'outstanding-actions.user.js': 'Outstanding actions', 'task-stamps.user.js': 'Task stamps',
+    'alerts.user.js': 'Alerts', 'forecourt-lights.user.js': 'Forecourt lights',
+    // Look
+    'branding.user.js': 'Branding', 'mobile-layout.user.js': 'Mobile layout', 'text-boxes.user.js': 'Auto-expanding text boxes',
+    'toast-alerts.user.js': 'Toast alerts', 'email-html.user.js': 'HTML source for emails',
+    // Old file names (stable, until promoted) and retired scripts
+    'bill-funder.user.js': 'Invoice Funder', 'funder-chaser.user.js': 'Insurer payments due', 'check-ins.user.js': 'Open-ended patients',
+    'survey-feedback.user.js': 'Feedback alerts', 'halaxy-mobile.user.js': 'Mobile layout', 'textarea-autogrow.user.js': 'Auto-expanding text boxes',
+    'email-html-source.user.js': 'HTML source for emails', 'custom-reports.user.js': 'Custom Reports', 'arrival-chime.user.js': 'Arrival chime',
+    'chat-alert.user.js': 'Chat alert',
   };
   // Same rule as Outstanding Actions: these appointment statuses mean "not attended".
   const NOT_ATTENDED = /cancel|did-not-attend|dna|reject|declin|reschedul|wait|pending/;
@@ -133,7 +148,7 @@
   const PAGE_CHECKS = [
     {
       id: 'core', title: "Halaxy's page basics",
-      scripts: ['Outstanding Actions', 'Calendar controls', 'Rebate Sync'],
+      scripts: ['Outstanding actions', 'Calendar controls', 'Rebate sync'],
       applies: () => !!group(),
       test: () => missingIn(['jQuery()', 'HkUser.linkPrG', 'HkUser.pracID', 'hk_glob.preferences']),
     },
@@ -168,11 +183,11 @@
     },
     {
       id: 'invoice-page', title: 'Invoice page layout',
-      scripts: ['Rebate Sync', 'Remittances', 'Bill funder'],
+      scripts: ['Rebate sync', 'Remittances', 'Invoice Funder'],
       // An invoice: /invoice/{id} or /patient/invoice/{patient}/{id}. Not /patient/invoice/{patient}/, the patient's Invoices tab (a list).
       applies: () => /\/invoice\/\d+\/?$/.test(location.pathname) && !/\/patient\/invoice\/\d+\/?$/.test(location.pathname) || /\/patient\/invoice\/\d+\/\d+\/?$/.test(location.pathname),
       test: () => missingEls(['#invoiceLines', '#invoicePayments'])
-        // Bill funder reads the patient, claim and authorisation from patient invoices that can still be billed.
+        // Invoice Funder reads the patient, claim and authorisation from patient invoices that can still be billed.
         .concat(document.getElementById('invoiceFunderBtn') ? missingEls(['#card-invoice-view-patient a[href*="/patient/"]', '#card-invoice-parts-claim-view', '#btn-group-outstanding-charges']) : []),
     },
     {
@@ -218,7 +233,7 @@
     const put = (id, title, scripts, problems, info) => {
       saveResult(id, { title, scripts, problems, info: info || '', at: Date.now(), page: 'data' });
     };
-    const OA = ['Outstanding Actions'];
+    const OA = ['Outstanding actions'];
 
     let pracs = [];
     try {
@@ -282,15 +297,15 @@
       } catch (e) { put('data-invoices', 'Patient invoice list', OA, [e.message]); }
     }
 
-    // Appointment details pop-up: Bill funder reads cancellation comments from its "Notes" box.
+    // Appointment details pop-up: Invoice Funder reads cancellation comments from its "Notes" box.
     if (appts.length) {
       try {
         const res = await hfetch('/a/pr/' + group() + '/appointment/' + encodeURIComponent(appts[0].id), { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
         if (!res.ok) throw new Error('Halaxy returned ' + res.status + ' for /appointment');
         const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
         const box = doc.querySelector('.appointment-details-popup');
-        put('data-appointment-details', 'Appointment details pop-up', ['Bill funder'], box ? [] : ['details layout missing (div.appointment-details-popup)']);
-      } catch (e) { put('data-appointment-details', 'Appointment details pop-up', ['Bill funder'], [e.message]); }
+        put('data-appointment-details', 'Appointment details pop-up', ['Invoice Funder'], box ? [] : ['details layout missing (div.appointment-details-popup)']);
+      } catch (e) { put('data-appointment-details', 'Appointment details pop-up', ['Invoice Funder'], [e.message]); }
     }
 
     // Add-task pop-up for an invoice: Remittances adds a task to bill the patient's excess. Opening it adds nothing.
@@ -362,7 +377,7 @@
       } catch (e) { put('data-patient-edit', 'Patient Edit page', ['Portal fill', 'Review requests', 'Patient statuses'], [e.message]); }
     }
 
-    // Invoice settings (cogwheel): Bill funder reads and sets the status here.
+    // Invoice settings (cogwheel): Invoice Funder reads and sets the status here.
     const withInvoice = appts.find((e) => e.invoiceID);
     if (withInvoice) {
       try {
@@ -376,8 +391,8 @@
           .concat(sel && !values.includes('issued') ? ['no Issued status'] : [])
           .concat(sel && !values.includes('') ? ['no Active status'] : [])
           .concat(form.querySelector('[name="form[_token]"]') ? [] : ['form token missing']);
-        put('data-invoice-settings', 'Invoice settings (cogwheel)', ['Bill funder'], problems);
-      } catch (e) { put('data-invoice-settings', 'Invoice settings (cogwheel)', ['Bill funder'], [e.message]); }
+        put('data-invoice-settings', 'Invoice settings (cogwheel)', ['Invoice Funder'], problems);
+      } catch (e) { put('data-invoice-settings', 'Invoice settings (cogwheel)', ['Invoice Funder'], [e.message]); }
     }
 
     // The "Mark as Paid" pop-up (read only; Bank statement records insurer payments with it). An unpaid invoice's.

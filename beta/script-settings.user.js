@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Halaxy script settings (beta)
+// @name         UPC System: Script settings (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.0
+// @version      0.1.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/script-settings.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/script-settings.user.js
@@ -29,7 +29,7 @@
   if (window.__hxScriptSettings) return;
   window.__hxScriptSettings = true;
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
   const U = () => window.UPC;
   const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const STATUS = { running: 'running on this page', next: 'starts on next page', off: 'switched off', unused: 'not used on this page' };
@@ -44,6 +44,7 @@
     .upc-ss .upc-ss-chan { display: flex; gap: 18px; margin-bottom: 8px; }
     .upc-ss .upc-ss-chan label, .upc-ss td label { font-weight: normal; margin: 0; cursor: pointer; }
     .upc-ss td.upc-ss-ver { white-space: nowrap; }
+    .upc-ss tr.upc-ss-grp th { font-weight: 600; }
     .upc-ss .upc-ss-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 12px; }
     .upc-ss .upc-ss-actions .btn { margin: 0; }
   `;
@@ -67,7 +68,18 @@
     });
   }
   const items = () => ((window.__upcLoader && window.__upcLoader.items) || []);
-  const shortName = (n) => String(n || '').replace(/\s*\(beta\)\s*$/i, '');
+  // Scripts are named "UPC <Group>: <Name>" and listed under their group, in this order (loader 1.3.0 sends them
+  // sorted with group and short name; older loaders send the names only).
+  const GROUPS = ['Billing', 'Patients', 'Calendar', 'Look', 'System'];
+  const parseName = (n) => {
+    const plain = String(n || '').replace(/\s*\(beta\)\s*$/i, '');
+    const m = plain.match(/^UPC (\w+): (.+)$/);
+    return m ? { group: m[1], short: m[2] } : { group: 'Other', short: plain };
+  };
+  const shortName = (n) => parseName(n).short;
+  const rank = (g) => { const i = GROUPS.indexOf(g); return i < 0 ? GROUPS.length : i; };
+  const sortGrouped = (list, nameOf) => list.map((x) => Object.assign({ g: parseName(nameOf(x)) }, { x }))
+    .sort((a, b) => rank(a.g.group) - rank(b.g.group) || a.g.short.localeCompare(b.g.short));
 
   // ------------------------------------------------------------------ the pop-up
 
@@ -83,8 +95,11 @@
       if (!g) { g = { script: it.script, items: [] }; groups.push(g); }
       g.items.push(it);
     });
+    const fullNames = {};
+    (st ? st.scripts : []).forEach((x) => { fullNames[x.file] = x.name; });
+    const ordered = sortGrouped(groups, (g) => fullNames[g.script] || g.script).map((o) => o.x);
     let h = '<div class="upc-ss-section"><h5>Options</h5>';
-    h += groups.length ? groups.map((g) => '<div class="upc-ss-group"><div class="text-muted">' + esc(names[g.script] || g.script.replace(/\.user\.js$/, '')) + '</div><div class="upc-ss-items">' +
+    h += ordered.length ? ordered.map((g) => '<div class="upc-ss-group"><div class="text-muted">' + esc(names[g.script] || g.script.replace(/\.user\.js$/, '')) + '</div><div class="upc-ss-items">' +
       g.items.map((it) => '<button type="button" class="btn btn-outline-primary-light" data-item="' + esc(it.id) + '">' + esc(it.label) + '</button>').join('') + '</div></div>').join('')
       : '<p class="text-muted">No script has options on this page.</p>';
     h += '</div><div class="upc-ss-section"><h5>Scripts on this PC</h5>';
@@ -93,7 +108,9 @@
     } else {
       h += '<div class="upc-ss-chan">' + ['stable', 'beta'].map((c) => '<label><input type="radio" name="upc-ss-chan" value="' + c + '"' + (st.chosen === c ? ' checked' : '') + '> ' +
         (c === 'stable' ? 'Stable (clinic PCs)' : 'Beta (testing new changes)') + '</label>').join('') + '</div>';
-      h += st.scripts.length ? '<table class="table table-striped table-bordered w-100"><tbody>' + st.scripts.map((x) =>
+      let last = st.scripts.every((x) => parseName(x.name).group === 'Other') ? 'Other' : '';   // no grouped names: no headings
+      h += st.scripts.length ? '<table class="table table-striped table-bordered w-100"><tbody>' + sortGrouped(st.scripts, (x) => x.name).map((o) => o.x).map((x) =>
+        ((parseName(x.name).group !== last && (last = parseName(x.name).group)) ? '<tr class="upc-ss-grp"><th colspan="2">' + esc(last) + '</th></tr>' : '') +
         '<tr><td><label><input type="checkbox" data-file="' + esc(x.file) + '"' + (x.on ? ' checked' : '') + '> ' + esc(shortName(x.name)) + '</label></td>' +
         '<td class="upc-ss-ver text-muted">' + esc(x.version) + ' · ' + esc(STATUS[x.status] || x.status) + '</td></tr>').join('') + '</tbody></table>'
         : '<p class="text-muted">No scripts saved yet. Check for updates to fetch them.</p>';

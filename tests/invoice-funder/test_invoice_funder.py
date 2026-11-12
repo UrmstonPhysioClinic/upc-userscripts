@@ -8,7 +8,7 @@ onto an invoice that holds only chosen fees, then the funder is invoiced once as
 invoice (never the existing one Halaxy pre-selects); the merged invoice is marked Issued through the
 cogwheel settings form with every other field unchanged; the result is checked and reported.
 
-Run:  python3 tests/bill-funder/test_bill_funder.py
+Run:  python3 tests/invoice-funder/test_invoice_funder.py
 Needs: Python 3 with Playwright (Chromium).
 """
 import datetime
@@ -18,7 +18,7 @@ from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
 CORE = (ROOT / 'beta' / 'core.user.js').read_text()
-BILL = (ROOT / 'beta' / 'bill-funder.user.js').read_text()
+BILL = (ROOT / 'beta' / 'invoice-funder.user.js').read_text()
 PG, PATIENT, CLAIM, OTHER_CLAIM = '555', 500, 77, 88
 TODAY = datetime.date.today()
 d = lambda days: TODAY - datetime.timedelta(days=days)

@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Halaxy ready to bill (beta)
+// @name         UPC Billing: Ready to bill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.1
+// @version      0.3.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
@@ -42,7 +42,7 @@
   if (window.__hxReadyToBill) return;
   window.__hxReadyToBill = true;
 
-  const VERSION = '0.3.1';
+  const VERSION = '0.3.2';
   const ROUTE = 'upc-ready-to-bill';
   const MENU_CLS = 'upc-rtb-menu';
   const ALLOWED = ['Carl Healy', 'Wendy Pritchard'];   // Carl, 7 Nov 2026: only the two of them

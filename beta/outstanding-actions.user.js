@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Halaxy Outstanding Actions (beta)
+// @name         UPC Calendar: Outstanding actions (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.5.3
+// @version      0.5.4
 // @description  Persistent notice of today's outstanding actions: attended appointments without a published note, and unpaid self-funded invoices.
 // @match        https://*.halaxy.com/a/*
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
@@ -47,7 +47,7 @@
   if (window.__hxOutstanding) return;
   window.__hxOutstanding = true;
 
-  const VERSION = '0.5.3';
+  const VERSION = '0.5.4';
   const m = location.pathname.match(/^\/a\/pr\/(\d+)\//);
   if (!m) return;
   const PG = m[1];

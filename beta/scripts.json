@@ -2,123 +2,130 @@
   "scripts": [
     {
       "file": "health-check.user.js",
-      "name": "Halaxy health check (beta)",
-      "version": "1.1.34"
+      "name": "UPC System: Health check (beta)",
+      "version": "1.1.35"
     },
     {
       "file": "core.user.js",
-      "name": "UPC core library (beta)",
-      "version": "0.1.31"
+      "name": "UPC System: Core library (beta)",
+      "version": "0.1.32"
     },
     {
       "file": "alerts.user.js",
-      "name": "Halaxy alerts (beta)",
-      "version": "1.0.0"
+      "name": "UPC Calendar: Alerts (beta)",
+      "version": "1.0.1"
     },
     {
       "file": "bank-statement.user.js",
-      "name": "Halaxy bank statement (beta)",
-      "version": "0.1.1"
-    },
-    {
-      "file": "bill-funder.user.js",
-      "name": "Halaxy bill funder (beta)",
-      "version": "0.8.1"
-    },
-    {
-      "file": "branding.user.js",
-      "name": "UPC Halaxy branding (beta)",
-      "version": "2.9.2"
-    },
-    {
-      "file": "calendar-controls.user.js",
-      "name": "Halaxy: calendar controls (beta)",
-      "version": "2.11"
-    },
-    {
-      "file": "check-ins.user.js",
-      "name": "Halaxy open-ended patients (beta)",
-      "version": "0.1.4"
-    },
-    {
-      "file": "email-html-source.user.js",
-      "name": "Halaxy: HTML source for emails (beta)",
-      "version": "0.4"
-    },
-    {
-      "file": "forecourt-lights.user.js",
-      "name": "Halaxy forecourt lights reminder (beta)",
-      "version": "0.2.1"
-    },
-    {
-      "file": "funder-chaser.user.js",
-      "name": "Halaxy insurer payments due (beta)",
-      "version": "0.1.3"
-    },
-    {
-      "file": "halaxy-mobile.user.js",
-      "name": "Halaxy mobile layout (beta)",
-      "version": "2.18"
-    },
-    {
-      "file": "outstanding-actions.user.js",
-      "name": "Halaxy Outstanding Actions (beta)",
-      "version": "0.5.3"
-    },
-    {
-      "file": "patient-statuses.user.js",
-      "name": "Halaxy patient statuses (beta)",
-      "version": "0.2.2"
-    },
-    {
-      "file": "portal-fill.user.js",
-      "name": "Halaxy insurer portal fill (beta)",
-      "version": "0.1.15"
-    },
-    {
-      "file": "ready-to-bill.user.js",
-      "name": "Halaxy ready to bill (beta)",
-      "version": "0.3.1"
-    },
-    {
-      "file": "rebate-sync.user.js",
-      "name": "UPC Halaxy Rebate Sync (beta)",
-      "version": "0.3.0"
-    },
-    {
-      "file": "remittances.user.js",
-      "name": "Halaxy remittances (beta)",
-      "version": "0.3.3"
-    },
-    {
-      "file": "review-requests.user.js",
-      "name": "Halaxy review requests (beta)",
-      "version": "0.5.1"
-    },
-    {
-      "file": "script-settings.user.js",
-      "name": "Halaxy script settings (beta)",
-      "version": "0.1.0"
-    },
-    {
-      "file": "survey-feedback.user.js",
-      "name": "Halaxy feedback alerts (beta)",
+      "name": "UPC Billing: Bank statement (beta)",
       "version": "0.1.2"
     },
     {
-      "file": "task-stamps.user.js",
-      "name": "Halaxy task stamps (beta)",
-      "version": "0.1.3"
+      "file": "branding.user.js",
+      "name": "UPC Look: Branding (beta)",
+      "version": "2.9.3"
     },
     {
-      "file": "textarea-autogrow.user.js",
-      "name": "Halaxy: auto-expanding text boxes (beta)",
-      "version": "1.1"
+      "file": "calendar-controls.user.js",
+      "name": "UPC Calendar: Calendar controls (beta)",
+      "version": "2.12"
+    },
+    {
+      "file": "email-html.user.js",
+      "name": "UPC Look: HTML source for emails (beta)",
+      "version": "0.5",
+      "was": "email-html-source.user.js"
+    },
+    {
+      "file": "feedback-alerts.user.js",
+      "name": "UPC Patients: Feedback alerts (beta)",
+      "version": "0.1.3",
+      "was": "survey-feedback.user.js"
+    },
+    {
+      "file": "forecourt-lights.user.js",
+      "name": "UPC Calendar: Forecourt lights (beta)",
+      "version": "0.2.2"
+    },
+    {
+      "file": "insurer-payments-due.user.js",
+      "name": "UPC Billing: Insurer payments due (beta)",
+      "version": "0.1.4",
+      "was": "funder-chaser.user.js"
+    },
+    {
+      "file": "invoice-funder.user.js",
+      "name": "UPC Billing: Invoice Funder (beta)",
+      "version": "0.8.2",
+      "was": "bill-funder.user.js"
+    },
+    {
+      "file": "mobile-layout.user.js",
+      "name": "UPC Look: Mobile layout (beta)",
+      "version": "2.19",
+      "was": "halaxy-mobile.user.js"
+    },
+    {
+      "file": "open-ended-patients.user.js",
+      "name": "UPC Patients: Open-ended patients (beta)",
+      "version": "0.1.5",
+      "was": "check-ins.user.js"
+    },
+    {
+      "file": "outstanding-actions.user.js",
+      "name": "UPC Calendar: Outstanding actions (beta)",
+      "version": "0.5.4"
+    },
+    {
+      "file": "patient-statuses.user.js",
+      "name": "UPC Patients: Patient statuses (beta)",
+      "version": "0.2.3"
+    },
+    {
+      "file": "portal-fill.user.js",
+      "name": "UPC Billing: Portal fill (beta)",
+      "version": "0.1.16"
+    },
+    {
+      "file": "ready-to-bill.user.js",
+      "name": "UPC Billing: Ready to bill (beta)",
+      "version": "0.3.2"
+    },
+    {
+      "file": "rebate-sync.user.js",
+      "name": "UPC Billing: Rebate sync (beta)",
+      "version": "0.3.1"
+    },
+    {
+      "file": "remittances.user.js",
+      "name": "UPC Billing: Remittances (beta)",
+      "version": "0.3.4"
+    },
+    {
+      "file": "review-requests.user.js",
+      "name": "UPC Patients: Review requests (beta)",
+      "version": "0.5.2"
+    },
+    {
+      "file": "script-settings.user.js",
+      "name": "UPC System: Script settings (beta)",
+      "version": "0.1.1"
+    },
+    {
+      "file": "task-stamps.user.js",
+      "name": "UPC Calendar: Task stamps (beta)",
+      "version": "0.1.4"
+    },
+    {
+      "file": "text-boxes.user.js",
+      "name": "UPC Look: Auto-expanding text boxes (beta)",
+      "version": "1.2",
+      "was": "textarea-autogrow.user.js"
     },
     {
       "file": "toast-alerts.user.js",
-      "name": "Halaxy: toast alerts (beta)",
-      "version": "1.1"
+      "name": "UPC Look: Toast alerts (beta)",
+      "version": "1.2"
     }
   ]
 }

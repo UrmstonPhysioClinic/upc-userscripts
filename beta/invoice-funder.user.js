@@ -1,10 +1,11 @@
 // ==UserScript==
-// @name         Halaxy bill funder (beta)
+// @name         UPC Billing: Invoice Funder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.8.1
+// @version      0.8.2
+// @upc-was      bill-funder.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
-// @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bill-funder.user.js
+// @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/invoice-funder.user.js
+// @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/invoice-funder.user.js
 // @description  "Bill funder" next to Halaxy's Invoice Funder button: finds this patient's unbilled fees for the same claim, lets you choose, merges them onto one invoice, then invoices the funder once as a new organisation invoice. Asks before changing anything.
 // @match        https://*.halaxy.com/a/pr/*/invoice/*
 // @run-at       document-idle
@@ -40,7 +41,7 @@
   if (window.__upcBillFunder) return;
   window.__upcBillFunder = true;
 
-  const VERSION = '0.8.1';
+  const VERSION = '0.8.2';
   const MAX_AGE_DAYS = 183;   // about 6 months
   const NOT_ATTENDED = /cancel|did-not-attend|dna|reject|declin|reschedul/i;
   const DAY = 86400e3;

@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         UPC Halaxy Rebate Sync (beta)
+// @name         UPC Billing: Rebate sync (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.0
+// @version      0.3.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/rebate-sync.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/rebate-sync.user.js
@@ -16,7 +16,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '0.3.0';
+  const VERSION = '0.3.1';
   const MONEY_FIELDS = ['form[amount]', 'form[rebate]', 'form[tax]', 'form[taxManual]'];
 
   const snapshots = {};      // lineId -> { fields: [[name, value]], at }

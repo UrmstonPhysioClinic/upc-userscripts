@@ -6,7 +6,7 @@ Checks: insurer invoices marked Issued and unpaid 30+ days are listed, oldest fi
 newer ones, patients' own invoices and self-funded are left out; Active ones after 30 days are greyed and not
 counted; the menu count; Carl only; a changed report is an error passed to the health check.
 
-Run:  python3 tests/funder-chaser/test_funder_chaser.py
+Run:  python3 tests/insurer-payments-due/test_insurer_payments_due.py
 """
 import asyncio, datetime, json, sys, urllib.parse
 from pathlib import Path
@@ -14,7 +14,7 @@ from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
 CORE = (ROOT / 'beta' / 'core.user.js').read_text()
-FC = (ROOT / 'beta' / 'funder-chaser.user.js').read_text()
+FC = (ROOT / 'beta' / 'insurer-payments-due.user.js').read_text()
 MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 hx = lambda d: '%02d-%s-%d' % (d.day, MON[d.month - 1], d.year)
 gbp = lambda c: '£%.2f' % (c / 100)
@@ -153,7 +153,7 @@ async def main():
         await pg.wait_for_function("document.querySelector('[data-upc-funder-chaser] .upc-err')", timeout=60000)
         err = await pg.evaluate("document.querySelector('[data-upc-funder-chaser] .upc-err').textContent")
         health = await pg.evaluate("window.__healthErrors || []")
-        check('changed report: says so, and tells the health check', 'Invoice Status not found' in err and any(h.get('file') == 'funder-chaser.user.js' for h in health), (err, health))
+        check('changed report: says so, and tells the health check', 'Invoice Status not found' in err and any(h.get('file') == 'insurer-payments-due.user.js' for h in health), (err, health))
         await ctx.close()
         await browser.close()
     print('\n%d failed' % len(FAILS) if FAILS else '\nAll passed')

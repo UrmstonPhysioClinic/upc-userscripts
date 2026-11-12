@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Halaxy: calendar controls (beta)
+// @name         UPC Calendar: Calendar controls (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      2.11
+// @version      2.12
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/calendar-controls.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/calendar-controls.user.js

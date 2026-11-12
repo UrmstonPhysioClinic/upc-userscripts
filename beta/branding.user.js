@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         UPC Halaxy branding (beta)
+// @name         UPC Look: Branding (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      2.9.2
+// @version      2.9.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/branding.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/branding.user.js

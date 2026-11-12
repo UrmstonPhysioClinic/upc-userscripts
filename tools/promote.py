@@ -27,6 +27,12 @@ def promote(name):
     if n != 2:
         sys.exit(name + ': expected @updateURL and @downloadURL pointing at beta/')
     (ROOT / 'stable' / name).write_text(head + body)
+    # A renamed script (@upc-was): the old stable file goes, so the PCs swap to the new one (the loader keeps
+    # each PC's switch and settings).
+    was = re.search(r'^// @upc-was\s+(\S+)', head, re.M)
+    if was and (ROOT / 'stable' / was.group(1)).exists():
+        (ROOT / 'stable' / was.group(1)).unlink()
+        print('removed stable/' + was.group(1) + ' (renamed to ' + name + ')')
     ver = re.search(r'^// @version\s+(\S+)', head, re.M).group(1)
     print('promoted', name, ver)
 

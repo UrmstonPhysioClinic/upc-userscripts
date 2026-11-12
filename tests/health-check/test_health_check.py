@@ -161,7 +161,7 @@ async def main():
         # An older health check's saved result (a data problem, checked just now) is replaced at once by the new version
         await pg.evaluate("""(() => {
             const r = JSON.parse(localStorage.getItem('upc-health:results') || '{}');
-            r['data-calendar'] = { title: 'Calendar data', scripts: ['Outstanding Actions'], problems: ['old version complaint'], at: Date.now(), page: 'data' };
+            r['data-calendar'] = { title: 'Calendar data', scripts: ['Outstanding actions'], problems: ['old version complaint'], at: Date.now(), page: 'data' };
             r['reports'] = { title: "Halaxy's table builder", scripts: ['Custom Reports', 'Remittances'], problems: ['HxGridTable()'], at: Date.now(), page: '/a/pr/:n/report/referral/:n' };
             localStorage.setItem('upc-health:resultsBy', JSON.stringify('0.0.1'));
             localStorage.setItem('upc-health:results', JSON.stringify(r));
@@ -214,7 +214,7 @@ async def main():
         # 3. Page checks only run where they apply
         STATE['break'] = {'invoice'}
         probs, _ = await load('/a/pr/555/invoice/123')
-        check('invoice page element reported for Rebate Sync', any(x['title'] == 'Invoice page layout has changed' and 'Rebate Sync' in x['scripts'] for x in probs), probs)
+        check('invoice page element reported for Rebate sync', any(x['title'] == 'Invoice page layout has changed' and 'Rebate sync' in x['scripts'] for x in probs), probs)
         probs, _ = await load('/a/pr/555/patient/9')
         check('result kept until that page is visited again', len(probs) == 1, probs)
         STATE['break'] = set()
@@ -234,13 +234,13 @@ async def main():
         tsk = [x for x in probs if x['title'] == 'Add-task pop-up has changed']
         check('add-task pop-up change reported for Remittances', tsk and 'Remittances' in tsk[0]['scripts'] and any('displayDueDate' in l for l in tsk[0]['lines']), tsk)
         det = [x for x in probs if x['title'] == 'Appointment details pop-up has changed']
-        check('appointment details layout change reported for Bill funder', det and 'Bill funder' in det[0]['scripts'], det)
+        check('appointment details layout change reported for Invoice Funder', det and 'Invoice Funder' in det[0]['scripts'], det)
         sv = [x for x in probs if x['title'] == 'Survey responses has changed']
         check('survey response layout change reported for Feedback alerts and Review requests', sv and 'Feedback alerts' in sv[0]['scripts'] and any('note_total_score' in l for l in sv[0]['lines']), sv)
         sett = [x for x in probs if x['title'] == 'Invoice settings (cogwheel) has changed']
         pay = [x for x in probs if x['title'] == 'Mark as Paid pop-up has changed']
         check('no Direct Deposit in Mark as Paid reported for Bank statement', pay and pay[0]['lines'] == ['no Direct Deposit payment method'] and 'Bank statement' in pay[0]['scripts'], (pay, [x['title'] for x in probs]))
-        check('cogwheel status change reported for Bill funder', sett and sett[0]['lines'] == ['no Issued status'] and 'Bill funder' in sett[0]['scripts'], sett)
+        check('cogwheel status change reported for Invoice Funder', sett and sett[0]['lines'] == ['no Issued status'] and 'Invoice Funder' in sett[0]['scripts'], sett)
         STATE['break'] = set()
         await pg.evaluate('hxHealth.run(true)')
         await pg.wait_for_timeout(500)
