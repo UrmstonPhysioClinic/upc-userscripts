@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo
 from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
-CORE = (ROOT / 'beta' / 'core.user.js').read_text()
+CORE = (ROOT / 'beta' / 'core.user.js').read_text().replace('perMinute: 45,', 'perMinute: 100000,')   # tests: no 45-a-minute wait (the 300 ms gap stays)
 FB = (ROOT / 'beta' / 'feedback-alerts.user.js').read_text()
 LON = ZoneInfo('Europe/London')
 NOW = datetime.datetime(2026, 11, 11, 12, 0, tzinfo=LON)
