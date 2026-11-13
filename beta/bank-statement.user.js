@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Bank statement (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.8
+// @version      0.1.9
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
@@ -40,7 +40,7 @@
   if (window.__hxBankStatement) return;
   window.__hxBankStatement = true;
 
-  const VERSION = '0.1.8';
+  const VERSION = '0.1.9';
   const ROUTE = 'upc-bank-statement';
   const MENU_CLS = 'upc-bank-menu';
   const ALLOWED = ['Carl Healy'];
@@ -487,7 +487,9 @@
     .upc-bank .card-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .upc-bank .card-header h2 { margin: 0; }
     .upc-bank .btn { margin: 0; }
-    .upc-bank .upc-bank-drop { border: 2px dashed var(--vs-theme-border-color, #ced4da); border-radius: 4.8px; padding: 28px; text-align: center; cursor: pointer; }
+    .upc-bank .upc-bank-drop { border: 2px dashed var(--vs-theme-border-color, #ced4da); border-radius: 4.8px; padding: 28px; text-align: center; margin-top: 12px;
+      background: var(--vs-card-standout-bg-color, #f0f0f5); cursor: pointer; }
+    .upc-bank .upc-bank-drop.on { border-color: var(--vs-theme-primary, #0e0793); }
     .upc-bank td.upc-bank-date, .upc-bank td.number { white-space: nowrap; }
     .upc-bank .upc-bank-set { margin: 2px 0; }
     .upc-bank .upc-bank-set a { margin-right: 6px; white-space: nowrap; }
@@ -503,17 +505,21 @@
   function render() {
     if (!root) return;
     const st = state.statement, rs = state.results;
-    let h = '<div class="upc-bank"><h1>Bank statement</h1>';
-    h += '<div class="upc-bank-drop" tabindex="0" role="button" data-a="choose">' + (state.busy ? 'Working...' : 'Drop the month\'s Starling statement (PDF) here, or click to choose it') + '<input type="file" accept="application/pdf" hidden></div>';
+    // Laid out as Remittances (Carl, 13 Nov 2026): a "Read ..." card with what it does, the drop box, progress and notes.
+    let h = '<div class="upc-bank"><h1>Bank statement</h1>' +
+      '<div class="card"><div class="card-header"><h2>Read a bank statement</h2></div><div class="card-body">' +
+      '<div class="text-muted">Read the month\'s Starling statement, match each insurer payment to its invoices, and record it once you confirm: as ' + METHOD + ', dated the day it reached the bank, with a note of the insurer, date and reference. Other money in (card takings, Halaxy payments) and money out are not used. Statements are read on this computer and not uploaded anywhere.</div>' +
+      '<div class="upc-bank-drop" tabindex="0" role="button" data-a="choose">' + (state.busy ? 'Working...' : 'Drop a Starling statement PDF here, or click to choose one') + '<input type="file" accept="application/pdf" hidden></div>';
     // While it works: a progress bar and the current step; the results once it has finished (Carl, 13 Nov 2026).
     if (state.run) h += U().ui.run.html(state.run);
     const working = state.busy && state.run && !state.run.finished;
     if (state.error) h += '<p class="upc-err">' + esc(state.error) + '</p>';
     if (state.warn) h += '<p class="upc-err">' + esc(state.warn) + '</p>';
     if (st) {
-      h += '<p class="text-muted">' + st.rows + ' transactions, ' + esc(isoLabel(st.from)) + ' to ' + esc(isoLabel(st.to)) + '. ' +
+      h += '<p class="text-muted upc-gap mb-0">' + st.rows + ' transactions, ' + esc(isoLabel(st.from)) + ' to ' + esc(isoLabel(st.to)) + '. ' +
         (st.bad ? '<span class="upc-err">The running balance didn\'t add up on ' + st.bad + ' of ' + st.checked + ' rows, so the statement may not have been read correctly: check before recording.</span>' : 'Read correctly (checked against the running balance on ' + st.checked + ' rows).') + '</p>';
     }
+    h += '</div></div>';
     if (rs && !working) {
       const ready = rs.filter((r) => r.state === 'matched' || (r.state === 'choose' && r.pick !== null));
       h += '<div class="card"><div class="card-header"><h2>Insurer payments (' + rs.length + ')</h2>' +
@@ -534,8 +540,6 @@
             return '<tr class="' + (r.state === 'done' || r.state === 'recorded' || r.state === 'none' ? 'upc-off' : '') + '"><td class="upc-bank-date">' + esc(isoLabel(r.date)) + '</td><td>' + esc(r.insurer) + '</td><td>' + esc(r.ref) + '</td>' +
               '<td class="number">' + fmt(r.amount) + '</td><td>' + inv + '</td><td>' + act + '</td></tr>';
           }).join('') + '</tbody></table>' : '<p class="text-muted m-3">No insurer payments on this statement.</p>') + '</div></div>';
-      h += '<p class="text-muted">Each payment is recorded on its invoices as ' + METHOD + ', dated the day it reached the bank, with a note of the insurer, date and reference. Nothing is recorded until you confirm. ' +
-        'Other money in (card takings, Halaxy payments) and money out are not used.</p>';
     }
     h += '<div class="text-muted upc-version">Bank statement ' + VERSION + '</div></div>';
     root.innerHTML = h;
@@ -629,7 +633,8 @@
       const p = e.target.dataset && e.target.dataset.pick;
       if (p && state.results) { const [k, j] = p.split(':').map(Number); state.results[k].pick = j; render(); }
     });
-    root.addEventListener('dragover', (e) => { if (e.target.closest('.upc-bank-drop')) e.preventDefault(); });
+    root.addEventListener('dragover', (e) => { const d = e.target.closest('.upc-bank-drop'); if (d) { e.preventDefault(); d.classList.add('on'); } });
+    root.addEventListener('dragleave', (e) => { const d = e.target.closest('.upc-bank-drop'); if (d) d.classList.remove('on'); });
     root.addEventListener('drop', (e) => { if (e.target.closest('.upc-bank-drop')) { e.preventDefault(); open(e.dataTransfer.files[0]); } });
     root.addEventListener('keydown', (e) => { if (e.target.classList && e.target.classList.contains('upc-bank-drop') && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); pickFile(); } });
     state.unmount = U().ui.mountPage('Bank statement', root, MENU_CLS);
