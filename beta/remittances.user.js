@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.14
+// @version      0.3.15
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -31,7 +31,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.3.14';
+  const VERSION = '0.3.15';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -587,7 +587,7 @@
 
   // ================================================================== page
 
-  const state = { file: null, remit: null, results: [], busy: false, unmount: null, log: [] };
+  const state = { file: null, remit: null, results: [], busy: false, unmount: null, run: null };
   let root = null;
   let sh = null;
 
@@ -652,7 +652,10 @@
       }
     }
     html += '</div></div>';
-    if (state.results.length) {
+    // While it works: a progress bar and the current step only; the results once it has finished (Carl, 13 Nov 2026).
+    if (state.run) html += UPC.ui.run.html(state.run);
+    const working = state.busy && state.run && !state.run.finished;
+    if (state.results.length && !working) {
       html += '<div class="card"><div class="card-header"><h2>Invoices on this remittance</h2></div><div class="card-body p-0 table-responsive-sm">' +
         '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th></th><th>Invoice</th><th class="number">Halaxy</th><th class="number">Insurer paid</th><th class="number">Difference</th><th>Result</th></tr></thead><tbody>';
       state.results.forEach((x, i) => {
@@ -686,7 +689,6 @@
       html += '<div class="upc-rem-apply"><button type="button" class="btn btn-primary" data-act="apply" ' + (can ? '' : 'disabled') + '>' + label + '</button>' +
         '<label><input type="checkbox" data-act="attach" ' + (state.attach !== false ? 'checked' : '') + '> Attach the remittance to each matched invoice</label></div></div></div>';
     }
-    if (state.log.length) html += '<div class="upc-box upc-log">' + state.log.map((l) => '<div class="' + (l.err ? 'upc-err' : '') + '">' + esc(l.t) + '</div>').join('') + '</div>';
     html += '<div class="text-muted upc-version">Remittances ' + VERSION + '</div></div>';
     sh.innerHTML = html;
   }
@@ -698,28 +700,29 @@
     state.file = file;
     state.remit = null;
     state.results = [];
-    state.log = [];
     state.applied = false;
+    const run = state.run = UPC.ui.run.start(0);
+    const step = (t, err) => { UPC.ui.run.step(run, t, err); render(); };
     render();
     try {
-      const read = await readPdf(file, status);
+      const read = await readPdf(file, (t) => step(t));
       state.remit = understand(read.words);
       state.remit.scanned = read.scanned > 0;
       if (read.scanned) state.remit.notes.unshift('This remittance was scanned, so it was read by text recognition. Check each invoice number and amount against the paper copy before applying.');
-      render();
+      run.total = state.remit.items.length;
       for (let i = 0; i < state.remit.items.length; i++) {
-        status('Checking ' + state.remit.items[i].invoice + ' in Halaxy (' + (i + 1) + ' of ' + state.remit.items.length + ')...');
+        step('Checking ' + state.remit.items[i].invoice + ' in Halaxy (' + (i + 1) + ' of ' + state.remit.items.length + ')...');
         state.results.push(await matchItem(state.remit.items[i]));
-        render();
+        UPC.ui.run.tick(run);
       }
-      status(state.results.length ? 'Checked. Review the results, then apply the excess fixes you want.' : 'No invoices found on this remittance.');
+      UPC.ui.run.end(run, state.results.length ? 'Checked. Review the results, then apply the excess fixes you want.' : 'No invoices found on this remittance.');
     } catch (e) {
       console.error('[UPC remittances]', e);
-      status('Could not read this remittance: ' + (e.message || e));
+      UPC.ui.run.step(run, 'Could not read this remittance: ' + (e.message || e), true);
+      UPC.ui.run.end(run, 'Could not read this remittance.');
     } finally {
       state.busy = false;
       render();
-      status(state.results.length ? 'Checked. Review the results, then apply the excess fixes you want.' : $('.upc-rem-status').textContent);
     }
   }
 
@@ -812,7 +815,8 @@
     const lines = list.map((x) => '<li>' + esc(x.item.invoice) + ': ' + x.resume.map((w) => 'bill ' + fmt(w.amount) + ' (the ' + esc(w.date) + ' fee) on ' + esc(w.number) + ' back to it').join(', ') + '</li>').join('');
     if (!(await confirmSimple('Finish ' + list.length + ' invoice' + (list.length === 1 ? '' : 's') + ' left part-way?', '<p>These were stopped part way last time. Each fee waiting on the patient invoice is billed back to its funder invoice (set back to Active for the change if it is Issued, then Issued again) and given its own date. Nothing else is changed.</p><ul>' + lines + '</ul>'))) return;
     state.busy = true;
-    const say = (t, err) => { state.log.push({ t, err }); render(); };
+    const run = state.run = UPC.ui.run.start(list.length);
+    const say = (t, err) => { UPC.ui.run.step(run, t, err); render(); };
     for (const x of list) {
       say(x.item.invoice + ':');
       try {
@@ -824,11 +828,13 @@
       } catch (e) {
         x.status = 'failed';
         x.error = e.message || String(e);
-        say('  Stopped: ' + x.error, true);
+        say(x.item.invoice + ' stopped: ' + x.error, true);
       }
+      UPC.ui.run.tick(run);
     }
+    UPC.ui.run.end(run, 'Done. Apply the remaining fixes when you are ready.');
     state.busy = false;
-    say('Done. Apply the remaining fixes when you are ready.');
+    render();
   }
   function confirmSimple(title, html) {
     return new Promise((resolve) => {
@@ -850,8 +856,10 @@
     // Excess fixes ask first; attaching alone is what the button says it does.
     if (list.length && !(await confirmApply(list))) return;
     state.busy = true;
-    const say = (t, err) => { state.log.push({ t, err }); render(); };
+    const run = state.run = UPC.ui.run.start(list.length + (state.attach !== false ? attachable().length : 0));
+    const say = (t, err) => { UPC.ui.run.step(run, t, err); render(); };
     for (const x of list) {
+      if (list.indexOf(x) > 0) UPC.ui.run.tick(run);
       say(x.item.invoice + ':');
       const moved = {};   // per patient invoice: { number, lines, owes }
       const doneMoves = [];   // this invoice's fees moved so far, to put back if a later one fails
@@ -897,7 +905,7 @@
         const putBack = !left.length;
         x.status = 'failed';
         x.error = failed.replace(/ Everything was put back as it was\.$/, '') + (putBack ? ' Everything on ' + x.item.invoice + ' was put back as it was.' : ' Not everything could be put back: see the task on ' + x.item.invoice + '.');
-        say('  Stopped: ' + x.error, true);
+        say(x.item.invoice + ' stopped: ' + x.error, true);
         try {
           await UPC.tasks.addToInvoice(x.invoiceId, {
             title: 'Remittances stopped on ' + x.item.invoice + ': please check', assignee: TASK_FOR, priority: 3, due: todayLabel(), by: 'Remittances',
@@ -929,6 +937,7 @@
         'invoices ' + attachable().map((y) => y.item.invoice).join(', ')]
         .filter(Boolean).join('; ').replace(/^r/, 'R').replace(/^p/, 'P');
     };
+    if (list.length) UPC.ui.run.tick(run);
     if (state.attach !== false) {
       const title = (state.remit.insurer || 'Insurer') + ' remittance' + (state.remit.date ? ' ' + state.remit.date : '');
       const dateName = state.remit.date ? state.remit.date + '.pdf' : '';
@@ -939,8 +948,8 @@
           // This remittance already attached: by Remittances (its title) or by hand (named by its date, "2026-09-30.pdf").
           const inv = await UPC.invoice.fetch(x.invoiceId);
           const there = inv.attachmentList.filter((at) => at.title.includes(title) || (dateName && at.title.includes(dateName)));
-          if (!there.length) { await attach(); say('Attached the remittance to ' + x.item.invoice + '.'); continue; }
-          if (there.some((at) => /payment date/i.test(at.comments) && /\binvoices UPC/i.test(at.comments))) { say('The remittance is already attached to ' + x.item.invoice + '.'); continue; }
+          if (!there.length) { await attach(); say('Attached the remittance to ' + x.item.invoice + '.'); UPC.ui.run.tick(run); continue; }
+          if (there.some((at) => /payment date/i.test(at.comments) && /\binvoices UPC/i.test(at.comments))) { say('The remittance is already attached to ' + x.item.invoice + '.'); UPC.ui.run.tick(run); continue; }
           // Attached without the full details (Carl, 13 Nov 2026): if it is this very file, the details are added to it;
           // if it is a different file (the wrong document under the right name, say), it is left alone, this remittance
           // is attached as well, and Carl gets a task to check the other one.
@@ -952,6 +961,7 @@
           if (same && same.editUrl) {
             await UPC.files.updateAttachment(x.invoiceId, same.editUrl, { title, comments, category: UPC.files.CATEGORY.payment });
             say('Added the full details to the remittance already attached to ' + x.item.invoice + '.');
+            UPC.ui.run.tick(run);
             continue;
           }
           await attach();
@@ -967,11 +977,13 @@
         } catch (e) {
           say('Could not attach the remittance to ' + x.item.invoice + ': ' + (e.message || e), true);
         }
+        UPC.ui.run.tick(run);
       }
     }
+    UPC.ui.run.end(run, 'Finished. Open the invoices to check, then record the payments once the money is in the bank.');
     state.busy = false;
     state.applied = true;   // load the remittance again to run it again
-    say('Finished. Open the invoices to check, then record the payments once the money is in the bank.');
+    render();
   }
 
   function bind() {

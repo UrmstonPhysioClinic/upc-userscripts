@@ -427,7 +427,7 @@ async def main():
         await pg.wait_for_selector('[data-upc-bank-confirm]', timeout=10000)
         await pg.click('[data-upc-bank-confirm] [data-c=yes]')
         try:
-            await pg.wait_for_function("/Recorded/.test(document.querySelector('[data-upc-bank-statement] tbody tr:nth-child(1)').textContent)", timeout=90000)
+            await pg.wait_for_function("/Recorded/.test((document.querySelector('[data-upc-bank-statement] tbody tr:nth-child(1)') || {}).textContent || '')", timeout=90000)
         except Exception:
             print("row when the rest was expected:", S['posts'], await pg.evaluate("document.querySelector('[data-upc-bank-statement] tbody tr:nth-child(1)').innerText"))
             raise

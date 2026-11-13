@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Invoice Funder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.8.2
+// @version      0.8.3
 // @upc-was      bill-funder.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/invoice-funder.user.js
@@ -41,7 +41,7 @@
   if (window.__upcBillFunder) return;
   window.__upcBillFunder = true;
 
-  const VERSION = '0.8.2';
+  const VERSION = '0.8.3';
   const MAX_AGE_DAYS = 183;   // about 6 months
   const NOT_ATTENDED = /cancel|did-not-attend|dna|reject|declin|reschedul/i;
   const DAY = 86400e3;
@@ -262,7 +262,7 @@
   // ------------------------------------------------------------------ panel
 
   function openPanel(currentId) {
-    const st = { phase: 'loading', status: 'Reading...', plan: null, log: [], result: null, error: '', confirm: false, zero: {}, zeroDone: {}, zeroConfirm: false };
+    const st = { phase: 'loading', status: 'Reading...', plan: null, prog: null, result: null, error: '', confirm: false, zero: {}, zeroDone: {}, zeroConfirm: false };
     const dlg = U().ui.dialog({ title: 'Invoice Funder', key: 'bill-funder', canClose: () => st.phase !== 'running' && st.phase !== 'zeroing' });
     if (!dlg) return;
     dlg.root.setAttribute('data-upc-bill-funder', '');
@@ -279,7 +279,9 @@
       let h = '<div class="text-muted">Merges the chosen fees onto one invoice, then invoices the funder once, so the patient\'s excess is charged once. Halaxy\'s own steps; nothing changes until you confirm.</div>';
       if (st.phase === 'loading') h += '<p>' + esc(st.status) + '</p>';
       if (st.error) h += '<p class="upc-warn upc-gap">' + esc(st.error) + '</p>';
-      if (p && st.phase !== 'loading') {
+      // While it works: a progress bar and the current step only (Carl, 13 Nov 2026); the fees again once it has finished.
+      const working = st.phase === 'running' || st.phase === 'zeroing';
+      if (p && st.phase !== 'loading' && !working) {
         if (!p.fees.length) h += '<p>No unbilled fees for this claim, dated today or earlier in the last 6 months.</p>';
         else {
           h += '<table class="table w-100"><thead><tr><th></th><th>Date</th><th>Fee</th><th>Invoice</th><th class="number">Amount</th><th>Notes</th></tr></thead><tbody>';
@@ -319,7 +321,7 @@
           ? 'Merge ' + c.length + ' fees (' + total + ') onto the latest of their invoices, then invoice ' + funder + ' once as a new organisation invoice (dated today, due in 3 months), keeping the patient invoice, and mark that patient invoice Issued. Fees on invoices emptied by the merge are moved and those invoices are deleted by Halaxy, as its merge does.'
           : 'Nothing to merge: ' + (c.length === 1 ? 'the fee is' : 'the fees are') + ' already on ' + esc(c[0].invoiceNumber) + '. Invoice ' + funder + ' once from it (' + total + ') as a new organisation invoice (dated today, due in 3 months), keeping the patient invoice, and mark it Issued.') + '</div>';
       }
-      if (st.log.length) h += '<div class="upc-box upc-log">' + st.log.map((l) => '<div class="' + (l.err ? 'upc-err' : '') + '">' + esc(l.t) + '</div>').join('') + '</div>';
+      if (st.prog) h += U().ui.run.html(st.prog);
       if (st.result) {
         const r = st.result;
         h += '<p class="upc-ok upc-gap">Billed. ' + esc(r.patientInvoiceNumber) + ' is billed to the funder on <a href="' + esc(U().base() + '/invoice/' + r.orgInvoiceId) + '" target="_blank" rel="noopener">' + esc(r.orgInvoiceNumber || 'the new organisation invoice') + '</a>' + (r.amount !== null && r.amount !== undefined ? ' (' + fmt(r.amount) + ')' : '') +
@@ -392,7 +394,8 @@
         const list = toZero();
         st.zeroConfirm = false;
         st.phase = 'zeroing';
-        const say = (t, err) => { st.log.push({ t, err }); render(); };
+        st.prog = U().ui.run.start(list.length);
+        const say = (t, err) => { U().ui.run.step(st.prog, t, err); render(); };
         for (const f of list) {
           say('Setting the ' + dateLabel(f.when) + ' fee on ' + f.invoiceNumber + ' to £ 0.00...');
           try {
@@ -400,23 +403,28 @@
             st.zeroDone[String(f.lineId)] = { ok: true };
           } catch (err) {
             st.zeroDone[String(f.lineId)] = { ok: false, error: err.message || String(err) };
-            say('Not changed: ' + (err.message || err), true);
+            say(f.invoiceNumber + ' ' + dateLabel(f.when) + ' not changed: ' + (err.message || err), true);
           }
+          U().ui.run.tick(st.prog);
         }
+        U().ui.run.end(st.prog, 'Done.');
         st.phase = 'done';
         render();
       }
       else if (act === 'go') {
         st.confirm = false;
         st.phase = 'running';
-        const say = (t, err) => { st.log.push({ t, err }); render(); };
+        st.prog = U().ui.run.start(0);
+        const say = (t, err) => { U().ui.run.step(st.prog, t, err); render(); };
         render();
         try {
           st.result = await run(st.plan, chosen(), say);
+          U().ui.run.end(st.prog);
           st.phase = 'done';
         } catch (err) {
-          st.phase = 'failed';
           say('Stopped: ' + (err.message || err), true);
+          U().ui.run.end(st.prog);
+          st.phase = 'failed';
         }
         render();
       }

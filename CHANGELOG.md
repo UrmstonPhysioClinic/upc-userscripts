@@ -1,5 +1,11 @@
 # Changelog
 
+## Progress bar instead of step-by-step output, 13 Nov 2026 (beta)
+- Carl, 13 Nov 2026: no live list of steps while a script works. Core 0.1.41 adds one shared display (`UPC.ui.run`): a progress bar with one line saying what it is doing now; once finished, the full results in one go, any problems listed, and the steps behind a "View log" button.
+- Remittances 0.3.15: reading and checking a remittance, applying excess fixes and attaching, and finishing part-way moves all show the progress bar; the table appears when it has finished.
+- Invoice Funder 0.8.3, Rebate sync 0.3.3 and Bank statement 0.1.8 (reading, matching and recording): the same.
+- Ready to bill 0.3.4, Review requests 0.5.4, Open-ended patients 0.1.7, Insurer payments due 0.1.6 and Feedback alerts 0.1.5: a small moving bar beside the status line while they check.
+
 ## Remittances: add a missing line by hand, 13 Nov 2026 (beta)
 - Remittances 0.3.14 (Carl, 13 Nov 2026): "A line missing? Add it from the paper copy" on scanned remittances, and on any whose amounts don't add up to its total: invoice number, amount paid, amount billed if shown, and a tick for member contribution or excess. The line is checked in Halaxy like any other and the totals are checked again; it then takes part in moving excesses and attaching as normal.
 

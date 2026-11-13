@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Bank statement (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.7
+// @version      0.1.8
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
@@ -40,7 +40,7 @@
   if (window.__hxBankStatement) return;
   window.__hxBankStatement = true;
 
-  const VERSION = '0.1.7';
+  const VERSION = '0.1.8';
   const ROUTE = 'upc-bank-statement';
   const MENU_CLS = 'upc-bank-menu';
   const ALLOWED = ['Carl Healy'];
@@ -493,7 +493,7 @@
     .upc-bank .upc-bank-set a { margin-right: 6px; white-space: nowrap; }
     .upc-bank tr.upc-off td { color: var(--vs-viewData-label-color, #6c757d); }
   `;
-  const state = { unmount: null, busy: false, status: '', error: '', warn: '', statement: null, results: null };
+  const state = { unmount: null, busy: false, status: '', error: '', warn: '', statement: null, results: null, run: null };
   let root = null;
 
   function setHtml(r, k) {
@@ -504,14 +504,17 @@
     if (!root) return;
     const st = state.statement, rs = state.results;
     let h = '<div class="upc-bank"><h1>Bank statement</h1>';
-    h += '<div class="upc-bank-drop" tabindex="0" role="button" data-a="choose">' + (state.busy ? esc(state.status) : 'Drop the month\'s Starling statement (PDF) here, or click to choose it') + '<input type="file" accept="application/pdf" hidden></div>';
+    h += '<div class="upc-bank-drop" tabindex="0" role="button" data-a="choose">' + (state.busy ? 'Working...' : 'Drop the month\'s Starling statement (PDF) here, or click to choose it') + '<input type="file" accept="application/pdf" hidden></div>';
+    // While it works: a progress bar and the current step; the results once it has finished (Carl, 13 Nov 2026).
+    if (state.run) h += U().ui.run.html(state.run);
+    const working = state.busy && state.run && !state.run.finished;
     if (state.error) h += '<p class="upc-err">' + esc(state.error) + '</p>';
     if (state.warn) h += '<p class="upc-err">' + esc(state.warn) + '</p>';
     if (st) {
       h += '<p class="text-muted">' + st.rows + ' transactions, ' + esc(isoLabel(st.from)) + ' to ' + esc(isoLabel(st.to)) + '. ' +
         (st.bad ? '<span class="upc-err">The running balance didn\'t add up on ' + st.bad + ' of ' + st.checked + ' rows, so the statement may not have been read correctly: check before recording.</span>' : 'Read correctly (checked against the running balance on ' + st.checked + ' rows).') + '</p>';
     }
-    if (rs) {
+    if (rs && !working) {
       const ready = rs.filter((r) => r.state === 'matched' || (r.state === 'choose' && r.pick !== null));
       h += '<div class="card"><div class="card-header"><h2>Insurer payments (' + rs.length + ')</h2>' +
         (ready.length ? '<button type="button" class="btn btn-primary" data-a="all"' + (state.busy ? ' disabled' : '') + '>Record ' + ready.length + ' payment' + (ready.length === 1 ? '' : 's') + '</button>' : '') + '</div><div class="card-body p-0">' +
@@ -540,13 +543,17 @@
 
   async function open(file) {
     if (state.busy || !file) return;
-    state.busy = true; state.error = ''; state.warn = ''; state.results = null; state.statement = null; state.status = 'Reading the statement...';
+    state.busy = true; state.error = ''; state.warn = ''; state.results = null; state.statement = null;
+    const run = state.run = U().ui.run.start(0);
+    U().ui.run.step(run, 'Reading the statement...');
     render();
     try {
       state.statement = await readStatement(file);
       render();
-      state.results = await match(state.statement, (t) => { state.status = t; render(); });
+      state.results = await match(state.statement, (t) => { U().ui.run.step(run, t); render(); });
+      U().ui.run.end(run);
     } catch (e) {
+      U().ui.run.end(run);
       state.error = 'Could not read it: ' + (e.message || e);
       if (/has changed/.test(e.message || '')) document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: 'bank-statement.user.js', message: e.message }) }));
     }
@@ -570,9 +577,11 @@
     const lines = list.map((r) => '<li>' + esc(r.insurer) + ' ' + fmt(r.amount) + ', ' + esc(isoLabel(r.date)) + ': ' + r.options[r.pick].map((i) => esc(i.number) + ' ' + fmt(i.balance)).join(', ') + '</li>').join('');
     if (!(await confirmDlg('Record payment' + (list.length === 1 ? '' : 's') + '?', '<p>Record these as paid (' + METHOD + ', on the bank date)?</p><ul>' + lines + '</ul>', 'Record'))) return;
     state.busy = true;
+    const run = state.run = U().ui.run.start(list.length);
+    render();
     for (const r of list) {
       r.error = '';
-      try { await record(r, (t) => { state.status = t; render(); }); }
+      try { await record(r, (t) => { U().ui.run.step(run, t); render(); }); }
       catch (e) {
         const part = !!e.partway;
         r.error = (part ? 'Stopped part way: ' : 'Not recorded: ') + (e.message || e) + (part ? ' Recording again carries on from where it stopped.' : '');
@@ -591,9 +600,13 @@
             } catch (te) { /* the error is on screen */ }
           }
         }
+        U().ui.run.step(run, r.insurer + ' ' + fmt(r.amount) + ' (' + isoLabel(r.date) + '): ' + r.error, true);
       }
+      U().ui.run.tick(run);
       render();
     }
+    const bad = list.filter((r) => r.error).length;
+    U().ui.run.end(run, 'Recorded ' + (list.length - bad) + ' of ' + list.length + ' payment' + (list.length === 1 ? '' : 's') + '.');
     state.busy = false;
     render();
   }

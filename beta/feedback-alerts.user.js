@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Feedback alerts (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.4
+// @version      0.1.5
 // @upc-was      survey-feedback.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/feedback-alerts.user.js
@@ -36,7 +36,7 @@
   if (window.__hxSurveyFeedback) return;
   window.__hxSurveyFeedback = true;
 
-  const VERSION = '0.1.4';
+  const VERSION = '0.1.5';
   const ALLOWED = ['Carl Healy'];   // Carl, 11 Nov 2026
   const ASSIGNEE = 'Carl Healy';
   const MAX_SCORE = 35;             // the Feedback Request template: 3 x 5 + 2 x 5 + 2 x 5
@@ -183,7 +183,7 @@
       const last = store.get('last', 0), err = store.get('lastError', null);
       const base = U().base();
       let h = '<div class="upc-fb-bar"><button type="button" class="btn btn-outline-primary-light" data-a="check"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Checking...' : 'Check now') + '</button>' +
-        '<span class="text-muted">' + esc(busy ? status : last ? 'Checked ' + time(last) + '.' : 'Not checked yet.') + '</span></div>';
+        (busy ? U().ui.run.inline(status) : '<span class="text-muted">' + esc(last ? 'Checked ' + time(last) + '.' : 'Not checked yet.') + '</span>') + '</div>';
       if (err && err.at >= last - 60e3) h += '<p class="upc-err">Last check: ' + esc(err.message) + '</p>';
       h += '<p>Responses in the last 14 days: ' + counts.excellent + ' Excellent, ' + counts.satisfactory + ' Satisfactory, ' + counts.below + ' Below expected. ' +
         'Below expected, and Satisfactory with a comment, become a task for you on the patient\'s profile.</p>';
