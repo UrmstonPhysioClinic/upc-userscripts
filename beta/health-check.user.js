@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.37
+// @version      1.1.38
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.37';
+  const VERSION = '1.1.38';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -396,20 +396,33 @@
       } catch (e) { put('data-invoice-settings', 'Invoice settings (cogwheel)', ['Invoice Funder'], [e.message]); }
     }
 
-    // The "Mark as Paid" pop-up (read only; Bank statement records insurer payments with it). An unpaid invoice's.
-    const unpaid = appts.find((e) => e.invoiceID && !/paid in full/i.test(String(e.invoiceStatus || '')));
-    if (unpaid) {
-      try {
-        const res = await getJSON('/invoicefunctions/' + encodeURIComponent(unpaid.invoiceID) + '/pay/offline');
-        const doc = new DOMParser().parseFromString(String((res && res.message) || ''), 'text/html');
-        const form = doc.querySelector('form#paymentForm') || doc.querySelector('form');
-        const methods = [...doc.querySelectorAll('select[name="form[paymentMethod]"] option')].map((o) => o.textContent.trim().toLowerCase());
-        const problems = !form ? ['payment form missing'] : ['form[paymentMethod]', 'form[paymentDate]', 'form[amount]', 'form[note]', 'form[_token]']
-          .filter((n) => !form.querySelector('[name="' + n + '"]')).map((n) => 'field ' + n + ' missing')
-          .concat(methods.length && !methods.includes('direct deposit') ? ['no Direct Deposit payment method'] : []);
-        put('data-pay-offline', 'Mark as Paid pop-up', ['Bank statement'], problems);
-      } catch (e) { put('data-pay-offline', 'Mark as Paid pop-up', ['Bank statement'], [e.message]); }
-    }
+    // A funder profile's deposits and files (read only; Bank statement and Remittances keep insurer money and remittances
+    // there, 13 Nov 2026). Looked at on the Starling Bank profile, which keeps the statement register.
+    const ORG = '78812';
+    try {
+      const res = await getJSON('/organisation/' + ORG + '/balance/data?viewMode=ajax');
+      const rows = res && res.data;
+      put('data-org-deposits', 'Funder deposits list', ['Bank statement', 'Remittances'], !Array.isArray(rows) ? ['not a list'] : rows.length ? keysMissing(rows, ['id', 'type', 'date', 'amount', 'balance']).map((k) => 'field ' + k) : []);
+    } catch (e) { put('data-org-deposits', 'Funder deposits list', ['Bank statement', 'Remittances'], [e.message]); }
+    try {
+      const res = await getJSON('/invoicefunctions/0/pay/offline/0/' + ORG);
+      const doc = new DOMParser().parseFromString(String((res && res.message) || ''), 'text/html');
+      const form = doc.querySelector('form#paymentForm');
+      const methods = [...doc.querySelectorAll('select[name="form[paymentMethod]"] option')].map((o) => o.textContent.trim().toLowerCase());
+      const problems = !form ? ['payment form missing'] : ['form[paymentMethod]', 'form[paymentDate]', 'form[amount]', 'form[note]', 'form[_token]']
+        .filter((n) => !form.querySelector('[name="' + n + '"]')).map((n) => 'field ' + n + ' missing')
+        .concat(methods.length && !methods.includes('direct deposit') ? ['no Direct Deposit payment method'] : []);
+      put('data-org-deposit-add', 'Add deposit pop-up', ['Bank statement'], problems);
+    } catch (e) { put('data-org-deposit-add', 'Add deposit pop-up', ['Bank statement'], [e.message]); }
+    try {
+      const res = await hfetch('/a/pr/' + group() + '/organisation/' + ORG, { credentials: 'same-origin' });
+      if (!res.ok) throw new Error('Halaxy returned ' + res.status + ' for the profile page');
+      const html = await res.text();
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const add = doc.querySelector('[data-modal-href*="/file/upload/organisation/"]');
+      const cards = doc.querySelectorAll('.attachment-file-card').length, edits = doc.querySelectorAll('[data-modal-href*="/file/edit/"]').length;
+      put('data-org-files', 'Funder profile files', ['Bank statement', 'Remittances'], (add ? [] : ['Add Files link missing']).concat(cards && edits < cards ? ['file Edit links missing'] : []));
+    } catch (e) { put('data-org-files', 'Funder profile files', ['Bank statement', 'Remittances'], [e.message]); }
 
     // Appointment types (Patient statuses tells funded bookings by them; capture 11 Nov 2026).
     try {
