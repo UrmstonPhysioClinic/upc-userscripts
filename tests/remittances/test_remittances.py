@@ -62,7 +62,11 @@ def funder_html(f):
                    "<td data-property='amount'>%s</td><td><a href='/a/pr/%s/invoice/line/%d/edit'>Edit</a> <a href='/a/pr/%s/invoice/line/%d/remove'>Remove</a></td></tr>"
                    % (PG, l['pid'], l['date'], l['item'], gbp(l['amount']), PG, l['lineId'], PG, l['lineId']) for l in f['lines'])
     total = sum(l['amount'] for l in f['lines'])
-    att = ''.join('<tr><td>%s</td></tr>' % a['title'] for a in S['attachments'].get(f['id'], []))
+    # Halaxy's attachment rows (capture 13 Nov 2026): created, category, title, comments, buttons (download, view, edit, delete)
+    att = ''.join("<tr><td>05-Nov-2026 17:56</td><td>Payment</td><td>%s</td><td>%s</td><td><a class='btn icon' href='/a/file/get/a%d.pdf'><i class='icon-download2'></i></a>"
+                  "<a class='btn icon btn-file-view' href='javascript:void(0);'></a><a class='btn icon ajax' href='/a/pr/%s/invoice/attachment/%d'><i class='icon-pencil3'></i></a>"
+                  "<a class='btn icon ajax' href='/a/pr/%s/invoice/attachment/%d/delete'><i class='icon-trash2'></i></a></td></tr>"
+                  % (a['title'], a['comments'], a.get('id', 0), PG, a.get('id', 0), PG, a.get('id', 0)) for a in S['attachments'].get(f['id'], []))
     return ("<html><head><title>Invoice %s | Halaxy</title></head><body><table id='invoiceLines'><tbody>%s<tr><td>Total</td><td>%s</td></tr></tbody></table>"
             "<table id='invoicePayments'><tbody><tr><td>Outstanding</td><td>%s</td></tr></tbody></table>"
             "<table id='invoiceAttachments'><tbody>%s</tbody></table></body></html>") % (f['number'], rows, gbp(total), gbp(total), att)
@@ -134,7 +138,27 @@ async def halaxy(route):
         if req.method == 'GET':
             return await js({'status': 'FORM', 'message': ATTACH_POPUP})
         assert form.get('form[_token]') == 'tok-attach' and form.get('form[files][0][fileEntity]') == '9001', form
-        S['attachments'].setdefault(i, []).append({'title': form['form[files][0][title]'], 'category': form['form[files][0][invoiceCategory]'], 'comments': form['form[files][0][invoiceComments]']})
+        S['next_att'] = S.get('next_att', 500) + 1
+        S['attachments'].setdefault(i, []).append({'id': S['next_att'], 'title': form['form[files][0][title]'], 'category': form['form[files][0][invoiceCategory]'],
+                                                   'comments': form['form[files][0][invoiceComments]'], 'bytes': S.get('current_pdf', b'')})
+        return await js({'status': 'REFRESH'})
+    m = re.search(r'^/a/file/get/a(\d+)\.pdf$', path)
+    if m:
+        a = next((a for v in S['attachments'].values() for a in v if a.get('id') == int(m.group(1))), None)
+        if not a:
+            return await route.fulfill(status=404, body='not found')
+        S['downloads'] = S.get('downloads', 0) + 1
+        return await route.fulfill(body=a.get('bytes', b''), content_type='application/pdf')
+    m = re.search(r'/invoice/attachment/(\d+)$', path)
+    if m:
+        a = next((a for v in S['attachments'].values() for a in v if a.get('id') == int(m.group(1))), None)
+        if req.method == 'GET':
+            return await js({'status': 'FORM', 'message': "<form name='form' method='post' id='frmInvoiceFile' class='dialogBoxForm'><input type='text' name='form[title]' value='%s'>"
+                             "<select name='form[invoiceFileType]'><option value='2' selected>Payment</option><option value='1'>Authorise Benefit</option><option value='0'>Other</option></select>"
+                             "<textarea name='form[comments]'>%s</textarea><input type='hidden' name='form[_token]' value='tok-attedit'></form>" % (a['title'], a['comments'])})
+        assert form.get('form[_token]') == 'tok-attedit', form
+        a.update({'title': form['form[title]'], 'comments': form['form[comments]'], 'category': form['form[invoiceFileType]']})
+        S['att_edits'] = S.get('att_edits', 0) + 1
         return await js({'status': 'REFRESH'})
     m = re.search(r'/task/invoice/(\d+)/list-data$', path)
     if m:
@@ -394,6 +418,39 @@ async def main():
         check('part of the excess moved by hand: says how much is left, not changed', 'Part of the excess is already moved: £ 12.00 of £ 36.00, so £ 24.00 is still on UPC-40002' in r2, rows)
         for l, a in zip(lines102, keep):
             l['amount'] = a
+
+        # Re-uploading where the remittance was attached by hand without details (Carl, 13 Nov 2026): the same file gets
+        # the full details in place; a different file under the same name is left alone, this one attached as well, and a
+        # task to check it; an invoice without it gets it
+        wpa_bytes = pdfs['wpa'].read_bytes()
+        S['current_pdf'] = wpa_bytes
+        rdate = re.search(r'\d{4}-\d\d-\d\d', S['attachments'][101][0]['title']).group(0)
+        S['attachments'] = {101: [{'id': 401, 'title': rdate + '.pdf', 'category': '2', 'comments': '', 'bytes': wpa_bytes}],
+                            102: [{'id': 402, 'title': rdate + '.pdf', 'category': '2', 'comments': '', 'bytes': b'%PDF-1.4 some other document'}]}
+        S['tasks'].pop(102, None)
+        await pg.set_input_files('[data-upc-remittances] input[type=file]', str(pdfs['wpa']))
+        await pg.wait_for_function("document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr').length === 3 && !document.querySelector('[data-upc-remittances] [data-act=apply]').disabled && /Excess moved/.test(document.querySelector('[data-upc-remittances] tbody').innerText)", timeout=120000)
+        await pg.evaluate("document.querySelector('[data-upc-remittances] [data-act=apply]').click()")
+        await pg.wait_for_function("(document.querySelector('[data-upc-remittances] .upc-log') || {}).innerText && document.querySelector('[data-upc-remittances] .upc-log').innerText.includes('Finished')", timeout=180000)
+        log3 = await pg.evaluate("document.querySelector('[data-upc-remittances] .upc-log').innerText")
+        a1, a2 = S['attachments'][101], S['attachments'][102]
+        check('same file attached by hand: details added in place, no second copy', len(a1) == 1 and a1[0]['title'].startswith('WPA remittance ' + rdate) and 'payment date' in a1[0]['comments'].lower()
+              and 'invoices UPC-' in a1[0]['comments'] and 'Added the full details to the remittance already attached to UPC-40001' in log3, (a1, log3[-800:]))
+        check('a different file under the same name: left alone, this one attached as well, with details',
+              len(a2) == 2 and a2[0]['bytes'] == b'%PDF-1.4 some other document' and a2[0]['comments'] == '' and 'invoices UPC-' in a2[1]['comments'] and 'already has a different file' in log3, (a2, log3[-800:]))
+        tk = S['tasks'].get(102, [])
+        check('and a task for Carl to check the other file', len(tk) == 1 and tk[0].get('form[title]') == 'Check the remittance attached to UPC-40002', tk)
+        check('an invoice without it gets it attached', len(S['attachments'].get(103, [])) == 1, S['attachments'].get(103))
+
+        # "Check remittance" on a funder invoice: opens Remittances with the attached file
+        await pg.goto('https://eu.halaxy.com/a/pr/555/invoice/101')
+        await pg.wait_for_selector('.upc-remit-check', timeout=30000)
+        await pg.click('.upc-remit-check')
+        await pg.wait_for_function("!!document.querySelector('[data-upc-remittances]') && document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr').length === 3", timeout=120000)
+        rows = await pg.evaluate("[...document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr')].map(r => r.innerText.replace(/\\s+/g, ' '))")
+        check('Check remittance opens the attached remittance and matches it', any('UPC-40002' in r and 'Excess moved' in r for r in rows), rows)
+        await pg.goto('https://eu.halaxy.com/a/pr/555/invoice/#upc-remittances')
+        await pg.wait_for_selector('[data-upc-remittances] input[type=file]', state='attached', timeout=30000)
 
         # The insurer paid nothing for a fee: it stays on the funder invoice at £0.00, never removed (Carl, 9 Nov 2026)
         res = await pg.evaluate("""(async () => { try { const f = await UPC.invoice.fetch('103'); const l = f.lines[0];

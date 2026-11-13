@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.39
+// @version      0.1.40
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.39';
+  const VERSION = '0.1.40';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -205,7 +205,7 @@
   function parseInvoice(doc, id) {
     const title = clean(doc.title);
     const num = (title.match(/UPC-?\d+/i) || [''])[0].toUpperCase().replace(/^UPC-?/, 'UPC-');
-    const inv = { id: String(id), number: num || title, lines: [], payments: [], paymentRows: [], pending: [], attachments: [], total: null, outstanding: null };
+    const inv = { id: String(id), number: num || title, lines: [], payments: [], paymentRows: [], pending: [], attachments: [], attachmentList: [], total: null, outstanding: null };
     const table = doc.querySelector('#invoiceLines');
     if (table) {
       table.querySelectorAll('tr').forEach((tr) => {
@@ -263,6 +263,14 @@
       att.querySelectorAll('tbody tr').forEach((tr) => {
         const row = clean(tr.textContent);
         if (row && tr.querySelector('td')) inv.attachments.push(row);
+        // The same row in parts (capture 13 Nov 2026): created, category, title, comments, then the buttons: download
+        // (/a/file/get/<name>.pdf), view, edit (/invoice/attachment/:id, a pop-up), delete (never used).
+        const td = [...tr.querySelectorAll('td')];
+        if (td.length < 3) return;
+        const get = tr.querySelector('a[href*="/file/get/"]');
+        const edit = [...tr.querySelectorAll('a[href*="/invoice/attachment/"]')].find((a) => !/\/delete\b/.test(a.getAttribute('href')));
+        inv.attachmentList.push({ created: clean(td[0].textContent), category: clean(td[1].textContent), title: clean(td[2].textContent), comments: clean(td[3] ? td[3].textContent : ''),
+          fileUrl: get ? get.getAttribute('href') : null, editUrl: edit ? edit.getAttribute('href') : null });
       });
     }
     inv.isFunder = inv.lines.some((l) => l.patientInvoiceId);
@@ -691,6 +699,32 @@
       const after = await invoice.fetch(invoiceId);
       if (after.attachments.length <= before.attachments.length) throw new UPCError('Halaxy accepted the file but does not list it on ' + after.number + '. Check the invoice.');
       return { fileId: stored.id };
+    },
+    // True when the file already attached (its download link) is byte for byte the same as `file`.
+    async sameFile(fileUrl, file) {
+      const res = await pacedFetch(fileUrl, { credentials: 'same-origin' });
+      if (!res.ok) throw new UPCError('Halaxy returned ' + res.status + ' for the attached file.');
+      const digest = async (buf) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', buf))].map((b) => b.toString(16).padStart(2, '0')).join('');
+      const [a, b] = await Promise.all([res.arrayBuffer(), file.arrayBuffer()]);
+      return a.byteLength === b.byteLength && (await digest(a)) === (await digest(b));
+    },
+    // Changes an attachment's title, comment and category through its edit pop-up (the pencil; form#frmInvoiceFile,
+    // capture 13 Nov 2026), then reads the invoice back to check the comment is there.
+    async updateAttachment(invoiceId, editUrl, opts) {
+      const path = String(editUrl).replace(/^\/a\/pr\/\d+/, '');
+      const { doc } = await http.popup(path);
+      const form = doc.querySelector('form#frmInvoiceFile') || doc.querySelector('form');
+      const has = (n) => form && form.querySelector('[name="' + n + '"]');
+      if (!form || !has('form[title]') || !has('form[comments]') || !has('form[_token]')) throw new UPCError('Halaxy\'s attachment edit pop-up has changed, so the details were not updated.');
+      const pairs = serialize(form).filter(([k]) => !['form[title]', 'form[comments]', 'form[invoiceFileType]'].includes(k));
+      pairs.push(['form[title]', opts.title], ['form[comments]', opts.comments || '']);
+      if (has('form[invoiceFileType]')) pairs.push(['form[invoiceFileType]', String(opts.category !== undefined ? opts.category : ATTACH_CATEGORY.payment)]);
+      const res = await http.postForm(path, pairs);
+      if (res && res.status === 'FORM') throw new UPCError('Halaxy did not accept the new details' + (Array.isArray(res.errors) && res.errors.length ? ': ' + res.errors.join(' ') : '.'));
+      const after = await invoice.fetch(invoiceId);
+      const start = clean(opts.comments || '').slice(0, 60);   // Halaxy may shorten a long comment on the page
+      if (!after.attachmentList.some((a) => a.comments.includes(start) && a.title.includes(clean(opts.title)))) throw new UPCError('Halaxy does not show the new details on ' + after.number + '. Check the invoice.');
+      return true;
     },
   };
 

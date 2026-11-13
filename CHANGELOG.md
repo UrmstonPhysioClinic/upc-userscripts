@@ -1,5 +1,11 @@
 # Changelog
 
+## Remittances: full details on older copies, and Check remittance, 13 Nov 2026 (beta)
+- Remittances 0.3.12 (Carl, 13 Nov 2026):
+  - Where the remittance is already attached without the full details (attached by hand, or by an older version), it compares the attached file with the one loaded. The same file: its title and comment are updated in place (Halaxy's attachment edit pop-up), no second copy. A different file under the same name (the wrong document, say): left alone, this remittance attached as well with its details, and a task for Carl to check the other one. Already with the full details: skipped as before.
+  - "Check remittance" next to each remittance attached to an invoice (titled by Remittances, or a date name like "2026-10-28.pdf"): opens Remittances with that file loaded, to move an excess not moved yet or add the full details.
+- Core 0.1.40: an invoice's attachments in parts (`attachmentList`: created, category, title, comments, download and edit links); `UPC.files.sameFile` and `UPC.files.updateAttachment`.
+
 ## Remittances: re-uploading says what's already done, 13 Nov 2026 (beta)
 - Remittances 0.3.11 (Carl, 13 Nov 2026: re-uploading old remittances): an invoice whose excess was already moved (by an earlier upload or by hand, however it was split over the fees) now shows "Excess moved" with how much, instead of "Insurer was billed ... but the Halaxy invoice is ...". Part moved, or more than the excess moved: says how much and leaves it for a check by hand. Nothing is moved twice. The comment's "billed" is now what the insurer was billed, not Halaxy's total after the move.
 
