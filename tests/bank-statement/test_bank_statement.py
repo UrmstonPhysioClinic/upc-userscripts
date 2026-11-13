@@ -671,6 +671,25 @@ async def main():
                 check('report page without its table twice: stops, saying what Halaxy sent', S['missed'] == 2 and 'not found twice; Halaxy sent a page titled "Reports | Halaxy"' in err, (S.get('missed'), err))
             await ctx.close()
 
+        # Last month's statement not in the register: a blob on the menu item (from the 15th; before it, the month before)
+        reset()
+        ctx = await context(browser)
+        pg = await ctx.new_page()
+        await pg.goto(URL)
+        await pg.wait_for_selector('a.upc-bank-menu', state='attached', timeout=20000)
+        units = await pg.evaluate("(() => { const b = window.upcBankStatement; return [b.monthDue(new Date(2026, 10, 15).getTime()), b.monthDue(new Date(2026, 10, 14).getTime()), b.monthDue(new Date(2027, 0, 20).getTime()),"
+                                  " b.covers(['2026-10-01', '2026-10-30'], '2026-10'), b.covers(['2026-10-01', '2026-10-15'], '2026-10'), b.covers(['2026-09-28', '2026-11-02'], '2026-10')]; })()")
+        check('which month is due, and when a statement covers it', units == ['2026-10', '2026-09', '2026-12', True, False, True], units)
+        badge = "(() => { const b = document.querySelector('a.upc-bank-menu .upc-bank-badge'); return b ? [b.textContent, b.title] : null; })()"
+        await pg.evaluate("window.upcBankStatement.checkDue()")
+        await pg.wait_for_function("!!document.querySelector('a.upc-bank-menu .upc-bank-badge')", timeout=20000)
+        check('no register for September (today 11 Nov): the blob shows, saying which month', await pg.evaluate(badge) == ['1', "September 2026's statement is not in the register yet"], await pg.evaluate(badge))
+        S['orgfiles'][78812] = [{'id': 8100, 'title': 'Starling statement 2026-09-01 to 2026-09-30', 'comments': 'Fingerprint x'}]
+        await pg.evaluate("window.upcBankStatement.checkDue()")
+        await pg.wait_for_function("!document.querySelector('a.upc-bank-menu .upc-bank-badge')", timeout=20000)
+        check('once it is in the register the blob goes', await pg.evaluate(badge) is None)
+        await ctx.close()
+
         # not Carl: nothing
         reset(user='Someone Else')
         ctx = await context(browser)

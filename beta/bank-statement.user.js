@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Bank statement (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.1
+// @version      0.2.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
@@ -40,6 +40,7 @@
  *    deposit is on the profile (its note names the bank date) is shown as added or applied. A deposit of the same amount
  *    with no note (by hand) is shown to check.
  *  - Tasks for Carl on what needs him: on the insurer's profile, or a general task when the profile isn't known.
+ *  - Due: from the 15th, a blob on the menu item while last month's statement isn't in the register (once a day).
  *  - Register: each statement read leaves one small file on the "Starling Bank (statements)" profile (period, balances,
  *    number of lines, a fingerprint, who read it and when, the insurer payments and what became of them), so a statement
  *    read again, or one overlapping it, is recognised.
@@ -49,7 +50,7 @@
   if (window.__hxBankStatement) return;
   window.__hxBankStatement = true;
 
-  const VERSION = '0.2.1';
+  const VERSION = '0.2.2';
   const ROUTE = 'upc-bank-statement';
   const MENU_CLS = 'upc-bank-menu';
   const ALLOWED = ['Carl Healy'];
@@ -643,18 +644,62 @@
     const was = state.register && (state.register.comments.match(/first read ([^;]+)/) || [])[1];
     const comments = ['Fingerprint ' + st.fp, st.rows + ' transactions', 'opening ' + fmt(st.opening) + ', closing ' + fmt(st.closing),
       'first read ' + (was || today() + ' by ' + me), 'last run ' + today() + ' by ' + me, 'insurer payments: ' + (results.length ? results.map(lineOf).join(', ') : 'none')].join('; ');
-    if (state.register) { await U().orgFiles.update(state.register.id, { title, comments }); state.register.comments = comments; return; }
+    if (state.register) { await U().orgFiles.update(state.register.id, { title, comments }); state.register.comments = comments; recheckDue(); return; }
     const pdf = makePdf(['Starling Bank statement register', '', 'Statement: ' + isoLabel(st.from) + ' to ' + isoLabel(st.to),
       'Opening balance ' + fmt(st.opening) + ', closing balance ' + fmt(st.closing) + ', ' + st.rows + ' transactions', 'Fingerprint ' + st.fp,
       'Read ' + today() + ' by ' + me + ' (Bank statement ' + VERSION + ')', '', 'Insurer payments (only these are kept here) and what Bank statement did:', '']
       .concat(results.length ? results.map(lineOf) : ['None']).concat(['', 'Later runs are noted in this file\'s comments.']));
     const id = await U().orgFiles.attach(REGISTER_ORG, new File([pdf], title + '.pdf', { type: 'application/pdf' }), { title, comments });
     state.register = { id, title, comments };
+    recheckDue();
   }
 
   // ------------------------------------------------------------------ page
 
+  // ------------------------------------------------------------------ last month's statement still to read
+
+  // From the 15th, a blob on the menu item while last month's statement isn't in the register (Carl, 13 Nov 2026);
+  // before the 15th, the month before that. Checked at most once a day, in the visible tab, shared across tabs.
+  const KEY = 'upc-bank:';
+  const store = { get: (k, d) => U().storage(KEY).get(k, d), set: (k, v) => U().storage(KEY).set(k, v) };
+  const DUE_FROM_DAY = 15;
+  const monthDue = (now) => { const d = new Date(now); const back = d.getDate() >= DUE_FROM_DAY ? 1 : 2; const m = new Date(d.getFullYear(), d.getMonth() - back, 1); return m.getFullYear() + '-' + String(m.getMonth() + 1).padStart(2, '0'); };
+  const monthName = (ym) => new Date(+ym.slice(0, 4), +ym.slice(5) - 1, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
+  // A register covers a month when its statement starts by the month's end and runs to its last week or later.
+  const covers = (sp, ym) => {
+    const last = new Date(+ym.slice(0, 4), +ym.slice(5), 0);
+    const iso = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    return !!sp && sp[0] <= iso(last) && sp[1] >= iso(new Date(last.getTime() - 7 * 86400e3));
+  };
+  async function checkDue() {
+    const ym = monthDue(Date.now());
+    const files = await U().orgFiles.list(REGISTER_ORG);
+    let spans = files.map((f) => spanOf(f.text)).filter(Boolean);
+    if (!spans.length && files.length) spans = (await U().orgFiles.find(REGISTER_ORG, (d) => !!spanOf(d.title), 'Starling statement')).map((d) => spanOf(d.title));
+    store.set('due', { at: Date.now(), month: ym, missing: !spans.some((sp) => covers(sp, ym)) });
+    paintBadge();
+  }
+  async function refreshDue() {
+    if (!allowed() || !U().background.ok()) return;
+    const last = store.get('due', null);
+    if (last && last.month === monthDue(Date.now()) && !U().background.due(last.at, 24 * 3600e3)) return;
+    try { await checkDue(); } catch (e) { console.warn('[UPC bank statement]', e); }
+  }
+  function recheckDue() { checkDue().catch(() => {}); }
+  function paintBadge() {
+    const a = document.querySelector('a.' + MENU_CLS);
+    if (!a) return;
+    const due = store.get('due', null);
+    let b = a.querySelector('.upc-bank-badge');
+    if (!due || !due.missing || due.month !== monthDue(Date.now())) { if (b) b.remove(); return; }
+    if (!b) { b = document.createElement('span'); b.className = 'upc-bank-badge'; b.textContent = '1'; a.appendChild(b); }
+    const title = monthName(due.month) + '\'s statement is not in the register yet';
+    if (b.title !== title) b.title = title;
+  }
+
   const CSS = `
+    .upc-bank-badge { display: inline-block; min-width: 18px; margin-left: 6px; padding: 0 5px; border-radius: 9px; font-size: .75em; line-height: 18px;
+      text-align: center; font-weight: 600; color: #fff; background: var(--vs-notification-badge-bg-color, #ec6b65); vertical-align: middle; }
     .upc-bank { max-width: 1200px; }
     .upc-bank h1 { margin: 0 0 16px; }
     .upc-bank .card { margin-bottom: 24px; }
@@ -891,12 +936,18 @@
       const inv = section && [...section.querySelectorAll('a.mainmenu-sublink')].find((a) => /^invoices$/i.test(U().clean(a.textContent)));
       return (inv ? inv.getAttribute('href').split('#')[0] : U().base() + '/invoice/') + '#' + ROUTE;
     }, MENU_CLS, /^finances?$/i);
+    new MutationObserver(paintBadge).observe(document.getElementById('mainMenu') || document.body, { childList: true, subtree: true });
+    window.addEventListener('storage', (e) => { if (e.key === KEY + 'due') paintBadge(); });
+    document.addEventListener('visibilitychange', refreshDue);
     window.addEventListener('hashchange', route);
+    paintBadge();
     route();
+    setTimeout(refreshDue, 5000);
+    setInterval(refreshDue, 30 * 60e3);
   }
   const begin = () => { if (U()) whenAllowed(start); else start(); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', begin, { once: true });
   else begin();
 
-  window.upcBankStatement = { version: VERSION, parseStarling, statementFrom, subsets, remitKeys, match, allowed, makePdf };
+  window.upcBankStatement = { version: VERSION, parseStarling, statementFrom, subsets, remitKeys, match, allowed, makePdf, monthDue, covers, checkDue };
 })();

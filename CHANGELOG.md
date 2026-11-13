@@ -1,5 +1,8 @@
 # Changelog
 
+## Bank statement: last month's statement due, 13 Nov 2026 (beta)
+- Bank statement 0.2.2 (Carl, 13 Nov 2026): from the 15th, a blob on the menu item while last month's statement isn't in the register (before the 15th, the month before). Checked at most once a day from the Starling Bank profile, in the visible tab, and again straight after a register is saved.
+
 ## Promoted to stable, 13 Nov 2026
 Confirmed by Carl on live Halaxy: core library 0.1.43 (pacing, report retry), health check 1.1.38, Alerts 1.0.1, Branding 2.9.3, Calendar controls 2.13, Forecourt lights 0.2.2, Outstanding actions 0.5.5, Task stamps 0.1.4, Toast alerts 1.2, Script settings 0.1.1 (grouping and new names), Email HTML 0.5 (was HTML source for emails), Text boxes 1.2 (was Auto-expanding text boxes), Ready to bill 0.3.4, Rebate sync 0.3.3, Review requests 0.5.4, Invoice Funder 0.8.3 (replaces Bill funder), Feedback alerts 0.1.5 (replaces Survey feedback), Insurer payments due 0.1.6 and Open-ended patients 0.1.7 (new on stable). Custom Reports retired from stable. Held on beta: Bank statement, Remittances 0.4 (stable keeps 0.3.2, checked against the new core), Portal fill, Patient statuses, Mobile layout, Block reporting.
 
