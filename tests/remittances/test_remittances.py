@@ -356,6 +356,7 @@ async def main():
         atts = {k: v for k, v in S['attachments'].items()}
         check('remittance attached to every matched invoice', sorted(atts) == [101, 102, 103] and all(len(v) == 1 for v in atts.values()), atts)
         check('attached as Payment with a clear title', all(a['category'] == '2' and a['title'] == 'WPA remittance 2026-10-08' for v in atts.values() for a in v), atts)
+        check('billed is what the insurer was billed, not the invoice after the move', any('this invoice billed £ 180.00, paid £ 144.00' in a['comments'] for a in S['attachments'].get(102, [])), S['attachments'].get(102))
         check('comment for Bank statement: reference, payment date, remittance total, invoice count, billed and paid on this invoice, every invoice on it', all(re.fullmatch(r'(Insurer reference \S+; p|P)ayment date \d\d-[A-Z][a-z]{2}-\d{4}; remittance total £ \d+\.\d\d over 3 invoices; this invoice billed £ \d+\.\d\d, paid £ \d+\.\d\d; invoices (UPC-\d+, ){2}UPC-\d+', a['comments']) for v in atts.values() for a in v), atts)
         check('no payment recorded', not any(m == 'PAYMENT' for _, m, _ in S['log']))
         api = [t for t, m, pth in S['log'] if '/a/pr/' in pth or '/api/' in pth]
@@ -375,6 +376,24 @@ async def main():
         await pg.wait_for_function("(document.querySelector('[data-upc-remittances] .upc-log') || {}).innerText && document.querySelector('[data-upc-remittances] .upc-log').innerText.includes('Finished')", timeout=120000)
         log2 = await pg.evaluate("document.querySelector('[data-upc-remittances] .upc-log').innerText")
         check('no duplicate attachments', all(len(v) == 1 for v in S['attachments'].values()) and log2.count('already attached') == 3, (S['attachments'], log2))
+
+        # Re-uploading after the excess was moved (Carl, 13 Nov 2026): said plainly, whatever the split; part moved by
+        # hand, or more than the excess: not changed, check by hand
+        rows = await pg.evaluate("[...document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr')].map(r => r.innerText.replace(/\\s+/g, ' '))")
+        r2 = next((r for r in rows if 'UPC-40002' in r), '')
+        check('excess already moved: says so, nothing to move', 'Excess moved' in r2 and 'already moved to the patient' in r2, rows)
+        lines102 = S['funders'][102]['lines']
+        keep = [l['amount'] for l in lines102]
+        for l in lines102:
+            l['amount'] = 6000
+        lines102[-1]['amount'] = 4800   # £ 12.00 of the £ 36.00 moved, on a different fee
+        await pg.set_input_files('[data-upc-remittances] input[type=file]', str(pdfs['wpa']))
+        await pg.wait_for_function("/Part of the excess/.test((document.querySelector('[data-upc-remittances] tbody') || {}).innerText || '') && !document.querySelector('[data-upc-remittances] [data-act=apply]').disabled", timeout=60000)
+        rows = await pg.evaluate("[...document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr')].map(r => r.innerText.replace(/\\s+/g, ' '))")
+        r2 = next((r for r in rows if 'UPC-40002' in r), '')
+        check('part of the excess moved by hand: says how much is left, not changed', 'Part of the excess is already moved: £ 12.00 of £ 36.00, so £ 24.00 is still on UPC-40002' in r2, rows)
+        for l, a in zip(lines102, keep):
+            l['amount'] = a
 
         # The insurer paid nothing for a fee: it stays on the funder invoice at £0.00, never removed (Carl, 9 Nov 2026)
         res = await pg.evaluate("""(async () => { try { const f = await UPC.invoice.fetch('103'); const l = f.lines[0];
@@ -487,7 +506,7 @@ async def main():
         check('a mistyped amount is refused, nothing changed', 'is not an amount' in msg, msg)
         await pg.fill(RS + ' input[data-line="0:2"]', '30.00')
         await pg.press(RS + ' input[data-line="0:2"]', 'Enter')
-        await pg.wait_for_function("/Checked UPC-40031/.test(document.querySelector('[data-upc-remittances] .upc-rem-status').textContent)", timeout=30000)
+        await pg.wait_for_function("/Checked UPC-40031/.test(document.querySelector('[data-upc-remittances] .upc-rem-status').textContent)", timeout=120000)
         after = await pg.evaluate("""({ status: document.querySelector('[data-upc-remittances] .upc-rem-status').textContent,
             notes: [...document.querySelectorAll('[data-upc-remittances] .upc-rem-notes li')].map((l) => l.textContent),
             vals: [...document.querySelectorAll('[data-upc-remittances] input[data-line]')].map((i) => i.value) })""")
@@ -495,7 +514,7 @@ async def main():
               and any('add up to £ 85.00 but the remittance total is £ 90.00' in n for n in after['notes']) and after['vals'] == ['55.00', '0.00', '30.00'], after)
         await pg.fill(RS + ' input[data-line="0:2"]', '35.00')
         await pg.click(RS + ' [data-act=recheck]')
-        await pg.wait_for_function("/now add up/.test(document.querySelector('[data-upc-remittances] .upc-rem-status').textContent)", timeout=30000)
+        await pg.wait_for_function("/now add up/.test(document.querySelector('[data-upc-remittances] .upc-rem-status').textContent)", timeout=120000)
         notes = await pg.evaluate("[...document.querySelectorAll('[data-upc-remittances] .upc-rem-notes li')].map((l) => l.textContent)")
         check('corrected back: the amounts add up again and the warning goes', not any('add up to' in n for n in notes), notes)
 

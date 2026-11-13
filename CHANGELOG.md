@@ -1,5 +1,8 @@
 # Changelog
 
+## Remittances: re-uploading says what's already done, 13 Nov 2026 (beta)
+- Remittances 0.3.11 (Carl, 13 Nov 2026: re-uploading old remittances): an invoice whose excess was already moved (by an earlier upload or by hand, however it was split over the fees) now shows "Excess moved" with how much, instead of "Insurer was billed ... but the Halaxy invoice is ...". Part moved, or more than the excess moved: says how much and leaves it for a check by hand. Nothing is moved twice. The comment's "billed" is now what the insurer was billed, not Halaxy's total after the move.
+
 ## Bank statement: certain about what's already recorded, 12 Nov 2026 (beta)
 - Bank statement 0.1.7 (Carl, 12 Nov 2026: "as robust as possible"):
   - A recorded payment's note decides whose it is. Bank statement notes the insurer, bank date and reference on each payment it records; a payment whose note names this bank line makes it certain, and one whose note names another bank line is never counted for this one (read from the invoice, only for payments that look like a match).

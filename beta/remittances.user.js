@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.10
+// @version      0.3.11
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -31,7 +31,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.3.10';
+  const VERSION = '0.3.11';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -548,6 +548,21 @@
         res.message = 'Stopped part way last time: ' + waiting.map((w) => fmt(w.amount) + ' is waiting on ' + w.number).join(', ') + ' to go back on ' + funder.number + '. Apply finishes it, then checks this invoice again.';
         return res;
       }
+      // Moved already (an earlier upload, or by hand), however it was split over the fees: the invoice now asks the
+      // insurer for exactly what it paid. Nothing to move; said plainly (Carl, 13 Nov 2026: re-uploading old remittances).
+      if (total === insurerPays && item.claimed > total) {
+        res.status = 'ok'; res.shortfall = 0; res.already = item.claimed - total;
+        res.message = 'Excess of ' + fmt(item.claimed - total) + ' already moved to the patient (billed ' + fmt(item.claimed) + ', now ' + fmt(total) + ', what was paid). Nothing to move.';
+        return res;
+      }
+      if (item.claimed > total && total > insurerPays) {
+        res.message = 'Part of the excess is already moved: ' + fmt(item.claimed - total) + ' of ' + fmt(item.claimed - insurerPays) + ', so ' + fmt(total - insurerPays) + ' is still on ' + funder.number + '. Not changed: check by hand.';
+        return res;
+      }
+      if (item.claimed > total && total < insurerPays) {
+        res.message = 'More than the excess is already moved: ' + funder.number + ' is ' + fmt(total) + ' but the insurer paid ' + fmt(insurerPays) + '. Not changed: check by hand.';
+        return res;
+      }
       res.message = 'Insurer was billed ' + fmt(item.claimed) + ' but the Halaxy invoice is ' + fmt(total) + '.';
       return res;
     }
@@ -625,7 +640,7 @@
         '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th></th><th>Invoice</th><th class="number">Halaxy</th><th class="number">Insurer paid</th><th class="number">Difference</th><th>Result</th></tr></thead><tbody>';
       state.results.forEach((x, i) => {
         const it = x.item;
-        const label = { ok: 'Paid in full', fix: 'Excess', resume: 'Finish', manual: 'By hand', check: 'Check', done: 'Done', failed: 'Failed' }[x.status];
+        const label = x.status === 'ok' && x.already ? 'Excess moved' : { ok: 'Paid in full', fix: 'Excess', resume: 'Finish', manual: 'By hand', check: 'Check', done: 'Done', failed: 'Failed' }[x.status];
         let link = x.invoiceId ? '<a href="' + esc(UPC.base() + '/invoice/' + x.invoiceId) + '" target="_blank" rel="noopener">' + esc(it.invoice) + '</a>' : esc(it.invoice);
         const paidShown = fmt(it.insurerTotal !== undefined && it.insurerTotal !== null ? it.insurerTotal : it.paid);
         let paidCell = paidShown;
@@ -857,7 +872,9 @@
       const n = attachable().length, paid = state.remit.totals && state.remit.totals.paid;
       const it = x.item;
       const thisPaid = it.insurerTotal !== undefined && it.insurerTotal !== null ? it.insurerTotal : it.paid;
-      const billed = typeof x.halaxyTotal === 'number' ? x.halaxyTotal : it.claimed;
+      // What the insurer was billed: the remittance's figure (after any correction), as Halaxy's total is lower once the
+      // excess has been moved.
+      const billed = typeof it.claimed === 'number' ? it.claimed : x.halaxyTotal;
       return [state.remit.reference ? 'Insurer reference ' + state.remit.reference : '',
         state.remit.date ? 'payment date ' + isoLabel(state.remit.date) : '',
         (typeof paid === 'number' ? 'remittance total ' + fmt(paid) : 'remittance') + ' over ' + n + ' invoice' + (n === 1 ? '' : 's'),
