@@ -534,6 +534,13 @@ async def main():
         check('AXA (scanned): read by text recognition', a['scanned'] == 1 and a['insurer'] == 'AXA')
         check('AXA: amounts and member contribution', inv.get('UPC-40021', {}).get('paid') == 3000 and inv['UPC-40021']['reason'] == 'excess' and inv.get('UPC-40022', {}).get('paid') == 12000 and inv['UPC-40022']['reason'] is None, inv)
         check('AXA: totals cross-check', a['checks']['paidRead'] == a['checks']['paidTotal'] == 15000, a['checks'])
+        # As text recognition read a live AXA remittance (13 Nov 2026): "UPGC" for UPC, joined onto the explanation's row
+        mis = await pg.evaluate("""() => { const W = (y, t) => t.split(' ').map((x, k) => ({ page: 1, x0: 40 + k * 40, x1: 75 + k * 40, y0: y, y1: y + 10, text: x }));
+            const words = [...W(10, 'AXA Health'), ...W(30, 'Date 04.08.2026'), ...W(45, 'Document 1900000002'),
+              ...W(100, 'PATIENT FIVE 1000003C F13/03 70.00'), ...W(115, 'We UPGC-40023 have been unable to pay this claim in full, because of a member contribution.'),
+              ...W(130, 'has been asked to send the payment to you directly'), ...W(160, 'PATIENT SIX 1000004D F14/04 : 160.00 ]'), ...W(175, ': UPC-40024 FS'), ...W(200, 'Total GBP 230.00')];
+            const r = upcRemittances.understand(words); return r.items.map((i) => [i.invoice, i.paid, i.reason]); }""")
+        check('AXA misread "UPGC" on the explanation\'s row: both invoices, member contribution kept', mis == [['UPC-40023', 7000, 'excess'], ['UPC-40024', 16000, None]], mis)
 
         v = await read('aviva')
         it = v['items'][0] if v['items'] else {}

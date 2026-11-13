@@ -1,5 +1,8 @@
 # Changelog
 
+## Remittances: scanned AXA misreads, 13 Nov 2026 (beta)
+- Remittances 0.3.13: an invoice number the text recognition reads as "UPGC-..." (or with G or O for the C) is still found (live 13 Nov 2026: an AXA remittance showed one of its two invoices), and an explanation joined onto the same row as the invoice number still counts ("member contribution" = excess).
+
 ## Remittances: full details on older copies, and Check remittance, 13 Nov 2026 (beta)
 - Remittances 0.3.12 (Carl, 13 Nov 2026):
   - Where the remittance is already attached without the full details (attached by hand, or by an older version), it compares the attached file with the one loaded. The same file: its title and comment are updated in place (Halaxy's attachment edit pop-up), no second copy. A different file under the same name (the wrong document, say): left alone, this remittance attached as well with its details, and a task for Carl to check the other one. Already with the full details: skipped as before.

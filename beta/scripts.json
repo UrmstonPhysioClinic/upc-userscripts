@@ -105,7 +105,7 @@
     {
       "file": "remittances.user.js",
       "name": "UPC Billing: Remittances (beta)",
-      "version": "0.3.12"
+      "version": "0.3.13"
     },
     {
       "file": "review-requests.user.js",
