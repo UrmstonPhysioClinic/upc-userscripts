@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.11
+// @version      0.3.12
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -31,7 +31,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.3.11';
+  const VERSION = '0.3.12';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -885,17 +885,40 @@
         .filter(Boolean).join('; ').replace(/^r/, 'R').replace(/^p/, 'P');
     };
     if (state.attach !== false) {
+      const title = (state.remit.insurer || 'Insurer') + ' remittance' + (state.remit.date ? ' ' + state.remit.date : '');
+      const dateName = state.remit.date ? state.remit.date + '.pdf' : '';
       for (const x of attachable()) {
+        const comments = remitComment(x);
+        const attach = () => UPC.files.attachToInvoice(x.invoiceId, state.file, { title, comments, category: UPC.files.CATEGORY.payment });
         try {
-          const done = await UPC.files.attachToInvoice(x.invoiceId, state.file, {
-            title: (state.remit.insurer || 'Insurer') + ' remittance' + (state.remit.date ? ' ' + state.remit.date : ''),
-            comments: remitComment(x),
-            category: UPC.files.CATEGORY.payment,
-            skipIfAttached: true,
-            // Attached by hand before Remittances, named by its date ("2026-09-30.pdf"): don't attach it again.
-            alsoSkipIf: state.remit.date ? [state.remit.date + '.pdf'] : [],
-          });
-          say(done === false ? 'The remittance is already attached to ' + x.item.invoice + '.' : 'Attached the remittance to ' + x.item.invoice + '.');
+          // This remittance already attached: by Remittances (its title) or by hand (named by its date, "2026-09-30.pdf").
+          const inv = await UPC.invoice.fetch(x.invoiceId);
+          const there = inv.attachmentList.filter((at) => at.title.includes(title) || (dateName && at.title.includes(dateName)));
+          if (!there.length) { await attach(); say('Attached the remittance to ' + x.item.invoice + '.'); continue; }
+          if (there.some((at) => /payment date/i.test(at.comments) && /\binvoices UPC/i.test(at.comments))) { say('The remittance is already attached to ' + x.item.invoice + '.'); continue; }
+          // Attached without the full details (Carl, 13 Nov 2026): if it is this very file, the details are added to it;
+          // if it is a different file (the wrong document under the right name, say), it is left alone, this remittance
+          // is attached as well, and Carl gets a task to check the other one.
+          let same = null, unsure = false;
+          for (const at of there) {
+            if (!at.fileUrl) { unsure = true; continue; }
+            try { if (await UPC.files.sameFile(at.fileUrl, state.file)) { same = at; break; } } catch (e) { unsure = true; }
+          }
+          if (same && same.editUrl) {
+            await UPC.files.updateAttachment(x.invoiceId, same.editUrl, { title, comments, category: UPC.files.CATEGORY.payment });
+            say('Added the full details to the remittance already attached to ' + x.item.invoice + '.');
+            continue;
+          }
+          await attach();
+          const other = there.map((at) => '"' + at.title + '"').join(', ');
+          say((unsure ? 'Could not compare it with ' + other + ' already on ' + x.item.invoice : x.item.invoice + ' already has a different file called ' + other) + ': attached this remittance with its details as well. Check the other one.', true);
+          try {
+            await UPC.tasks.addToInvoice(x.invoiceId, {
+              title: 'Check the remittance attached to ' + x.item.invoice, assignee: TASK_FOR, priority: 2, due: todayLabel(), by: 'Remittances',
+              comment: [(unsure ? 'Remittances could not compare ' : 'Remittances found a different file in ') + other + ' (attached ' + there.map((at) => at.created).join(', ') + ').',
+                'It attached the ' + title + ' with its details as well. If the other file is the wrong document, delete it.'],
+            });
+          } catch (e) { /* said in the log */ }
         } catch (e) {
           say('Could not attach the remittance to ' + x.item.invoice + ': ' + (e.message || e), true);
         }
@@ -948,7 +971,46 @@
     state.unmount();
     state.unmount = null;
   }
-  const route = () => (location.hash === '#' + ROUTE ? mount() : unmount());
+  const route = () => (location.hash === '#' + ROUTE ? (mount(), loadPending()) : unmount());
+
+  // "Check remittance" on each remittance attached to an invoice (Carl, 13 Nov 2026): opens Remittances with that file,
+  // to move an excess not moved yet, or add the full details to an older copy. Shown on titles Remittances gives
+  // ("Bupa remittance 2026-10-28") and on remittances attached by hand named by their date ("2026-10-28.pdf").
+  const PENDING = 'upc-remit-pending';
+  const REMIT_TITLE = /remittance|^\d{4}-\d\d-\d\d(\.pdf)?$/i;
+  function decorateInvoice() {
+    if (!/\/invoice\/\d+\/?$/.test(location.pathname) || location.hash === '#' + ROUTE) return;
+    document.querySelectorAll('#invoiceAttachments tbody tr').forEach((tr) => {
+      if (tr.querySelector('.upc-remit-check')) return;
+      const td = tr.querySelectorAll('td');
+      const get = tr.querySelector('a[href*="/file/get/"]');
+      if (td.length < 3 || !get || !/\.pdf(\?|$)/i.test(get.getAttribute('href')) || !REMIT_TITLE.test(UPC.clean(td[2].textContent))) return;
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn btn-outline-primary btn-sm upc-remit-check';
+      b.textContent = 'Check remittance';
+      b.addEventListener('click', () => {
+        try { sessionStorage.setItem(PENDING, JSON.stringify({ url: get.getAttribute('href'), name: UPC.clean(td[2].textContent).replace(/\.pdf$/i, '') + '.pdf' })); } catch (e) { return; }
+        location.hash = ROUTE;
+      });
+      const span = document.createElement('span');
+      span.className = 'upc-native';
+      span.appendChild(b);
+      td[td.length - 1].appendChild(span);
+    });
+  }
+  async function loadPending() {
+    let p = null;
+    try { p = JSON.parse(sessionStorage.getItem(PENDING) || 'null'); sessionStorage.removeItem(PENDING); } catch (e) { p = null; }
+    if (!p || !p.url || state.busy) return;
+    status('Opening the attached remittance...');
+    try {
+      const res = await UPC.http.fetch(p.url, { credentials: 'same-origin' });
+      if (!res.ok) throw new Error('Halaxy returned ' + res.status);
+      const blob = await res.blob();
+      await handleFile(new File([blob], p.name, { type: 'application/pdf' }));
+    } catch (e) { status('Could not open the attached remittance (' + (e.message || e) + '). Download it and load it here instead.'); }
+  }
 
   function start() {
     if (!window.UPC) { console.error('[UPC remittances] needs the core library'); return; }
@@ -960,6 +1022,8 @@
     }, MENU_CLS, /^finances?$/i);
     window.addEventListener('hashchange', route);
     route();
+    decorateInvoice();
+    setInterval(decorateInvoice, 2000);   // Halaxy redraws the attachments after changes (DOM only, no requests)
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
