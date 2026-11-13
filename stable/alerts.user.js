@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Halaxy alerts
+// @name         UPC Calendar: Alerts
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.0.0
+// @version      1.0.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/alerts.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/alerts.user.js
@@ -28,7 +28,7 @@
   if (window.__hxAlerts) return;
   window.__hxAlerts = true;
 
-  const VERSION = '1.0.0';
+  const VERSION = '1.0.1';
   const CHAT_BADGE_ID = 'btn-chat-popover-open';
   const REPEAT_EVERY_SECONDS = (window.__hxAlertsTest && window.__hxAlertsTest.repeatSeconds) || 15;   // chat alarm repeat
   const MAX_REPEATS = 10;            // set to 0 to sound once only

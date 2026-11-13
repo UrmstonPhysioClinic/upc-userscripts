@@ -1,10 +1,11 @@
 // ==UserScript==
-// @name         Halaxy: HTML source for emails
+// @name         UPC Look: HTML source for emails
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4
+// @version      0.5
+// @upc-was      email-html-source.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/email-html-source.user.js
-// @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/email-html-source.user.js
+// @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/email-html.user.js
+// @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/email-html.user.js
 // @description  Adds a <> button to Halaxy email editors (compose pop-up, reminder templates, communication templates) to edit the body as raw HTML with a live preview. The HTML is saved or sent as written, not filtered by the editor.
 // @match        https://eu.halaxy.com/a/pr/*
 // @grant        none

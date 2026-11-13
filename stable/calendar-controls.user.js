@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Halaxy: calendar controls
+// @name         UPC Calendar: Calendar controls
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      2.11
+// @version      2.13
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/calendar-controls.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/calendar-controls.user.js
@@ -761,6 +761,7 @@
     function poll() {
       if (Date.now() - lastOtherCalendarLoad < AUTO_REFRESH_SECONDS * 1000) { baseline = null; return; }   // already up to date
       if (window.UPC && UPC.http && UPC.http.pausedFor && UPC.http.pausedFor() > 0) return;   // Halaxy asked us to wait
+      if (window.UPC && UPC.background && !UPC.background.active()) return;   // nobody at this PC for 30 minutes
       if (running || document.hidden || !HC.calendarModel || HC.calendarModel.get('mode') === 'month') return;
       if (HC.isRoomCalendar && HC.isRoomCalendar()) return;
       running = true;

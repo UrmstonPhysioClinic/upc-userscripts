@@ -1,10 +1,11 @@
 // ==UserScript==
-// @name         Halaxy: auto-expanding text boxes
+// @name         UPC Look: Auto-expanding text boxes
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1
+// @version      1.2
+// @upc-was      textarea-autogrow.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/textarea-autogrow.user.js
-// @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/textarea-autogrow.user.js
+// @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/text-boxes.user.js
+// @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/text-boxes.user.js
 // @description  Makes multi-line text boxes and rich text editors in Halaxy grow to fit their content instead of scrolling.
 // @match        https://*.halaxy.com/*
 // @run-at       document-start

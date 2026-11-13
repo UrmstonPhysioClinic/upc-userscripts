@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Halaxy forecourt lights reminder
+// @name         UPC Calendar: Forecourt lights
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.1
+// @version      0.2.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/forecourt-lights.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/forecourt-lights.user.js
@@ -36,7 +36,7 @@
   if (window.__hxForecourtLights) return;
   window.__hxForecourtLights = true;
 
-  const VERSION = '0.2.1';
+  const VERSION = '0.2.2';
   const LAT = 53.45, LON = -2.35, TZ = 'Europe/London';
   const STEP = 15;                      // the timer's segments, minutes
   const SNOOZE = 60 * 60e3;

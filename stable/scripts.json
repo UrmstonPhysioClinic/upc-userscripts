@@ -2,63 +2,78 @@
   "scripts": [
     {
       "file": "health-check.user.js",
-      "name": "Halaxy health check",
-      "version": "1.1.23"
+      "name": "UPC System: Health check",
+      "version": "1.1.38"
     },
     {
       "file": "core.user.js",
-      "name": "UPC core library",
-      "version": "0.1.28"
+      "name": "UPC System: Core library",
+      "version": "0.1.43"
     },
     {
       "file": "alerts.user.js",
-      "name": "Halaxy alerts",
-      "version": "1.0.0"
-    },
-    {
-      "file": "bill-funder.user.js",
-      "name": "Halaxy bill funder",
-      "version": "0.7.3"
+      "name": "UPC Calendar: Alerts",
+      "version": "1.0.1"
     },
     {
       "file": "branding.user.js",
-      "name": "UPC Halaxy branding",
-      "version": "2.9.1"
+      "name": "UPC Look: Branding",
+      "version": "2.9.3"
     },
     {
       "file": "calendar-controls.user.js",
-      "name": "Halaxy: calendar controls",
-      "version": "2.11"
+      "name": "UPC Calendar: Calendar controls",
+      "version": "2.13"
     },
     {
-      "file": "custom-reports.user.js",
-      "name": "Halaxy Custom Reports",
-      "version": "0.7.0"
+      "file": "email-html.user.js",
+      "name": "UPC Look: HTML source for emails",
+      "version": "0.5",
+      "was": "email-html-source.user.js"
     },
     {
-      "file": "email-html-source.user.js",
-      "name": "Halaxy: HTML source for emails",
-      "version": "0.4"
+      "file": "feedback-alerts.user.js",
+      "name": "UPC Patients: Feedback alerts",
+      "version": "0.1.5",
+      "was": "survey-feedback.user.js"
     },
     {
       "file": "forecourt-lights.user.js",
-      "name": "Halaxy forecourt lights reminder",
-      "version": "0.2.1"
+      "name": "UPC Calendar: Forecourt lights",
+      "version": "0.2.2"
+    },
+    {
+      "file": "insurer-payments-due.user.js",
+      "name": "UPC Billing: Insurer payments due",
+      "version": "0.1.6",
+      "was": "funder-chaser.user.js"
+    },
+    {
+      "file": "invoice-funder.user.js",
+      "name": "UPC Billing: Invoice Funder",
+      "version": "0.8.3",
+      "was": "bill-funder.user.js"
+    },
+    {
+      "file": "open-ended-patients.user.js",
+      "name": "UPC Patients: Open-ended patients",
+      "version": "0.1.7",
+      "was": "check-ins.user.js"
     },
     {
       "file": "outstanding-actions.user.js",
-      "name": "Halaxy Outstanding Actions",
-      "version": "0.5.3"
+      "name": "UPC Calendar: Outstanding actions",
+      "version": "0.5.5"
     },
     {
       "file": "ready-to-bill.user.js",
-      "name": "Halaxy ready to bill",
-      "version": "0.3.0"
+      "name": "UPC Billing: Ready to bill",
+      "version": "0.3.4"
     },
     {
       "file": "rebate-sync.user.js",
-      "name": "UPC Halaxy Rebate Sync",
-      "version": "0.2.0"
+      "name": "UPC Billing: Rebate sync",
+      "version": "0.3.3"
     },
     {
       "file": "remittances.user.js",
@@ -67,33 +82,29 @@
     },
     {
       "file": "review-requests.user.js",
-      "name": "Halaxy review requests",
-      "version": "0.5.0"
+      "name": "UPC Patients: Review requests",
+      "version": "0.5.4"
     },
     {
       "file": "script-settings.user.js",
-      "name": "Halaxy script settings",
-      "version": "0.1.0"
-    },
-    {
-      "file": "survey-feedback.user.js",
-      "name": "Halaxy feedback alerts",
+      "name": "UPC System: Script settings",
       "version": "0.1.1"
     },
     {
       "file": "task-stamps.user.js",
-      "name": "Halaxy task stamps",
-      "version": "0.1.3"
+      "name": "UPC Calendar: Task stamps",
+      "version": "0.1.4"
     },
     {
-      "file": "textarea-autogrow.user.js",
-      "name": "Halaxy: auto-expanding text boxes",
-      "version": "1.1"
+      "file": "text-boxes.user.js",
+      "name": "UPC Look: Auto-expanding text boxes",
+      "version": "1.2",
+      "was": "textarea-autogrow.user.js"
     },
     {
       "file": "toast-alerts.user.js",
-      "name": "Halaxy: toast alerts",
-      "version": "1.1"
+      "name": "UPC Look: Toast alerts",
+      "version": "1.2"
     }
   ]
 }

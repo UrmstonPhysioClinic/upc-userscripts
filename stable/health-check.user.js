@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Halaxy health check
+// @name         UPC System: Health check
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.23
+// @version      1.1.38
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/health-check.user.js
@@ -31,17 +31,33 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.23';
+  const VERSION = '1.1.38';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
 
+  // Shown names (the part after "UPC <Group>: "). Old file names stay while stable still has them.
   const NAMES = {
-    'alerts.user.js': 'Alerts', 'bill-funder.user.js': 'Bill funder', 'arrival-chime.user.js': 'Arrival chime', 'chat-alert.user.js': 'Chat alert',
-    'branding.user.js': 'Branding', 'calendar-controls.user.js': 'Calendar controls', 'core.user.js': 'Core library', 'custom-reports.user.js': 'Custom Reports',
-    'forecourt-lights.user.js': 'Forecourt lights', 'script-settings.user.js': 'Script settings', 'review-requests.user.js': 'Review requests', 'survey-feedback.user.js': 'Feedback alerts', 'portal-fill.user.js': 'Portal fill', 'task-stamps.user.js': 'Task stamps', 'email-html-source.user.js': 'HTML source for emails', 'health-check.user.js': 'Health check',
-    'outstanding-actions.user.js': 'Outstanding Actions', 'ready-to-bill.user.js': 'Ready to bill', 'rebate-sync.user.js': 'Rebate Sync', 'remittances.user.js': 'Remittances',
-    'textarea-autogrow.user.js': 'Auto-expanding text boxes', 'toast-alerts.user.js': 'Toast alerts',
+    // System
+    'core.user.js': 'Core library', 'health-check.user.js': 'Health check', 'script-settings.user.js': 'Script settings',
+    'block-reporting.user.js': 'Block reporting to Halaxy', 'block-error-reporting.user.js': 'Block reporting to Halaxy',
+    // Billing
+    'invoice-funder.user.js': 'Invoice Funder', 'ready-to-bill.user.js': 'Ready to bill', 'portal-fill.user.js': 'Portal fill', 'remittances.user.js': 'Remittances',
+    'rebate-sync.user.js': 'Rebate sync', 'bank-statement.user.js': 'Bank statement', 'insurer-payments-due.user.js': 'Insurer payments due',
+    // Patients
+    'patient-statuses.user.js': 'Patient statuses', 'open-ended-patients.user.js': 'Open-ended patients', 'review-requests.user.js': 'Review requests',
+    'feedback-alerts.user.js': 'Feedback alerts',
+    // Calendar
+    'calendar-controls.user.js': 'Calendar controls', 'outstanding-actions.user.js': 'Outstanding actions', 'task-stamps.user.js': 'Task stamps',
+    'alerts.user.js': 'Alerts', 'forecourt-lights.user.js': 'Forecourt lights',
+    // Look
+    'branding.user.js': 'Branding', 'mobile-layout.user.js': 'Mobile layout', 'text-boxes.user.js': 'Auto-expanding text boxes',
+    'toast-alerts.user.js': 'Toast alerts', 'email-html.user.js': 'HTML source for emails',
+    // Old file names (stable, until promoted) and retired scripts
+    'bill-funder.user.js': 'Invoice Funder', 'funder-chaser.user.js': 'Insurer payments due', 'check-ins.user.js': 'Open-ended patients',
+    'survey-feedback.user.js': 'Feedback alerts', 'halaxy-mobile.user.js': 'Mobile layout', 'textarea-autogrow.user.js': 'Auto-expanding text boxes',
+    'email-html-source.user.js': 'HTML source for emails', 'custom-reports.user.js': 'Custom Reports', 'arrival-chime.user.js': 'Arrival chime',
+    'chat-alert.user.js': 'Chat alert',
   };
   // Same rule as Outstanding Actions: these appointment statuses mean "not attended".
   const NOT_ATTENDED = /cancel|did-not-attend|dna|reject|declin|reschedul|wait|pending/;
@@ -133,13 +149,13 @@
   const PAGE_CHECKS = [
     {
       id: 'core', title: "Halaxy's page basics",
-      scripts: ['Outstanding Actions', 'Calendar controls', 'Custom Reports', 'Rebate Sync'],
+      scripts: ['Outstanding actions', 'Calendar controls', 'Rebate sync'],
       applies: () => !!group(),
       test: () => missingIn(['jQuery()', 'HkUser.linkPrG', 'HkUser.pracID', 'hk_glob.preferences']),
     },
     {
       id: 'layout', title: "Halaxy's page layout",
-      scripts: ['Toast alerts', 'Custom Reports', 'Alerts', 'Branding', 'Script settings'],
+      scripts: ['Toast alerts', 'Alerts', 'Branding', 'Script settings'],
       applies: onCalendar,
       test: () => missingEls(['#alerts', '#mainMenu', '#footer', '#btn-chat-popover-open', '#practitioner-select .dropdown-menu'])
         .concat(document.body && document.body.classList.contains('vs-theme') ? [] : ['theme classes on the page (vs-theme)']),
@@ -168,20 +184,12 @@
     },
     {
       id: 'invoice-page', title: 'Invoice page layout',
-      scripts: ['Rebate Sync', 'Remittances', 'Bill funder'],
+      scripts: ['Rebate sync', 'Remittances', 'Invoice Funder'],
       // An invoice: /invoice/{id} or /patient/invoice/{patient}/{id}. Not /patient/invoice/{patient}/, the patient's Invoices tab (a list).
       applies: () => /\/invoice\/\d+\/?$/.test(location.pathname) && !/\/patient\/invoice\/\d+\/?$/.test(location.pathname) || /\/patient\/invoice\/\d+\/\d+\/?$/.test(location.pathname),
       test: () => missingEls(['#invoiceLines', '#invoicePayments'])
-        // Bill funder reads the patient, claim and authorisation from patient invoices that can still be billed.
+        // Invoice Funder reads the patient, claim and authorisation from patient invoices that can still be billed.
         .concat(document.getElementById('invoiceFunderBtn') ? missingEls(['#card-invoice-view-patient a[href*="/patient/"]', '#card-invoice-parts-claim-view', '#btn-group-outstanding-charges']) : []),
-    },
-    {
-      id: 'reports', title: "Halaxy's table builder",
-      scripts: ['Custom Reports'],
-      // Only the Finance report page, where Custom Reports opens: other report pages (such as the form
-      // at /report/appointment/new) don't load the table builder (false alarm, 9 Nov 2026).
-      applies: () => /\/report\/finance(\/|$)/.test(location.pathname),
-      test: () => missingIn(['HxGridTable()', 'Hk.jwt']),
     },
     {
       id: 'editor', title: "Halaxy's text editor",
@@ -209,8 +217,11 @@
 
   // ------------------------------------------------------------------ data checks (daily)
 
+  // Through the core library's pacing once it has loaded (it loads after this script), so the daily checks
+  // share the PC's request budget with every other script.
+  const hfetch = (url, init) => (window.UPC && UPC.http && UPC.http.fetch ? UPC.http.fetch(url, init) : fetch(url, init));
   async function getJSON(path) {
-    const res = await fetch('/a/pr/' + group() + path, { credentials: 'same-origin', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+    const res = await hfetch('/a/pr/' + group() + path, { credentials: 'same-origin', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
     const text = await res.text();
     if (!res.ok) throw new Error('Halaxy returned ' + res.status + ' for ' + path.split('?')[0]);
     try { return JSON.parse(text); } catch (e) { throw new Error('not JSON from ' + path.split('?')[0] + ' (signed out?)'); }
@@ -223,7 +234,7 @@
     const put = (id, title, scripts, problems, info) => {
       saveResult(id, { title, scripts, problems, info: info || '', at: Date.now(), page: 'data' });
     };
-    const OA = ['Outstanding Actions'];
+    const OA = ['Outstanding actions'];
 
     let pracs = [];
     try {
@@ -236,8 +247,8 @@
     try {
       const fees = await getJSON('/funder/fee/data');
       const ok = Array.isArray(fees) && fees.length;
-      put('data-fees', 'Fee list', OA, ok ? keysMissing(fees, ['feeColour', 'funder', 'status']).map((k) => 'field ' + k) : ['no fees returned']);
-    } catch (e) { put('data-fees', 'Fee list', OA, [e.message]); }
+      put('data-fees', 'Fee list', OA.concat(['Patient statuses']), ok ? keysMissing(fees, ['feeColour', 'funder', 'status', 'feeNumber']).map((k) => 'field ' + k) : ['no fees returned']);
+    } catch (e) { put('data-fees', 'Fee list', OA.concat(['Patient statuses']), [e.message]); }
 
     let appts = [];
     try {
@@ -287,15 +298,15 @@
       } catch (e) { put('data-invoices', 'Patient invoice list', OA, [e.message]); }
     }
 
-    // Appointment details pop-up: Bill funder reads cancellation comments from its "Notes" box.
+    // Appointment details pop-up: Invoice Funder reads cancellation comments from its "Notes" box.
     if (appts.length) {
       try {
-        const res = await fetch('/a/pr/' + group() + '/appointment/' + encodeURIComponent(appts[0].id), { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+        const res = await hfetch('/a/pr/' + group() + '/appointment/' + encodeURIComponent(appts[0].id), { credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } });
         if (!res.ok) throw new Error('Halaxy returned ' + res.status + ' for /appointment');
         const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
         const box = doc.querySelector('.appointment-details-popup');
-        put('data-appointment-details', 'Appointment details pop-up', ['Bill funder'], box ? [] : ['details layout missing (div.appointment-details-popup)']);
-      } catch (e) { put('data-appointment-details', 'Appointment details pop-up', ['Bill funder'], [e.message]); }
+        put('data-appointment-details', 'Appointment details pop-up', ['Invoice Funder'], box ? [] : ['details layout missing (div.appointment-details-popup)']);
+      } catch (e) { put('data-appointment-details', 'Appointment details pop-up', ['Invoice Funder'], [e.message]); }
     }
 
     // Add-task pop-up for an invoice: Remittances adds a task to bill the patient's excess. Opening it adds nothing.
@@ -340,7 +351,7 @@
     try {
       const q = new URLSearchParams({ includeContacts: '1', term: 'zzqx' });
       q.set('_locale', String(group()));   // the practice number from the page address, as the search box sends it
-      const res = await fetch('/a/magic/lookup/patient?' + q.toString(), { credentials: 'same-origin', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
+      const res = await hfetch('/a/magic/lookup/patient?' + q.toString(), { credentials: 'same-origin', headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' } });
       const j = res.ok ? await res.json().catch(() => null) : null;
       put('data-patient-search', 'Patient search', ['Feedback alerts'], j && Array.isArray(j.lookup) ? [] : ['the search no longer answers with a lookup list' + (res.ok ? '' : ' (' + res.status + ')')]);
     } catch (e) { put('data-patient-search', 'Patient search', ['Feedback alerts'], [e.message]); }
@@ -358,16 +369,16 @@
       } catch (e) { put('data-patient-tasks', 'Patient tasks', ['Feedback alerts'], [e.message]); }
       // The patient's Edit page (read only): Portal fill takes the legal name, address and postcode from it.
       try {
-        const res = await fetch('/a/pr/' + group() + '/patient/' + encodeURIComponent(withPatient.linkPaGId) + '/edit', { credentials: 'same-origin' });
+        const res = await hfetch('/a/pr/' + group() + '/patient/' + encodeURIComponent(withPatient.linkPaGId) + '/edit', { credentials: 'same-origin' });
         if (!res.ok) throw new Error('Halaxy returned ' + res.status + ' for the patient Edit page');
         const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
         const need = ['firstline', 'postcode'].map((k) => 'patientdetailmain[linkPaG][linkpagaddresses][0][address][' + k + ']')
-          .concat(['forename', 'surname'].map((k) => 'patientdetailmain[name][' + k + ']'));
-        put('data-patient-edit', 'Patient Edit page', ['Portal fill', 'Review requests'], need.filter((n) => !doc.querySelector('[name="' + n + '"]')).map((n) => 'field ' + n + ' missing'));
-      } catch (e) { put('data-patient-edit', 'Patient Edit page', ['Portal fill', 'Review requests'], [e.message]); }
+          .concat(['forename', 'surname'].map((k) => 'patientdetailmain[name][' + k + ']')).concat(['patientdetailmain[linkPaG][customStatus]']);
+        put('data-patient-edit', 'Patient Edit page', ['Portal fill', 'Review requests', 'Patient statuses'], need.filter((n) => !doc.querySelector('[name="' + n + '"]')).map((n) => 'field ' + n + ' missing'));
+      } catch (e) { put('data-patient-edit', 'Patient Edit page', ['Portal fill', 'Review requests', 'Patient statuses'], [e.message]); }
     }
 
-    // Invoice settings (cogwheel): Bill funder reads and sets the status here.
+    // Invoice settings (cogwheel): Invoice Funder reads and sets the status here.
     const withInvoice = appts.find((e) => e.invoiceID);
     if (withInvoice) {
       try {
@@ -381,9 +392,43 @@
           .concat(sel && !values.includes('issued') ? ['no Issued status'] : [])
           .concat(sel && !values.includes('') ? ['no Active status'] : [])
           .concat(form.querySelector('[name="form[_token]"]') ? [] : ['form token missing']);
-        put('data-invoice-settings', 'Invoice settings (cogwheel)', ['Bill funder'], problems);
-      } catch (e) { put('data-invoice-settings', 'Invoice settings (cogwheel)', ['Bill funder'], [e.message]); }
+        put('data-invoice-settings', 'Invoice settings (cogwheel)', ['Invoice Funder'], problems);
+      } catch (e) { put('data-invoice-settings', 'Invoice settings (cogwheel)', ['Invoice Funder'], [e.message]); }
     }
+
+    // A funder profile's deposits and files (read only; Bank statement and Remittances keep insurer money and remittances
+    // there, 13 Nov 2026). Looked at on the Starling Bank profile, which keeps the statement register.
+    const ORG = '78812';
+    try {
+      const res = await getJSON('/organisation/' + ORG + '/balance/data?viewMode=ajax');
+      const rows = res && res.data;
+      put('data-org-deposits', 'Funder deposits list', ['Bank statement', 'Remittances'], !Array.isArray(rows) ? ['not a list'] : rows.length ? keysMissing(rows, ['id', 'type', 'date', 'amount', 'balance']).map((k) => 'field ' + k) : []);
+    } catch (e) { put('data-org-deposits', 'Funder deposits list', ['Bank statement', 'Remittances'], [e.message]); }
+    try {
+      const res = await getJSON('/invoicefunctions/0/pay/offline/0/' + ORG);
+      const doc = new DOMParser().parseFromString(String((res && res.message) || ''), 'text/html');
+      const form = doc.querySelector('form#paymentForm');
+      const methods = [...doc.querySelectorAll('select[name="form[paymentMethod]"] option')].map((o) => o.textContent.trim().toLowerCase());
+      const problems = !form ? ['payment form missing'] : ['form[paymentMethod]', 'form[paymentDate]', 'form[amount]', 'form[note]', 'form[_token]']
+        .filter((n) => !form.querySelector('[name="' + n + '"]')).map((n) => 'field ' + n + ' missing')
+        .concat(methods.length && !methods.includes('direct deposit') ? ['no Direct Deposit payment method'] : []);
+      put('data-org-deposit-add', 'Add deposit pop-up', ['Bank statement'], problems);
+    } catch (e) { put('data-org-deposit-add', 'Add deposit pop-up', ['Bank statement'], [e.message]); }
+    try {
+      const res = await hfetch('/a/pr/' + group() + '/organisation/' + ORG, { credentials: 'same-origin' });
+      if (!res.ok) throw new Error('Halaxy returned ' + res.status + ' for the profile page');
+      const html = await res.text();
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const add = doc.querySelector('[data-modal-href*="/file/upload/organisation/"]');
+      const cards = doc.querySelectorAll('.attachment-file-card').length, edits = doc.querySelectorAll('[data-modal-href*="/file/edit/"]').length;
+      put('data-org-files', 'Funder profile files', ['Bank statement', 'Remittances'], (add ? [] : ['Add Files link missing']).concat(cards && edits < cards ? ['file Edit links missing'] : []));
+    } catch (e) { put('data-org-files', 'Funder profile files', ['Bank statement', 'Remittances'], [e.message]); }
+
+    // Appointment types (Patient statuses tells funded bookings by them; capture 11 Nov 2026).
+    try {
+      const types = await getJSON('/profile/group/appointmenttypes/data');
+      put('data-appointment-types', 'Appointment types', ['Patient statuses'], !Array.isArray(types) ? ['not a list'] : types.length ? keysMissing(types, ['title', 'backgroundColor', 'status']).map((k) => 'field ' + k) : []);
+    } catch (e) { put('data-appointment-types', 'Appointment types', ['Patient statuses'], [e.message]); }
   }
 
   // ------------------------------------------------------------------ Halaxy version
@@ -575,7 +620,9 @@
         store.set('resultsBy', VERSION);
       }
       await runPageChecks();
-      const due = Date.now() - store.get('dataAt', 0) > DATA_EVERY_HOURS * 3600e3;
+      // The daily data check waits for clinic hours and someone at the PC (core's background rule), when core has loaded.
+      const bgOk = !(window.UPC && UPC.background) || UPC.background.ok();
+      const due = bgOk && Date.now() - store.get('dataAt', 0) > DATA_EVERY_HOURS * 3600e3;
       // A new version of this health check may judge Halaxy's data differently, so it re-checks
       // straight away instead of showing the previous version's results until the next daily check.
       const updated = store.get('dataBy', '') !== VERSION;
