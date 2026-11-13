@@ -1,5 +1,8 @@
 # Changelog
 
+## Bank statement page laid out like Remittances, 13 Nov 2026 (beta)
+- Bank statement 0.1.9 (Carl, 13 Nov 2026): the same layout as Remittances: a "Read a bank statement" card saying what it does, the same drop box (highlighted while a file is dragged over), then progress and notes, then the results.
+
 ## Progress bar instead of step-by-step output, 13 Nov 2026 (beta)
 - Carl, 13 Nov 2026: no live list of steps while a script works. Core 0.1.41 adds one shared display (`UPC.ui.run`): a progress bar with one line saying what it is doing now; once finished, the full results in one go, any problems listed, and the steps behind a "View log" button.
 - Remittances 0.3.15: reading and checking a remittance, applying excess fixes and attaching, and finishing part-way moves all show the progress bar; the table appears when it has finished.
