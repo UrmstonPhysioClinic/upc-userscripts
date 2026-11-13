@@ -582,6 +582,28 @@ async def main():
         notes = await pg.evaluate("[...document.querySelectorAll('[data-upc-remittances] .upc-rem-notes li')].map((l) => l.textContent)")
         check('corrected back: the amounts add up again and the warning goes', not any('add up to' in n for n in notes), notes)
 
+        # A line the reading missed: added by hand from the paper copy, checked in Halaxy, totals checked again (Carl, 13 Nov 2026)
+        await pg.set_input_files(RS + ' input[type=file]', str(pdfs['axa']))
+        await pg.wait_for_function("!!document.querySelector('[data-upc-remittances] [data-act=addline]') && document.querySelectorAll('[data-upc-remittances] tbody tr').length === 2", timeout=120000)
+        await pg.fill(RS + ' [data-add=inv]', 'UPC-40021')
+        await pg.fill(RS + ' [data-add=paid]', '30.00')
+        await pg.click(RS + ' [data-act=addline]')
+        msg = await pg.evaluate("document.querySelector('[data-upc-remittances] .upc-rem-status').textContent")
+        check('adding a line already read is refused', 'already on this remittance' in msg, msg)
+        await pg.fill(RS + ' [data-add=inv]', 'UPC-040001')
+        await pg.fill(RS + ' [data-add=paid]', '6O.00')
+        await pg.click(RS + ' [data-act=addline]')
+        msg = await pg.evaluate("document.querySelector('[data-upc-remittances] .upc-rem-status').textContent")
+        check('a mistyped amount is refused', 'Enter the amount paid' in msg, msg)
+        await pg.fill(RS + ' [data-add=paid]', '60.00')
+        await pg.press(RS + ' [data-add=paid]', 'Enter')
+        await pg.wait_for_function("/Added UPC-40001/.test(document.querySelector('[data-upc-remittances] .upc-rem-status').textContent)", timeout=120000)
+        got = await pg.evaluate("""({ status: document.querySelector('[data-upc-remittances] .upc-rem-status').textContent,
+            rows: [...document.querySelectorAll('[data-upc-remittances] tbody tr')].map(r => r.innerText.replace(/\\s+/g, ' ')),
+            head: document.querySelector('[data-upc-remittances] .upc-gap').textContent })""")
+        check('the added line is matched in Halaxy and the totals checked again', len(got['rows']) == 3 and 'UPC-40001' in got['rows'][2] and 'Not found' not in got['rows'][2] and 'less' in got['rows'][2]
+              and "still don't add up" in got['status'] and '3 invoices read' in got['head'], got)
+
         # Halaxy says it is busy: everything pauses
         busy = await pg.evaluate("UPC.http.json('/busy-test').then(() => 'ok', e => e.message)")
         paused = await pg.evaluate('UPC.http.pausedFor()')

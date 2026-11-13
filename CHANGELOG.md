@@ -1,5 +1,8 @@
 # Changelog
 
+## Remittances: add a missing line by hand, 13 Nov 2026 (beta)
+- Remittances 0.3.14 (Carl, 13 Nov 2026): "A line missing? Add it from the paper copy" on scanned remittances, and on any whose amounts don't add up to its total: invoice number, amount paid, amount billed if shown, and a tick for member contribution or excess. The line is checked in Halaxy like any other and the totals are checked again; it then takes part in moving excesses and attaching as normal.
+
 ## Remittances: scanned AXA misreads, 13 Nov 2026 (beta)
 - Remittances 0.3.13: an invoice number the text recognition reads as "UPGC-..." (or with G or O for the C) is still found (live 13 Nov 2026: an AXA remittance showed one of its two invoices), and an explanation joined onto the same row as the invoice number still counts ("member contribution" = excess).
 

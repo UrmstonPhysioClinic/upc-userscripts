@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.13
+// @version      0.3.14
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -31,7 +31,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.3.13';
+  const VERSION = '0.3.14';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -612,6 +612,9 @@
     .upc-rem .upc-rem-chg { margin-top: 2px; }
     .upc-rem .upc-rem-fix { display: inline-flex; align-items: center; gap: 4px; }
     .upc-rem .upc-rem-fix .form-control { width: 110px; height: auto; padding: 1px 6px; }
+    .upc-rem .upc-rem-add { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+    .upc-rem .upc-rem-add label { display: inline-flex; align-items: center; gap: 4px; margin: 0; }
+    .upc-rem .upc-rem-add .form-control { width: 110px; height: auto; padding: 1px 6px; }
     .upc-rem .upc-rem-amt { display: flex; align-items: center; justify-content: flex-end; gap: 6px; margin: 0 0 3px; font-weight: normal; }
     .upc-rem .upc-rem-amt .form-control, .upc-rem .upc-rem-amt-one { width: 90px; height: auto; padding: 1px 6px; text-align: right; display: inline-block; }
     .upc-rem .upc-rem-apply { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px; }
@@ -636,6 +639,17 @@
       html += '<div class="upc-gap"><b>' + esc(r.insurer || 'Unknown insurer') + '</b>' + (r.date ? ' remittance dated ' + esc(r.date) : '') + (r.reference ? ', reference ' + esc(r.reference) : '') +
         '. ' + r.items.length + ' invoice' + (r.items.length === 1 ? '' : 's') + ' read' + (r.checks && r.checks.paidTotal !== null ? ', total paid ' + fmt(r.checks.paidTotal) : '') + '.</div>';
       if (r.notes.length) html += '<div class="upc-rem-notes"><b>Check before applying</b><ul>' + r.notes.map((n) => '<li>' + esc(n) + '</li>').join('') + '</ul></div>';
+      // A line the reading missed altogether (Carl, 13 Nov 2026): added by hand from the paper copy, then checked in
+      // Halaxy like any other. Offered on scanned remittances, and on any whose amounts don't add up to its total.
+      const short = r.checks && r.checks.paidTotal !== null && r.checks.paidRead !== r.checks.paidTotal;
+      if (r.insurer && (r.scanned || short) && !state.busy && !state.applied) {
+        html += '<div class="upc-rem-add upc-gap"><b>A line missing?</b> Add it from the paper copy: ' +
+          '<input class="form-control" data-add="inv" placeholder="UPC-37070" aria-label="Invoice number"> ' +
+          '<label>paid <input class="form-control" data-add="paid" placeholder="70.00" inputmode="decimal" aria-label="Amount paid"></label> ' +
+          '<label>billed <input class="form-control" data-add="billed" placeholder="if shown" inputmode="decimal" aria-label="Amount billed, if the remittance shows it"></label> ' +
+          '<label><input type="checkbox" data-add="excess"> Member contribution or excess</label> ' +
+          '<button type="button" class="btn btn-outline-primary-light" data-act="addline">Add and check</button></div>';
+      }
     }
     html += '</div></div>';
     if (state.results.length) {
@@ -706,6 +720,34 @@
       state.busy = false;
       render();
       status(state.results.length ? 'Checked. Review the results, then apply the excess fixes you want.' : $('.upc-rem-status').textContent);
+    }
+  }
+
+  // A line the reading missed: added by hand, checked in Halaxy, and the totals checked again.
+  async function addLine() {
+    if (state.busy || !state.remit) return;
+    const val = (k) => { const el = sh.querySelector('[data-add="' + k + '"]'); return el ? (el.type === 'checkbox' ? el.checked : String(el.value).trim()) : ''; };
+    const digits = val('inv').replace(/\D/g, '').replace(/^0+/, '');
+    if (!digits) { status('Enter the invoice number, for example UPC-37070.'); return; }
+    const paid = amountIn(val('paid'));
+    if (paid === null) { status('Enter the amount paid as on the paper copy, for example 70.00.'); return; }
+    const billed = val('billed') ? amountIn(val('billed')) : null;
+    if (val('billed') && billed === null) { status('"' + val('billed') + '" is not an amount. Leave billed empty if the remittance doesn\'t show it.'); return; }
+    const invoice = 'UPC-' + digits;
+    if (state.remit.items.some((it) => it.invoice.replace(/^UPC-0*/, '') === digits)) { status(invoice + ' is already on this remittance: correct its row instead.'); return; }
+    const excess = !!val('excess');
+    const item = { invoice, claimed: billed, paid, patientShare: null, providerShortfall: null, dates: [], lines: null, added: true,
+      reason: excess ? 'excess' : (billed !== null && paid < billed ? 'other' : null), reasonText: excess ? 'Member contribution or excess, added by hand' : 'Added by hand' };
+    state.remit.items.push(item);
+    checkTotals(state.remit);
+    state.busy = true;
+    render();
+    status('Checking ' + invoice + ' in Halaxy...');
+    try { state.results.push(await matchItem(item)); } finally {
+      state.busy = false;
+      render();
+      const r = state.remit;
+      status('Added ' + invoice + ' at ' + fmt(paid) + '.' + (r.checks && r.checks.paidTotal !== null ? (r.checks.paidRead === r.checks.paidTotal ? ' The amounts now add up to the remittance total.' : ' The amounts still don\'t add up to the remittance total.') : ''));
     }
   }
 
@@ -938,12 +980,14 @@
       const act = e.target.closest('[data-act]');
       if (act && act.dataset.act === 'apply') apply();
       if (act && act.dataset.act === 'recheck') recheck(+act.dataset.i);
+      if (act && act.dataset.act === 'addline') addLine();
     });
     sh.addEventListener('keydown', (e) => {
       if (e.target.classList && e.target.classList.contains('upc-rem-drop') && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); $('.upc-rem-drop input').click(); }
       const ds = e.target.dataset || {};
       const idx = ds.num !== undefined ? ds.num : ds.paid !== undefined ? ds.paid : ds.line !== undefined ? ds.line.split(':')[0] : null;
       if (idx !== null && e.key === 'Enter') { e.preventDefault(); recheck(+idx); }   // Enter in a correction box checks again
+      if (ds.add !== undefined && ds.add !== 'excess' && e.key === 'Enter') { e.preventDefault(); addLine(); }
     });
     sh.addEventListener('change', (e) => {
       const t = e.target;
