@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.0
+// @version      0.4.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -36,7 +36,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.4.0';
+  const VERSION = '0.4.1';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -637,7 +637,7 @@
     const fixes = state.results.filter((x) => x.status === 'fix');
     let html = '<div class="upc-rem"><h1>Remittances</h1>' +
       '<div class="card"><div class="card-header"><h2>Read a remittance</h2></div><div class="card-body">' +
-      '<div class="text-muted">Read a remittance, check it against Halaxy, and move excesses to the patient. Payments are never recorded here. Remittances are read on this computer and not uploaded anywhere, except as an attachment to the invoices they cover.</div>' +
+      '<div class="text-muted">Read a remittance, check it against Halaxy, and move excesses to the patient. Money is never added here: it comes from the bank statement, as a deposit on the insurer\'s profile, and is applied to the invoices once everything agrees and you confirm. Remittances are read on this computer and not uploaded anywhere, except as an attachment to the invoices they cover and one copy on the insurer\'s profile.</div>' +
       '<div class="upc-rem-drop" tabindex="0" role="button">Drop a remittance PDF here, or click to choose one<input type="file" accept="application/pdf" hidden></div>' +
       '<div class="upc-rem-status" aria-live="polite"></div>';
     if (r) {

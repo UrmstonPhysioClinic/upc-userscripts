@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.42
+// @version      0.1.43
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.42';
+  const VERSION = '0.1.43';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -787,10 +787,22 @@
   }
 
   // A Halaxy finance report's table: its column names (the last header row) and its body rows as a grid.
+  // A report page without its table is usually a passing Halaxy hiccup (both PCs, 13 Nov 2026, cleared by itself): it
+  // asks once more after 20 seconds, and only then says the report has changed, naming the page Halaxy sent instead.
+  const pageKind = (doc) => {
+    if (doc.querySelector('input[type=password]')) return 'a sign-in page';
+    const t = clean(doc.title || (doc.querySelector('h1, h2') || {}).textContent || '');
+    return t ? 'a page titled "' + t.slice(0, 60) + '"' : 'an empty page';
+  };
   async function reportTable(path, what) {
-    const doc = await http.html(path);
-    const table = doc.querySelector('table.table-report');
-    if (!table) throw new UPCError('Halaxy\'s ' + what + ' report has changed (its table was not found).');
+    let doc = await http.html(path);
+    let table = doc.querySelector('table.table-report');
+    if (!table) {
+      await sleep(20000);
+      doc = await http.html(path.replace(/([?&]clicked=)\d+/, '$1' + Date.now()));
+      table = doc.querySelector('table.table-report');
+    }
+    if (!table) throw new UPCError('Halaxy\'s ' + what + ' report has changed (its table was not found twice; Halaxy sent ' + pageKind(doc) + ').');
     const all = [...table.rows];
     const head = table.tHead ? [...table.tHead.rows] : all.filter((r) => r.cells.length && [...r.cells].every((c) => c.tagName === 'TH'));
     const body = all.filter((r) => !head.includes(r));
@@ -1514,7 +1526,7 @@
     .upc-native td.number, .upc-native th.number { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .upc-native table.table { margin: 12px 0 0; }
     .upc-native table.table td { vertical-align: top; }
-    .upc-native .upc-run { margin-top: 12px; }
+    .upc-native .upc-run { margin: 12px 0 16px; }
     .upc-native .upc-run .progress { height: 8px; background: var(--vs-card-header-bg-color, #e9ecef); border-radius: 4px; overflow: hidden; }
     .upc-native .upc-run .progress-bar { height: 100%; background-color: var(--vs-btn-primary-bg-color, var(--primary, #7c3fe4)); transition: width .3s ease; }
     .upc-native .upc-run-now { margin-top: 4px; }
