@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.12
+// @version      0.3.13
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -31,7 +31,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.3.12';
+  const VERSION = '0.3.13';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -64,7 +64,8 @@
   const cents = (t) => Math.round(parseFloat(String(t).replace(/[£,]/g, '')) * 100);
   const fmt = (c) => UPC.money.fmt(c);   // £ 40.00, as Halaxy
   // OCR reads UPC-37536 as 'UPC=37536', 'UPC-375 36', 'UPC—37536' and so on.
-  const UPC_RE = /U\s*P\s*C\s*[-=+–—_.:~]?\s*(\d{3,6})/i;
+  // Text recognition sometimes reads the C as G, O or "GC" (live, 13 Nov 2026: "UPGC-37070" on an AXA remittance).
+  const UPC_RE = /U\s*P\s*(?:GC|[CGO(])\s*[-=+–—_.:~]?\s*(\d{3,6})/i;
 
   // Splits a text item into words, sharing its width out by character count.
   function splitItem(str, x, y, w, h, page) {
@@ -286,7 +287,9 @@
         if (!money.length) { out.notes.push('Could not read the amount paid for UPC-' + upc + '.'); return; }
         const paid = cents(money[money.length - 1].text);
         const invoiced = money.length > 1 ? cents(money[money.length - 2].text) : null;
-        let reasonText = '';
+        // The explanation can start on the reference's own row (text recognition joins them).
+        const own = r.text.replace(UPC_RE, ' ');
+        let reasonText = /[a-z]{4,}/i.test(own) ? own : '';   // not specks the recognition read as ": FS"
         for (let j = i + 1; j < Math.min(rows.length, i + 5); j++) {
           if (upcIn(rows[j].text) || moneyIn(rows[j]).length || /Total\s+GBP/i.test(rows[j].text)) break;
           reasonText += ' ' + rows[j].text;
