@@ -25,7 +25,7 @@ from playwright.async_api import async_playwright
 ROOT = Path(__file__).resolve().parents[2]
 LOADER = (ROOT / 'loader' / 'upc-loader.user.js').read_text()
 RAW = 'https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/'
-FILES = {f: (ROOT / 'beta' / f).read_text() for f in ('core.user.js', 'portal-fill.user.js')}
+FILES = {f: (ROOT / 'beta' / f).read_text().replace('perMinute: 45,', 'perMinute: 100000,') for f in ('core.user.js', 'portal-fill.user.js')}   # tests: no 45-a-minute wait
 ver = lambda code: [l.split()[-1] for l in code.splitlines() if '@version' in l][0]
 name = lambda code: [l.split(None, 2)[2] for l in code.splitlines() if '@name' in l][0]
 S = {}

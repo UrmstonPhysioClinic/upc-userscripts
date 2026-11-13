@@ -25,7 +25,7 @@ FIXTURE = """// ==UserScript==
 GM_registerMenuCommand('Fixture: show results', function () { window.__fixtureRan = (window.__fixtureRan || 0) + 1; });
 GM_registerMenuCommand('Fixture: on (click to turn off)', function () {});
 """
-FILES = {'core.user.js': (ROOT / 'beta' / 'core.user.js').read_text(), 'fixture.user.js': FIXTURE,
+FILES = {'core.user.js': (ROOT / 'beta' / 'core.user.js').read_text().replace('perMinute: 45,', 'perMinute: 100000,'), 'fixture.user.js': FIXTURE,
          'script-settings.user.js': (ROOT / 'beta' / 'script-settings.user.js').read_text()}
 ver = lambda code: [l.split()[-1] for l in code.splitlines() if '@version' in l][0]
 name = lambda code: [l.split(None, 2)[2] for l in code.splitlines() if '@name' in l][0]

@@ -24,7 +24,7 @@ import make_fixtures  # noqa: E402
 if not (HERE / 'node_modules' / 'tesseract.js').exists():
     subprocess.run(['npm', 'install', '--no-audit', '--no-fund', '--no-package-lock', '--silent'], cwd=HERE, check=True)
 LIBS = HERE / 'node_modules'
-CORE = (ROOT / 'beta' / 'core.user.js').read_text()
+CORE = (ROOT / 'beta' / 'core.user.js').read_text().replace('perMinute: 45,', 'perMinute: 100000,')   # tests: no 45-a-minute wait (the 300 ms gap stays)
 REMIT = (ROOT / 'beta' / 'remittances.user.js').read_text()
 PG = '555'
 

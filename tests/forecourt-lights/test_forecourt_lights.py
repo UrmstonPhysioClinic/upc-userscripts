@@ -19,7 +19,7 @@ from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
 CHANNEL = sys.argv[1] if len(sys.argv) > 1 else 'beta'   # 'stable' tests the stable copy with stable core
-CORE = (ROOT / CHANNEL / 'core.user.js').read_text()
+CORE = (ROOT / CHANNEL / 'core.user.js').read_text().replace('perMinute: 45,', 'perMinute: 100000,')   # tests: no 45-a-minute wait (the 300 ms gap stays)
 SCRIPT = (ROOT / CHANNEL / 'forecourt-lights.user.js').read_text()
 GM = """
 window.GM_getValue = function (k, d) { var v = localStorage.getItem('upc-gm:fl:' + k); return v === null ? d : JSON.parse(v); };

@@ -17,7 +17,7 @@ SCRIPT = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / 'beta' / 'calendar-c
 if not (HERE / 'node_modules' / 'jquery').exists():
     subprocess.run(['npm', 'install', '--no-audit', '--no-fund', '--no-package-lock', '--silent'], cwd=HERE, check=True)
 JQUERY = (HERE / 'node_modules' / 'jquery' / 'dist' / 'jquery.min.js').read_text()
-CORE = (ROOT / 'beta' / 'core.user.js').read_text()
+CORE = (ROOT / 'beta' / 'core.user.js').read_text().replace('perMinute: 45,', 'perMinute: 100000,')   # tests: no 45-a-minute wait (the 300 ms gap stays)
 
 PAGE = """<!doctype html><html><head><script>JQUERY</script><script>
   var f = function () {};
