@@ -1,5 +1,20 @@
 # Changelog
 
+## Insurer money through funder deposits, 13 Nov 2026 (beta)
+- Carl, 13 Nov 2026: insurer payments now go onto the insurer's profile as a deposit, made only from the bank statement, then applied to invoices. Whichever of the bank statement and the remittance comes second applies it, only when the amounts agree exactly, and only after you confirm.
+- Bank statement 0.2.0:
+  - Each insurer payment becomes a Direct Deposit on the insurer's profile, dated the bank date, with a note naming the bank line and statement. If a remittance put through Remittances names its invoices and they agree, it is applied to them and the remittance copies say so. Otherwise it waits for the remittance.
+  - Never twice: payments already recorded the old way show "Already in Halaxy" and get no deposit. A deposit already on the profile is found by its note. A deposit of the same amount with no note shows "check".
+  - Lines dated before 1 November 2026 are never in "Record all": reading an old statement again only fills in its register and shows anything not found, to check.
+  - The statement register: one small PDF per statement on the Starling Bank profile (period, balances, line count, fingerprint, who read it and when, and each insurer payment with what became of it). A statement read again, or one overlapping it, is recognised.
+  - Tasks for Carl on the insurer's profile, or a general task when the profile isn't known.
+- Remittances 0.4.0:
+  - New remittance name: "Bupa remittance 2026-10-28 ref 2455419 £ 216.00".
+  - The remittance is filed once on the insurer's profile, with the whole remittance in its comment. The same file is updated, not duplicated; a different file under that name gets a task.
+  - Once excesses are moved, it applies the insurer's deposit from the bank, after asking, when there is exactly one deposit of the remittance total, dated from 3 days before to 30 days after the remittance, and each invoice shows what the remittance paid. Anything that doesn't agree gets a task on the profile.
+- Ten days on: deposits with no remittance, and remittances with no money in the bank, get a task on the insurer's profile (checked once a day per PC when either page opens).
+- Core 0.1.42: `UPC.deposits` (list, details, add, apply, insurer profiles seen, lingering check), `UPC.orgFiles` (list, find, details, update, attach on a funder profile), tasks on a profile and general tasks, the invoice's Bill To profile, and adding to an attachment's comment (`append`).
+
 ## Bank statement page laid out like Remittances, 13 Nov 2026 (beta)
 - Bank statement 0.1.9 (Carl, 13 Nov 2026): the same layout as Remittances: a "Read a bank statement" card saying what it does, the same drop box (highlighted while a file is dragged over), then progress and notes, then the results.
 

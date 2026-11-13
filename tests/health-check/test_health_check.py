@@ -88,7 +88,12 @@ async def halaxy(route):
         return await j([{'id': 1, 'title': 'Type', 'backgroundColor': '#FF0000', 'status': 'Active'}])
     if p.endswith('/funder/fee/data'):
         return await j([{'funder': 'Self-Funded', 'feeColour': '#FEF2C0', 'status': 'current', 'feeNumber': 'IA-IA'}])
-    if re.search(r'/invoicefunctions/\d+/pay/offline$', p):
+    if p.endswith('/organisation/78812/balance/data'):
+        return await j({'data': [{'id': 1, 'type': 'Direct Deposit', 'date': '2026-10-05T00:00:00', 'amount': 120, 'balance': 0}]})
+    if p.endswith('/organisation/78812'):
+        return await route.fulfill(body="<html><body><a data-modal-href='/a/pr/555/file/upload/organisation/78812'>Add Files</a>"
+                                   "<div class='card attachment-file-card' data-href='/a/file/get/x.pdf'>Starling statement</div><a data-modal-href='/a/pr/555/file/edit/5'>Edit</a></body></html>", content_type='text/html')
+    if re.search(r'/invoicefunctions/0/pay/offline/0/\d+$', p):
         STATE.setdefault('payReads', []).append(route.request.method)
         dd = '' if 'payform' in STATE['break'] else "<option value='9'>Direct Deposit</option>"
         return await j({'status': 'FORM', 'message': "<form id='paymentForm'><select name='form[paymentMethod]'><option value='592'>Card</option>%s</select>"
@@ -179,8 +184,9 @@ async def main():
         stored = await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:halaxy'))")
         check('Halaxy version recorded', stored and stored['version'] == '4.12', stored)
         results = await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:results'))")
-        check('data checks ran', all(k in results for k in ('data-calendar', 'data-fees', 'data-practitioners', 'data-invoices', 'data-pay-offline')), list(results))
-        check('Mark as Paid pop-up only read', set(STATE.get('payReads', [])) == {'GET'}, STATE.get('payReads'))
+        check('data checks ran', all(k in results for k in ('data-calendar', 'data-fees', 'data-practitioners', 'data-invoices', 'data-org-deposits', 'data-org-deposit-add', 'data-org-files')), list(results))
+        check('funder profile checks pass', all(not results[k]['problems'] for k in ('data-org-deposits', 'data-org-deposit-add', 'data-org-files')), {k: results.get(k) for k in ('data-org-deposits', 'data-org-deposit-add', 'data-org-files')})
+        check('add deposit pop-up only read', set(STATE.get('payReads', [])) == {'GET'}, STATE.get('payReads'))
         await pg.evaluate("window.__menu.find(m => m[0] === 'Health check: show results')[1]()")
         txt = await pg.evaluate("document.querySelector('[data-hx-health]').textContent")
         check('menu opens results: all passed', 'All checks passed' in txt and 'Halaxy version 4.12' in txt, txt[:200])
@@ -238,8 +244,8 @@ async def main():
         sv = [x for x in probs if x['title'] == 'Survey responses has changed']
         check('survey response layout change reported for Feedback alerts and Review requests', sv and 'Feedback alerts' in sv[0]['scripts'] and any('note_total_score' in l for l in sv[0]['lines']), sv)
         sett = [x for x in probs if x['title'] == 'Invoice settings (cogwheel) has changed']
-        pay = [x for x in probs if x['title'] == 'Mark as Paid pop-up has changed']
-        check('no Direct Deposit in Mark as Paid reported for Bank statement', pay and pay[0]['lines'] == ['no Direct Deposit payment method'] and 'Bank statement' in pay[0]['scripts'], (pay, [x['title'] for x in probs]))
+        pay = [x for x in probs if x['title'] == 'Add deposit pop-up has changed']
+        check('no Direct Deposit in the add deposit pop-up reported for Bank statement', pay and pay[0]['lines'] == ['no Direct Deposit payment method'] and 'Bank statement' in pay[0]['scripts'], (pay, [x['title'] for x in probs]))
         check('cogwheel status change reported for Invoice Funder', sett and sett[0]['lines'] == ['no Issued status'] and 'Invoice Funder' in sett[0]['scripts'], sett)
         STATE['break'] = set()
         await pg.evaluate('hxHealth.run(true)')

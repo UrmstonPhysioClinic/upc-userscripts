@@ -67,9 +67,12 @@ def funder_html(f):
                   "<a class='btn icon btn-file-view' href='javascript:void(0);'></a><a class='btn icon ajax' href='/a/pr/%s/invoice/attachment/%d'><i class='icon-pencil3'></i></a>"
                   "<a class='btn icon ajax' href='/a/pr/%s/invoice/attachment/%d/delete'><i class='icon-trash2'></i></a></td></tr>"
                   % (a['title'], a['comments'], a.get('id', 0), PG, a.get('id', 0), PG, a.get('id', 0)) for a in S['attachments'].get(f['id'], []))
-    return ("<html><head><title>Invoice %s | Halaxy</title></head><body><table id='invoiceLines'><tbody>%s<tr><td>Total</td><td>%s</td></tr></tbody></table>"
-            "<table id='invoicePayments'><tbody><tr><td>Outstanding</td><td>%s</td></tr></tbody></table>"
-            "<table id='invoiceAttachments'><tbody>%s</tbody></table></body></html>") % (f['number'], rows, gbp(total), gbp(total), att)
+    paid = S.get('paid', {}).get(f['id'], 0)
+    pays = "<tr><td>11-Nov-2026</td><td>Direct Deposit deposit paid on 10-Oct-2026</td><td>Paid</td><td>%s</td></tr>" % gbp(paid) if paid else ''
+    return ("<html><head><title>Invoice %s | Halaxy</title></head><body><div id='card-invoice-view-organisation'><a href='/a/pr/555/organisation/601'>WPA</a></div>"
+            "<table id='invoiceLines'><tbody>%s<tr><td>Total</td><td>%s</td></tr></tbody></table>"
+            "<table id='invoicePayments'><tbody>%s<tr><td>Outstanding</td><td>%s</td></tr></tbody></table>"
+            "<table id='invoiceAttachments'><tbody>%s</tbody></table></body></html>") % (f['number'], rows, gbp(total), pays, gbp(total - paid), att)
 
 
 def patient_html(p):
@@ -241,6 +244,51 @@ async def halaxy(route):
         slipped = (datetime.datetime.strptime(pend['date'], '%d-%b-%Y') + datetime.timedelta(days=1)).strftime('%d-%b-%Y')   # Halaxy slips the re-billed line too
         S['funders'][fid]['lines'].append({'lineId': S['next_line'], 'pid': p['id'], 'plineId': pend['plineId'], 'date': slipped, 'item': 'PHY', 'amount': pend['amount']})
         return await js({'status': 'REFRESH'})
+    # The insurer's profile (601): deposits, files, tasks (captures 13 Nov 2026)
+    deps, ofiles = S.setdefault('deps', []), S.setdefault('orgfiles', [])
+    if path.endswith('/organisation/601/balance/data'):
+        return await js({'data': [{'id': d['id'], 'type': 'Direct Deposit', 'date': d['iso'], 'amount': d['amount'] / 100, 'balance': d['balance'] / 100} for d in deps]})
+    m = re.search(r'/invoicefunctions/payment/(\d+)/(edit|allocate)$', path)
+    if m:
+        d = next(d for d in deps if d['id'] == int(m.group(1)))
+        if m.group(2) == 'edit':
+            return await js({'status': 'FORM', 'message': "<form id='paymentForm'><input name='form[paymentDate]' value='%s'><input name='form[note]' value='%s'></form>" % (d['date'], d['note'])})
+        if req.method == 'GET':
+            return await js({'status': 'FORM', 'message': "<form id='allocatePaymentForm'><input type='hidden' name='form[_token]' value='tok-alloc'></form>"})
+        ids = [int(v) for k, v in urllib.parse.parse_qsl(req.post_data or '') if k == 'form[invoices][]']
+        S.setdefault('allocs', []).append((d['id'], ids))
+        for i in ids:
+            f = S['funders'][i]
+            owe = sum(l['amount'] for l in f['lines']) - S.setdefault('paid', {}).get(i, 0)
+            S['paid'][i] = S['paid'].get(i, 0) + owe
+            d['balance'] -= owe
+        return await js({'status': 'REFRESH'})
+    if re.search(r'^/a/pr/555/organisation/601/?$', path):
+        cards = ''.join("<div class='card attachment-file-card' data-href='/a/file/get/o%d.pdf'>%s</div><div class='dropdown-menu'><a data-modal-href='/a/pr/555/file/edit/%d'>Edit</a></div>" % (f['id'], f['title'], f['id']) for f in reversed(ofiles))
+        return await route.fulfill(body="<html><body><div class='card'><div class='card-header'><h2>Attachments</h2></div>%s</div></body></html>" % cards, content_type='text/html')
+    m = re.search(r'^/a/file/get/o(\d+)\.pdf$', path)
+    if m:
+        return await route.fulfill(body=next(f['bytes'] for f in ofiles if f['id'] == int(m.group(1))), content_type='application/pdf')
+    m = re.search(r'/file/edit/(\d+)$', path)
+    if m:
+        f = next(f for f in ofiles if f['id'] == int(m.group(1)))
+        if req.method == 'GET':
+            return await js({'status': 'FORM', 'message': "<form id='fileupload'><input name='form[title]' value='%s'><textarea name='form[comments]'>%s</textarea><input type='hidden' name='form[_token]' value='tf'></form>" % (f['title'], f['comments'])})
+        f['title'], f['comments'] = form['form[title]'], form['form[comments]']
+        return await js({'status': 'REFRESH'})
+    if path.endswith('/file/upload/organisation/601'):
+        if req.method == 'GET':
+            return await js({'status': 'FORM', 'message': ATTACH_POPUP})
+        ofiles.append({'id': 700 + len(ofiles), 'title': form['form[files][1][title]'], 'comments': form['form[files][1][comments]'], 'bytes': S.get('current_pdf', b'')})   # the browser doesn't pass on the file's bytes here
+        return await js({'status': 'REFRESH'})
+    if path.endswith('/task/organisation/601/list-data'):
+        return await js([{'id': i, 'title': t['form[title]'], 'status': 'Open'} for i, t in enumerate(S.setdefault('orgtasks', []))])
+    if path.endswith('/task/new/organisation/601'):
+        if req.method == 'GET':
+            return await js({'status': 'FORM', 'message': "<form id='form_task_edit'><input name='form[title]' value=''><select name='form[linkPrGs][]' multiple><option value='31'>Carl Healy</option></select>"
+                             "<input type='radio' name='form[priority]' value='2' checked><input name='form[displayDueDate]' value=''><textarea name='form[comment]'></textarea><input type='hidden' name='form[_token]' value='tok-task'></form>"})
+        S.setdefault('orgtasks', []).append(dict(form))
+        return await js({'status': 'POPUP', 'url': '/a/pr/555/task/list'})
     if path.endswith('/practitioner/file/upload/files'):
         ok = req.headers.get('authorization') == 'Bearer jwt-test' and 'name="file"' in (req.post_data_buffer or b'').decode('latin-1')
         return await js({'files': [{'id': '9001'}]} if ok else {'files': [{'error': 'bad upload'}]})
@@ -326,6 +374,7 @@ async def main():
         await pg.wait_for_timeout(300)
 
         # Read, match and classify a typed WPA remittance
+        S['current_pdf'] = pdfs['wpa'].read_bytes()
         await pg.set_input_files('[data-upc-remittances] input[type=file]', str(pdfs['wpa']))
         await pg.wait_for_function("document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr').length === 3", timeout=60000)
         await pg.wait_for_timeout(300)
@@ -390,10 +439,15 @@ async def main():
         check('other invoices untouched', [l['amount'] for l in S['funders'][101]['lines']] == [6000] and [l['amount'] for l in S['funders'][103]['lines']] == [6000])
         atts = {k: v for k, v in S['attachments'].items()}
         check('remittance attached to every matched invoice', sorted(atts) == [101, 102, 103] and all(len(v) == 1 for v in atts.values()), atts)
-        check('attached as Payment with a clear title', all(a['category'] == '2' and a['title'] == 'WPA remittance 2026-10-08' for v in atts.values() for a in v), atts)
+        check('attached as Payment, named by insurer, date and total', all(a['category'] == '2' and a['title'] == 'WPA remittance 2026-10-08 £ 254.00' for v in atts.values() for a in v), atts)
         check('billed is what the insurer was billed, not the invoice after the move', any('this invoice billed £ 180.00, paid £ 144.00' in a['comments'] for a in S['attachments'].get(102, [])), S['attachments'].get(102))
         check('comment for Bank statement: reference, payment date, remittance total, invoice count, billed and paid on this invoice, every invoice on it', all(re.fullmatch(r'(Insurer reference \S+; p|P)ayment date \d\d-[A-Z][a-z]{2}-\d{4}; remittance total £ \d+\.\d\d over 3 invoices; this invoice billed £ \d+\.\d\d, paid £ \d+\.\d\d; invoices (UPC-\d+, ){2}UPC-\d+', a['comments']) for v in atts.values() for a in v), atts)
         check('no payment recorded', not any(m == 'PAYMENT' for _, m, _ in S['log']))
+        of = S.get('orgfiles', [])
+        check('filed once on the insurer\'s profile: its name, the whole remittance in the comment', len(of) == 1 and of[0]['title'] == 'WPA remittance 2026-10-08 £ 254.00'
+              and 'Payment date 08-Oct-2026; remittance total £ 254.00 over 3 invoices; invoices UPC-40001, UPC-40002, UPC-40003; paid UPC-40001 £ 60.00, UPC-40002 £ 144.00, UPC-40003 £ 50.00' in of[0]['comments'] and of[0]['bytes'] == pdfs['wpa'].read_bytes(), of)
+        check('a provider shortfall still on UPC-40003: no deposit looked for, a task to apply it by hand', 'No deposit applied: UPC-40003 shows £ 60.00 outstanding, not £ 50.00' in shown
+              and [t.get('form[title]') for t in S.get('orgtasks', [])] == ['Remittance WPA remittance 2026-10-08 £ 254.00: apply the payment by hand'] and not S.get('allocs'), (shown[-500:], S.get('orgtasks')))
         api = [t for t, m, pth in S['log'] if '/a/pr/' in pth or '/api/' in pth]
         gaps = [round(b - a, 3) for a, b in zip(api, api[1:])]
         check('requests are paced (at least 0.25 s apart)', gaps and min(gaps) >= 0.25, min(gaps) if gaps else None)
@@ -402,15 +456,31 @@ async def main():
         btn = await pg.evaluate("document.querySelector('[data-upc-remittances] [data-act=apply]').disabled")
         check('nothing can be applied twice from the same reading', btn is True, btn)
 
-        # The same remittance again: everything now paid in full, so the button only attaches, and skips invoices that already have it
+        # The same remittance again: everything now paid in full, so the button only attaches, and skips invoices that already have it.
+        # The shortfall has been written off by hand and the money is in the bank (a deposit on the profile from Bank
+        # statement): it is applied, after asking, and every copy says so
+        S['funders'][103]['lines'][0]['amount'] = 5000
+        S['deps'] = [{'id': 801, 'iso': '2026-10-10T00:00:00', 'date': '10-Oct-2026', 'amount': 25400, 'balance': 25400, 'note': 'WPA, bank 10-Oct-2026, ref WPA, Starling statement 01-Oct-2026 to 31-Oct-2026'},
+                     {'id': 802, 'iso': '2026-06-10T00:00:00', 'date': '10-Jun-2026', 'amount': 25400, 'balance': 25400, 'note': 'WPA, bank 10-Jun-2026'}]   # months before: not this one
         await pg.set_input_files('[data-upc-remittances] input[type=file]', str(pdfs['wpa']))
         await pg.wait_for_function("document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr').length === 3 && !document.querySelector('[data-upc-remittances] [data-act=apply]').disabled", timeout=60000)
         label = await pg.evaluate("document.querySelector('[data-upc-remittances] [data-act=apply]').textContent")
         check('with nothing to fix, the button attaches the remittance', label == 'Attach remittance to 3 invoices', label)
         await pg.evaluate("document.querySelector('[data-upc-remittances] [data-act=apply]').click()")
+        await pg.wait_for_selector('[data-upc-remit-confirm]', timeout=120000)
+        conf = await pg.evaluate("document.querySelector('[data-upc-remit-confirm]').textContent")
+        check('asks before applying the deposit, saying what and where', 'Apply the payment?' in conf and 'reached the bank on 10-Oct-2026' in conf and 'UPC-40003 £ 50.00' in conf, conf)
+        await pg.evaluate("document.querySelector('[data-upc-remit-confirm] [data-a=yes]').click()")
         await pg.wait_for_function("(document.querySelector('[data-upc-remittances] .upc-log') || {}).textContent && document.querySelector('[data-upc-remittances] .upc-log').textContent.includes('Finished')", timeout=120000)
         log2 = await pg.evaluate("document.querySelector('[data-upc-remittances] .upc-log').textContent")
         check('no duplicate attachments', all(len(v) == 1 for v in S['attachments'].values()) and log2.count('already attached') == 3, (S['attachments'], log2))
+        check('the deposit from the bank applied to the three invoices; the old one left', S.get('allocs') == [(801, [101, 102, 103])] and S['deps'][1]['balance'] == 25400 and 'Applied the deposit to UPC-40001, UPC-40002, UPC-40003' in log2, (S.get('allocs'), log2[-600:]))
+        note = 'deposit £ 254.00 from the bank 10-Oct-2026, applied '
+        check('every copy says which deposit paid it: each invoice and the profile', all(note in a['comments'] for v in S['attachments'].values() for a in v) and len(S['orgfiles']) == 1 and note in S['orgfiles'][0]['comments']
+              and 'already filed on the profile' in log2, (S['attachments'], S['orgfiles']))
+        check('still no payment recorded straight onto an invoice', not any(m == 'PAYMENT' for _, m, _ in S['log']))
+        S['funders'][103]['lines'][0]['amount'] = 6000
+        S['paid'] = {}   # the rest of the test works on unpaid invoices
 
         # Re-uploading after the excess was moved (Carl, 13 Nov 2026): said plainly, whatever the split; part moved by
         # hand, or more than the excess: not changed, check by hand

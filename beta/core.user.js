@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.41
+// @version      0.1.42
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.41';
+  const VERSION = '0.1.42';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -291,6 +291,7 @@
     // An organisation invoice's Bill To box names the funder (#card-invoice-view-organisation, live 11 Nov 2026).
     const billTo = doc.querySelector('#card-invoice-view-organisation a[href*="/organisation/"]:not([href*="/edit"])');
     inv.billToName = billTo ? clean(billTo.textContent) : '';
+    inv.billToOrgId = billTo ? ((billTo.getAttribute('href') || '').match(/\/organisation\/(\d+)/) || [])[1] || null : null;
     const ref = doc.querySelector('[data-referral]');
     const pos = ref && clean(ref.textContent).match(/\((\d+)(?:st|nd|rd|th)\s+of\s+(\d+)\s+appt/i);
     inv.referral = pos ? { position: +pos[1], limit: +pos[2] } : null;
@@ -716,6 +717,10 @@
       const form = doc.querySelector('form#frmInvoiceFile') || doc.querySelector('form');
       const has = (n) => form && form.querySelector('[name="' + n + '"]');
       if (!form || !has('form[title]') || !has('form[comments]') || !has('form[_token]')) throw new UPCError('Halaxy\'s attachment edit pop-up has changed, so the details were not updated.');
+      // `append` adds to the comment as it is in the pop-up (the whole of it: the page may show it shortened), once.
+      const was = (n) => clean(form.querySelector('[name="' + n + '"]').value);
+      if (opts.title === undefined) opts = Object.assign({}, opts, { title: was('form[title]') });
+      if (opts.append) opts = Object.assign({}, opts, { comments: was('form[comments]').includes(clean(opts.append)) ? was('form[comments]') : [was('form[comments]'), opts.append].filter(Boolean).join('; ') });
       const pairs = serialize(form).filter(([k]) => !['form[title]', 'form[comments]', 'form[invoiceFileType]'].includes(k));
       pairs.push(['form[title]', opts.title], ['form[comments]', opts.comments || '']);
       if (has('form[invoiceFileType]')) pairs.push(['form[invoiceFileType]', String(opts.category !== undefined ? opts.category : ATTACH_CATEGORY.payment)]);
@@ -792,6 +797,184 @@
     const hg = cellGrid(head);
     return { names: (hg[hg.length - 1] || []).map((c) => clean(c && c.textContent)), body, grid: cellGrid(body) };
   }
+  // ------------------------------------------------------------------ funder deposits (captures 13 Nov 2026)
+  // An insurer payment as it reached the bank, held on the insurer's (organisation's) profile, then applied to invoices
+  // billed to it. Apply sends only the invoices: each is paid its whole balance, never more than the deposit's balance.
+  const isoOf = (s) => (String(s || '').match(/^(\d{4}-\d{2}-\d{2})/) || [])[1] || '';
+  const deposits = {
+    // Every deposit on the profile: { id, type ("Direct Deposit"), day (yyyy-mm-dd), amount, balance (pence) }.
+    async list(orgId) {
+      const j = await http.json('/organisation/' + encodeURIComponent(orgId) + '/balance/data?viewMode=ajax');
+      if (!j || !Array.isArray(j.data)) throw new UPCError('Halaxy\'s deposit list has changed, so the deposits could not be read.');
+      return j.data.map((r) => ({ id: String(r.id), type: clean(r.type), day: isoOf(r.date), amount: money.cents(r.amount), balance: money.cents(r.balance) }));
+    },
+    // A deposit's own date and note, from its Edit pop-up (read only).
+    async details(depositId) {
+      const { doc } = await http.popup('/invoicefunctions/payment/' + encodeURIComponent(depositId) + '/edit');
+      const f = (n) => { const el = doc.querySelector('[name="form[' + n + ']"]'); return el ? clean(el.value) : ''; };
+      return { note: f('note'), date: f('paymentDate') || f('date') };
+    },
+    // Adds a deposit as "Add new > Offline payment" does. `date` dd-Mon-yyyy, `amount` pence. Checks it is listed.
+    async add(orgId, { method, date, amount, note }) {
+      const before = await deposits.list(orgId);
+      const path = '/invoicefunctions/0/pay/offline/0/' + encodeURIComponent(orgId);
+      const { doc } = await http.popup(path);
+      const form = doc.querySelector('form#paymentForm');
+      const sel = form && form.querySelector('select[name="form[paymentMethod]"]');
+      const need = ['form[paymentDate]', 'form[amount]', 'form[note]', 'form[_token]'].filter((n) => !form || !form.querySelector('[name="' + n + '"]'));
+      if (!sel || need.length) throw new UPCError('Halaxy\'s add deposit pop-up has changed (' + (sel ? need.join(', ') : 'payment method') + ' not found), so nothing was added.');
+      const opt = [...sel.options].find((o) => clean(o.textContent).toLowerCase() === String(method).toLowerCase());
+      if (!opt) throw new UPCError('"' + method + '" is not a payment method in Halaxy, so nothing was added.');
+      const set = { 'form[paymentMethod]': opt.value, 'form[paymentDate]': date, 'form[amount]': (amount / 100).toFixed(2), 'form[note]': note || '' };
+      const pairs = serialize(form).filter(([k]) => !(k in set));
+      Object.keys(set).forEach((k) => pairs.push([k, set[k]]));
+      const res = await http.postForm(path, pairs);
+      if (res && res.status === 'FORM') throw new UPCError('Halaxy did not accept the deposit' + (Array.isArray(res.errors) && res.errors.length ? ': ' + res.errors.join(' ') : '.'));
+      const added = (await deposits.list(orgId)).filter((d) => !before.some((b) => b.id === d.id) && d.amount === amount);
+      if (added.length !== 1) throw new UPCError('Halaxy accepted the deposit but its list ' + (added.length ? 'shows ' + added.length + ' new ones' : 'does not show it') + '. Check the profile\'s deposits.');
+      return added[0];
+    },
+    // Applies a deposit to whole invoices (their full balances). Checks the deposit's balance fell by `total` (pence).
+    async apply(orgId, depositId, invoiceIds, total) {
+      const before = (await deposits.list(orgId)).find((d) => d.id === String(depositId));
+      if (!before) throw new UPCError('The deposit is no longer on the profile, so nothing was applied.');
+      if (before.balance < total) throw new UPCError('The deposit has ' + money.fmt(before.balance) + ' left, less than ' + money.fmt(total) + ', so nothing was applied.');
+      const path = '/invoicefunctions/payment/' + encodeURIComponent(depositId) + '/allocate';
+      const { doc } = await http.popup(path);
+      const token = doc.querySelector('form#allocatePaymentForm [name="form[_token]"]');
+      if (!token) throw new UPCError('Halaxy\'s apply deposit pop-up has changed, so nothing was applied.');
+      const res = await http.postForm(path, invoiceIds.map((id) => ['form[invoices][]', String(id)]).concat([['form[_token]', token.value]]));
+      if (res && res.status === 'FORM') throw new UPCError('Halaxy did not apply the deposit' + (Array.isArray(res.errors) && res.errors.length ? ': ' + res.errors.join(' ') : '.'));
+      const after = (await deposits.list(orgId)).find((d) => d.id === String(depositId));
+      if (!after || after.balance !== before.balance - total) throw new UPCError('Halaxy applied the deposit, but it now has ' + (after ? money.fmt(after.balance) : 'nothing') + ' left, not ' + money.fmt(before.balance - total) + '. Check the profile and the invoices.');
+      return after;
+    },
+    // Insurer profiles seen on invoices (their Bill To), kept on this PC so a bank line with no invoice to go by can
+    // still find its insurer's profile, and so the lingering check knows which profiles to look at.
+    orgs() { return storage('upc-funder-orgs:').get('list', {}); },
+    rememberOrg(orgId, name, insurer) {
+      if (!orgId) return;
+      const st = storage('upc-funder-orgs:'), all = st.get('list', {});
+      const was = all[orgId] || {};
+      if (was.name === name && was.insurer === insurer) return;
+      all[orgId] = { name: name || was.name || '', insurer: insurer || was.insurer || '' };
+      st.set('list', all);
+    },
+    // The profiles known for an insurer ('Bupa'), as ids.
+    orgsFor(insurer) { return Object.entries(deposits.orgs()).filter(([, o]) => o.insurer === insurer).map(([id]) => id); },
+    // Deposits from the bank not applied after `days` (no remittance has come for them): a task on the insurer's
+    // profile for each. At most once a day per PC, and not while Halaxy is asking us to slow down.
+    async lingering({ days, assignee, by }) {
+      const st = storage('upc-funder-orgs:');
+      const today = dayLabel(Date.now());
+      if (st.get('lingerDay', '') === today || http.pausedFor() > 0) return [];
+      st.set('lingerDay', today);
+      const out = [];
+      for (const [orgId, o] of Object.entries(deposits.orgs())) {
+        for (const d of await deposits.list(orgId)) {
+          const when = parseDay(d.day);
+          if (!(d.balance > 0) || when === null || Date.now() - when < days * 86400e3) continue;
+          const title = (o.insurer || o.name || 'Insurer') + ' deposit ' + dayLabel(when) + ' ' + money.fmt(d.amount) + ': not applied after ' + days + ' days';
+          const added = await tasks.addToOrganisation(orgId, { title, assignee, priority: 2, due: today, by,
+            comment: ['The ' + money.fmt(d.amount) + ' deposit from the bank (' + dayLabel(when) + ') on this profile still has ' + money.fmt(d.balance) + ' to apply.',
+              'No remittance has been put through Remittances for it yet. Ask the insurer for the remittance, or apply the deposit by hand.'] });
+          if (added) out.push(title);
+        }
+      }
+      return out;
+    },
+  };
+
+  // Files on a funder profile (captures 13 Nov 2026): Add Files, and each file's Edit pop-up.
+  async function uploadFile(uploadUrl, file) {
+    const fd = new FormData();
+    fd.append('file', file, file.name || 'file.pdf');
+    const headers = { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' };
+    if (window.Hk && window.Hk.jwt) headers.Authorization = 'Bearer ' + window.Hk.jwt;
+    const res = await pacedFetch(uploadUrl, { method: 'POST', headers, body: fd, credentials: 'same-origin' });
+    if (!res.ok) throw new UPCError('Halaxy returned ' + res.status + ' when uploading the file.');
+    const up = await res.json().catch(() => null);
+    const stored = up && up.files && up.files[0];
+    if (!stored || !stored.id) throw new UPCError('Halaxy did not accept the file' + (stored && stored.error ? ': ' + stored.error : '.'));
+    return stored;
+  }
+  const orgFiles = {
+    // The files on a funder profile, as its Attachments box lists them in the page (capture 13 Nov 2026): one
+    // div.attachment-file-card per file (data-href its download link), followed by its menu, whose Edit item opens
+    // /file/edit/:id. { id, fileUrl, text } in the page's order; text is what the card shows.
+    async list(orgId) {
+      const doc = await http.html('/organisation/' + encodeURIComponent(orgId));
+      const out = [];
+      let card = null;
+      doc.querySelectorAll('.attachment-file-card, [data-modal-href*="/file/edit/"]').forEach((el) => {
+        if (el.classList.contains('attachment-file-card')) { card = { fileUrl: el.getAttribute('data-href'), text: clean(el.textContent) }; return; }
+        const id = (el.getAttribute('data-modal-href').match(/\/file\/edit\/(\d+)/) || [])[1];
+        if (!id || out.some((f) => f.id === id)) return;
+        out.push({ id, fileUrl: card ? card.fileUrl : null, text: card ? card.text : '' });
+        card = null;
+      });
+      return out;
+    },
+    // The profile's files whose details pass `test({ id, title, comments, fileUrl })`. Only files whose card shows
+    // `hint` are opened when any does (each file's details take one request); otherwise the newest `max`.
+    async find(orgId, test, hint, max) {
+      const all = await orgFiles.list(orgId);
+      const hinted = hint ? all.filter((f) => f.text.toLowerCase().includes(String(hint).toLowerCase())) : [];
+      const look = hinted.length ? hinted : all.slice(0, max || 25);
+      const out = [];
+      for (const f of look) {
+        const d = await orgFiles.details(f.id);
+        d.fileUrl = d.fileUrl || f.fileUrl;
+        if (test(d)) out.push(d);
+      }
+      return out;
+    },
+    // A file's title, comments and download link, from its Edit pop-up (read only).
+    async details(fileId) {
+      const { doc } = await http.popup('/file/edit/' + encodeURIComponent(fileId));
+      const form = doc.querySelector('form#fileupload');
+      const v = (n) => { const el = form && form.querySelector('[name="form[' + n + ']"]'); return el ? clean(el.value) : ''; };
+      const card = doc.querySelector('[data-href*="/file/get/"]');
+      if (!form) throw new UPCError('Halaxy\'s file edit pop-up has changed, so the file could not be read.');
+      return { id: String(fileId), title: v('title'), comments: v('comments'), fileUrl: card ? card.getAttribute('data-href') : null };
+    },
+    // New title and comments; `append` adds to the comment as it is, once (title kept when not given).
+    async update(fileId, { title, comments, append }) {
+      const path = '/file/edit/' + encodeURIComponent(fileId);
+      const { doc } = await http.popup(path);
+      const form = doc.querySelector('form#fileupload');
+      if (!form || !form.querySelector('[name="form[title]"]') || !form.querySelector('[name="form[comments]"]') || !form.querySelector('[name="form[_token]"]')) throw new UPCError('Halaxy\'s file edit pop-up has changed, so the details were not updated.');
+      const was = (n) => clean(form.querySelector('[name="form[' + n + ']"]').value);
+      if (title === undefined) title = was('title');
+      if (append) comments = was('comments').includes(clean(append)) ? was('comments') : [was('comments'), append].filter(Boolean).join('; ');
+      const pairs = serialize(form).filter(([k]) => k !== 'form[title]' && k !== 'form[comments]');
+      pairs.push(['form[title]', title], ['form[comments]', comments || '']);
+      const res = await http.postForm(path, pairs);
+      if (res && res.status === 'FORM') throw new UPCError('Halaxy did not accept the new details' + (Array.isArray(res.errors) && res.errors.length ? ': ' + res.errors.join(' ') : '.'));
+      const back = await orgFiles.details(fileId);
+      if (back.title !== clean(title) || !back.comments.includes(clean(comments || '').slice(0, 60))) throw new UPCError('Halaxy does not show the new details on the file. Check the profile.');
+      return true;
+    },
+    // Attaches a file to a funder profile as Add Files does. Returns the new file's id (its Edit pop-up's).
+    async attach(orgId, file, { title, comments }) {
+      const before = await orgFiles.list(orgId);
+      const path = '/file/upload/organisation/' + encodeURIComponent(orgId);
+      const { doc, json } = await http.popup(path);
+      const form = doc.querySelector('form#fileupload, form.js-file-edit-form');
+      const uploadUrl = form && form.getAttribute('data-upload-url');
+      const token = form && form.querySelector('[name="form[_token]"]');
+      if (!uploadUrl || !token) throw new UPCError('The profile\'s Add Files pop-up has changed, so the file was not attached.');
+      const stored = await uploadFile(uploadUrl + (/[?&]organisation=/.test(uploadUrl) ? '' : (uploadUrl.includes('?') ? '&' : '?') + 'organisation=' + encodeURIComponent(orgId)), file);
+      // The category Halaxy's own pop-up offers for a profile file (its template), else none.
+      const cat = (String((json && json.message) || '').match(/name="form\[files\]\[[^\]]*\]\[category\]"[^>]*value="([^"]+)"/) || String((json && json.message) || '').match(/value="([^"]+)"[^>]*name="form\[files\]\[[^\]]*\]\[category\]"/) || [])[1] || '';
+      const res = await http.postForm(path, [['form[files][1][fileEntity]', String(stored.id)], ['form[files][1][title]', title], ['form[files][1][comments]', comments || ''], ['form[files][1][category]', cat], ['form[_token]', token.value]]);
+      if (res && res.status === 'FORM') throw new UPCError('Halaxy did not attach the file' + (Array.isArray(res.errors) && res.errors.length ? ': ' + res.errors.join(' ') : '.'));
+      const added = (await orgFiles.list(orgId)).filter((f) => !before.some((b) => b.id === f.id));
+      if (added.length !== 1) throw new UPCError('Halaxy accepted the file but the profile ' + (added.length ? 'shows ' + added.length + ' new files' : 'does not show it') + '. Check the profile.');
+      return added[0].id;
+    },
+  };
+
   const reports = {
     // Halaxy's Unpaid Invoices report (Reports > Finance, type 5) from `start` ('09-May-2026'): one row per
     // fee line of every unpaid invoice, active or issued. Columns confirmed live 10 Nov 2026. An invoice's later
@@ -931,11 +1114,25 @@
     async addToPatient(linkPaGId, task) {
       return addTask('/task/new/linkPaG/' + encodeURIComponent(linkPaGId), () => tasks.forPatient(linkPaGId), task, 'in the patient\'s tasks');
     },
+    // On a funder (organisation) profile (capture 13 Nov 2026: /task/new/organisation/:org, the same form).
+    async forOrganisation(orgId) {
+      const j = await http.json('/task/organisation/' + encodeURIComponent(orgId) + '/list-data');
+      const rows = Array.isArray(j) ? j : (j && (j.rowData || j.data));
+      if (!Array.isArray(rows)) throw new UPCError('The profile\'s task list has changed, so its tasks could not be read.');
+      return rows;
+    },
+    async addToOrganisation(orgId, task) {
+      return addTask('/task/new/organisation/' + encodeURIComponent(orgId), () => tasks.forOrganisation(orgId), task, 'on the profile\'s task list');
+    },
+    // A general task, as Tasks & Follow-ups' New task (/task/new). No list to check against, so it is added each time.
+    async addGeneral(task) {
+      return addTask('/task/new', null, task, '');
+    },
   };
   async function addTask(path, list, task, where) {
     const mark = String(task.key || task.title).replace(/["\\]/g, '');
     const listed = (rows) => JSON.stringify(rows || '').includes(mark);
-    if (listed(await list().catch(() => null))) return false;
+    if (list && listed(await list().catch(() => null))) return false;
     const { doc } = await http.popup(path + '?clicked=' + Date.now());
     const form = doc.querySelector('form#form_task_edit');
     const need = ['form[title]', 'form[linkPrGs][]', 'form[priority]', 'form[displayDueDate]', 'form[comment]', 'form[_token]'];
@@ -950,7 +1147,7 @@
     pairs.push(['form[linkPrGs][]', who.value]);
     const res = await http.postForm(path, pairs);
     if (!res || !['POPUP', 'REFRESH', 'OK'].includes(res.status)) http.expectRefresh(res, 'Adding the task');
-    if (!listed(await list())) throw new UPCError('Halaxy accepted the task, but it does not show ' + where + '.');
+    if (list && !listed(await list())) throw new UPCError('Halaxy accepted the task, but it does not show ' + where + '.');
     return true;
   }
 
@@ -1702,7 +1899,7 @@
   };
 
   window.UPC = Object.freeze({
-    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, forms, notes, followUps, patient, tasks, surveys, reports, dayLabel, parseDay, rebate, files, load, ui,
+    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, forms, notes, followUps, patient, tasks, surveys, reports, dayLabel, parseDay, rebate, files, deposits, orgFiles, load, ui,
     user, storage, calendar, wording, background,
   });
 })();

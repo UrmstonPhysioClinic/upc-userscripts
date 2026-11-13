@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         UPC Billing: Remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.15
+// @version      0.4.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
-// @description  Reports > Remittances: read an insurer remittance (Bupa, WPA, AXA, Aviva; typed or scanned PDF), match each line to its Halaxy invoice, flag differences, and move excesses to the patient after one confirmation. Never records payments.
+// @description  Reports > Remittances: read an insurer remittance (Bupa, WPA, AXA, Aviva; typed or scanned PDF), match each line to its Halaxy invoice, flag differences, move excesses to the patient after one confirmation, file the remittance on the insurer's profile, and apply the insurer's deposit from the bank statement once everything agrees (after confirming). Never adds money itself.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
 // @grant        none
@@ -22,7 +22,12 @@
  * 3. Match: each UPC number is looked up in Halaxy and compared with the organisation invoice.
  * 4. Apply (after one confirmation): for an excess or patient share, the funder line is reverted,
  *    the rebate lowered and the rest re-billed to the same organisation invoice (UPC.rebate).
- *    The remittance PDF is attached to each matched invoice. No payments are recorded.
+ *    The remittance PDF is attached to each matched invoice, and filed once on the insurer's profile, named
+ *    "Bupa remittance 2026-10-28 ref 2455419 £ 216.00" with the whole remittance in its comment.
+ * 5. Pay (Carl, 13 Nov 2026): the money itself only ever comes from the bank statement, as a deposit on the insurer's
+ *    profile (Bank statement). When that deposit is there and everything agrees exactly, it is applied to the
+ *    invoices after one more confirmation; otherwise Bank statement applies it when the money arrives. Tasks for Carl on
+ *    anything that doesn't agree, and when a remittance's money hasn't reached the bank 10 days on.
  * Needs the core library (core.user.js).
  */
 
@@ -31,7 +36,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.3.15';
+  const VERSION = '0.4.0';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -836,15 +841,138 @@
     state.busy = false;
     render();
   }
-  function confirmSimple(title, html) {
+  function confirmSimple(title, html, yes) {
     return new Promise((resolve) => {
       let answered = false;
       const done = (v) => { if (!answered) { answered = true; resolve(v); } };
       const dlg = UPC.ui.dialog({ title, small: true, onClose: () => done(false) });
       dlg.root.setAttribute('data-upc-remit-confirm', '');
-      dlg.body.innerHTML = html + '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-a="no">Cancel</button><button type="button" class="btn btn-primary" data-a="yes">Finish</button></div>';
+      dlg.body.innerHTML = html + '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-a="no">Cancel</button><button type="button" class="btn btn-primary" data-a="yes">' + esc(yes || 'Finish') + '</button></div>';
       dlg.body.addEventListener('click', (e) => { const a = e.target.closest('[data-a]'); if (!a) return; done(a.dataset.a === 'yes'); dlg.close(); });
     });
+  }
+
+  // The remittance's name everywhere it is filed (Carl, 13 Nov 2026): insurer, date, reference and total, as
+  // "Bupa remittance 2026-10-28 ref 2455419 £ 216.00". Earlier copies were named without the reference and total.
+  const oldTitle = () => (state.remit.insurer || 'Insurer') + ' remittance' + (state.remit.date ? ' ' + state.remit.date : '');
+  const remitTotal = () => (state.remit.totals && typeof state.remit.totals.paid === 'number' ? state.remit.totals.paid : null);
+  const identity = () => oldTitle() + (state.remit.reference ? ' ref ' + state.remit.reference : '') + (remitTotal() !== null ? ' ' + fmt(remitTotal()) : '');
+  const paidOn = (x) => { const it = x.item; return it.insurerTotal !== undefined && it.insurerTotal !== null ? it.insurerTotal : it.paid; };
+  // The master copy's comment: the remittance as a whole, with what it paid on each invoice.
+  const masterComment = () => {
+    const list = attachable(), n = list.length;
+    return [state.remit.reference ? 'Insurer reference ' + state.remit.reference : '', state.remit.date ? 'payment date ' + isoLabel(state.remit.date) : '',
+      (remitTotal() !== null ? 'remittance total ' + fmt(remitTotal()) : 'remittance') + ' over ' + n + ' invoice' + (n === 1 ? '' : 's'),
+      'invoices ' + list.map((y) => y.item.invoice).join(', '),
+      'paid ' + list.map((y) => y.item.invoice + ' ' + (typeof paidOn(y) === 'number' ? fmt(paidOn(y)) : '?')).join(', ')]
+      .filter(Boolean).join('; ').replace(/^./, (ch) => ch.toUpperCase());
+  };
+  const DAY = 86400e3, LINGER_DAYS = 10;
+  const remStore = () => UPC.storage('upc-remit:');
+  const orgTask = (orgId, title, comment) => UPC.tasks.addToOrganisation(orgId, { title, assignee: TASK_FOR, priority: 3, due: todayLabel(), by: 'Remittances', comment });
+
+  // Files the remittance on the insurer's profile: once, under its name. The same file filed before gets its details
+  // brought up to date (keeping any deposit note); a different file under that name is left, this one filed as well,
+  // and Carl gets a task.
+  async function fileMaster(orgId, say) {
+    const ref = state.remit.reference, named = identity(), comments = masterComment();
+    const found = await UPC.orgFiles.find(orgId, (d) => d.title === named || d.title === oldTitle() || (!!ref && d.comments.includes('Insurer reference ' + ref)), ref || oldTitle());
+    if (!found.length) { await UPC.orgFiles.attach(orgId, state.file, { title: named, comments }); say('Filed the remittance on the ' + (state.remit.insurer || 'insurer') + ' profile.'); return; }
+    let same = null;
+    for (const f of found) { try { if (f.fileUrl && await UPC.files.sameFile(f.fileUrl, state.file)) { same = f; break; } } catch (e) { /* compared below as different */ } }
+    if (same) {
+      const kept = (same.comments.match(/; deposit .*$/) || [''])[0];
+      if (same.title === named && same.comments.startsWith(comments)) say('The remittance is already filed on the profile.');
+      else { await UPC.orgFiles.update(same.id, { title: named, comments: comments + kept }); say('Brought the remittance filed on the profile up to date.'); }
+      return;
+    }
+    await UPC.orgFiles.attach(orgId, state.file, { title: named, comments });
+    say('The profile already has a different file under this remittance\'s name: filed this one as well. Check the other one.', true);
+    await orgTask(orgId, 'Check the remittance filed as ' + found[0].title, ['Remittances found a different file under the name of the ' + named + ' on this profile, and filed this remittance as well.', 'If the other file is the wrong document, delete it.']).catch(() => {});
+  }
+
+  // Applies the insurer's deposit (added from the bank statement) to the remittance's invoices, once the excesses are
+  // moved and only when everything agrees exactly: one deposit of the remittance total, dated from 3 days before the
+  // remittance to 30 days after it, and each invoice showing what the remittance paid on it. Asks first.
+  async function settle(orgs, say) {
+    const total = remitTotal(), list = attachable().filter((x) => typeof paidOn(x) === 'number' && paidOn(x) > 0);
+    if (!list.length || total === null) return;
+    if (!orgs.size) for (const x of list) { try { const inv = await UPC.invoice.fetch(x.invoiceId); if (inv.billToOrgId) orgs.add(inv.billToOrgId); } catch (e) { /* below */ } }
+    if (orgs.size !== 1) { say('The invoices are billed to ' + (orgs.size ? 'different profiles' : 'no profile Remittances can see') + ', so the payment is left to record by hand.', true); return; }
+    const orgId = [...orgs][0], who = state.remit.insurer || 'insurer';
+    if (state.attach !== false) { try { await fileMaster(orgId, say); } catch (e) { say('Could not file the remittance on the profile: ' + (e.message || e), true); } }
+    const now = [];
+    for (const x of list) now.push({ x, out: (await UPC.invoice.fetch(x.invoiceId)).outstanding });
+    if (now.every((n) => n.out === 0)) { say('The invoices are paid already.'); return; }
+    const off = now.filter((n) => n.out !== paidOn(n.x));
+    const sum = list.reduce((t, x) => t + paidOn(x), 0);
+    if (off.length || sum !== total) {
+      const why = off.length ? off.map((n) => n.x.item.invoice + ' shows ' + (n.out === null ? 'no amount' : fmt(n.out)) + ' outstanding, not ' + fmt(paidOn(n.x))).join('; ') : 'the invoices add up to ' + fmt(sum) + ', not the total of ' + fmt(total);
+      say('No deposit applied: ' + why + '.', true);
+      await orgTask(orgId, 'Remittance ' + identity() + ': apply the payment by hand', ['Remittances did not apply the deposit for this remittance: ' + why + '.', 'Invoices: ' + list.map((x) => x.item.invoice).join(', ')]).catch(() => {});
+      return;
+    }
+    const remitMs = state.remit.date ? UPC.parseDay(state.remit.date) : null;
+    const fits = [];
+    for (const d of await UPC.deposits.list(orgId)) {
+      if (d.amount !== total || d.balance !== total) continue;
+      Object.assign(d, await UPC.deposits.details(d.id));
+      const when = UPC.parseDay(d.date || d.day);
+      if (remitMs === null || (when !== null && when >= remitMs - 3 * DAY && when <= remitMs + 30 * DAY)) fits.push(d);
+    }
+    const byRef = state.remit.reference ? fits.filter((d) => d.note.includes('ref ' + state.remit.reference)) : [];
+    const pick = byRef.length === 1 ? byRef : fits;
+    if (!pick.length) {
+      say('No ' + fmt(total) + ' deposit from the bank on the ' + who + ' profile yet: Bank statement applies it when the money is in.');
+      const w = remStore().get('awaiting', {});
+      w[identity()] = { org: orgId, invoiceId: list[0].invoiceId, number: list[0].item.invoice, since: remitMs || Date.now() };
+      remStore().set('awaiting', w);
+      return;
+    }
+    if (pick.length > 1) {
+      say('More than one ' + fmt(total) + ' deposit on the ' + who + ' profile could be this payment, so none was applied.', true);
+      await orgTask(orgId, 'Remittance ' + identity() + ': choose its deposit', ['These deposits could each be this remittance\'s payment: ' + pick.map((d) => d.date + ' (' + d.note + ')').join('; ') + '.', 'Apply the right one to ' + list.map((x) => x.item.invoice).join(', ') + ' by hand.']).catch(() => {});
+      return;
+    }
+    const dep = pick[0];
+    const ok = await confirmSimple('Apply the payment?', '<p>The ' + esc(who) + ' payment of ' + fmt(total) + ' reached the bank on ' + esc(dep.date) + ' and is on the profile as a deposit. Apply it to:</p><ul>' +
+      list.map((x) => '<li>' + esc(x.item.invoice) + ' ' + fmt(paidOn(x)) + '</li>').join('') + '</ul>', 'Apply');
+    if (!ok) { say('The deposit was not applied (cancelled). Bank statement or the next run of this remittance can apply it.'); return; }
+    say('Applying the ' + fmt(total) + ' deposit (bank ' + dep.date + ')...');
+    try { await UPC.deposits.apply(orgId, dep.id, list.map((x) => x.invoiceId), total); }
+    catch (e) {
+      say('Applying the deposit stopped: ' + (e.message || e), true);
+      await orgTask(orgId, 'Remittance ' + identity() + ': applying the deposit stopped', ['Applying the ' + fmt(total) + ' deposit (bank ' + dep.date + ') to ' + list.map((x) => x.item.invoice).join(', ') + ' stopped: ' + (e.message || e), 'Check the profile\'s deposits and the invoices.']).catch(() => {});
+      return;
+    }
+    say('Applied the deposit to ' + list.map((x) => x.item.invoice).join(', ') + '.');
+    const w = remStore().get('awaiting', {}); delete w[identity()]; remStore().set('awaiting', w);
+    // Every copy of the remittance says which deposit paid it.
+    const text = 'deposit ' + fmt(total) + ' from the bank ' + dep.date + ', applied ' + todayLabel();
+    for (const x of attachable()) {
+      try {
+        const inv = await UPC.invoice.fetch(x.invoiceId);
+        for (const at of inv.attachmentList.filter((a) => a.editUrl && a.title.includes(oldTitle()))) await UPC.files.updateAttachment(x.invoiceId, at.editUrl, { append: text });
+      } catch (e) { say('The deposit is applied, but the remittance on ' + x.item.invoice + ' does not say so yet (' + (e.message || e) + ').', true); }
+    }
+    try { for (const f of await UPC.orgFiles.find(orgId, (d) => d.title === identity(), state.remit.reference || oldTitle())) await UPC.orgFiles.update(f.id, { append: text }); }
+    catch (e) { say('The deposit is applied, but the remittance on the profile does not say so yet (' + (e.message || e) + ').', true); }
+  }
+
+  // Remittances whose payment hasn't reached the bank (no deposit) 10 days on: a task on the insurer's profile, once.
+  // Checked once a day per PC when the page opens; one already paid is forgotten.
+  async function lingering() {
+    const st = remStore(), day = todayLabel();
+    if (st.get('lingerDay', '') === day || UPC.http.pausedFor() > 0) return;
+    st.set('lingerDay', day);
+    const w = st.get('awaiting', {});
+    for (const [name, a] of Object.entries(w)) {
+      if (Date.now() - a.since < LINGER_DAYS * DAY) continue;
+      const inv = await UPC.invoice.fetch(a.invoiceId);
+      if (inv.outstanding !== 0) await orgTask(a.org, 'Remittance ' + name + ': no payment from the bank after ' + LINGER_DAYS + ' days', ['No deposit for this remittance has come from the bank statement yet (' + a.number + ' is still unpaid).', 'Check the bank, or ask the insurer.']);
+      delete w[name];
+      st.set('awaiting', w);
+    }
   }
 
   async function apply() {
@@ -938,15 +1066,18 @@
         .filter(Boolean).join('; ').replace(/^r/, 'R').replace(/^p/, 'P');
     };
     if (list.length) UPC.ui.run.tick(run);
+    const orgs = new Set();   // the profiles the invoices are billed to (one, normally: the insurer's)
     if (state.attach !== false) {
-      const title = (state.remit.insurer || 'Insurer') + ' remittance' + (state.remit.date ? ' ' + state.remit.date : '');
+      const title = oldTitle(), named = identity();
       const dateName = state.remit.date ? state.remit.date + '.pdf' : '';
       for (const x of attachable()) {
         const comments = remitComment(x);
-        const attach = () => UPC.files.attachToInvoice(x.invoiceId, state.file, { title, comments, category: UPC.files.CATEGORY.payment });
+        const attach = () => UPC.files.attachToInvoice(x.invoiceId, state.file, { title: named, comments, category: UPC.files.CATEGORY.payment });
         try {
-          // This remittance already attached: by Remittances (its title) or by hand (named by its date, "2026-09-30.pdf").
+          // This remittance already attached: by Remittances (its title, which starts "Bupa remittance 2026-10-28") or by
+          // hand (named by its date, "2026-09-30.pdf").
           const inv = await UPC.invoice.fetch(x.invoiceId);
+          if (inv.billToOrgId) { orgs.add(inv.billToOrgId); UPC.deposits.rememberOrg(inv.billToOrgId, inv.billToName, state.remit.insurer); }
           const there = inv.attachmentList.filter((at) => at.title.includes(title) || (dateName && at.title.includes(dateName)));
           if (!there.length) { await attach(); say('Attached the remittance to ' + x.item.invoice + '.'); UPC.ui.run.tick(run); continue; }
           if (there.some((at) => /payment date/i.test(at.comments) && /\binvoices UPC/i.test(at.comments))) { say('The remittance is already attached to ' + x.item.invoice + '.'); UPC.ui.run.tick(run); continue; }
@@ -959,7 +1090,7 @@
             try { if (await UPC.files.sameFile(at.fileUrl, state.file)) { same = at; break; } } catch (e) { unsure = true; }
           }
           if (same && same.editUrl) {
-            await UPC.files.updateAttachment(x.invoiceId, same.editUrl, { title, comments, category: UPC.files.CATEGORY.payment });
+            await UPC.files.updateAttachment(x.invoiceId, same.editUrl, { title: named, comments, category: UPC.files.CATEGORY.payment });
             say('Added the full details to the remittance already attached to ' + x.item.invoice + '.');
             UPC.ui.run.tick(run);
             continue;
@@ -971,7 +1102,7 @@
             await UPC.tasks.addToInvoice(x.invoiceId, {
               title: 'Check the remittance attached to ' + x.item.invoice, assignee: TASK_FOR, priority: 2, due: todayLabel(), by: 'Remittances',
               comment: [(unsure ? 'Remittances could not compare ' : 'Remittances found a different file in ') + other + ' (attached ' + there.map((at) => at.created).join(', ') + ').',
-                'It attached the ' + title + ' with its details as well. If the other file is the wrong document, delete it.'],
+                'It attached the ' + named + ' with its details as well. If the other file is the wrong document, delete it.'],
             });
           } catch (e) { /* said in the log */ }
         } catch (e) {
@@ -980,7 +1111,10 @@
         UPC.ui.run.tick(run);
       }
     }
-    UPC.ui.run.end(run, 'Finished. Open the invoices to check, then record the payments once the money is in the bank.');
+    // The money (Carl, 13 Nov 2026): the master copy on the insurer's profile, then the deposit from the bank applied.
+    try { await settle(orgs, say); }
+    catch (e) { say('Stopped while settling the payment: ' + (e.message || e), true); }
+    UPC.ui.run.end(run, 'Finished. Open the invoices to check.');
     state.busy = false;
     state.applied = true;   // load the remittance again to run it again
     render();
@@ -1024,6 +1158,9 @@
     bind();
     render();
     state.unmount = UPC.ui.mountPage('Remittances', root, MENU_CLS);
+    // Payments still not in the bank, and deposits still not applied, 10 days on: tasks (once a day).
+    lingering().catch(() => {});
+    UPC.deposits.lingering({ days: LINGER_DAYS, assignee: TASK_FOR, by: 'Remittances' }).catch(() => {});
   }
   function unmount() {
     if (!state.unmount) return;
