@@ -1,5 +1,9 @@
 # Changelog
 
+## Report hiccups, spacing, 13 Nov 2026 (beta)
+- Core 0.1.43: a report page that comes back without its table (a passing Halaxy hiccup, seen on two PCs at 13:29 on 13 Nov 2026) is asked for once more 20 seconds later; only if it fails again is the report said to have changed, naming the page Halaxy sent instead. Space between "View log" (or its open log) and the card below it.
+- Remittances 0.4.1: the page's description says where the money now comes from (the bank statement's deposit) and that a copy goes on the insurer's profile.
+
 ## Insurer money through funder deposits, 13 Nov 2026 (beta)
 - Carl, 13 Nov 2026: insurer payments now go onto the insurer's profile as a deposit, made only from the bank statement, then applied to invoices. Whichever of the bank statement and the remittance comes second applies it, only when the amounts agree exactly, and only after you confirm.
 - Bank statement 0.2.0:

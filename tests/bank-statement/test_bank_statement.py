@@ -238,6 +238,10 @@ async def halaxy(route):
     if p.endswith('/report/finance/0'):
         q = dict(urllib.parse.parse_qsl(u.query))
         S.setdefault('reports', []).append(q.get('type'))
+        if q.get('type') == '5' and S.get('reportMiss', 0) > 0:   # Halaxy sends a page without the report (a hiccup)
+            S['reportMiss'] -= 1
+            S['missed'] = S.get('missed', 0) + 1
+            return await route.fulfill(body="<html><head><title>Reports | Halaxy</title></head><body><p>Please try again</p></body></html>", content_type='text/html')
         return await route.fulfill(body=income_html(q) if q.get('type') == '1' else report_html(), content_type='text/html')
     m = __import__('re').match(r'^/a/pr/555/invoicefunctions/(\d+)/pay/offline$', p)
     if m:
@@ -632,6 +636,31 @@ async def main():
         check('old line recorded on its own when asked: one deposit, the register written', [(o, f['form[amount]']) for o, f in S['added']] == [(502, '75.00')] and len(S['orgfiles'].get(78812, [])) == 1
               and 'before the switch to deposits, not found as recorded: to check' in S['orgfiles'][78812][0]['comments'], (S['added'], S['orgfiles']))
         await ctx.close()
+
+        # Halaxy sends the report page without its table once (a hiccup): asked again 20 seconds later, read as normal;
+        # every time: the error says what came back
+        for miss in (1, 5):
+            reset(reportMiss=miss)
+            ctx = await context(browser)
+            pg = await ctx.new_page()
+            await pg.goto(URL)
+            await pg.wait_for_selector('[data-upc-bank-statement] .upc-bank-drop', state='attached', timeout=20000)
+            await pg.set_input_files('[data-upc-bank-statement] input[type=file]', str(pdf))
+            for want in range(1, min(miss, 2) + 1):
+                for _ in range(200):
+                    if S.get('missed', 0) >= want:
+                        break
+                    await asyncio.sleep(0.1)
+                await pg.wait_for_timeout(300)
+                await pg.clock.fast_forward(21000)
+            await pg.wait_for_function("document.querySelector('[data-upc-bank-statement] table') || document.querySelector('[data-upc-bank-statement] .upc-err')", timeout=60000)
+            if miss == 1:
+                rows = await pg.evaluate(ROWS)
+                check('report page without its table once: asked again, read as normal', S['missed'] == 1 and len(rows) == 9, (S.get('missed'), len(rows)))
+            else:
+                err = await pg.evaluate("document.querySelector('[data-upc-bank-statement] .upc-err').textContent")
+                check('report page without its table twice: stops, saying what Halaxy sent', S['missed'] == 2 and 'not found twice; Halaxy sent a page titled "Reports | Halaxy"' in err, (S.get('missed'), err))
+            await ctx.close()
 
         # not Carl: nothing
         reset(user='Someone Else')
