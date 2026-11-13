@@ -1,5 +1,8 @@
 # Changelog
 
+## Bank statement: Save to register, 13 Nov 2026 (beta)
+- Bank statement 0.2.1 (Carl, 13 Nov 2026): a statement not in the register yet, or whose entry is out of date, shows "Save to register" (or "Update register"). After confirming, it writes the register entry on the Starling Bank profile without recording any money, so reading old statements again fills the register in even when there is nothing to record.
+
 ## Report hiccups, spacing, 13 Nov 2026 (beta)
 - Core 0.1.43: a report page that comes back without its table (a passing Halaxy hiccup, seen on two PCs at 13:29 on 13 Nov 2026) is asked for once more 20 seconds later; only if it fails again is the report said to have changed, naming the page Halaxy sent instead. Space between "View log" (or its open log) and the card below it.
 - Remittances 0.4.1: the page's description says where the money now comes from (the bank statement's deposit) and that a copy goes on the insurer's profile.
