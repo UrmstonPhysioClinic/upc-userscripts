@@ -159,11 +159,14 @@ async def main():
         errors = []
         pg.on('pageerror', lambda e: errors.append(str(e)))
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/')
-        for _ in range(240):
+        # The run waits on the request pacing (45 a minute) and leaves a few seconds between changes. Run the page's
+        # clock ahead while waiting, so the test doesn't depend on how fast the machine is (it timed out on GitHub once).
+        for _ in range(1200):
             last = await pg.evaluate("JSON.parse(localStorage.getItem('upc-ps:lastRun') || 'null')")
             if last:
                 break
-            await asyncio.sleep(0.5)
+            await pg.clock.fast_forward(1000)
+            await asyncio.sleep(0.25)
         check('the run finished without an error', last and not last.get('error'), last)
         final = {pid: S['patients'][pid]['status'] for pid in S['patients']}
         check('changed by itself: 8 weeks quiet, note says finished, booked funded, discharged booked again, self-funded, details status',
