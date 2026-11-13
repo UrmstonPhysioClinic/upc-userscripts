@@ -629,11 +629,20 @@ async def main():
         rows = await open_statement(pg, pdf)
         check('old statement: every unrecorded line says to check, nothing in Record all', all('Before 01-Nov-2026' in r['cells'][4] for r in rows)
               and not await pg.evaluate("!!document.querySelector('[data-upc-bank-statement] [data-a=all]')") and rows[0]['cells'][5] == 'Record' and rows[1]['cells'][5] == 'Add deposit', [r['cells'][4:] for r in rows[:2]])
+        reg_btn = lambda: pg.evaluate("(document.querySelector('[data-upc-bank-statement] [data-a=register]') || {}).textContent || ''")
+        check('nothing to record, not in the register: Save to register offered', await reg_btn() == 'Save to register' and not S['orgfiles'], await reg_btn())
+        await pg.click('[data-upc-bank-statement] [data-a=register]')
+        await pg.wait_for_selector('[data-upc-bank-confirm]', timeout=10000)
+        await pg.click('[data-upc-bank-confirm] [data-c=yes]')
+        await pg.wait_for_function("/Saved to the register/.test((document.querySelector('[data-upc-bank-statement] .upc-run-now') || {}).textContent || '')", timeout=60000)
+        reg = S['orgfiles'].get(78812, [])
+        check('saved to the register: one file, no money recorded, the button gone', len(reg) == 1 and 'to check' in reg[0]['comments'] and not S['added'] and not S['allocs'] and await reg_btn() == '', (reg, await reg_btn()))
         await pg.click('[data-upc-bank-statement] tbody tr:nth-child(2) [data-rec]')
         await pg.wait_for_selector('[data-upc-bank-confirm]', timeout=10000)
         await pg.click('[data-upc-bank-confirm] [data-c=yes]')
         await pg.wait_for_function("/^Finished:/.test((document.querySelector('[data-upc-bank-statement] .upc-run-now') || {}).textContent || '')", timeout=60000)
-        check('old line recorded on its own when asked: one deposit, the register written', [(o, f['form[amount]']) for o, f in S['added']] == [(502, '75.00')] and len(S['orgfiles'].get(78812, [])) == 1
+        check('old line recorded on its own when asked: one deposit, the same register entry updated', [(o, f['form[amount]']) for o, f in S['added']] == [(502, '75.00')] and len(S['orgfiles'].get(78812, [])) == 1
+              and 'AXA £ 75.00 ref GB33AXA0001: deposit added' in S['orgfiles'][78812][0]['comments']
               and 'before the switch to deposits, not found as recorded: to check' in S['orgfiles'][78812][0]['comments'], (S['added'], S['orgfiles']))
         await ctx.close()
 

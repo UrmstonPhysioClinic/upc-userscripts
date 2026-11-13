@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Bank statement (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.0
+// @version      0.2.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
@@ -49,7 +49,7 @@
   if (window.__hxBankStatement) return;
   window.__hxBankStatement = true;
 
-  const VERSION = '0.2.0';
+  const VERSION = '0.2.1';
   const ROUTE = 'upc-bank-statement';
   const MENU_CLS = 'upc-bank-menu';
   const ALLOWED = ['Carl Healy'];
@@ -692,6 +692,10 @@
     if (state.error) h += '<p class="upc-err">' + esc(state.error) + '</p>';
     if (state.warn) h += '<p class="upc-err">' + esc(state.warn) + '</p>';
     if (state.seen) h += '<p class="text-muted">' + esc(state.seen) + '</p>';
+    // Not in the register yet, or its entry is out of date (Carl, 13 Nov 2026: reading old statements again should fill
+    // the register in, even when there is nothing to record).
+    const reg = registerNeed();
+    if (reg && !(state.busy && state.run && !state.run.finished)) h += '<p class="upc-gap">' + esc(reg.why) + ' <button type="button" class="btn btn-outline-primary-light" data-a="register"' + (state.busy ? ' disabled' : '') + '>' + esc(reg.label) + '</button></p>';
     if (st) {
       h += '<p class="text-muted upc-gap mb-0">' + st.rows + ' transactions, ' + esc(isoLabel(st.from)) + ' to ' + esc(isoLabel(st.to)) + '. ' +
         (st.bad ? '<span class="upc-err">The running balance didn\'t add up on ' + st.bad + ' of ' + st.checked + ' rows, so the statement may not have been read correctly: check before recording.</span>' : 'Read correctly (checked against the running balance on ' + st.checked + ' rows).') + '</p>';
@@ -742,7 +746,7 @@
     render();
     try {
       state.statement = await readStatement(file);
-      state.register = null; state.seen = '';
+      state.register = null; state.seen = ''; state.regError = false;
       render();
       // Read before? The register on the Starling Bank profile (Carl, 13 Nov 2026).
       U().ui.run.step(run, 'Checking the statement register...');
@@ -753,7 +757,7 @@
         const first = state.register && (state.register.comments.match(/first read ([^;]+)/) || [])[1];
         state.seen = [state.register ? 'This statement was read before' + (first ? ' (' + first + ')' : '') + '. What is already in Halaxy is shown as such, so nothing is recorded twice.' : '',
           others.length ? 'It overlaps ' + others.map((d) => d.title).join(', ') + ', read before: payments on both are checked against Halaxy, so none is recorded twice.' : ''].filter(Boolean).join(' ');
-      } catch (e) { state.warn = 'Couldn\'t check the statement register on the Starling Bank profile (' + (e.message || e) + '). Payments already in Halaxy are still found.'; }
+      } catch (e) { state.regError = true; state.warn = 'Couldn\'t check the statement register on the Starling Bank profile (' + (e.message || e) + '). Payments already in Halaxy are still found.'; }
       state.results = await match(state.statement, (t) => { U().ui.run.step(run, t); render(); });
       U().ui.run.end(run);
     } catch (e) {
@@ -784,6 +788,25 @@
     if (r.remit && set) return 'add the deposit and apply it to ' + inv;
     return 'add the deposit (applied when its remittance comes)';
   };
+  // Whether this statement's register entry is missing or behind what the page now shows.
+  function registerNeed() {
+    if (!state.statement || !state.results || state.regError) return null;
+    if (!state.register) return { label: 'Save to register', why: 'This statement is not in the register on the Starling Bank profile yet.' };
+    const now = 'insurer payments: ' + (state.results.length ? state.results.map(lineOf).join(', ') : 'none');
+    return state.register.comments.includes(now) ? null : { label: 'Update register', why: 'The register entry for this statement is out of date.' };
+  }
+  async function saveRegister() {
+    if (state.busy || !registerNeed()) return;
+    if (!(await confirmDlg('Save to the register?', '<p>Keeps a short record of this statement on the Starling Bank profile: its dates, balances, number of lines, and each insurer payment with what has happened to it. No money is recorded and nothing else is changed.</p>', 'Save'))) return;
+    state.busy = true;
+    const run = state.run = U().ui.run.start(1);
+    U().ui.run.step(run, 'Saving the statement register...');
+    render();
+    try { await writeRegister(state.statement, state.results); U().ui.run.tick(run); U().ui.run.end(run, 'Saved to the register.'); }
+    catch (e) { U().ui.run.step(run, 'The statement register could not be saved (' + (e.message || e) + ').', true); U().ui.run.end(run, 'Not saved.'); }
+    state.busy = false;
+    render();
+  }
   async function recordSome(list) {
     if (!list.length || state.busy) return;
     const lines = list.map((r) => '<li>' + esc(r.insurer) + ' ' + fmt(r.amount) + ', ' + esc(isoLabel(r.date)) + ': ' + plan(r) + '</li>').join('');
@@ -834,6 +857,7 @@
     const pickFile = () => { const inp = root.querySelector('.upc-bank-drop input'); if (inp) inp.click(); };
     root.addEventListener('click', (e) => {
       if (e.target.closest('[data-a=choose]') && e.target.type !== 'file') pickFile();
+      if (e.target.closest('[data-a=register]')) saveRegister();
       if (e.target.closest('[data-a=all]') && state.results) recordSome(state.results.filter((r) => actionable(r) || needsTask(r)));
       const b = e.target.closest('[data-rec]');
       if (b && state.results) recordSome([state.results[Number(b.dataset.rec)]]);
