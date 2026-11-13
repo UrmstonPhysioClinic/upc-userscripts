@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Rebate sync (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.2
+// @version      0.3.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/rebate-sync.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/rebate-sync.user.js
@@ -16,7 +16,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '0.3.2';
+  const VERSION = '0.3.3';
   const MONEY_FIELDS = ['form[amount]', 'form[rebate]', 'form[tax]', 'form[taxManual]'];
 
   const snapshots = {};      // lineId -> { fields: [[name, value]], at }
@@ -162,16 +162,19 @@
   async function doSync(plan) {
     const d = showDialog();
     d.title('Updating both invoices');
-    const steps = [];
-    const render = (extra) => d.body('<ol>' + steps.map((s) => '<li>' + esc(s) + '</li>').join('') + '</ol>' + (extra || ''));
+    // A progress bar and the current step while it works; the steps behind View log (Carl, 13 Nov 2026).
+    const prog = U().ui.run.start(0);
+    const render = (extra) => d.body((extra || '') + U().ui.run.html(prog));
     d.buttons([]);
     render();
     try {
-      const r = await U().rebate.apply(plan, (s) => { steps.push(s); render(); });
+      const r = await U().rebate.apply(plan, (s) => { U().ui.run.step(prog, s); render(); });
+      U().ui.run.end(prog);
       render(`<p class="upc-ok upc-gap">Done. ${esc(plan.funderNumber)} total is now ${r.funderTotal !== null ? money(r.funderTotal) : 'updated'}${r.patientOutstanding !== null ? ', and ' + esc(plan.patientNumber) + ' shows ' + money(r.patientOutstanding) + ' outstanding' : ''}.</p>`);
       d.buttons([['Reload', () => location.reload(), true]]);
       setTimeout(() => location.reload(), 2500);
     } catch (e) {
+      U().ui.run.end(prog);
       render(`<p class="upc-err upc-gap">${esc(e.message || e)}</p>`);
       d.buttons([['Reload', () => location.reload(), true]]);
       // A task for Carl to look at why it failed (Carl, 12 Nov 2026). The core library has already put it back as it
@@ -183,8 +186,7 @@
           comment: ['Changing the ' + plan.date + ' fee from ' + money(plan.origRebate) + ' to ' + money(plan.newRebate) + ' (patient invoice ' + plan.patientNumber + ') stopped: ' + (e.message || e),
             e.undone === false ? 'It could NOT all be put back: check both invoices.' : 'Everything was put back as it was.'],
         });
-        steps.push('Task added for Carl Healy on ' + plan.funderNumber + '.');
-        render(`<p class="upc-err upc-gap">${esc(e.message || e)}</p>`);
+        render(`<p class="upc-err upc-gap">${esc(e.message || e)}</p><p class="text-muted">Task added for Carl Healy on ${esc(plan.funderNumber)}.</p>`);
       } catch (te) { /* the error is on screen */ }
     } finally {
       busy = false;

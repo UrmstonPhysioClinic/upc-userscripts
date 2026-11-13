@@ -339,8 +339,8 @@ async def main():
         S['failLineDateOnce'] = True
         await pg.evaluate("document.querySelector('[data-upc-remittances]').querySelector('[data-act=apply]').click()")
         await pg.evaluate("document.querySelector('[data-upc-remit-confirm] [data-a=yes]').click()")
-        await pg.wait_for_function("(document.querySelector('[data-upc-remittances] .upc-log') || {}).innerText && /Stopped:[\\s\\S]*Task added/.test(document.querySelector('[data-upc-remittances] .upc-log').innerText) && document.querySelector('[data-upc-remittances] .upc-log').innerText.includes('Finished')", timeout=300000)
-        log0 = await pg.evaluate("document.querySelector('[data-upc-remittances] .upc-log').innerText")
+        await pg.wait_for_function("(document.querySelector('[data-upc-remittances] .upc-log') || {}).textContent && /stopped:[\\s\\S]*Task added/i.test(document.querySelector('[data-upc-remittances] .upc-log').textContent) && document.querySelector('[data-upc-remittances] .upc-log').textContent.includes('Finished')", timeout=300000)
+        log0 = await pg.evaluate("document.querySelector('[data-upc-remittances] .upc-log').textContent")
         f2, p2 = S['funders'][102], S['patients'][202]
         check('a failed move is put back: funder invoice as it was, same dates', sorted((l['amount'], l['date']) for l in f2['lines']) == [(6000, '02-Oct-2026'), (6000, '09-Oct-2026'), (6000, '16-Oct-2026')], f2['lines'])
         check('a failed move is put back: patient rebate as it was, nothing waiting, Issued again',
@@ -360,7 +360,18 @@ async def main():
         dlg = await pg.evaluate("document.querySelector('[data-upc-remit-confirm]').textContent")
         check('asks before changing anything', 'Patients will owe £ 36.00' in dlg and 'No payments are recorded' in dlg, dlg)
         await pg.evaluate("document.querySelector('[data-upc-remit-confirm] [data-a=yes]').click()")
-        await pg.wait_for_function("(document.querySelector('[data-upc-remittances]').querySelector('.upc-log') || {}).innerText && document.querySelector('[data-upc-remittances]').querySelector('.upc-log').innerText.includes('Finished')", timeout=300000)
+        # While it works: a progress bar and one line, no table and no step list (Carl, 13 Nov 2026)
+        await pg.wait_for_function("!!document.querySelector('[data-upc-remittances] .upc-run .progress')", timeout=30000)
+        mid = await pg.evaluate("""({ table: !!document.querySelector('[data-upc-remittances] tbody'), now: (document.querySelector('[data-upc-remittances] .upc-run-now') || {}).textContent,
+            logShown: !!document.querySelector('[data-upc-remittances] details.upc-run-log[open]') })""")
+        check('while working: a progress bar and the current step, no table, log closed', not mid['table'] and mid['now'] and not mid['logShown'], mid)
+        await pg.wait_for_function("(document.querySelector('[data-upc-remittances]').querySelector('.upc-log') || {}).textContent && document.querySelector('[data-upc-remittances]').querySelector('.upc-log').textContent.includes('Finished')", timeout=300000)
+        end = await pg.evaluate("""({ bar: !!document.querySelector('[data-upc-remittances] .upc-run .progress'), table: !!document.querySelector('[data-upc-remittances] tbody'),
+            btn: (document.querySelector('[data-upc-remittances] details.upc-run-log > summary') || {}).textContent, open: !!document.querySelector('[data-upc-remittances] details.upc-run-log[open]') })""")
+        check('when finished: the results, and the steps behind View log', not end['bar'] and end['table'] and (end['btn'] or '').startswith('View log (') and not end['open'], end)
+        await pg.click('[data-upc-remittances] details.upc-run-log > summary')
+        shown = await pg.evaluate("document.querySelector('[data-upc-remittances] details.upc-run-log .upc-log').innerText")
+        check('View log shows every step', 'UPC-40002:' in shown and 'Finished' in shown, shown[-300:])
         f2 = S['funders'][102]
         amounts = sorted(l['amount'] for l in f2['lines'])
         check('funder invoice now totals what the insurer paid', sum(amounts) == 14400 and amounts == [2400, 6000, 6000], amounts)
@@ -397,8 +408,8 @@ async def main():
         label = await pg.evaluate("document.querySelector('[data-upc-remittances] [data-act=apply]').textContent")
         check('with nothing to fix, the button attaches the remittance', label == 'Attach remittance to 3 invoices', label)
         await pg.evaluate("document.querySelector('[data-upc-remittances] [data-act=apply]').click()")
-        await pg.wait_for_function("(document.querySelector('[data-upc-remittances] .upc-log') || {}).innerText && document.querySelector('[data-upc-remittances] .upc-log').innerText.includes('Finished')", timeout=120000)
-        log2 = await pg.evaluate("document.querySelector('[data-upc-remittances] .upc-log').innerText")
+        await pg.wait_for_function("(document.querySelector('[data-upc-remittances] .upc-log') || {}).textContent && document.querySelector('[data-upc-remittances] .upc-log').textContent.includes('Finished')", timeout=120000)
+        log2 = await pg.evaluate("document.querySelector('[data-upc-remittances] .upc-log').textContent")
         check('no duplicate attachments', all(len(v) == 1 for v in S['attachments'].values()) and log2.count('already attached') == 3, (S['attachments'], log2))
 
         # Re-uploading after the excess was moved (Carl, 13 Nov 2026): said plainly, whatever the split; part moved by
@@ -431,8 +442,8 @@ async def main():
         await pg.set_input_files('[data-upc-remittances] input[type=file]', str(pdfs['wpa']))
         await pg.wait_for_function("document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr').length === 3 && !document.querySelector('[data-upc-remittances] [data-act=apply]').disabled && /Excess moved/.test(document.querySelector('[data-upc-remittances] tbody').innerText)", timeout=120000)
         await pg.evaluate("document.querySelector('[data-upc-remittances] [data-act=apply]').click()")
-        await pg.wait_for_function("(document.querySelector('[data-upc-remittances] .upc-log') || {}).innerText && document.querySelector('[data-upc-remittances] .upc-log').innerText.includes('Finished')", timeout=180000)
-        log3 = await pg.evaluate("document.querySelector('[data-upc-remittances] .upc-log').innerText")
+        await pg.wait_for_function("(document.querySelector('[data-upc-remittances] .upc-log') || {}).textContent && document.querySelector('[data-upc-remittances] .upc-log').textContent.includes('Finished')", timeout=180000)
+        log3 = await pg.evaluate("document.querySelector('[data-upc-remittances] .upc-log').textContent")
         a1, a2 = S['attachments'][101], S['attachments'][102]
         check('same file attached by hand: details added in place, no second copy', len(a1) == 1 and a1[0]['title'].startswith('WPA remittance ' + rdate) and 'payment date' in a1[0]['comments'].lower()
               and 'invoices UPC-' in a1[0]['comments'] and 'Added the full details to the remittance already attached to UPC-40001' in log3, (a1, log3[-800:]))

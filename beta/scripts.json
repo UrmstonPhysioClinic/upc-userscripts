@@ -14,7 +14,7 @@
     {
       "file": "core.user.js",
       "name": "UPC System: Core library (beta)",
-      "version": "0.1.40"
+      "version": "0.1.41"
     },
     {
       "file": "alerts.user.js",
@@ -24,7 +24,7 @@
     {
       "file": "bank-statement.user.js",
       "name": "UPC Billing: Bank statement (beta)",
-      "version": "0.1.7"
+      "version": "0.1.8"
     },
     {
       "file": "branding.user.js",
@@ -45,7 +45,7 @@
     {
       "file": "feedback-alerts.user.js",
       "name": "UPC Patients: Feedback alerts (beta)",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "was": "survey-feedback.user.js"
     },
     {
@@ -56,13 +56,13 @@
     {
       "file": "insurer-payments-due.user.js",
       "name": "UPC Billing: Insurer payments due (beta)",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "was": "funder-chaser.user.js"
     },
     {
       "file": "invoice-funder.user.js",
       "name": "UPC Billing: Invoice Funder (beta)",
-      "version": "0.8.2",
+      "version": "0.8.3",
       "was": "bill-funder.user.js"
     },
     {
@@ -74,7 +74,7 @@
     {
       "file": "open-ended-patients.user.js",
       "name": "UPC Patients: Open-ended patients (beta)",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "was": "check-ins.user.js"
     },
     {
@@ -95,22 +95,22 @@
     {
       "file": "ready-to-bill.user.js",
       "name": "UPC Billing: Ready to bill (beta)",
-      "version": "0.3.3"
+      "version": "0.3.4"
     },
     {
       "file": "rebate-sync.user.js",
       "name": "UPC Billing: Rebate sync (beta)",
-      "version": "0.3.2"
+      "version": "0.3.3"
     },
     {
       "file": "remittances.user.js",
       "name": "UPC Billing: Remittances (beta)",
-      "version": "0.3.14"
+      "version": "0.3.15"
     },
     {
       "file": "review-requests.user.js",
       "name": "UPC Patients: Review requests (beta)",
-      "version": "0.5.3"
+      "version": "0.5.4"
     },
     {
       "file": "script-settings.user.js",

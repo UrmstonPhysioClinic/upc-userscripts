@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.40
+// @version      0.1.41
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.40';
+  const VERSION = '0.1.41';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -1317,6 +1317,16 @@
     .upc-native td.number, .upc-native th.number { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .upc-native table.table { margin: 12px 0 0; }
     .upc-native table.table td { vertical-align: top; }
+    .upc-native .upc-run { margin-top: 12px; }
+    .upc-native .upc-run .progress { height: 8px; background: var(--vs-card-header-bg-color, #e9ecef); border-radius: 4px; overflow: hidden; }
+    .upc-native .upc-run .progress-bar { height: 100%; background-color: var(--vs-btn-primary-bg-color, var(--primary, #7c3fe4)); transition: width .3s ease; }
+    .upc-native .upc-run-now { margin-top: 4px; }
+    .upc-native .upc-run-inline { display: inline-flex; align-items: center; gap: 8px; }
+    .upc-native .upc-run-inline .progress { display: inline-block; width: 120px; height: 8px; background: var(--vs-card-header-bg-color, #e9ecef); border-radius: 4px; overflow: hidden; }
+    .upc-native .upc-run-inline .progress-bar { display: block; height: 100%; background-color: var(--vs-btn-primary-bg-color, var(--primary, #7c3fe4)); }
+    .upc-native .upc-run-log > summary { display: inline-block; list-style: none; margin-top: 8px; }
+    .upc-native .upc-run-log > summary::-webkit-details-marker { display: none; }
+    .upc-native .upc-run-log .upc-box { max-height: 300px; overflow: auto; margin-top: 8px; }
     .upc-dialog { position: fixed; inset: 0; z-index: 2990; overflow-y: auto; }
     .upc-dialog > .upc-backdrop { position: fixed; inset: 0; background: #000; opacity: .5; }
     .upc-dialog > .modal-dialog { position: relative; margin: 28px auto; width: calc(100% - 32px); max-width: 800px; pointer-events: auto; }
@@ -1337,8 +1347,50 @@
     (document.head || document.documentElement).appendChild(s);
   }
 
+  // A run of steps shown as a progress bar with one line for the current step; the steps themselves go to a log,
+  // shown when asked for (Carl, 13 Nov 2026: no step-by-step output while it works). Problems are always shown once
+  // it has finished. The script keeps the run object and puts `ui.run.html(run)` where its log used to be.
+  const runOpen = new Map();   // run id -> log open (kept across re-renders)
+  let runSeq = 0;
+  document.addEventListener('toggle', (e) => {
+    const d = e.target;
+    if (d && d.matches && d.matches('details[data-upc-run]')) runOpen.set(d.getAttribute('data-upc-run'), d.open);
+  }, true);
+  const run = {
+    // total: the number of units of work (0 when unknown: the bar just moves)
+    start(total) { return { id: 'r' + (++runSeq), total: total || 0, done: 0, now: '', lines: [], finished: false }; },
+    step(r, text, err) { if (!r) return; r.lines.push({ t: String(text), err: !!err }); if (!err) r.now = String(text); },
+    tick(r, n) { if (r) r.done = Math.min(r.total || Infinity, r.done + (n || 1)); },
+    end(r, text) { if (!r) return; r.finished = true; r.done = r.total; if (text) r.lines.push({ t: String(text), err: false }); r.now = text || ''; },
+    // A small moving bar with a short status, for a page's header line while it checks.
+    inline(text) {
+      return '<span class="upc-run-inline"><span class="progress" role="progressbar"><span class="progress-bar progress-bar-striped progress-bar-animated" style="width:100%"></span></span><span class="text-muted">' + esc(text) + '</span></span>';
+    },
+    html(r) {
+      if (!r) return '';
+      const errs = r.lines.filter((l) => l.err);
+      let h = '<div class="upc-run">';
+      if (!r.finished) {
+        const pct = r.total ? Math.round(100 * r.done / r.total) : 0;
+        // Unknown length: Halaxy's own striped, moving bar (Bootstrap) at full width.
+        h += '<div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100"' + (r.total ? ' aria-valuenow="' + pct + '"' : '') + '>' +
+          '<div class="progress-bar' + (r.total ? '' : ' progress-bar-striped progress-bar-animated') + '" style="width:' + (r.total ? pct : 100) + '%"></div></div>' +
+          '<div class="upc-run-now text-muted" aria-live="polite">' + esc(r.now || 'Working...') + '</div>';
+      } else {
+        if (r.now) h += '<div class="upc-run-now">' + esc(r.now) + '</div>';
+        if (errs.length) h += '<div class="upc-err upc-run-errs"><b>' + errs.length + ' problem' + (errs.length === 1 ? '' : 's') + ':</b>' + errs.map((l) => '<div>' + esc(l.t) + '</div>').join('') + '</div>';
+      }
+      if (r.lines.length) {
+        h += '<details class="upc-run-log" data-upc-run="' + r.id + '"' + (runOpen.get(r.id) ? ' open' : '') + '><summary class="btn btn-outline-primary-light">View log (' + r.lines.length + ' step' + (r.lines.length === 1 ? '' : 's') + ')</summary>' +
+          '<div class="upc-box upc-log">' + r.lines.map((l) => '<div class="' + (l.err ? 'upc-err' : '') + '">' + esc(l.t) + '</div>').join('') + '</div></details>';
+      }
+      return h + '</div>';
+    },
+  };
+
   const ui = {
     nativeStyles,
+    run,
     // A pop-up that looks like Halaxy's own. Returns { root, body, close, setTitle }. `onClose` runs when
     // it closes; `canClose` (optional) may return false to keep it open (for example while working).
     // `above` puts it over Halaxy's own pop-ups (for steps that start from one); `small` is 500px, `wide` 1000px.

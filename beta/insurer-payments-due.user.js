@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Insurer payments due (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.5
+// @version      0.1.6
 // @upc-was      funder-chaser.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/insurer-payments-due.user.js
@@ -31,7 +31,7 @@
   if (window.__hxFunderChaser) return;
   window.__hxFunderChaser = true;
 
-  const VERSION = '0.1.5';
+  const VERSION = '0.1.6';
   const ROUTE = 'upc-funder-chaser';
   const MENU_CLS = 'upc-fc-menu';
   const ALLOWED = ['Carl Healy'];
@@ -151,7 +151,7 @@
     const r = store.get('result', null);
     let h = '<div class="upc-fc"><h1>Insurer payments due</h1><div class="upc-fc-bar">' +
       '<button type="button" class="btn btn-outline-primary-light" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check again') + '</button>' +
-      '<span class="text-muted">' + esc(state.running ? state.status : r ? 'Checked at ' + new Date(r.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + label(r.at) + '.' : '') + '</span></div>';
+      (state.running ? U().ui.run.inline(state.status) : '<span class="text-muted">' + esc(r ? 'Checked at ' + new Date(r.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + label(r.at) + '.' : '') + '</span>') + '</div>';
     if (state.error) h += '<p class="upc-err">' + esc(state.error) + '</p>';
     if (r) {
       const due = r.rows.filter((x) => x.issued), active = r.rows.filter((x) => !x.issued);
