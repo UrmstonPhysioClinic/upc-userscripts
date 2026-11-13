@@ -1,10 +1,11 @@
 // ==UserScript==
-// @name         Halaxy feedback alerts
+// @name         UPC Patients: Feedback alerts
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.1
+// @version      0.1.5
+// @upc-was      survey-feedback.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/survey-feedback.user.js
-// @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/survey-feedback.user.js
+// @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/feedback-alerts.user.js
+// @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/feedback-alerts.user.js
 // @description  Feedback Request survey responses that need a look (Below expected, or Satisfactory with a comment) become a Halaxy task for Carl on the patient's profile. Carl only.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
@@ -35,7 +36,7 @@
   if (window.__hxSurveyFeedback) return;
   window.__hxSurveyFeedback = true;
 
-  const VERSION = '0.1.1';
+  const VERSION = '0.1.5';
   const ALLOWED = ['Carl Healy'];   // Carl, 11 Nov 2026
   const ASSIGNEE = 'Carl Healy';
   const MAX_SCORE = 35;             // the Feedback Request template: 3 x 5 + 2 x 5 + 2 x 5
@@ -47,28 +48,20 @@
   const NOTHING = /^(no|nope|none|nothing|nil|n\/?a|na|-+|\.+|no thanks?( you)?|no comments?|nothing (to add|else)|not really|all good|all fine|fine|ok(ay)?)[.!]*$/i;
 
   const U = () => window.UPC;
-  const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const store = {
-    get(k, d) { try { const v = localStorage.getItem(KEY + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
-    set(k, v) { try { localStorage.setItem(KEY + k, JSON.stringify(v)); } catch (e) { /* storage blocked */ } },
-  };
+  const esc = (s) => U().esc(s);
+  const store = { get: (k, d) => U().storage(KEY).get(k, d), set: (k, v) => U().storage(KEY).set(k, v), del: (k) => U().storage(KEY).del(k) };   // core's per-PC storage
+
   const label = (ms) => U().dayLabel(ms);
   const time = (ms) => label(ms) + ' ' + new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
   const BAND = { excellent: 'Excellent', satisfactory: 'Satisfactory', below: 'Below expected' };
 
-  function userName() {
-    const h = window.HkUser || {};
-    const named = String(h.pracName || (h.CalendarDefault || {}).pracName || '').trim();
-    if (named) return named;
-    const btn = document.getElementById('activeUser');
-    return btn ? btn.textContent.replace(/\s+/g, ' ').trim() : '';
-  }
-  const allowed = () => ALLOWED.some((n) => n.toLowerCase() === userName().toLowerCase());
+  // Who's signed in: the core library's check (Halaxy can fill the name in late, so it keeps looking for 20 seconds).
+  const allowed = () => !!U() && U().user.is(ALLOWED);
 
   function tellHealthCheck(e) {
     const message = (e && e.message) || String(e);
     if (!/has changed/.test(message)) return;
-    document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: 'survey-feedback.user.js', message }) }));
+    document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: 'feedback-alerts.user.js', message }) }));
   }
 
   // Halaxy shows a scored answer as "weighted score - choice" ("15 - 5" for 5 on a question that counts triple: live,
@@ -137,8 +130,8 @@
     try { return await check(beat); } finally { store.set('running', 0); paintBadge(); }
   }
   async function background() {
-    if (!allowed() || document.visibilityState !== 'visible' || !U() || U().http.pausedFor() > 0 || locked()) return;
-    if (Date.now() - store.get('last', 0) < CHECK_EVERY) return;
+    if (!allowed() || !U() || !U().background.ok() || locked()) return;   // visible tab, clinic hours, someone at the PC
+    if (!U().background.due(store.get('last', 0), CHECK_EVERY)) return;
     try { await checkLocked(); } catch (e) { tellHealthCheck(e); console.warn('[UPC feedback alerts]', e); store.set('lastError', { at: Date.now(), message: e.message || String(e) }); }
   }
 
@@ -190,7 +183,7 @@
       const last = store.get('last', 0), err = store.get('lastError', null);
       const base = U().base();
       let h = '<div class="upc-fb-bar"><button type="button" class="btn btn-outline-primary-light" data-a="check"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Checking...' : 'Check now') + '</button>' +
-        '<span class="text-muted">' + esc(busy ? status : last ? 'Checked ' + time(last) + '.' : 'Not checked yet.') + '</span></div>';
+        (busy ? U().ui.run.inline(status) : '<span class="text-muted">' + esc(last ? 'Checked ' + time(last) + '.' : 'Not checked yet.') + '</span>') + '</div>';
       if (err && err.at >= last - 60e3) h += '<p class="upc-err">Last check: ' + esc(err.message) + '</p>';
       h += '<p>Responses in the last 14 days: ' + counts.excellent + ' Excellent, ' + counts.satisfactory + ' Satisfactory, ' + counts.below + ' Below expected. ' +
         'Below expected, and Satisfactory with a comment, become a task for you on the patient\'s profile.</p>';
@@ -236,8 +229,9 @@
     setTimeout(background, 8000);
     setInterval(background, 15 * 60e3);
   }
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
-  else start();
+  const begin = () => { if (U()) U().user.whenAllowed(ALLOWED, start); else start(); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', begin, { once: true });
+  else begin();
 
   window.upcSurveyFeedback = { version: VERSION, check, allowed, answerText, meaningful };
 })();

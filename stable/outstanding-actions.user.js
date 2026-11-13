@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Halaxy Outstanding Actions
+// @name         UPC Calendar: Outstanding actions
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.5.3
+// @version      0.5.5
 // @description  Persistent notice of today's outstanding actions: attended appointments without a published note, and unpaid self-funded invoices.
 // @match        https://*.halaxy.com/a/*
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
@@ -47,7 +47,7 @@
   if (window.__hxOutstanding) return;
   window.__hxOutstanding = true;
 
-  const VERSION = '0.5.3';
+  const VERSION = '0.5.5';
   const m = location.pathname.match(/^\/a\/pr\/(\d+)\//);
   if (!m) return;
   const PG = m[1];
@@ -190,6 +190,7 @@
       const fresh = FRESH_MS[why];
       if (fresh && state && !state.error && !!state.everyone === !!settings.showEveryone && Date.now() - (state.at || 0) < fresh) return Promise.resolve();
       if (window.UPC && UPC.http && UPC.http.pausedFor && UPC.http.pausedFor() > 0) return Promise.resolve();
+      if (why === 'poll' && window.UPC && UPC.background && !UPC.background.active()) return Promise.resolve();   // nobody at this PC for 30 minutes
     }
     if (navigator.locks && navigator.locks.request) {
       return navigator.locks.request('hx-outstanding-check', { ifAvailable: true }, (lock) => (lock ? doRefresh(why) : null));

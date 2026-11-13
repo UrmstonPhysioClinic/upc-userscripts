@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         UPC core library
+// @name         UPC System: Core library
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.28
+// @version      0.1.43
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.28';
+  const VERSION = '0.1.43';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -205,7 +205,7 @@
   function parseInvoice(doc, id) {
     const title = clean(doc.title);
     const num = (title.match(/UPC-?\d+/i) || [''])[0].toUpperCase().replace(/^UPC-?/, 'UPC-');
-    const inv = { id: String(id), number: num || title, lines: [], payments: [], pending: [], attachments: [], total: null, outstanding: null };
+    const inv = { id: String(id), number: num || title, lines: [], payments: [], paymentRows: [], pending: [], attachments: [], attachmentList: [], total: null, outstanding: null };
     const table = doc.querySelector('#invoiceLines');
     if (table) {
       table.querySelectorAll('tr').forEach((tr) => {
@@ -247,7 +247,14 @@
         else if (link && /^Invoice\b/.test(clean(tds[1] && tds[1].textContent))) {
           inv.payments.push({ funderInvoiceId: link, amount: money.lastInText(t), status: clean(tds[2] && tds[2].textContent) });
         }
+        if (!pend && !Array.from(tr.children).some((c) => /^(Outstanding|Available)$/.test(clean(c.textContent)))) inv.paymentRows.push(t);   // each payment row's text
       });
+    }
+    // Paid in full: Halaxy shows the invoice as a "Receipt" and leaves out the Outstanding row (live, 12 Nov 2026:
+    // UPC-38023), so nothing is outstanding.
+    if (inv.outstanding === null && (/^receipt\b/i.test(title) || Array.from(doc.querySelectorAll('.badge, .status, .label, span, div')).some((e) => !e.children.length && /^paid in full$/i.test(clean(e.textContent))))) {
+      inv.outstanding = 0;
+      inv.paidInFull = true;
     }
     const att = doc.querySelector('#invoiceAttachments');
     if (att) {
@@ -256,6 +263,14 @@
       att.querySelectorAll('tbody tr').forEach((tr) => {
         const row = clean(tr.textContent);
         if (row && tr.querySelector('td')) inv.attachments.push(row);
+        // The same row in parts (capture 13 Nov 2026): created, category, title, comments, then the buttons: download
+        // (/a/file/get/<name>.pdf), view, edit (/invoice/attachment/:id, a pop-up), delete (never used).
+        const td = [...tr.querySelectorAll('td')];
+        if (td.length < 3) return;
+        const get = tr.querySelector('a[href*="/file/get/"]');
+        const edit = [...tr.querySelectorAll('a[href*="/invoice/attachment/"]')].find((a) => !/\/delete\b/.test(a.getAttribute('href')));
+        inv.attachmentList.push({ created: clean(td[0].textContent), category: clean(td[1].textContent), title: clean(td[2].textContent), comments: clean(td[3] ? td[3].textContent : ''),
+          fileUrl: get ? get.getAttribute('href') : null, editUrl: edit ? edit.getAttribute('href') : null });
       });
     }
     inv.isFunder = inv.lines.some((l) => l.patientInvoiceId);
@@ -276,6 +291,7 @@
     // An organisation invoice's Bill To box names the funder (#card-invoice-view-organisation, live 11 Nov 2026).
     const billTo = doc.querySelector('#card-invoice-view-organisation a[href*="/organisation/"]:not([href*="/edit"])');
     inv.billToName = billTo ? clean(billTo.textContent) : '';
+    inv.billToOrgId = billTo ? ((billTo.getAttribute('href') || '').match(/\/organisation\/(\d+)/) || [])[1] || null : null;
     const ref = doc.querySelector('[data-referral]');
     const pos = ref && clean(ref.textContent).match(/\((\d+)(?:st|nd|rd|th)\s+of\s+(\d+)\s+appt/i);
     inv.referral = pos ? { position: +pos[1], limit: +pos[2] } : null;
@@ -314,6 +330,36 @@
       const again = (await http.popup('/invoice/options/' + id)).doc.querySelector('form#frmInvoiceType');
       const wrong = Object.keys(changes).filter((k) => { const el = again && again.querySelector('[name="' + k + '"]'); return !el || String(el.value).trim() !== String(changes[k]); });
       if (wrong.length) throw new UPCError('Halaxy accepted the change, but invoice ' + id + ' does not show the new ' + (what || 'settings') + '.');
+    },
+    // Records a payment the way the invoice's "Mark as Paid" pop-up does (GET /invoicefunctions/{id}/pay/offline,
+    // form#paymentForm; capture 11 Nov 2026): method by its name in the list (e.g. 'Direct Deposit'), date
+    // '11-Sep-2026', amount in pence, a note; every other field as Halaxy filled it (no discount). Only if the invoice
+    // still has at least that much outstanding, and checks afterwards that the outstanding went down by the amount.
+    async payOffline(id, p) {
+      const before = p.before || await invoice.fetch(id);   // p.before: the invoice just read by the caller
+      if (before.outstanding === null) throw new UPCError('Could not read what is outstanding on invoice ' + (before.number || id) + ', so no payment was recorded.');
+      if (before.outstanding < p.amount) throw new UPCError(before.number + ' has only ' + money.fmt(before.outstanding) + ' outstanding, less than ' + money.fmt(p.amount) + ', so no payment was recorded.');
+      const path = '/invoicefunctions/' + encodeURIComponent(id) + '/pay/offline';
+      const { doc } = await http.popup(path);
+      const form = doc.querySelector('form#paymentForm') || doc.querySelector('form');
+      const need = ['form[paymentMethod]', 'form[paymentDate]', 'form[amount]', 'form[note]', 'form[_token]'];
+      const missing = need.filter((k) => !form || !form.querySelector('[name="' + k + '"]'));
+      if (missing.length) throw new UPCError('The Mark as Paid pop-up has changed (' + missing.join(', ') + ' not found), so no payment was recorded.');
+      const opt = [...form.querySelectorAll('select[name="form[paymentMethod]"] option')].find((o) => clean(o.textContent).toLowerCase() === String(p.method).toLowerCase());
+      if (!opt) throw new UPCError('"' + p.method + '" is not in the payment methods, so no payment was recorded.');
+      const set = { 'form[paymentMethod]': opt.value, 'form[paymentDate]': p.date, 'form[amount]': (p.amount / 100).toFixed(2), 'form[note]': p.note || '', 'form[invoiceDiscount]': '', 'form[discountPercentage]': '' };
+      const pairs = serialize(form).map(([k, v]) => [k, k in set ? set[k] : v]);
+      Object.keys(set).forEach((k) => { if (!pairs.some(([x]) => x === k) && form.querySelector('[name="' + k + '"]')) pairs.push([k, set[k]]); });
+      // Halaxy records the payment but doesn't answer with OK or REFRESH (live, 12 Nov 2026: shown as "not accepted"
+      // although it was recorded), so the invoice itself is the answer: read it back. Only the form coming back
+      // (Halaxy refusing it) counts as not accepted.
+      let answer = null, sendErr = null;
+      try { answer = await http.postForm(path, pairs); } catch (e) { sendErr = e; }
+      if (answer && answer.status === 'FORM') http.expectRefresh(answer, 'Recording the payment');
+      const after = await invoice.fetch(id);
+      if (after.outstanding !== null && after.outstanding === before.outstanding - p.amount) return after;
+      if (after.outstanding === before.outstanding && sendErr) throw sendErr;
+      throw new UPCError(before.number + ' now shows ' + (after.outstanding === null ? 'no outstanding amount' : money.fmt(after.outstanding) + ' outstanding') + ', not ' + money.fmt(before.outstanding - p.amount) + ' as expected after recording ' + money.fmt(p.amount) + '. Please check it.');
     },
     async setStatus(id, status) {
       const { doc } = await http.popup('/invoice/options/' + id);
@@ -390,9 +436,68 @@
     http.expectRefresh(await http.postForm(href, [['form[orgInvoice]', funderInvoiceId]]), 'Re-billing to the funder');
   }
 
+  // Halaxy only offers Active organisation invoices when billing a funder, so a fee can be taken off an Issued
+  // invoice but not put back (live, 12 Nov 2026: UPC-38023 and UPC-37983 left part-way). An Issued funder invoice is
+  // set back to Active for the change and marked Issued again afterwards, whatever happens in between.
+  async function withActive(funderInvoiceId, number, say, fn) {
+    const was = await invoice.status(funderInvoiceId);
+    if (was === 'issued') { say('Setting ' + number + ' back to Active while it is changed'); await invoice.setStatus(funderInvoiceId, ''); }
+    let result, failure = null;
+    try { result = await fn(); } catch (e) { failure = e; }
+    if (was === 'issued') {
+      try { say('Marking ' + number + ' Issued again'); await invoice.setStatus(funderInvoiceId, 'issued'); }
+      catch (e) {
+        const more = 'Could not mark ' + number + ' Issued again (' + (e.message || e) + '): mark it Issued by hand (cogwheel, Status).';
+        throw new UPCError(failure ? (failure.message || failure) + ' ' + more : more);
+      }
+    }
+    if (failure) throw failure;
+    return result;
+  }
+
+  // Finishes a move that stopped after the fee was taken off the funder invoice: the amount waiting on the patient
+  // invoice is billed back to the same funder invoice and given its fee's date. opts.from / opts.to (ISO dates) limit
+  // which of the patient's fees it can be (those the remittance covers).
+  async function resumeMove(funderInvoiceId, patientInvoiceId, opts, say) {
+    opts = opts || {}; say = say || (() => {});
+    const p = await invoice.fetch(patientInvoiceId);
+    if (p.pending.length !== 1) throw new UPCError(p.number + ' has ' + p.pending.length + ' amounts waiting to bill, not one. Finish it by hand.');
+    const amount = p.pending[0].amount;
+    const funder = await invoice.fetch(funderInvoiceId);
+    if (funder.outstanding !== funder.total) throw new UPCError(funder.number + ' already has a payment recorded, so it was not changed.');
+    const days = (iso) => Math.round(Date.parse(iso + 'T12:00:00Z') / 86400e3);
+    const inWindow = (d) => {
+      if (!opts.from) return true;
+      const t = halaxyDay(d);
+      if (t === null) return false;
+      const x = Math.round((t + 12 * 3600e3) / 86400e3);   // the fee's day, whatever the clock change
+      return x >= days(opts.from) - 2 && x <= days(opts.to || opts.from) + 2;
+    };
+    const onFunder = funder.lines.filter((l) => l.patientInvoiceId === String(patientInvoiceId));
+    const missing = p.lines.filter((pl) => inWindow(pl.date) && !onFunder.some((fl) => fl.item === pl.item && dayGap(fl.date, pl.date) <= 2));
+    if (missing.length !== 1) throw new UPCError('Could not tell which fee on ' + p.number + ' is waiting to go back on ' + funder.number + ' (' + missing.length + ' possible). Finish it by hand.');
+    return withActive(funderInvoiceId, funder.number, say, async () => {
+      say('Billing ' + money.fmt(amount) + ' (the ' + missing[0].date + ' fee) back to ' + funder.number);
+      await rebill(patientInvoiceId, funderInvoiceId, amount);
+      let fAfter = await invoice.fetch(funderInvoiceId);
+      const before = new Set(funder.lines.map((l) => l.lineId));
+      const added = fAfter.lines.filter((l) => !before.has(l.lineId) && l.patientInvoiceId === String(patientInvoiceId));
+      if (added.length !== 1 || added[0].amount !== amount) throw new UPCError('Billed, but ' + funder.number + ' does not show one new ' + money.fmt(amount) + ' line. Check it.');
+      if (added[0].date !== missing[0].date) {
+        say('Correcting the date Halaxy gave it: ' + added[0].date + ' to ' + missing[0].date);
+        await invoice.setLineDate(added[0].lineId, missing[0].date);
+      }
+      const pAfter = await invoice.fetch(patientInvoiceId);
+      if (pAfter.pending.length) throw new UPCError(pAfter.number + ' still shows an amount waiting to bill. Check it.');
+      return { amount, date: missing[0].date };
+    });
+  }
+
   // Works out the steps for one funder line: which patient invoice line it came from, and checks
-  // both invoices agree. Read-only.
-  async function planMove(funderInvoiceId, funderLineId, newRebate) {
+  // both invoices agree. Read-only. opts.overrides: other fields to change on the patient fee in the same save (Rebate
+  // sync, when the fee's amount is changed with its rebate), with opts.fee the fee's new amount (pence).
+  async function planMove(funderInvoiceId, funderLineId, newRebate, opts) {
+    opts = opts || {};
     const funder = await invoice.fetch(funderInvoiceId);
     const line = funder.lines.find((l) => l.lineId === String(funderLineId));
     if (!line) throw new UPCError('Line ' + funderLineId + ' is not on invoice ' + funder.number + '.');
@@ -417,11 +522,13 @@
     const pFields = Object.fromEntries(await lineForm(cands[0].lineId));
     const origRebate = money.cents(pFields['form[rebate]']);
     if (origRebate !== line.amount) throw new UPCError('The invoices already disagree (patient rebate ' + money.fmt(origRebate) + ', funder line ' + money.fmt(line.amount) + '). Sort that out by hand first.');
-    const fee = money.cents(pFields['form[amount]']);
+    const fee = opts.fee !== undefined && opts.fee !== null ? opts.fee : money.cents(pFields['form[amount]']);
+    if (newRebate === null || newRebate === undefined || isNaN(newRebate)) throw new UPCError('The new funder amount is not a valid amount.');
     if (newRebate < 0) throw new UPCError('The new funder amount cannot be negative.');
     if (fee !== null && newRebate > fee) throw new UPCError('The new funder amount (' + money.fmt(newRebate) + ') is more than the fee (' + money.fmt(fee) + ').');
     return { funderInvoiceId: funder.id, funderNumber: funder.number, funderLineId: line.lineId, patientInvoiceId: patient.id, patientNumber: patient.number,
-      patientLineId: cands[0].lineId, date: line.date, patientDate: cands[0].date, item: line.item, fee, origRebate, newRebate };
+      patientLineId: cands[0].lineId, date: line.date, patientDate: cands[0].date, item: line.item, fee, origRebate, newRebate,
+      overrides: Object.assign({}, opts.overrides || {}) };
   }
 
   // Carries out a plan from planMove: revert the funder line, change the rebate on the patient
@@ -435,60 +542,118 @@
     if (!fLine || fLine.amount !== origRebate) throw new UPCError('The line on ' + plan.funderNumber + ' has changed since it was checked. Nothing was changed.');
     if (funder.total === null || funder.outstanding === null) throw new UPCError('Could not find an outstanding balance on ' + funder.number + ', so nothing was changed.');
     if (funder.outstanding !== funder.total) throw new UPCError(funder.number + ' already has a payment recorded, so it was not changed.');
-    let patient = await invoice.fetch(patientInvoiceId);
-    if (patient.pending.length) throw new UPCError(patient.number + ' already has an amount waiting to be billed to a funder. Nothing was changed.');
-
-    say('Reverting the ' + plan.date + ' line to ' + plan.patientNumber);
-    const removeJson = await http.json('/invoice/line/' + funderLineId + '/remove?clicked=' + Date.now());
+    const patient0 = await invoice.fetch(patientInvoiceId);
+    if (patient0.pending.length) throw new UPCError(patient0.number + ' already has an amount waiting to be billed to a funder. Nothing was changed.');
+    return withActive(funderInvoiceId, plan.funderNumber, say, () => moveSteps(plan, funder, say));
+  }
+  // Takes a funder line off its invoice (Halaxy's "Revert the fee back to the patient"): it then waits on the patient invoice.
+  async function revertLine(lineId) {
+    const removeJson = await http.json('/invoice/line/' + lineId + '/remove?clicked=' + Date.now());
     const m = String(removeJson && removeJson.message).match(/case\s+'delete'\s*:[\s\S]*?url\s*=\s*"([^"]+)"/);
-    if (!m) throw new UPCError('Could not find Halaxy\'s revert option for this line. Nothing was changed.');
+    if (!m) throw new UPCError('Could not find Halaxy\'s revert option for this line.');
     http.expectRefresh(await http.json(m[1]), 'Reverting the funder line');
-
-    patient = await invoice.fetch(patientInvoiceId);
-    if (patient.pending.length !== 1 || patient.pending[0].amount !== origRebate) {
-      throw new UPCError('After reverting, ' + patient.number + ' does not show ' + money.fmt(origRebate) + ' waiting to bill. Open it and use Invoice Funder to re-bill it to ' + plan.funderNumber + '.');
-    }
-
-    say('Setting the rebate to ' + money.fmt(newRebate));
-    try {
-      const fresh = await lineForm(patientLineId);
-      const pairs = fresh.map(([k, v]) => [k, k === 'form[rebate]' ? money.plain(newRebate) : v]);
-      if (!fresh.some(([k]) => k === 'form[rebate]')) pairs.push(['form[rebate]', money.plain(newRebate)]);
-      http.expectRefresh(await http.postForm('/invoice/line/' + patientLineId + '/edit', pairs), 'Saving the new rebate');
-    } catch (e) {
-      say('Saving the rebate failed, putting the original back on ' + plan.funderNumber);
-      await rebill(patientInvoiceId, funderInvoiceId, origRebate).catch(() => {});
-      throw e;
-    }
-
-    // Re-bill what the funder now owes, £0 included, so the fee stays on the funder invoice at that
-    // amount (Carl, 9 Nov 2026: a £0.00 line, never a missing one). Halaxy offers £0 to bill like any amount.
-    say('Re-billing ' + money.fmt(newRebate) + ' to ' + plan.funderNumber);
-    await rebill(patientInvoiceId, funderInvoiceId, newRebate);
-
-    let fAfter = await invoice.fetch(funderInvoiceId);
-    const before = new Set(funder.lines.map((l) => l.lineId));
-    const added = fAfter.lines.filter((l) => !before.has(l.lineId) && l.patientInvoiceId === patientInvoiceId && l.item === plan.item);
-    const problems = [];
-    if (fAfter.lines.some((l) => l.lineId === funderLineId)) problems.push('the original line is still on ' + fAfter.number);
-    {
-      const nl = added.filter((l) => l.amount === newRebate);
-      if (nl.length !== 1) problems.push('no new ' + money.fmt(newRebate) + ' line found on ' + fAfter.number);
-      else if (plan.patientDate && nl[0].date !== plan.patientDate) {
-        // Halaxy can give the re-billed line the wrong date too: set it to the patient fee's date.
-        say('Correcting the date Halaxy gave the re-billed line: ' + nl[0].date + ' to ' + plan.patientDate);
-        try { await invoice.setLineDate(nl[0].lineId, plan.patientDate); fAfter = await invoice.fetch(funderInvoiceId); }
-        catch (e) { problems.push('the re-billed line on ' + fAfter.number + ' is dated ' + nl[0].date + ' instead of ' + plan.patientDate + ' (' + (e.message || e) + ')'); }
-      }
-    }
-    const pAfter = await invoice.fetch(patientInvoiceId);
-    if (fAfter.total !== funder.total - origRebate + newRebate) problems.push(fAfter.number + ' total is ' + money.fmt(fAfter.total) + ', expected ' + money.fmt(funder.total - origRebate + newRebate));
-    if (pAfter.pending.length) problems.push(pAfter.number + ' still has an amount waiting to bill');
-    if (problems.length) throw new UPCError('Changes were made but the result looks wrong: ' + problems.join('; ') + '. Check ' + plan.patientNumber + ' and ' + fAfter.number + ' before trying again.');
-    return { funderTotal: fAfter.total, patientOutstanding: pAfter.outstanding };
+  }
+  // Saves fields on a patient fee (the fee edit pop-up), everything else as Halaxy filled it.
+  async function saveLineFields(lineId, set, what) {
+    const fresh = await lineForm(lineId);
+    const want = Object.assign({}, set);
+    delete want['form[_token]'];
+    const pairs = fresh.map(([k, v]) => [k, k in want ? want[k] : v]);
+    Object.keys(want).forEach((k) => { if (!fresh.some(([x]) => x === k)) pairs.push([k, want[k]]); });
+    http.expectRefresh(await http.postForm('/invoice/line/' + lineId + '/edit', pairs), what);
   }
 
-  const rebate = { plan: planMove, apply: applyMove };
+  // The steps of a move. If any step fails after something was changed, everything is put back as it was (Carl,
+  // 12 Nov 2026: "any work that was started reverted back to the original state"): the error says whether that
+  // worked (error.undone true), or exactly what is left (error.undone false).
+  async function moveSteps(plan, funder, say) {
+    const { funderInvoiceId, funderLineId, patientInvoiceId, patientLineId, origRebate, newRebate } = plan;
+    let stage = 'start';
+    const origFields = {};
+    try {
+      // What the patient fee shows now, to put back if needed.
+      const before = await lineForm(patientLineId);
+      Object.keys(Object.assign({ 'form[rebate]': 1 }, plan.overrides || {})).forEach((k) => { const p = before.find(([x]) => x === k); if (p) origFields[k] = p[1]; });
+
+      say('Reverting the ' + plan.date + ' line to ' + plan.patientNumber);
+      await revertLine(funderLineId);
+      stage = 'reverted';
+      const patient = await invoice.fetch(patientInvoiceId);
+      if (patient.pending.length !== 1 || patient.pending[0].amount !== origRebate) {
+        throw new UPCError('After reverting, ' + patient.number + ' does not show ' + money.fmt(origRebate) + ' waiting to bill.');
+      }
+
+      say('Setting the rebate to ' + money.fmt(newRebate));
+      stage = 'rebate';   // from here the rebate may have changed
+      await saveLineFields(patientLineId, Object.assign({}, plan.overrides || {}, { 'form[rebate]': money.plain(newRebate) }), 'Saving the new rebate');
+
+      // Re-bill what the funder now owes, £0 included, so the fee stays on the funder invoice at that
+      // amount (Carl, 9 Nov 2026: a £0.00 line, never a missing one). Halaxy offers £0 to bill like any amount.
+      say('Re-billing ' + money.fmt(newRebate) + ' to ' + plan.funderNumber);
+      await rebill(patientInvoiceId, funderInvoiceId, newRebate);
+      stage = 'rebilled';
+
+      let fAfter = await invoice.fetch(funderInvoiceId);
+      const known = new Set(funder.lines.map((l) => l.lineId));
+      const added = fAfter.lines.filter((l) => !known.has(l.lineId) && l.patientInvoiceId === patientInvoiceId && l.item === plan.item);
+      const nl = added.filter((l) => l.amount === newRebate);
+      if (fAfter.lines.some((l) => l.lineId === funderLineId)) throw new UPCError('The original line is still on ' + fAfter.number + '.');
+      if (nl.length !== 1) throw new UPCError('No new ' + money.fmt(newRebate) + ' line found on ' + fAfter.number + '.');
+      if (plan.patientDate && nl[0].date !== plan.patientDate) {
+        // Halaxy can give the re-billed line the wrong date too: set it to the patient fee's date.
+        say('Correcting the date Halaxy gave the re-billed line: ' + nl[0].date + ' to ' + plan.patientDate);
+        await invoice.setLineDate(nl[0].lineId, plan.patientDate);
+        fAfter = await invoice.fetch(funderInvoiceId);
+      }
+      const pAfter = await invoice.fetch(patientInvoiceId);
+      if (fAfter.total !== funder.total - origRebate + newRebate) throw new UPCError(fAfter.number + ' total is ' + money.fmt(fAfter.total) + ', expected ' + money.fmt(funder.total - origRebate + newRebate) + '.');
+      if (pAfter.pending.length) throw new UPCError(pAfter.number + ' still has an amount waiting to bill.');
+      return { funderTotal: fAfter.total, patientOutstanding: pAfter.outstanding, newLineId: nl[0].lineId };
+    } catch (e) {
+      const why = (e && e.message) || String(e);
+      if (stage === 'start') { const err = new UPCError(why + ' Nothing was changed.'); err.undone = true; throw err; }
+      say('Stopped (' + why + '). Putting ' + plan.funderNumber + ' and ' + plan.patientNumber + ' back as they were...');
+      try {
+        await undoMove(plan, funder, stage, origFields, say);
+      } catch (u) {
+        const err = new UPCError(why + ' Putting it back also failed: ' + ((u && u.message) || u) + ' Check ' + plan.funderNumber + ' (the ' + plan.date + ' fee should be ' + money.fmt(origRebate) +
+          ') and ' + plan.patientNumber + ' (its rebate should be ' + money.fmt(origRebate) + ', with nothing waiting to bill).');
+        err.undone = false;
+        throw err;
+      }
+      const err = new UPCError(why + ' Everything was put back as it was.');
+      err.undone = true;
+      throw err;
+    }
+  }
+
+  // Puts a move back: the re-billed line (if any) taken off again, the patient fee's fields as they were, the original
+  // amount billed back to the same funder invoice with the original line's date, then checked against how it was.
+  async function undoMove(plan, funder, stage, origFields, say) {
+    const { funderInvoiceId, patientInvoiceId, patientLineId, origRebate } = plan;
+    if (stage === 'rebilled') {
+      const f = await invoice.fetch(funderInvoiceId);
+      const known = new Set(funder.lines.map((l) => l.lineId));
+      const added = f.lines.filter((l) => !known.has(l.lineId) && l.patientInvoiceId === patientInvoiceId);
+      if (added.length !== 1) throw new UPCError('Could not tell which line was re-billed to ' + f.number + '.');
+      say('  Taking the re-billed line off again');
+      await revertLine(added[0].lineId);
+    }
+    if (stage === 'rebate' || stage === 'rebilled') {
+      say('  Setting the rebate back to ' + money.fmt(origRebate));
+      await saveLineFields(patientLineId, origFields, 'Putting the rebate back');
+    }
+    say('  Billing ' + money.fmt(origRebate) + ' back to ' + plan.funderNumber);
+    await rebill(patientInvoiceId, funderInvoiceId, origRebate);
+    const f = await invoice.fetch(funderInvoiceId);
+    const known = new Set(funder.lines.map((l) => l.lineId));
+    const back = f.lines.filter((l) => !known.has(l.lineId) && l.patientInvoiceId === patientInvoiceId && l.amount === origRebate);
+    if (back.length === 1 && back[0].date !== plan.date) await invoice.setLineDate(back[0].lineId, plan.date);
+    const f2 = await invoice.fetch(funderInvoiceId), p2 = await invoice.fetch(patientInvoiceId);
+    if (f2.total !== funder.total || p2.pending.length) throw new UPCError(f2.number + ' shows ' + money.fmt(f2.total) + ' (was ' + money.fmt(funder.total) + ')' + (p2.pending.length ? ' and ' + p2.number + ' still has an amount waiting to bill' : '') + '.');
+  }
+
+  const rebate = { plan: planMove, apply: applyMove, resume: resumeMove };
 
   // ------------------------------------------------------------------ files
 
@@ -500,12 +665,13 @@
     // Attaches a file to an invoice the way the attach button does: open the pop-up, upload the
     // file to Halaxy's file store, then save it against the invoice with a title and category.
     // Checks the invoice lists one more attachment afterwards.
-    // Returns false, attaching nothing, when opts.skipIfAttached and a file with this title is already on the invoice.
+    // Returns false, attaching nothing, when opts.skipIfAttached and a file with this title (or any name in
+    // opts.alsoSkipIf) is already on the invoice.
     async attachToInvoice(invoiceId, file, opts) {
       opts = opts || {};
       const before = await invoice.fetch(invoiceId);
       const wanted = String(opts.title || file.name || 'Attachment').replace(/\.pdf$/i, '');
-      if (opts.skipIfAttached && before.attachments.some((r) => r.includes(wanted))) return false;
+      if (opts.skipIfAttached && before.attachments.some((r) => r.includes(wanted) || (opts.alsoSkipIf || []).some((t) => t && r.includes(t)))) return false;
       const { doc } = await http.popup('/file/upload/invoice/' + invoiceId);
       const form = doc.querySelector('form#fileupload, form.js-file-edit-form');
       const uploadUrl = form && form.getAttribute('data-upload-url');
@@ -534,6 +700,36 @@
       const after = await invoice.fetch(invoiceId);
       if (after.attachments.length <= before.attachments.length) throw new UPCError('Halaxy accepted the file but does not list it on ' + after.number + '. Check the invoice.');
       return { fileId: stored.id };
+    },
+    // True when the file already attached (its download link) is byte for byte the same as `file`.
+    async sameFile(fileUrl, file) {
+      const res = await pacedFetch(fileUrl, { credentials: 'same-origin' });
+      if (!res.ok) throw new UPCError('Halaxy returned ' + res.status + ' for the attached file.');
+      const digest = async (buf) => [...new Uint8Array(await crypto.subtle.digest('SHA-256', buf))].map((b) => b.toString(16).padStart(2, '0')).join('');
+      const [a, b] = await Promise.all([res.arrayBuffer(), file.arrayBuffer()]);
+      return a.byteLength === b.byteLength && (await digest(a)) === (await digest(b));
+    },
+    // Changes an attachment's title, comment and category through its edit pop-up (the pencil; form#frmInvoiceFile,
+    // capture 13 Nov 2026), then reads the invoice back to check the comment is there.
+    async updateAttachment(invoiceId, editUrl, opts) {
+      const path = String(editUrl).replace(/^\/a\/pr\/\d+/, '');
+      const { doc } = await http.popup(path);
+      const form = doc.querySelector('form#frmInvoiceFile') || doc.querySelector('form');
+      const has = (n) => form && form.querySelector('[name="' + n + '"]');
+      if (!form || !has('form[title]') || !has('form[comments]') || !has('form[_token]')) throw new UPCError('Halaxy\'s attachment edit pop-up has changed, so the details were not updated.');
+      // `append` adds to the comment as it is in the pop-up (the whole of it: the page may show it shortened), once.
+      const was = (n) => clean(form.querySelector('[name="' + n + '"]').value);
+      if (opts.title === undefined) opts = Object.assign({}, opts, { title: was('form[title]') });
+      if (opts.append) opts = Object.assign({}, opts, { comments: was('form[comments]').includes(clean(opts.append)) ? was('form[comments]') : [was('form[comments]'), opts.append].filter(Boolean).join('; ') });
+      const pairs = serialize(form).filter(([k]) => !['form[title]', 'form[comments]', 'form[invoiceFileType]'].includes(k));
+      pairs.push(['form[title]', opts.title], ['form[comments]', opts.comments || '']);
+      if (has('form[invoiceFileType]')) pairs.push(['form[invoiceFileType]', String(opts.category !== undefined ? opts.category : ATTACH_CATEGORY.payment)]);
+      const res = await http.postForm(path, pairs);
+      if (res && res.status === 'FORM') throw new UPCError('Halaxy did not accept the new details' + (Array.isArray(res.errors) && res.errors.length ? ': ' + res.errors.join(' ') : '.'));
+      const after = await invoice.fetch(invoiceId);
+      const start = clean(opts.comments || '').slice(0, 60);   // Halaxy may shorten a long comment on the page
+      if (!after.attachmentList.some((a) => a.comments.includes(start) && a.title.includes(clean(opts.title)))) throw new UPCError('Halaxy does not show the new details on ' + after.number + '. Check the invoice.');
+      return true;
     },
   };
 
@@ -590,39 +786,237 @@
     return grid;
   }
 
+  // A Halaxy finance report's table: its column names (the last header row) and its body rows as a grid.
+  // A report page without its table is usually a passing Halaxy hiccup (both PCs, 13 Nov 2026, cleared by itself): it
+  // asks once more after 20 seconds, and only then says the report has changed, naming the page Halaxy sent instead.
+  const pageKind = (doc) => {
+    if (doc.querySelector('input[type=password]')) return 'a sign-in page';
+    const t = clean(doc.title || (doc.querySelector('h1, h2') || {}).textContent || '');
+    return t ? 'a page titled "' + t.slice(0, 60) + '"' : 'an empty page';
+  };
+  async function reportTable(path, what) {
+    let doc = await http.html(path);
+    let table = doc.querySelector('table.table-report');
+    if (!table) {
+      await sleep(20000);
+      doc = await http.html(path.replace(/([?&]clicked=)\d+/, '$1' + Date.now()));
+      table = doc.querySelector('table.table-report');
+    }
+    if (!table) throw new UPCError('Halaxy\'s ' + what + ' report has changed (its table was not found twice; Halaxy sent ' + pageKind(doc) + ').');
+    const all = [...table.rows];
+    const head = table.tHead ? [...table.tHead.rows] : all.filter((r) => r.cells.length && [...r.cells].every((c) => c.tagName === 'TH'));
+    const body = all.filter((r) => !head.includes(r));
+    const hg = cellGrid(head);
+    return { names: (hg[hg.length - 1] || []).map((c) => clean(c && c.textContent)), body, grid: cellGrid(body) };
+  }
+  // ------------------------------------------------------------------ funder deposits (captures 13 Nov 2026)
+  // An insurer payment as it reached the bank, held on the insurer's (organisation's) profile, then applied to invoices
+  // billed to it. Apply sends only the invoices: each is paid its whole balance, never more than the deposit's balance.
+  const isoOf = (s) => (String(s || '').match(/^(\d{4}-\d{2}-\d{2})/) || [])[1] || '';
+  const deposits = {
+    // Every deposit on the profile: { id, type ("Direct Deposit"), day (yyyy-mm-dd), amount, balance (pence) }.
+    async list(orgId) {
+      const j = await http.json('/organisation/' + encodeURIComponent(orgId) + '/balance/data?viewMode=ajax');
+      if (!j || !Array.isArray(j.data)) throw new UPCError('Halaxy\'s deposit list has changed, so the deposits could not be read.');
+      return j.data.map((r) => ({ id: String(r.id), type: clean(r.type), day: isoOf(r.date), amount: money.cents(r.amount), balance: money.cents(r.balance) }));
+    },
+    // A deposit's own date and note, from its Edit pop-up (read only).
+    async details(depositId) {
+      const { doc } = await http.popup('/invoicefunctions/payment/' + encodeURIComponent(depositId) + '/edit');
+      const f = (n) => { const el = doc.querySelector('[name="form[' + n + ']"]'); return el ? clean(el.value) : ''; };
+      return { note: f('note'), date: f('paymentDate') || f('date') };
+    },
+    // Adds a deposit as "Add new > Offline payment" does. `date` dd-Mon-yyyy, `amount` pence. Checks it is listed.
+    async add(orgId, { method, date, amount, note }) {
+      const before = await deposits.list(orgId);
+      const path = '/invoicefunctions/0/pay/offline/0/' + encodeURIComponent(orgId);
+      const { doc } = await http.popup(path);
+      const form = doc.querySelector('form#paymentForm');
+      const sel = form && form.querySelector('select[name="form[paymentMethod]"]');
+      const need = ['form[paymentDate]', 'form[amount]', 'form[note]', 'form[_token]'].filter((n) => !form || !form.querySelector('[name="' + n + '"]'));
+      if (!sel || need.length) throw new UPCError('Halaxy\'s add deposit pop-up has changed (' + (sel ? need.join(', ') : 'payment method') + ' not found), so nothing was added.');
+      const opt = [...sel.options].find((o) => clean(o.textContent).toLowerCase() === String(method).toLowerCase());
+      if (!opt) throw new UPCError('"' + method + '" is not a payment method in Halaxy, so nothing was added.');
+      const set = { 'form[paymentMethod]': opt.value, 'form[paymentDate]': date, 'form[amount]': (amount / 100).toFixed(2), 'form[note]': note || '' };
+      const pairs = serialize(form).filter(([k]) => !(k in set));
+      Object.keys(set).forEach((k) => pairs.push([k, set[k]]));
+      const res = await http.postForm(path, pairs);
+      if (res && res.status === 'FORM') throw new UPCError('Halaxy did not accept the deposit' + (Array.isArray(res.errors) && res.errors.length ? ': ' + res.errors.join(' ') : '.'));
+      const added = (await deposits.list(orgId)).filter((d) => !before.some((b) => b.id === d.id) && d.amount === amount);
+      if (added.length !== 1) throw new UPCError('Halaxy accepted the deposit but its list ' + (added.length ? 'shows ' + added.length + ' new ones' : 'does not show it') + '. Check the profile\'s deposits.');
+      return added[0];
+    },
+    // Applies a deposit to whole invoices (their full balances). Checks the deposit's balance fell by `total` (pence).
+    async apply(orgId, depositId, invoiceIds, total) {
+      const before = (await deposits.list(orgId)).find((d) => d.id === String(depositId));
+      if (!before) throw new UPCError('The deposit is no longer on the profile, so nothing was applied.');
+      if (before.balance < total) throw new UPCError('The deposit has ' + money.fmt(before.balance) + ' left, less than ' + money.fmt(total) + ', so nothing was applied.');
+      const path = '/invoicefunctions/payment/' + encodeURIComponent(depositId) + '/allocate';
+      const { doc } = await http.popup(path);
+      const token = doc.querySelector('form#allocatePaymentForm [name="form[_token]"]');
+      if (!token) throw new UPCError('Halaxy\'s apply deposit pop-up has changed, so nothing was applied.');
+      const res = await http.postForm(path, invoiceIds.map((id) => ['form[invoices][]', String(id)]).concat([['form[_token]', token.value]]));
+      if (res && res.status === 'FORM') throw new UPCError('Halaxy did not apply the deposit' + (Array.isArray(res.errors) && res.errors.length ? ': ' + res.errors.join(' ') : '.'));
+      const after = (await deposits.list(orgId)).find((d) => d.id === String(depositId));
+      if (!after || after.balance !== before.balance - total) throw new UPCError('Halaxy applied the deposit, but it now has ' + (after ? money.fmt(after.balance) : 'nothing') + ' left, not ' + money.fmt(before.balance - total) + '. Check the profile and the invoices.');
+      return after;
+    },
+    // Insurer profiles seen on invoices (their Bill To), kept on this PC so a bank line with no invoice to go by can
+    // still find its insurer's profile, and so the lingering check knows which profiles to look at.
+    orgs() { return storage('upc-funder-orgs:').get('list', {}); },
+    rememberOrg(orgId, name, insurer) {
+      if (!orgId) return;
+      const st = storage('upc-funder-orgs:'), all = st.get('list', {});
+      const was = all[orgId] || {};
+      if (was.name === name && was.insurer === insurer) return;
+      all[orgId] = { name: name || was.name || '', insurer: insurer || was.insurer || '' };
+      st.set('list', all);
+    },
+    // The profiles known for an insurer ('Bupa'), as ids.
+    orgsFor(insurer) { return Object.entries(deposits.orgs()).filter(([, o]) => o.insurer === insurer).map(([id]) => id); },
+    // Deposits from the bank not applied after `days` (no remittance has come for them): a task on the insurer's
+    // profile for each. At most once a day per PC, and not while Halaxy is asking us to slow down.
+    async lingering({ days, assignee, by }) {
+      const st = storage('upc-funder-orgs:');
+      const today = dayLabel(Date.now());
+      if (st.get('lingerDay', '') === today || http.pausedFor() > 0) return [];
+      st.set('lingerDay', today);
+      const out = [];
+      for (const [orgId, o] of Object.entries(deposits.orgs())) {
+        for (const d of await deposits.list(orgId)) {
+          const when = parseDay(d.day);
+          if (!(d.balance > 0) || when === null || Date.now() - when < days * 86400e3) continue;
+          const title = (o.insurer || o.name || 'Insurer') + ' deposit ' + dayLabel(when) + ' ' + money.fmt(d.amount) + ': not applied after ' + days + ' days';
+          const added = await tasks.addToOrganisation(orgId, { title, assignee, priority: 2, due: today, by,
+            comment: ['The ' + money.fmt(d.amount) + ' deposit from the bank (' + dayLabel(when) + ') on this profile still has ' + money.fmt(d.balance) + ' to apply.',
+              'No remittance has been put through Remittances for it yet. Ask the insurer for the remittance, or apply the deposit by hand.'] });
+          if (added) out.push(title);
+        }
+      }
+      return out;
+    },
+  };
+
+  // Files on a funder profile (captures 13 Nov 2026): Add Files, and each file's Edit pop-up.
+  async function uploadFile(uploadUrl, file) {
+    const fd = new FormData();
+    fd.append('file', file, file.name || 'file.pdf');
+    const headers = { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' };
+    if (window.Hk && window.Hk.jwt) headers.Authorization = 'Bearer ' + window.Hk.jwt;
+    const res = await pacedFetch(uploadUrl, { method: 'POST', headers, body: fd, credentials: 'same-origin' });
+    if (!res.ok) throw new UPCError('Halaxy returned ' + res.status + ' when uploading the file.');
+    const up = await res.json().catch(() => null);
+    const stored = up && up.files && up.files[0];
+    if (!stored || !stored.id) throw new UPCError('Halaxy did not accept the file' + (stored && stored.error ? ': ' + stored.error : '.'));
+    return stored;
+  }
+  const orgFiles = {
+    // The files on a funder profile, as its Attachments box lists them in the page (capture 13 Nov 2026): one
+    // div.attachment-file-card per file (data-href its download link), followed by its menu, whose Edit item opens
+    // /file/edit/:id. { id, fileUrl, text } in the page's order; text is what the card shows.
+    async list(orgId) {
+      const doc = await http.html('/organisation/' + encodeURIComponent(orgId));
+      const out = [];
+      let card = null;
+      doc.querySelectorAll('.attachment-file-card, [data-modal-href*="/file/edit/"]').forEach((el) => {
+        if (el.classList.contains('attachment-file-card')) { card = { fileUrl: el.getAttribute('data-href'), text: clean(el.textContent) }; return; }
+        const id = (el.getAttribute('data-modal-href').match(/\/file\/edit\/(\d+)/) || [])[1];
+        if (!id || out.some((f) => f.id === id)) return;
+        out.push({ id, fileUrl: card ? card.fileUrl : null, text: card ? card.text : '' });
+        card = null;
+      });
+      return out;
+    },
+    // The profile's files whose details pass `test({ id, title, comments, fileUrl })`. Only files whose card shows
+    // `hint` are opened when any does (each file's details take one request); otherwise the newest `max`.
+    async find(orgId, test, hint, max) {
+      const all = await orgFiles.list(orgId);
+      const hinted = hint ? all.filter((f) => f.text.toLowerCase().includes(String(hint).toLowerCase())) : [];
+      const look = hinted.length ? hinted : all.slice(0, max || 25);
+      const out = [];
+      for (const f of look) {
+        const d = await orgFiles.details(f.id);
+        d.fileUrl = d.fileUrl || f.fileUrl;
+        if (test(d)) out.push(d);
+      }
+      return out;
+    },
+    // A file's title, comments and download link, from its Edit pop-up (read only).
+    async details(fileId) {
+      const { doc } = await http.popup('/file/edit/' + encodeURIComponent(fileId));
+      const form = doc.querySelector('form#fileupload');
+      const v = (n) => { const el = form && form.querySelector('[name="form[' + n + ']"]'); return el ? clean(el.value) : ''; };
+      const card = doc.querySelector('[data-href*="/file/get/"]');
+      if (!form) throw new UPCError('Halaxy\'s file edit pop-up has changed, so the file could not be read.');
+      return { id: String(fileId), title: v('title'), comments: v('comments'), fileUrl: card ? card.getAttribute('data-href') : null };
+    },
+    // New title and comments; `append` adds to the comment as it is, once (title kept when not given).
+    async update(fileId, { title, comments, append }) {
+      const path = '/file/edit/' + encodeURIComponent(fileId);
+      const { doc } = await http.popup(path);
+      const form = doc.querySelector('form#fileupload');
+      if (!form || !form.querySelector('[name="form[title]"]') || !form.querySelector('[name="form[comments]"]') || !form.querySelector('[name="form[_token]"]')) throw new UPCError('Halaxy\'s file edit pop-up has changed, so the details were not updated.');
+      const was = (n) => clean(form.querySelector('[name="form[' + n + ']"]').value);
+      if (title === undefined) title = was('title');
+      if (append) comments = was('comments').includes(clean(append)) ? was('comments') : [was('comments'), append].filter(Boolean).join('; ');
+      const pairs = serialize(form).filter(([k]) => k !== 'form[title]' && k !== 'form[comments]');
+      pairs.push(['form[title]', title], ['form[comments]', comments || '']);
+      const res = await http.postForm(path, pairs);
+      if (res && res.status === 'FORM') throw new UPCError('Halaxy did not accept the new details' + (Array.isArray(res.errors) && res.errors.length ? ': ' + res.errors.join(' ') : '.'));
+      const back = await orgFiles.details(fileId);
+      if (back.title !== clean(title) || !back.comments.includes(clean(comments || '').slice(0, 60))) throw new UPCError('Halaxy does not show the new details on the file. Check the profile.');
+      return true;
+    },
+    // Attaches a file to a funder profile as Add Files does. Returns the new file's id (its Edit pop-up's).
+    async attach(orgId, file, { title, comments }) {
+      const before = await orgFiles.list(orgId);
+      const path = '/file/upload/organisation/' + encodeURIComponent(orgId);
+      const { doc, json } = await http.popup(path);
+      const form = doc.querySelector('form#fileupload, form.js-file-edit-form');
+      const uploadUrl = form && form.getAttribute('data-upload-url');
+      const token = form && form.querySelector('[name="form[_token]"]');
+      if (!uploadUrl || !token) throw new UPCError('The profile\'s Add Files pop-up has changed, so the file was not attached.');
+      const stored = await uploadFile(uploadUrl + (/[?&]organisation=/.test(uploadUrl) ? '' : (uploadUrl.includes('?') ? '&' : '?') + 'organisation=' + encodeURIComponent(orgId)), file);
+      // The category Halaxy's own pop-up offers for a profile file (its template), else none.
+      const cat = (String((json && json.message) || '').match(/name="form\[files\]\[[^\]]*\]\[category\]"[^>]*value="([^"]+)"/) || String((json && json.message) || '').match(/value="([^"]+)"[^>]*name="form\[files\]\[[^\]]*\]\[category\]"/) || [])[1] || '';
+      const res = await http.postForm(path, [['form[files][1][fileEntity]', String(stored.id)], ['form[files][1][title]', title], ['form[files][1][comments]', comments || ''], ['form[files][1][category]', cat], ['form[_token]', token.value]]);
+      if (res && res.status === 'FORM') throw new UPCError('Halaxy did not attach the file' + (Array.isArray(res.errors) && res.errors.length ? ': ' + res.errors.join(' ') : '.'));
+      const added = (await orgFiles.list(orgId)).filter((f) => !before.some((b) => b.id === f.id));
+      if (added.length !== 1) throw new UPCError('Halaxy accepted the file but the profile ' + (added.length ? 'shows ' + added.length + ' new files' : 'does not show it') + '. Check the profile.');
+      return added[0].id;
+    },
+  };
+
   const reports = {
     // Halaxy's Unpaid Invoices report (Reports > Finance, type 5) from `start` ('09-May-2026'): one row per
-    // fee line of every unpaid invoice, active or issued. Columns confirmed live 10 Nov 2026. Invoice-level
-    // cells (date, status, balance) are only on an invoice's first line; they are carried to its other lines.
+    // fee line of every unpaid invoice, active or issued. Columns confirmed live 10 Nov 2026. An invoice's later
+    // fee rows leave the Invoice cell blank, and invoice-level cells (date, status, balance) appear on only one of
+    // its rows; every line returned carries its invoice and the invoice's values.
     async unpaidLines(start) {
       const p = new URLSearchParams([['type', '5'], ['start', start], ['unpaid', '0'], ['overdue', 'all'], ['showTotalMode', '0'],
         ['incomeType', 'paymentMethods'], ['invoicestatuses', 'active'], ['invoicestatuses', 'issued'], ['displayNames', '1'],
         ['plTaxTypeStatus', 'exclusive'], ['lineStatus', 'write-off'], ['lineStatus', 'voided'],
         ['usedDepositOption', 'all'], ['creditSummaryOption', 'summary'], ['clicked', String(Date.now())]]);
-      const doc = await http.html('/report/finance/0?' + p.toString());
-      const table = doc.querySelector('table.table-report');
-      if (!table) throw new UPCError('Halaxy\'s Unpaid Invoices report has changed (its table was not found).');
-      const all = [...table.rows];
-      const head = table.tHead ? [...table.tHead.rows] : all.filter((r) => r.cells.length && [...r.cells].every((c) => c.tagName === 'TH'));
-      const body = all.filter((r) => !head.includes(r));
-      const hg = cellGrid(head);
-      const names = (hg[hg.length - 1] || []).map((c) => clean(c && c.textContent));
+      const { names, body, grid } = await reportTable('/report/finance/0?' + p.toString(), 'Unpaid Invoices');
       const col = (n) => names.indexOf(n);
       const need = ['Invoice / Deposit', 'Date', 'Payer ID', 'Payer', 'Funder', 'Fee', 'Appointment Status', 'Invoice Status', 'Amount'];
       const missing = need.filter((n) => col(n) < 0);
       if (missing.length) throw new UPCError('Halaxy\'s Unpaid Invoices report has changed (' + missing.join(', ') + ' not found).');
       const balanceCol = names.lastIndexOf('Balance');
-      const grid = cellGrid(body);
       const out = [];
       let last = null;
       grid.forEach((row, ri) => {
         if ([...body[ri].cells].some((td) => (td.colSpan || 1) > 3)) return;   // totals and headings
         const cell = (n) => { const i = typeof n === 'number' ? n : col(n); return i < 0 ? '' : clean(row[i] && row[i].textContent); };
         const link = row[col('Invoice / Deposit')] && row[col('Invoice / Deposit')].querySelector('a[href*="/invoice/"]');
-        const invoiceId = link ? (link.getAttribute('href').match(/\/invoice\/(\d+)/) || [])[1] || null : null;
-        const same = last && last.invoiceId === invoiceId && last.invoice === cell('Invoice / Deposit');
+        let invoiceId = link ? (link.getAttribute('href').match(/\/invoice\/(\d+)/) || [])[1] || null : null;
+        const text = cell('Invoice / Deposit');
+        // An invoice's second and later fees leave the Invoice cell blank (live, 12 Nov 2026: UPC-37737, two fees):
+        // they belong to the invoice above.
+        if (!invoiceId && last && last.invoiceId && (!text || text === last.invoice)) invoiceId = last.invoiceId;
+        const same = !!last && !!invoiceId && last.invoiceId === invoiceId;
         const line = {
-          invoiceId, invoice: cell('Invoice / Deposit'),
+          invoiceId, invoice: text || (same ? last.invoice : ''),
           date: cell('Date') || (same ? last.date : ''), invoiceStatus: cell('Invoice Status') || (same ? last.invoiceStatus : ''),
           balance: balanceCol >= 0 && cell(balanceCol) ? money.cents(cell(balanceCol)) : (same ? last.balance : null),
           payerId: cell('Payer ID') || (same ? last.payerId : ''), payer: cell('Payer') || (same ? last.payer : ''),
@@ -631,6 +1025,48 @@
         };
         out.push(line);
         last = line;
+      });
+      // Invoice-level cells sit on one of an invoice's lines only (the balance on its last line, live 12 Nov 2026), so
+      // every line gets the invoice's values, whichever line carries them.
+      const byInv = new Map();
+      out.forEach((l) => { if (l.invoiceId) { if (!byInv.has(l.invoiceId)) byInv.set(l.invoiceId, []); byInv.get(l.invoiceId).push(l); } });
+      byInv.forEach((ls) => {
+        ['date', 'invoiceStatus', 'payerId', 'payer', 'funder'].forEach((k) => { const v = (ls.find((l) => l[k]) || {})[k]; if (v) ls.forEach((l) => { l[k] = v; }); });
+        const withBal = ls.filter((l) => l.balance !== null && l.balance !== undefined);
+        if (withBal.length) { const b = withBal[withBal.length - 1].balance; ls.forEach((l) => { l.balance = b; }); }
+      });
+      return out;
+    },
+    // Every payment recorded in Halaxy between two days (Halaxy's Income report, Finance type 1, filtered by the payment's
+    // date; capture 12 Nov 2026): one entry per payment, { invoiceId, invoice, payer, funder, date (dd-Mon-yyyy, the
+    // payment's), method, amount (pence) }. An invoice with several fees has a row per fee; its first row links the
+    // invoice and gives the payer and funder; a second payment sits on a later row, which repeats the number unlinked.
+    async paymentLines(start, stop) {
+      const p = new URLSearchParams([['type', '1'], ['tyropm', '19'], ['start', start], ['stop', stop], ['altDate', ''], ['transferStart', ''],
+        ['transferStop', ''], ['transferAltDate', ''], ['startExpiry', ''], ['stopExpiry', ''], ['aa', ''], ['pr', ''], ['loc', ''], ['clinic', ''],
+        ['overdueDays', ''], ['payer', 'All'], ['patient', ''], ['organisation', ''], ['autopm', ''], ['showTotalMode', '0'], ['ecat', ''], ['aob', ''],
+        ['incomeType', 'paymentMethods'], ['displayNames', '1'], ['rstat', ''], ['rtype', ''], ['rstype', ''], ['xc', ''], ['rc', ''], ['qc', ''],
+        ['plTaxTypeStatus', 'exclusive'], ['lineStatus', 'write-off'], ['lineStatus', 'voided'], ['usedDepositOption', 'all'],
+        ['creditSummaryOption', 'summary'], ['clicked', String(Date.now())]]);
+      const { names, body, grid } = await reportTable('/report/finance/0?' + p.toString(), 'Income');
+      const col = (n) => names.indexOf(n);
+      const invCol = col('Invoice / Deposit'), payCol = col('Payments'), dateCol = names.lastIndexOf('Date'), methodCol = col('Method');
+      const missing = ['Invoice / Deposit', 'Payer', 'Funder', 'Payments', 'Method'].filter((n) => col(n) < 0);
+      if (dateCol <= col('Date')) missing.push('the payment Date');
+      if (missing.length) throw new UPCError('Halaxy\'s Income report has changed (' + missing.join(', ') + ' not found).');
+      const num = (t) => (String(t || '').match(/UPC-?0*(\d+)/i) || [])[1] || '';
+      const out = [];
+      let cur = null;
+      grid.forEach((row, ri) => {
+        if ([...body[ri].cells].some((td) => (td.colSpan || 1) > 3)) return;   // totals and headings
+        const cell = (i) => (i < 0 ? '' : clean(row[i] && row[i].textContent));
+        const link = row[invCol] && row[invCol].querySelector('a[href*="/invoice/"]');
+        const text = cell(invCol);
+        if (link) cur = { invoiceId: (link.getAttribute('href').match(/\/invoice\/(\d+)/) || [])[1] || null, invoice: text, payer: cell(col('Payer')), funder: cell(col('Funder')) };
+        else if (text && (!cur || num(text) !== num(cur.invoice))) cur = { invoiceId: null, invoice: text, payer: cell(col('Payer')), funder: cell(col('Funder')) };
+        if (!cur) return;
+        const method = cell(methodCol), amount = money.cents(cell(payCol));
+        if (method && amount !== null) out.push(Object.assign({}, cur, { date: cell(dateCol), method, amount }));
       });
       return out;
     },
@@ -690,11 +1126,25 @@
     async addToPatient(linkPaGId, task) {
       return addTask('/task/new/linkPaG/' + encodeURIComponent(linkPaGId), () => tasks.forPatient(linkPaGId), task, 'in the patient\'s tasks');
     },
+    // On a funder (organisation) profile (capture 13 Nov 2026: /task/new/organisation/:org, the same form).
+    async forOrganisation(orgId) {
+      const j = await http.json('/task/organisation/' + encodeURIComponent(orgId) + '/list-data');
+      const rows = Array.isArray(j) ? j : (j && (j.rowData || j.data));
+      if (!Array.isArray(rows)) throw new UPCError('The profile\'s task list has changed, so its tasks could not be read.');
+      return rows;
+    },
+    async addToOrganisation(orgId, task) {
+      return addTask('/task/new/organisation/' + encodeURIComponent(orgId), () => tasks.forOrganisation(orgId), task, 'on the profile\'s task list');
+    },
+    // A general task, as Tasks & Follow-ups' New task (/task/new). No list to check against, so it is added each time.
+    async addGeneral(task) {
+      return addTask('/task/new', null, task, '');
+    },
   };
   async function addTask(path, list, task, where) {
     const mark = String(task.key || task.title).replace(/["\\]/g, '');
     const listed = (rows) => JSON.stringify(rows || '').includes(mark);
-    if (listed(await list().catch(() => null))) return false;
+    if (list && listed(await list().catch(() => null))) return false;
     const { doc } = await http.popup(path + '?clicked=' + Date.now());
     const form = doc.querySelector('form#form_task_edit');
     const need = ['form[title]', 'form[linkPrGs][]', 'form[priority]', 'form[displayDueDate]', 'form[comment]', 'form[_token]'];
@@ -709,7 +1159,7 @@
     pairs.push(['form[linkPrGs][]', who.value]);
     const res = await http.postForm(path, pairs);
     if (!res || !['POPUP', 'REFRESH', 'OK'].includes(res.status)) http.expectRefresh(res, 'Adding the task');
-    if (!listed(await list())) throw new UPCError('Halaxy accepted the task, but it does not show ' + where + '.');
+    if (list && !listed(await list())) throw new UPCError('Halaxy accepted the task, but it does not show ' + where + '.');
     return true;
   }
 
@@ -922,6 +1372,43 @@
       if (changed.length) throw new UPCError('The label was added, but these details now read differently on the Edit page: ' + changed.map((x) => x.split('=')[0]).join(', ') + '. Please check the patient.');
       return true;
     },
+    // Sets the patient's status on their Edit page (select patientdetailmain[linkPaG][customStatus], options valued
+    // by name: current, claimant, discharged, review...; capture 11 Nov 2026), sending the form exactly as Halaxy
+    // filled it with only the status changed, then reads it back. Only from `from` (what the caller saw), so a
+    // status someone changed meanwhile is left alone. False if it's already `to`.
+    async setStatus(linkPaGId, from, to) {
+      const path = '/patient/' + encodeURIComponent(linkPaGId) + '/edit';
+      const FIELD = 'patientdetailmain[linkPaG][customStatus]';
+      const read = async () => {
+        const doc = await http.html(path);
+        const form = doc.querySelector('form#patientGeneralEditForm');
+        const sel = form && form.querySelector('select[name="' + FIELD + '"]');
+        if (!sel || !form.querySelector('[name="patientdetailmain[_token]"]')) throw new UPCError('The patient Edit page has changed (status not found), so the status was not changed.');
+        return { form, sel };
+      };
+      const { form, sel } = await read();
+      const now0 = String(sel.value || '').toLowerCase();
+      if (now0 === String(to).toLowerCase()) return false;
+      if (from && now0 !== String(from).toLowerCase()) throw new UPCError('The status is now ' + (now0 || 'blank') + ', not ' + from + ', so it was left alone.');
+      const opt = [...sel.options].find((x) => x.value.toLowerCase() === String(to).toLowerCase());
+      if (!opt) throw new UPCError('There is no "' + to + '" status in Halaxy\'s list, so it was not changed.');
+      const was = serialize(form).filter(([k]) => k !== 'patientdetailmain[_token]' && k !== FIELD);
+      [...sel.options].forEach((x) => { x.selected = x === opt; });
+      const pairs = serialize(form);
+      const save = form.querySelector('[name="save_patient"]');
+      if (save && !pairs.some(([k]) => k === 'save_patient')) pairs.push(['save_patient', save.value || '']);
+      const body = new URLSearchParams();
+      pairs.forEach(([k, v]) => body.append(k, v));
+      const res = await pacedFetch(url(path), { method: 'POST', credentials: 'same-origin', body: body.toString(),
+        headers: Object.assign({ 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, JSON_HEADERS) });
+      if (!res.ok) throw new UPCError('Halaxy returned ' + res.status + ' when saving the patient.');
+      const after = await read();
+      if (String(after.sel.value).toLowerCase() !== opt.value.toLowerCase()) throw new UPCError('Halaxy did not keep the new status. Change it on the patient\'s Edit page instead.');
+      const now = serialize(after.form).filter(([k]) => k !== 'patientdetailmain[_token]' && k !== FIELD).map((x) => x.join('='));
+      const changed = was.map((x) => x.join('=')).filter((x) => !now.includes(x));
+      if (changed.length) throw new UPCError('The status was changed, but these details now read differently on the Edit page: ' + changed.map((x) => x.split('=')[0]).join(', ') + '. Please check the patient.');
+      return true;
+    },
   };
 
   // ------------------------------------------------------------------ patient forms
@@ -1039,6 +1526,16 @@
     .upc-native td.number, .upc-native th.number { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .upc-native table.table { margin: 12px 0 0; }
     .upc-native table.table td { vertical-align: top; }
+    .upc-native .upc-run { margin: 12px 0 16px; }
+    .upc-native .upc-run .progress { height: 8px; background: var(--vs-card-header-bg-color, #e9ecef); border-radius: 4px; overflow: hidden; }
+    .upc-native .upc-run .progress-bar { height: 100%; background-color: var(--vs-btn-primary-bg-color, var(--primary, #7c3fe4)); transition: width .3s ease; }
+    .upc-native .upc-run-now { margin-top: 4px; }
+    .upc-native .upc-run-inline { display: inline-flex; align-items: center; gap: 8px; }
+    .upc-native .upc-run-inline .progress { display: inline-block; width: 120px; height: 8px; background: var(--vs-card-header-bg-color, #e9ecef); border-radius: 4px; overflow: hidden; }
+    .upc-native .upc-run-inline .progress-bar { display: block; height: 100%; background-color: var(--vs-btn-primary-bg-color, var(--primary, #7c3fe4)); }
+    .upc-native .upc-run-log > summary { display: inline-block; list-style: none; margin-top: 8px; }
+    .upc-native .upc-run-log > summary::-webkit-details-marker { display: none; }
+    .upc-native .upc-run-log .upc-box { max-height: 300px; overflow: auto; margin-top: 8px; }
     .upc-dialog { position: fixed; inset: 0; z-index: 2990; overflow-y: auto; }
     .upc-dialog > .upc-backdrop { position: fixed; inset: 0; background: #000; opacity: .5; }
     .upc-dialog > .modal-dialog { position: relative; margin: 28px auto; width: calc(100% - 32px); max-width: 800px; pointer-events: auto; }
@@ -1059,8 +1556,50 @@
     (document.head || document.documentElement).appendChild(s);
   }
 
+  // A run of steps shown as a progress bar with one line for the current step; the steps themselves go to a log,
+  // shown when asked for (Carl, 13 Nov 2026: no step-by-step output while it works). Problems are always shown once
+  // it has finished. The script keeps the run object and puts `ui.run.html(run)` where its log used to be.
+  const runOpen = new Map();   // run id -> log open (kept across re-renders)
+  let runSeq = 0;
+  document.addEventListener('toggle', (e) => {
+    const d = e.target;
+    if (d && d.matches && d.matches('details[data-upc-run]')) runOpen.set(d.getAttribute('data-upc-run'), d.open);
+  }, true);
+  const run = {
+    // total: the number of units of work (0 when unknown: the bar just moves)
+    start(total) { return { id: 'r' + (++runSeq), total: total || 0, done: 0, now: '', lines: [], finished: false }; },
+    step(r, text, err) { if (!r) return; r.lines.push({ t: String(text), err: !!err }); if (!err) r.now = String(text); },
+    tick(r, n) { if (r) r.done = Math.min(r.total || Infinity, r.done + (n || 1)); },
+    end(r, text) { if (!r) return; r.finished = true; r.done = r.total; if (text) r.lines.push({ t: String(text), err: false }); r.now = text || ''; },
+    // A small moving bar with a short status, for a page's header line while it checks.
+    inline(text) {
+      return '<span class="upc-run-inline"><span class="progress" role="progressbar"><span class="progress-bar progress-bar-striped progress-bar-animated" style="width:100%"></span></span><span class="text-muted">' + esc(text) + '</span></span>';
+    },
+    html(r) {
+      if (!r) return '';
+      const errs = r.lines.filter((l) => l.err);
+      let h = '<div class="upc-run">';
+      if (!r.finished) {
+        const pct = r.total ? Math.round(100 * r.done / r.total) : 0;
+        // Unknown length: Halaxy's own striped, moving bar (Bootstrap) at full width.
+        h += '<div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100"' + (r.total ? ' aria-valuenow="' + pct + '"' : '') + '>' +
+          '<div class="progress-bar' + (r.total ? '' : ' progress-bar-striped progress-bar-animated') + '" style="width:' + (r.total ? pct : 100) + '%"></div></div>' +
+          '<div class="upc-run-now text-muted" aria-live="polite">' + esc(r.now || 'Working...') + '</div>';
+      } else {
+        if (r.now) h += '<div class="upc-run-now">' + esc(r.now) + '</div>';
+        if (errs.length) h += '<div class="upc-err upc-run-errs"><b>' + errs.length + ' problem' + (errs.length === 1 ? '' : 's') + ':</b>' + errs.map((l) => '<div>' + esc(l.t) + '</div>').join('') + '</div>';
+      }
+      if (r.lines.length) {
+        h += '<details class="upc-run-log" data-upc-run="' + r.id + '"' + (runOpen.get(r.id) ? ' open' : '') + '><summary class="btn btn-outline-primary-light">View log (' + r.lines.length + ' step' + (r.lines.length === 1 ? '' : 's') + ')</summary>' +
+          '<div class="upc-box upc-log">' + r.lines.map((l) => '<div class="' + (l.err ? 'upc-err' : '') + '">' + esc(l.t) + '</div>').join('') + '</div></details>';
+      }
+      return h + '</div>';
+    },
+  };
+
   const ui = {
     nativeStyles,
+    run,
     // A pop-up that looks like Halaxy's own. Returns { root, body, close, setTitle }. `onClose` runs when
     // it closes; `canClose` (optional) may return false to keep it open (for example while working).
     // `above` puts it over Halaxy's own pop-ups (for steps that start from one); `small` is 500px, `wide` 1000px.
@@ -1222,7 +1761,157 @@
     },
   };
 
+
+
+  // ------------------------------------------------------------------ background checks
+
+  // When background checks (menu counts, Patient statuses and the like) may run: in the visible tab, between 7 am and
+  // 9 pm, only while someone has used this PC in the last 30 minutes (any Halaxy tab), and not while Halaxy has asked
+  // us to wait. A PC left open overnight or unattended goes quiet. Checks fall due at their interval give or take 15%,
+  // so they don't run on an exact clock (Carl, 12 Nov 2026).
+  const BG = { from: 7, to: 21, idleMs: 30 * 60e3, key: 'upc-core:active' };
+  let activeMark = 0;
+  function markActive() {
+    const now = Date.now();
+    if (now - activeMark < 30e3) return;
+    activeMark = now;
+    try { localStorage.setItem(BG.key, String(now)); } catch (e) { /* storage blocked */ }
+  }
+  ['pointerdown', 'keydown', 'wheel', 'touchstart', 'mousemove'].forEach((t) => document.addEventListener(t, markActive, { capture: true, passive: true }));
+  const background = {
+    // Someone has used this PC (any Halaxy tab) in the last 30 minutes.
+    active() {
+      let at = activeMark;
+      try { at = Math.max(at, Number(localStorage.getItem(BG.key)) || 0); } catch (e) { /* storage blocked */ }
+      return Date.now() - at < BG.idleMs;
+    },
+    inHours() { const h = new Date().getHours(); return h >= BG.from && h < BG.to; },
+    ok() { return document.visibilityState === 'visible' && background.inHours() && background.active() && http.pausedFor() <= 0; },
+    // True when a check last run at lastMs is due again, everyMs give or take 15% (a different, fixed amount each time).
+    due(lastMs, everyMs) {
+      if (!lastMs) return true;
+      const f = 0.85 + 0.3 * (Math.abs(Math.sin(Number(lastMs) % 100000)) % 1);
+      return Date.now() - lastMs >= everyMs * f;
+    },
+    // A pause of min to max milliseconds, for spacing changes made without a person clicking.
+    pause(min, max) { return new Promise((r) => setTimeout(r, min + Math.random() * (max - min))); },
+  };
+
+  // ------------------------------------------------------------------ who is signed in
+
+  // Halaxy may not have filled in who's signed in when a script starts (HkUser.pracName empty for a few seconds: live,
+  // 11 Nov 2026), so whenAllowed keeps looking for 20 seconds, and the name in the top bar is a fallback.
+  const user = {
+    name(known) {
+      const h = window.HkUser || {};
+      const named = String(h.pracName || (h.CalendarDefault || {}).pracName || '').trim();
+      if (named) return named;
+      const btn = document.getElementById('activeUser');
+      if (btn && clean(btn.textContent)) return clean(btn.textContent);
+      const list = (known || []).map((n) => n.toLowerCase());
+      if (!list.length) return '';
+      const el = [...document.querySelectorAll('header *, nav *, .navbar *, #top *, #headerWrapper *')]
+        .find((e) => !e.children.length && list.includes(e.textContent.trim().toLowerCase()));
+      return el ? el.textContent.trim() : '';
+    },
+    // True when the signed-in person is one of `names` ('Carl Healy').
+    is(names) { const me = user.name(names).toLowerCase(); return !!me && names.some((n) => n.toLowerCase() === me); },
+    // Runs fn once the signed-in person is one of `names`; gives up after 20 seconds.
+    whenAllowed(names, fn) {
+      if (user.is(names)) { fn(); return; }
+      const t0 = Date.now();
+      const timer = setInterval(() => { if (user.is(names)) { clearInterval(timer); fn(); } else if (Date.now() - t0 > 20000) clearInterval(timer); }, 500);
+    },
+    // Initials from a name ('Carl Healy' -> 'CH').
+    initials(name) { const w = clean(name).split(' ').filter(Boolean); return w.length ? (w[0][0] + (w.length > 1 ? w[w.length - 1][0] : '')).toUpperCase() : ''; },
+  };
+
+  // ------------------------------------------------------------------ per-PC working state
+
+  // localStorage under a prefix ('upc-rtb:'), shared by this PC's Halaxy tabs. Never note text, form or survey answers.
+  function storage(prefix) {
+    return {
+      get(k, d) { try { const v = localStorage.getItem(prefix + k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+      set(k, v) { try { localStorage.setItem(prefix + k, JSON.stringify(v)); } catch (e) { /* storage blocked or full */ } },
+      del(k) { try { localStorage.removeItem(prefix + k); } catch (e) { /* storage blocked */ } },
+    };
+  }
+
+  // ------------------------------------------------------------------ calendar
+
+  // Appointments (with a patient) from Halaxy's calendar, every practitioner. Several scripts read long windows (Patient
+  // statuses, Open-ended patients, Review requests), so on each page one standard window (200 days back to 125 ahead) is
+  // read once and shared for 15 minutes; a window outside it is read on its own.
+  const CAL = { back: 200, ahead: 125, freshMs: 15 * 60e3 };
+  let calShared = null;   // { at, from, to, promise }
+  async function calendarRead(fromMs, toMs) {
+    const pracs = await http.json('/lookup/practitioner?clinic=&include_id=&type=');
+    const qs = new URLSearchParams({ start: Math.floor(fromMs / 1000), end: Math.floor(toMs / 1000) });
+    (Array.isArray(pracs) ? pracs : []).forEach((p, i) => qs.append('practitioners[' + i + '][id]', p.id));
+    const cal = await http.json('/calendar/json?' + qs.toString());
+    if (!cal || !cal.payload || !Array.isArray(cal.payload.events)) throw new UPCError('Halaxy\'s calendar data has changed (no events list).');
+    return cal.payload.events.filter((e) => e.type === 'appointment' && e.linkPaGId);
+  }
+  const calendar = {
+    // Forget the shared window, so the next read asks Halaxy again (a person pressing "Check now").
+    forget() { calShared = null; },
+    async appointments(fromMs, toMs) {
+      const day0 = new Date(); day0.setHours(0, 0, 0, 0);
+      const from = day0.getTime() - CAL.back * 86400e3, to = day0.getTime() + (CAL.ahead + 1) * 86400e3;
+      if (fromMs < from || toMs > to) return calendarRead(fromMs, toMs);
+      if (!calShared || Date.now() - calShared.at > CAL.freshMs || calShared.from !== from) {
+        calShared = { at: Date.now(), from, to, promise: calendarRead(from, to) };
+        calShared.promise.catch(() => { calShared = null; });
+      }
+      const all = await calShared.promise;
+      return all.filter((e) => Number(e.start) * 1000 >= fromMs && Number(e.start) * 1000 < toMs);
+    },
+  };
+
+  // ------------------------------------------------------------------ note wording
+
+  // Phrases in clinical notes, shared so every script reads a note the same way. Only the kind's name is ever kept,
+  // never the words. A phrase just after "not", "no longer" and similar doesn't count ("not yet discharged").
+  const IF_NEEDED = '(if|when|as) (needed|required|necessary|nec|req|reqd|appropriate)|if (any|further) (problems|issues|concerns|symptoms)|if (it |things |symptoms |pain )?(gets? worse|worsens?|returns?|recurs?|flares?( up)?)|prn|sos';
+  const wording = {
+    NEGATION: /\b(not|no longer|never|isn'?t|wasn'?t|hasn'?t|without|unable to|not yet|before|no need to)\b[^.]{0,20}$/i,
+    // Treatment has finished.
+    FINISHED: [
+      ['discharged', /\bdischarg(ed|e)\b/i],
+      ['goals met', /\bgoals? (met|achieved|reached)\b|\bachieved (all )?(his |her |their )?goals?\b/i],
+      ['no further treatment', /\bno (further|more) (treatment|physio|physiotherapy|sessions?|appointments?) (needed|required|necessary)\b/i],
+      ['self-managing', /\bself[- ]?manag|\bindependent(ly)? (with|managing)|\bcontinue (with )?(home )?(exercises|hep|programme|program) independently\b/i],
+    ],
+    // Left open: the patient may come back.
+    OPEN_ENDED: [
+      ['open return', /\bopen (return|review|f\/?u|follow[- ]?up)\b|\bleft open\b|\bopen[- ]ended\b/i],
+      ['open appointment', /\bopen (appointment|appt|booking)\b/i],
+      ['book again if needed', new RegExp('\\b(re-?)?book (again|in|back|another( session| appointment| appt)?|a follow[- ]?up)?\\s*(' + IF_NEEDED + ')\\b', 'i')],
+      ['come back if needed', new RegExp('\\b(come|coming|call|ring|get|getting|contact|be) (back|in touch|us)\\s*(' + IF_NEEDED + ')\\b|\\b(to |will )?(contact|call|ring|email|e-?mail|text|message) (us|clinic|the clinic|me)?\\s*(' + IF_NEEDED + ')\\b|\\bget in touch\\b', 'i')],
+      ['see how things go', /\bsee how (things|it|he|she|they|pt|patient|symptoms|knee|back|shoulder|ankle|hip|neck)?\s*(go(es)?|get(s)? on|progress(es)?|settle(s)?)\b|\bwait and see\b/i],
+      ['see as needed', /\b(see|review|f\/?u|follow[- ]?up) (as|when|if) (needed|required|necessary|nec|req|reqd)\b|\bprn\b|\bsos\b/i],
+    ],
+    // The kinds in `list` ([[name, regex]]) found in text, in list order; with negatable (default), negated ones don't count.
+    find(text, list, negatable) {
+      const t = String(text || '');
+      const found = [];
+      list.forEach(([name, re]) => {
+        const g = new RegExp(re.source, 'gi');
+        let m;
+        while ((m = g.exec(t))) {
+          if (negatable !== false && wording.NEGATION.test(t.slice(Math.max(0, m.index - 30), m.index))) continue;
+          if (!found.includes(name)) found.push(name);
+          break;
+        }
+      });
+      return found;
+    },
+    finished(text) { return wording.find(text, wording.FINISHED); },
+    openEnded(text) { return wording.find(text, wording.OPEN_ENDED); },
+  };
+
   window.UPC = Object.freeze({
-    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, forms, notes, followUps, patient, tasks, surveys, reports, dayLabel, parseDay, rebate, files, load, ui,
+    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, forms, notes, followUps, patient, tasks, surveys, reports, dayLabel, parseDay, rebate, files, deposits, orgFiles, load, ui,
+    user, storage, calendar, wording, background,
   });
 })();

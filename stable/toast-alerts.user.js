@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Halaxy: toast alerts
+// @name         UPC Look: Toast alerts
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1
+// @version      1.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/toast-alerts.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/toast-alerts.user.js
