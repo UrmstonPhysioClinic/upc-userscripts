@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Ready to bill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.4
+// @version      0.4.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
@@ -23,14 +23,17 @@
  *    "3rd of 5", claim, patient), cached per invoice; and one calendar request for everyone (last attended,
  *    next booked).
  *  - Due when: the authorisation is used up; or no attended appointment for 14 days and nothing booked.
- *    Bupa, AXA, WPA and Aviva can also be billed mid-treatment (Carl, 10 Nov 2026), so for them also: the last
- *    working day of the month, or fees 3 months old or more. Other funders (3rd Party Funded and so on)
- *    are billed only at the end.
+ *    Bupa, AXA, WPA and Aviva can also be billed mid-treatment (Carl, 10 Nov 2026), so for them also: the
+ *    oldest unbilled fee is 4 weeks old (unless the next visit is within 7 days: then after it, on the same
+ *    bill), or fees 3 months old or more. Rolling rather than month end (Carl, 14 Nov 2026), so the work is
+ *    spread through the month and nobody drops off the list on a set day. Other funders (3rd Party Funded and
+ *    so on) are billed only at the end.
  *  - Excess hold (Bupa, AXA, WPA): on a new claim (its first authorised appointment is among the unbilled
  *    fees) hold until the fees cover the excess. Bupa and AXA: the excess is the patient's answer to
  *    "Excess amount:" on their Initial Assessment Form (patient-reported, unconfirmed, used only to time
  *    the hold). Aviva and WPA forms don't ask, and a missing or unreadable answer falls back to: hold until
- *    there are at least 2 fees. A used-up authorisation or old fees override.
+ *    there are at least 2 fees. A used-up authorisation, old fees, or no visit for 14 days with nothing booked
+ *    (no more fees coming) override.
  *  - Patients whose only unbilled fees are cancelled or did-not-attend: listed with each appointment's
  *    comments and Set to £ 0.00 (fee and funder rebate, after confirming), read when the page is open.
  *  - Shown only to Carl and Wendy, only inside Halaxy. The count on the menu is refreshed at most every
@@ -42,12 +45,12 @@
   if (window.__hxReadyToBill) return;
   window.__hxReadyToBill = true;
 
-  const VERSION = '0.3.4';
+  const VERSION = '0.4.0';
   const ROUTE = 'upc-ready-to-bill';
   const MENU_CLS = 'upc-rtb-menu';
   const ALLOWED = ['Carl Healy', 'Wendy Pritchard'];   // Carl, 7 Nov 2026: only the two of them
   const DAY = 86400e3;
-  const WINDOW_MONTHS = 6, OLD_MONTHS = 3, QUIET_DAYS = 14, MIN_FEES_NO_EXCESS = 2;
+  const WINDOW_MONTHS = 6, OLD_MONTHS = 3, QUIET_DAYS = 14, MIN_FEES_NO_EXCESS = 2, ROLLING_DAYS = 28, SOON_DAYS = 7;
   const REFRESH_EVERY = 2 * 3600e3;    // menu count
   const PAGE_FRESH = 10 * 60e3;        // the page re-checks when its results are older than this
   const KEY = 'upc-rtb:';
@@ -64,13 +67,6 @@
   const label = (ms) => U().dayLabel(ms);
   const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
   const addMonths = (ms, n) => { const d = new Date(ms); const r = new Date(d.getFullYear(), d.getMonth() + n, 1); r.setDate(Math.min(d.getDate(), new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate())); return r.getTime(); };
-  // The last weekday of the month (bank holidays aren't known, so a bank holiday Friday still counts).
-  const isLastWorkingDay = (ms) => {
-    const d = new Date(ms);
-    const last = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-    while (last.getDay() === 0 || last.getDay() === 6) last.setDate(last.getDate() - 1);
-    return last.getDate() === d.getDate();
-  };
 
   // ------------------------------------------------------------------ who may see it
 
@@ -200,7 +196,6 @@
     });
 
     // Decide.
-    const monthEnd = isLastWorkingDay(day0);
     for (const g of list) {
       const reasons = [];
       const ref = g.referral;
@@ -208,11 +203,17 @@
       if (authUsed) reasons.push('Authorisation used up (' + ref.position + ' of ' + ref.limit + ')');
       const quiet = !g.nextBooked && (!g.lastSeen || g.lastSeen < now - QUIET_DAYS * DAY);
       if (quiet) reasons.push('No visit for ' + QUIET_DAYS + ' days' + (g.lastSeen ? ' (last ' + label(g.lastSeen) + ')' : '') + ', nothing booked');
-      // Mid-treatment billing (month end, old fees, the excess hold) is for Bupa, AXA, WPA and Aviva only.
+      // Mid-treatment billing (4-weekly, old fees, the excess hold) is for Bupa, AXA, WPA and Aviva only.
       const old = g.mid && g.oldest !== null && g.oldest <= addMonths(day0, -OLD_MONTHS);
       if (old) reasons.push('Fees from ' + label(g.oldest) + ', over ' + OLD_MONTHS + ' months old');
-      if (g.mid && monthEnd) reasons.push('Last working day of the month');
-      const mayHold = g.mid && g.newClaim && g.billable.length > 0 && !authUsed && !old;
+      // Rolling, not month end (Carl, 14 Nov 2026: billed "around once a month", spread through the month): due once
+      // the oldest unbilled fee is 4 weeks old, unless the next visit is within a week, so that it joins the same bill.
+      const rolling = g.mid && !old && g.oldest !== null && g.oldest <= day0 - ROLLING_DAYS * DAY;
+      const visitSoon = !!g.nextBooked && g.nextBooked - now <= SOON_DAYS * DAY;
+      if (rolling && !visitSoon) reasons.push('Fees from ' + label(g.oldest) + ', over 4 weeks old');
+      const afterVisit = rolling && visitSoon;
+      // The excess hold ends when no more fees are coming (no visit for 14 days, nothing booked): Carl, 14 Nov 2026.
+      const mayHold = g.mid && g.newClaim && g.billable.length > 0 && !authUsed && !old && !quiet;
       let excess = null;
       if (mayHold && EXCESS_ON_FORM.test(g.funder) && g.patientId) {
         try { excess = await patientExcess(g, say); } catch (e) { tellHealthCheck(e); }   // fall back to 2 fees
@@ -227,13 +228,13 @@
           : 'Held for the excess: first invoice on a new claim, ' + g.billable.length + ' fee so far (' +
             (EXCESS_ON_FORM.test(g.funder) ? 'excess not found on the intake form' : g.funder + '\'s form doesn\'t ask for the excess') +
             ', so waiting for ' + MIN_FEES_NO_EXCESS + ' fees)')
-          : g.state === 'later' ? (g.mid ? 'Not due yet' + (when ? ': ' + when : '')
+          : g.state === 'later' ? (g.mid ? (afterVisit ? 'Fees over 4 weeks old: billed after the visit on ' + label(g.nextBooked) + ', so it goes on the same bill' : 'Not due yet' + (when ? ': ' + when : ''))
             : 'Billed at the end of treatment (' + g.funder + ' isn\'t billed mid-treatment)' + (when ? ': ' + when : '')) : '';
     }
     const order = { due: 0, check: 1, held: 2, later: 3 };
     list.sort((a, b) => order[a.state] - order[b.state] || (a.oldest || 0) - (b.oldest || 0));
     const result = {
-      at: Date.now(), by: VERSION, monthEnd,
+      at: Date.now(), by: VERSION,
       due: list.filter((g) => g.state === 'due').length,
       rows: list.map((g) => ({
         payer: g.payer, funder: g.funder, patientId: g.patientId, state: g.state, reasons: g.reasons, note: g.note,
@@ -512,5 +513,5 @@
   else begin();
 
   // For tests and diagnostics.
-  window.upcReadyToBill = { version: VERSION, check, isLastWorkingDay, allowed, userName };
+  window.upcReadyToBill = { version: VERSION, check, allowed, userName };
 })();

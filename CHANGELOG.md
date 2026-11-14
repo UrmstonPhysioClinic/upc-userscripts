@@ -1,5 +1,8 @@
 # Changelog
 
+## Ready to bill: rolling instead of month end, 14 Nov 2026 (beta)
+- Ready to bill 0.4.0 (Carl, 14 Nov 2026): the month-end rule is gone. Bupa, AXA, WPA and Aviva patients are due once their oldest unbilled fee is 4 weeks old, unless their next visit is within 7 days (then after it, on the same bill), so billing is spread through the month and nobody drops off the list on a set day. The excess hold now also ends when no more fees are coming (no visit for 14 days, nothing booked). Authorisation used up, 14 days quiet and 3-month-old fees still make a patient due.
+
 ## Bank statement: last month's statement due, 13 Nov 2026 (beta)
 - Bank statement 0.2.2 (Carl, 13 Nov 2026): from the 15th, a blob on the menu item while last month's statement isn't in the register (before the 15th, the month before). Checked at most once a day from the Starling Bank profile, in the visible tab, and again straight after a register is saved.
 
