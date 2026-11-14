@@ -1,5 +1,10 @@
 # Changelog
 
+## Statement register as Admin Notes, 14 Nov 2026 (beta)
+- Bank statement 0.2.3 (Carl, 14 Nov 2026): each statement's register entry is now an Admin Note on the Starling Bank profile, not a PDF file. Same details (period, fingerprint, balances, who read it and when, each insurer payment and what became of it); one request reads every entry, and saving one is the Admin Note pop-up only.
+- Core 0.1.45: `UPC.adminNotes` (list, add, update) for organisations and patients.
+- Health check 1.1.39: the Admin Notes list and Add pop-up on the Starling Bank profile.
+
 ## Ready to bill: excess limit, 14 Nov 2026 (beta)
 - Ready to bill 0.4.2 (Carl, 14 Nov 2026): an excess on the intake form over £ 500 (was £ 2,000) is taken as a mistake (an extra 0, the annual limit) and the 2-fee rule is used instead. Real excesses run to about £ 300.
 

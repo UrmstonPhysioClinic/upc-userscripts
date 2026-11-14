@@ -15,7 +15,7 @@ Run:  python3 tests/bank-statement/test_bank_statement.py
 Needs: Python 3 with Playwright (Chromium) and reportlab; npm (installs pdf.js into tests/bank-statement/node_modules
 on first run).
 """
-import asyncio, json, subprocess, sys, urllib.parse
+import asyncio, json, re, subprocess, sys, urllib.parse
 from pathlib import Path
 from playwright.async_api import async_playwright
 from reportlab.lib.pagesizes import A4
@@ -298,6 +298,28 @@ async def halaxy(route):
             S['inv'][i][3] -= take; d['balance'] -= take
             S.setdefault('applied', []).append((i, TODAY, take, 'Direct Deposit', d['date']))
         return await js({'status': 'REFRESH'})
+    # Admin Notes (capture 14 Nov 2026): list-data with the whole text, Add and Edit pop-ups (form#adminNoteForm)
+    notes = S.setdefault('notes', {})
+    m = re_.match(r'^/a/pr/555/communication-log/organisation/(\d+)/list-data$', p)
+    if m:
+        return await js({'data': [{'id': n['id'], 'date': n['date'], 'channel': '', 'category': '', 'assignee': '', 'privacy': 'All', 'creator': n['creator'], 'isImportant': False, 'taskCount': 0,
+                                   'content': n['html'], 'actions': ''} for n in reversed(notes.get(int(m.group(1)), []))]})
+    m = re_.match(r'^/a/pr/555/communication-log/organisation/(\d+)/(new|(\d+)/edit)$', p)
+    if m:
+        org = int(m.group(1))
+        if req.method == 'GET':
+            old = next((n for n in notes.get(org, []) if str(n['id']) == m.group(3)), None)
+            return await js({'status': 'FORM', 'title': 'Add Admin Note', 'message': "<form id='adminNoteForm'><input type='hidden' name='form[_token]' value='tn'>"
+                             "<input name='form[communicationDateTime][date]' value='11-Nov-2026'><select name='form[privacy]'><option value='3' selected>All</option><option value='1'>Private</option></select>"
+                             "<input type='checkbox' name='form[isImportant]'><textarea name='form[logContent]'>%s</textarea></form>" % (old['html'] if old else '')})
+        g = form()
+        S.setdefault('notePosts', []).append((org, m.group(2), g))
+        html = g['form[logContent]'].replace('<p>', '<p class="ck-text">')
+        if m.group(3):
+            next(n for n in notes[org] if str(n['id']) == m.group(3))['html'] = html
+        else:
+            notes.setdefault(org, []).append({'id': 33000 + len(S['notePosts']), 'date': '2026-11-11 10:00:00', 'creator': S['user'], 'html': html})
+        return await js({'status': 'CLOSE', 'url': '/a/pr/555/communication-log'})
     files = S.setdefault('orgfiles', {})
     m = re_.match(r'^/a/pr/555/organisation/(\d+)/?$', p)
     if m:
@@ -399,8 +421,13 @@ async def open_statement(pg, pdf):
 def reset(**kw):
     S.clear()
     S.update({'log': [], 'posts': [], 'posts_all': [], 'inv': fresh(), 'short': {}, 'user': 'Carl Healy', 'tasks': {}, 'reports': [],
-              'added': [], 'allocs': [], 'fileEdits': [], 'uploads': [], 'deps': {}, 'orgfiles': {}, 'orgtasks': {}, 'applied': [], 'hand': []})
+              'added': [], 'allocs': [], 'fileEdits': [], 'uploads': [], 'deps': {}, 'orgfiles': {}, 'notes': {}, 'orgtasks': {}, 'applied': [], 'hand': []})
     S.update(kw)
+
+
+def note_text(org, k=0):
+    ns = S.get('notes', {}).get(org, [])
+    return re.sub(r'<[^>]+>', '\n', ns[k]['html']).replace('&amp;', '&') if len(ns) > k else ''
 
 
 async def record_all(pg):
@@ -486,14 +513,13 @@ async def main():
         check('nothing paid straight onto an invoice', not S['posts'], S['posts'])
         check('the remittance on each invoice says which deposit paid it', all('deposit £ 120.00 from the bank 05-Oct-2026, applied 11-Nov-2026' in S['inv'][i][4][0][1] for i in (901, 902))
               and 'deposit £ 33.00 from the bank 29-Oct-2026' in S['inv'][951][4][0][1] and S['inv'][901][4][0][1].startswith('Insurer reference 2455419'), [S['inv'][i][4] for i in (901, 951)])
-        reg = S['orgfiles'].get(78812, [])
-        rc = reg[0]['comments'] if reg else ''
-        check('statement register on the Starling Bank profile: one file, period in its title, fingerprint, balances and each insurer payment',
-              len(reg) == 1 and reg[0]['title'] == 'Starling statement 2026-10-01 to 2026-10-30' and 'Fingerprint ' in rc and '14 transactions' in rc and 'opening £ 1000.00, closing ' in rc
-              and 'first read 11-Nov-2026 by Carl Healy' in rc and '05-Oct-2026 Bupa £ 120.00 ref 2455419: deposit applied to UPC-0902, UPC-0901' in rc and '12-Oct-2026 AXA £ 75.00 ref GB33AXA0001: deposit added, waiting for the remittance' in rc
+        reg = S['notes'].get(78812, [])
+        rc = note_text(78812)
+        check('statement register: one Admin Note on the Starling Bank profile, the statement first, fingerprint, balances and each insurer payment',
+              len(reg) == 1 and rc.strip().startswith('Starling statement 2026-10-01 to 2026-10-30') and 'Fingerprint ' in rc and '14 transactions' in rc and 'opening £ 1000.00, closing ' in rc
+              and 'First read 11-Nov-2026 by Carl Healy' in rc and '05-Oct-2026 Bupa £ 120.00 ref 2455419: deposit applied to UPC-0902, UPC-0901' in rc and '12-Oct-2026 AXA £ 75.00 ref GB33AXA0001: deposit added, waiting for the remittance' in rc
               and 'Energy' not in rc and 'Landlord' not in rc, reg)
-        pdfs = [b for b in S['uploads'] if b'%PDF-1.4' in b]
-        check('the register file is a PDF holding only the insurer payments', len(pdfs) == 1 and b'Starling Bank statement register' in pdfs[0] and b'Bupa \xa3 120.00' in pdfs[0] and b'Landlord' not in pdfs[0] and b'Software Co' not in pdfs[0], pdfs[:1])
+        check('no file uploaded for the register; the note keeps only the insurer payments', not S['uploads'] and not S['orgfiles'].get(78812) and 'Software Co' not in rc, S['uploads'])
         check('no page errors', not errors, errors)
 
         # the same statement again: the deposits are found, nothing added twice, the register recognises it
@@ -635,15 +661,15 @@ async def main():
         await pg.wait_for_selector('[data-upc-bank-confirm]', timeout=10000)
         await pg.click('[data-upc-bank-confirm] [data-c=yes]')
         await pg.wait_for_function("/Saved to the register/.test((document.querySelector('[data-upc-bank-statement] .upc-run-now') || {}).textContent || '')", timeout=60000)
-        reg = S['orgfiles'].get(78812, [])
-        check('saved to the register: one file, no money recorded, the button gone', len(reg) == 1 and 'to check' in reg[0]['comments'] and not S['added'] and not S['allocs'] and await reg_btn() == '', (reg, await reg_btn()))
+        reg = S['notes'].get(78812, [])
+        check('saved to the register: one note, no money recorded, the button gone', len(reg) == 1 and 'to check' in note_text(78812) and not S['added'] and not S['allocs'] and await reg_btn() == '', (reg, await reg_btn()))
         await pg.click('[data-upc-bank-statement] tbody tr:nth-child(2) [data-rec]')
         await pg.wait_for_selector('[data-upc-bank-confirm]', timeout=10000)
         await pg.click('[data-upc-bank-confirm] [data-c=yes]')
         await pg.wait_for_function("/^Finished:/.test((document.querySelector('[data-upc-bank-statement] .upc-run-now') || {}).textContent || '')", timeout=60000)
-        check('old line recorded on its own when asked: one deposit, the same register entry updated', [(o, f['form[amount]']) for o, f in S['added']] == [(502, '75.00')] and len(S['orgfiles'].get(78812, [])) == 1
-              and 'AXA £ 75.00 ref GB33AXA0001: deposit added' in S['orgfiles'][78812][0]['comments']
-              and 'before the switch to deposits, not found as recorded: to check' in S['orgfiles'][78812][0]['comments'], (S['added'], S['orgfiles']))
+        check('old line recorded on its own when asked: one deposit, the same register entry updated', [(o, f['form[amount]']) for o, f in S['added']] == [(502, '75.00')] and len(S['notes'].get(78812, [])) == 1
+              and 'AXA £ 75.00 ref GB33AXA0001: deposit added' in note_text(78812)
+              and 'before the switch to deposits, not found as recorded: to check' in note_text(78812) and [x[1] for x in S['notePosts']] == ['new', '33001/edit'], (S['added'], S['notes'], S.get('notePosts')))
         await ctx.close()
 
         # Halaxy sends the report page without its table once (a hiccup): asked again 20 seconds later, read as normal;
@@ -684,7 +710,7 @@ async def main():
         await pg.evaluate("window.upcBankStatement.checkDue()")
         await pg.wait_for_function("!!document.querySelector('a.upc-bank-menu .upc-bank-badge')", timeout=20000)
         check('no register for September (today 11 Nov): the blob shows, saying which month', await pg.evaluate(badge) == ['1', "September 2026's statement is not in the register yet"], await pg.evaluate(badge))
-        S['orgfiles'][78812] = [{'id': 8100, 'title': 'Starling statement 2026-09-01 to 2026-09-30', 'comments': 'Fingerprint x'}]
+        S['notes'][78812] = [{'id': 8100, 'date': '2026-10-05 10:00:00', 'creator': 'Carl Healy', 'html': '<p>Starling statement 2026-09-01 to 2026-09-30</p><p>Fingerprint x</p>'}]
         await pg.evaluate("window.upcBankStatement.checkDue()")
         await pg.wait_for_function("!document.querySelector('a.upc-bank-menu .upc-bank-badge')", timeout=20000)
         check('once it is in the register the blob goes', await pg.evaluate(badge) is None)

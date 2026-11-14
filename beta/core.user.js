@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.44
+// @version      0.1.45
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.44';
+  const VERSION = '0.1.45';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -910,6 +910,51 @@
     if (!stored || !stored.id) throw new UPCError('Halaxy did not accept the file' + (stored && stored.error ? ': ' + stored.error : '.'));
     return stored;
   }
+  // Admin Notes on a funder profile (organisation) or a patient (linkPaG), as Halaxy's Admin Notes tab keeps them
+  // (capture 14 Nov 2026): list-data gives every note with its whole text; Add and Edit are a small pop-up
+  // (form#adminNoteForm) that touches nothing else. Text is kept as one paragraph per line.
+  const adminNotes = {
+    path: (kind, id) => '/communication-log/' + (kind === 'patient' ? 'linkPaG' : 'organisation') + '/' + encodeURIComponent(id),
+    toText(html) {
+      const doc = htmlDoc('<div>' + String(html || '').replace(/<\/(p|div|li)>|<br\s*\/?>/gi, '\n') + '</div>');
+      return String(doc.body.textContent || '').split('\n').map((l) => l.replace(/ /g, ' ').replace(/[ \t]+/g, ' ').trim()).filter(Boolean).join('\n');
+    },
+    toHtml: (text) => String(text || '').split('\n').map((l) => '<p>' + esc(l) + '</p>').join(''),
+    // [{ id, date, creator, privacy, important, text }], newest first as Halaxy lists them.
+    async list(kind, id) {
+      const res = await http.json(adminNotes.path(kind, id) + '/list-data?viewMode=ajax');
+      if (!res || !Array.isArray(res.data)) throw new UPCError('Halaxy\'s Admin Notes list has changed, so the notes could not be read.');
+      return res.data.map((n) => ({ id: String(n.id), date: n.date || '', creator: clean(n.creator), privacy: clean(n.privacy), important: !!n.isImportant, text: adminNotes.toText(n.content) }));
+    },
+    async save(path, text, check) {
+      const { doc } = await http.popup(path);
+      const form = doc.querySelector('form#adminNoteForm');
+      if (!form || !form.querySelector('[name="form[logContent]"]') || !form.querySelector('[name="form[_token]"]')) throw new UPCError('Halaxy\'s Admin Note pop-up has changed, so the note was not saved.');
+      const pairs = serialize(form).filter(([k]) => k !== 'form[logContent]' && k !== 'form[isImportant]');
+      pairs.push(['form[logContent]', adminNotes.toHtml(text)]);
+      const res = await http.postForm(path, pairs);
+      if (res && res.status === 'FORM') throw new UPCError('Halaxy did not save the note' + (Array.isArray(res.errors) && res.errors.length ? ': ' + res.errors.join(' ') : '.'));
+      return check();
+    },
+    // Adds a note (Access left as Halaxy offers it: All) and returns it, as listed afterwards.
+    async add(kind, id, text) {
+      const before = (await adminNotes.list(kind, id)).map((n) => n.id);
+      return adminNotes.save(adminNotes.path(kind, id) + '/new', text, async () => {
+        const added = (await adminNotes.list(kind, id)).filter((n) => !before.includes(n.id));
+        if (added.length !== 1 || added[0].text !== adminNotes.toText(adminNotes.toHtml(text))) throw new UPCError('Halaxy accepted the note but does not list it as written. Check the Admin Notes.');
+        return added[0];
+      });
+    },
+    // Replaces a note's text (its date, owner and access stay as they are).
+    async update(kind, id, noteId, text) {
+      return adminNotes.save(adminNotes.path(kind, id) + '/' + encodeURIComponent(noteId) + '/edit', text, async () => {
+        const n = (await adminNotes.list(kind, id)).find((x) => x.id === String(noteId));
+        if (!n || n.text !== adminNotes.toText(adminNotes.toHtml(text))) throw new UPCError('Halaxy does not show the note as changed. Check the Admin Notes.');
+        return n;
+      });
+    },
+  };
+
   const orgFiles = {
     // The files on a funder profile, as its Attachments box lists them in the page (capture 13 Nov 2026): one
     // div.attachment-file-card per file (data-href its download link), followed by its menu, whose Edit item opens
@@ -1917,7 +1962,7 @@
   };
 
   window.UPC = Object.freeze({
-    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, forms, notes, followUps, patient, tasks, surveys, reports, dayLabel, parseDay, rebate, files, deposits, orgFiles, load, ui,
+    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, forms, notes, followUps, patient, tasks, surveys, reports, dayLabel, parseDay, rebate, files, deposits, orgFiles, adminNotes, load, ui,
     user, storage, calendar, wording, background,
   });
 })();

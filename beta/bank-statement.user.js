@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Bank statement (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.2
+// @version      0.2.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
@@ -41,7 +41,7 @@
  *    with no note (by hand) is shown to check.
  *  - Tasks for Carl on what needs him: on the insurer's profile, or a general task when the profile isn't known.
  *  - Due: from the 15th, a blob on the menu item while last month's statement isn't in the register (once a day).
- *  - Register: each statement read leaves one small file on the "Starling Bank (statements)" profile (period, balances,
+ *  - Register: each statement read leaves one Admin Note on the "Starling Bank (statements)" profile (period, balances,
  *    number of lines, a fingerprint, who read it and when, the insurer payments and what became of them), so a statement
  *    read again, or one overlapping it, is recognised.
  */
@@ -50,7 +50,7 @@
   if (window.__hxBankStatement) return;
   window.__hxBankStatement = true;
 
-  const VERSION = '0.2.2';
+  const VERSION = '0.2.3';
   const ROUTE = 'upc-bank-statement';
   const MENU_CLS = 'upc-bank-menu';
   const ALLOWED = ['Carl Healy'];
@@ -605,56 +605,27 @@
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
     return [...new Uint8Array(buf)].slice(0, 8).map((b) => b.toString(16).padStart(2, '0')).join('');
   }
-  // The registers already on the profile whose period overlaps this statement's: { id, title, comments }.
+  // The register entries are Admin Notes on the Starling Bank profile (Carl, 14 Nov 2026: lighter than a PDF file; one
+  // request reads them all, and Halaxy records who wrote each and when). The first line names the statement.
+  const registerNotes = async () => (await U().adminNotes.list('organisation', REGISTER_ORG)).filter((n) => /^starling statement \d{4}-\d\d-\d\d to \d{4}-\d\d-\d\d/i.test(n.text))
+    .map((n) => Object.assign(n, { title: n.text.split('\n')[0] }));
+  // The entries whose period overlaps this statement's.
   async function registersFor(st) {
-    const files = await U().orgFiles.list(REGISTER_ORG);
-    const dated = files.filter((f) => spanOf(f.text));
-    const overlaps = (sp) => sp && sp[0] <= st.to && sp[1] >= st.from;
-    const look = dated.length ? dated.filter((f) => overlaps(spanOf(f.text))) : files.slice(0, 25);
-    const out = [];
-    for (const f of look) { const d = await U().orgFiles.details(f.id); if (/^starling statement/i.test(d.title) && overlaps(spanOf(d.title))) out.push(d); }
-    return out;
+    return (await registerNotes()).filter((n) => { const sp = spanOf(n.title); return sp && sp[0] <= st.to && sp[1] >= st.from; });
   }
-  // A plain one-font PDF of text lines (A4, Helvetica 9 pt), enough for a register anyone can open.
-  function makePdf(lines) {
-    const wrap = [];
-    lines.forEach((l) => { let t = String(l); do { wrap.push(t.slice(0, 105)); t = t.slice(105); } while (t); });
-    const enc = (t) => t.replace(/[^\x20-\x7e£]/g, '-').replace(/[\\()]/g, (ch) => '\\' + ch);
-    const pages = [];
-    for (let i = 0; i < wrap.length; i += 62) pages.push(wrap.slice(i, i + 62));
-    const objs = [null, '<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [' + pages.map((p, k) => (4 + k * 2) + ' 0 R').join(' ') + '] /Count ' + pages.length + ' >>',
-      '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>'];
-    pages.forEach((ls, k) => {
-      const body = 'BT /F1 9 Tf 12 TL 40 800 Td ' + ls.map((l) => '(' + enc(l) + ') Tj T*').join(' ') + ' ET';
-      objs.push('<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents ' + (5 + k * 2) + ' 0 R >>');
-      objs.push('<< /Length ' + body.length + ' >>\nstream\n' + body + '\nendstream');
-    });
-    let out = '%PDF-1.4\n';
-    const at = [];
-    for (let i = 1; i < objs.length; i++) { at[i] = out.length; out += i + ' 0 obj\n' + objs[i] + '\nendobj\n'; }
-    const xref = out.length;
-    out += 'xref\n0 ' + objs.length + '\n0000000000 65535 f \n' + at.slice(1).map((o) => String(o).padStart(10, '0') + ' 00000 n \n').join('') +
-      'trailer\n<< /Size ' + objs.length + ' /Root 1 0 R >>\nstartxref\n' + xref + '\n%%EOF\n';
-    return Uint8Array.from(out, (ch) => ch.charCodeAt(0) & 255);
-  }
-  // Writes (or updates) this statement's register after a run.
+  const paymentsBlock = (results) => 'Insurer payments (only these are kept here):\n' + (results.length ? results.map(lineOf).join('\n') : 'None');
+  const firstRead = (text) => (String(text || '').match(/^First read (.+)$/m) || [])[1];
+  // Writes (or updates) this statement's register entry.
   async function writeRegister(st, results) {
     const me = U().user.name(ALLOWED) || 'unknown';
-    const title = 'Starling statement ' + st.from + ' to ' + st.to;
-    const was = state.register && (state.register.comments.match(/first read ([^;]+)/) || [])[1];
-    const comments = ['Fingerprint ' + st.fp, st.rows + ' transactions', 'opening ' + fmt(st.opening) + ', closing ' + fmt(st.closing),
-      'first read ' + (was || today() + ' by ' + me), 'last run ' + today() + ' by ' + me, 'insurer payments: ' + (results.length ? results.map(lineOf).join(', ') : 'none')].join('; ');
-    if (state.register) { await U().orgFiles.update(state.register.id, { title, comments }); state.register.comments = comments; recheckDue(); return; }
-    const pdf = makePdf(['Starling Bank statement register', '', 'Statement: ' + isoLabel(st.from) + ' to ' + isoLabel(st.to),
-      'Opening balance ' + fmt(st.opening) + ', closing balance ' + fmt(st.closing) + ', ' + st.rows + ' transactions', 'Fingerprint ' + st.fp,
-      'Read ' + today() + ' by ' + me + ' (Bank statement ' + VERSION + ')', '', 'Insurer payments (only these are kept here) and what Bank statement did:', '']
-      .concat(results.length ? results.map(lineOf) : ['None']).concat(['', 'Later runs are noted in this file\'s comments.']));
-    const id = await U().orgFiles.attach(REGISTER_ORG, new File([pdf], title + '.pdf', { type: 'application/pdf' }), { title, comments });
-    state.register = { id, title, comments };
+    const text = ['Starling statement ' + st.from + ' to ' + st.to, 'Fingerprint ' + st.fp,
+      st.rows + ' transactions; opening ' + fmt(st.opening) + ', closing ' + fmt(st.closing),
+      'First read ' + (firstRead(state.register && state.register.text) || today() + ' by ' + me),
+      'Last run ' + today() + ' by ' + me + ' (Bank statement ' + VERSION + ')', paymentsBlock(results)].join('\n');
+    const n = state.register ? await U().adminNotes.update('organisation', REGISTER_ORG, state.register.id, text) : await U().adminNotes.add('organisation', REGISTER_ORG, text);
+    state.register = Object.assign(n, { title: n.text.split('\n')[0] });
     recheckDue();
   }
-
-  // ------------------------------------------------------------------ page
 
   // ------------------------------------------------------------------ last month's statement still to read
 
@@ -673,9 +644,7 @@
   };
   async function checkDue() {
     const ym = monthDue(Date.now());
-    const files = await U().orgFiles.list(REGISTER_ORG);
-    let spans = files.map((f) => spanOf(f.text)).filter(Boolean);
-    if (!spans.length && files.length) spans = (await U().orgFiles.find(REGISTER_ORG, (d) => !!spanOf(d.title), 'Starling statement')).map((d) => spanOf(d.title));
+    const spans = (await registerNotes()).map((n) => spanOf(n.title)).filter(Boolean);
     store.set('due', { at: Date.now(), month: ym, missing: !spans.some((sp) => covers(sp, ym)) });
     paintBadge();
   }
@@ -729,7 +698,7 @@
     // Laid out as Remittances (Carl, 13 Nov 2026): a "Read ..." card with what it does, the drop box, progress and notes.
     let h = '<div class="upc-bank"><h1>Bank statement</h1>' +
       '<div class="card"><div class="card-header"><h2>Read a bank statement</h2></div><div class="card-body">' +
-      '<div class="text-muted">Read the month\'s Starling statement and, once you confirm, add each insurer payment as a deposit on the insurer\'s profile (' + METHOD + ', dated the day it reached the bank). A deposit whose remittance has been through Remittances is applied to its invoices straight away; the rest are applied by Remittances when the remittance comes. Other money in and money out are not used. The statement is read on this computer; only a short register (dates, balances and the insurer payments) is kept on the Starling Bank profile.</div>' +
+      '<div class="text-muted">Read the month\'s Starling statement and, once you confirm, add each insurer payment as a deposit on the insurer\'s profile (' + METHOD + ', dated the day it reached the bank). A deposit whose remittance has been through Remittances is applied to its invoices straight away; the rest are applied by Remittances when the remittance comes. Other money in and money out are not used. The statement is read on this computer; only a short register (dates, balances and the insurer payments) is kept on the Starling Bank profile, as an Admin Note.</div>' +
       '<div class="upc-bank-drop" tabindex="0" role="button" data-a="choose">' + (state.busy ? 'Working...' : 'Drop a Starling statement PDF here, or click to choose one') + '<input type="file" accept="application/pdf" hidden></div>';
     // While it works: a progress bar and the current step; the results once it has finished (Carl, 13 Nov 2026).
     if (state.run) h += U().ui.run.html(state.run);
@@ -797,9 +766,9 @@
       U().ui.run.step(run, 'Checking the statement register...');
       try {
         const st = state.statement, regs = await registersFor(st);
-        state.register = regs.find((d) => d.comments.includes('Fingerprint ' + st.fp)) || null;
+        state.register = regs.find((d) => d.text.includes('Fingerprint ' + st.fp)) || null;
         const others = regs.filter((d) => d !== state.register);
-        const first = state.register && (state.register.comments.match(/first read ([^;]+)/) || [])[1];
+        const first = state.register && firstRead(state.register.text);
         state.seen = [state.register ? 'This statement was read before' + (first ? ' (' + first + ')' : '') + '. What is already in Halaxy is shown as such, so nothing is recorded twice.' : '',
           others.length ? 'It overlaps ' + others.map((d) => d.title).join(', ') + ', read before: payments on both are checked against Halaxy, so none is recorded twice.' : ''].filter(Boolean).join(' ');
       } catch (e) { state.regError = true; state.warn = 'Couldn\'t check the statement register on the Starling Bank profile (' + (e.message || e) + '). Payments already in Halaxy are still found.'; }
@@ -837,8 +806,7 @@
   function registerNeed() {
     if (!state.statement || !state.results || state.regError) return null;
     if (!state.register) return { label: 'Save to register', why: 'This statement is not in the register on the Starling Bank profile yet.' };
-    const now = 'insurer payments: ' + (state.results.length ? state.results.map(lineOf).join(', ') : 'none');
-    return state.register.comments.includes(now) ? null : { label: 'Update register', why: 'The register entry for this statement is out of date.' };
+    return state.register.text.includes(paymentsBlock(state.results)) ? null : { label: 'Update register', why: 'The register entry for this statement is out of date.' };
   }
   async function saveRegister() {
     if (state.busy || !registerNeed()) return;
@@ -949,5 +917,5 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', begin, { once: true });
   else begin();
 
-  window.upcBankStatement = { version: VERSION, parseStarling, statementFrom, subsets, remitKeys, match, allowed, makePdf, monthDue, covers, checkDue };
+  window.upcBankStatement = { version: VERSION, parseStarling, statementFrom, subsets, remitKeys, match, allowed, monthDue, covers, checkDue };
 })();
