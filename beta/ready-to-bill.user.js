@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Ready to bill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.1
+// @version      0.4.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
@@ -46,7 +46,7 @@
   if (window.__hxReadyToBill) return;
   window.__hxReadyToBill = true;
 
-  const VERSION = '0.4.1';
+  const VERSION = '0.4.2';
   const ROUTE = 'upc-ready-to-bill';
   const MENU_CLS = 'upc-rtb-menu';
   const ALLOWED = ['Carl Healy', 'Wendy Pritchard'];   // Carl, 7 Nov 2026: only the two of them
@@ -58,7 +58,7 @@
   const NOT_ATTENDED = /did not attend|did-not-attend|cancel/i;
   const MID_TREATMENT = /bupa|axa|wpa|aviva/i;
   const EXCESS_ON_FORM = /bupa|axa/i;      // only their intake forms ask for the excess
-  const MAX_EXCESS = 200000;               // over £ 2,000 is taken as a typing slip: use the fallback   // Carl, 10 Nov 2026: only these can be billed before treatment ends
+  const MAX_EXCESS = 50000;                // over £ 500 is taken as a slip (an extra 0, the annual limit): use the fallback (Carl, 14 Nov 2026: real excesses up to about £ 300)   // Carl, 10 Nov 2026: only these can be billed before treatment ends
 
   const U = () => window.UPC;
   const esc = (s) => U().esc(s);

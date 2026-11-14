@@ -109,6 +109,10 @@ def fresh(today, drop_column=None):
     # V: Bupa new claim, one fee 3 days ago, nothing booked, marked Discharged -> due now (finished), not held
     inv(711, 322, 'Patient V', 'Bupa', [att(-3)], ref=(1, 5))
     appt(322, -3, ps='<span>Discharged</span>')
+    # W: Bupa new claim, two fees, the form says 1500 (a slip: over £ 500) -> the 2-fee rule, so not held
+    inv(721, 323, 'Patient W', 'Bupa', [att(-6), att(-2)], ref=(1, 5))
+    appt(323, -6); appt(323, -2)
+    form(323, 9005, 'Initial Assessment Form - Bupa', -10, '1500')
     # L: "3rd Party Funded" counts as a funder; seen 3 days ago, booked
     inv(611, 312, 'Patient L', '3rd Party Funded', [att(-3)])
     appt(312, -3); appt(312, 4)
@@ -295,18 +299,19 @@ async def main():
         check('every invoice is linked', by.get('Patient A', {}).get('invs') == ['/a/pr/555/invoice/501', '/a/pr/555/invoice/502'], by.get('Patient A'))
         check('patient name links to the patient', by.get('Patient A', {}).get('patient') == '/a/pr/555/patient/301', by.get('Patient A'))
         off = [r['who'] for r in rows if r['off']]
-        check('greyed at the bottom: did-not-attend only, held, not due yet', off[:4] == ['Patient F', 'Patient R', 'Patient C', 'Patient P'] and set(off) == {'Patient F', 'Patient C', 'Patient P', 'Patient R', 'Patient M', 'Patient L', 'Patient N', 'Patient Q', 'Patient E', 'Patient T'} and rows[-10:] == [by[w] for w in off] == [by[w] for w in off], [r['who'] for r in rows])
+        check('greyed at the bottom: did-not-attend only, held, not due yet', off[:4] == ['Patient F', 'Patient R', 'Patient C', 'Patient P'] and set(off) == {'Patient F', 'Patient C', 'Patient P', 'Patient R', 'Patient M', 'Patient L', 'Patient N', 'Patient Q', 'Patient E', 'Patient T', 'Patient W'} and rows[-11:] == [by[w] for w in off] == [by[w] for w in off], [r['who'] for r in rows])
         check('held for the excess, explained', 'Held for the excess' in by.get('Patient C', {}).get('why', ''), by.get('Patient C'))
         check('greyed rows link to their invoices but have no button', by.get('Patient C', {}).get('invs') == ['/a/pr/555/invoice/521'] and not by.get('Patient C', {}).get('btn'), by.get('Patient C'))
         check('not due yet shows the next booking', 'next booked 17-Nov-2026' in by.get('Patient E', {}).get('why', ''), by.get('Patient E'))
         check('excess from the intake form: holds until the fees cover it', by.get('Patient R', {}).get('off') and
               'patient-reported excess £ 250.00 (unconfirmed), fees so far £ 80.00' in by['Patient R']['why'], by.get('Patient R'))
+        check('excess over £ 500 on the form taken as a slip: the 2-fee rule, not held', 'Held' not in by.get('Patient W', {}).get('why', 'Held') and by['Patient W'].get('off'), by.get('Patient W'))
         check('excess "None" on the form: not held', 'Held' not in by.get('Patient Q', {}).get('why', 'Held'), by.get('Patient Q'))
         check('no intake form: falls back to 2 fees', 'excess not found on the intake form, so waiting for 2 fees' in by.get('Patient C', {}).get('why', ''), by.get('Patient C'))
         check('Aviva: its form doesn\'t ask, so 2 fees', 'Aviva\'s form doesn\'t ask for the excess' in by.get('Patient P', {}).get('why', ''), by.get('Patient P'))
         reads = S.get('formReads', [])
-        check('forms read only for Bupa and AXA new claims, one form each', sorted(x for x in reads if x[0] == 'form') == [('form', 9001), ('form', 9002)]
-              and sorted(x[1] for x in reads if x[0] == 'menu') == [303, 317, 318], reads)
+        check('forms read only for Bupa and AXA new claims, one form each', sorted(x for x in reads if x[0] == 'form') == [('form', 9001), ('form', 9002), ('form', 9005)]
+              and sorted(x[1] for x in reads if x[0] == 'menu') == [303, 317, 318, 323], reads)
         check('did-not-attend only: asks to check', 'Only cancelled or did-not-attend' in by.get('Patient F', {}).get('why', ''), by.get('Patient F'))
         check('did-not-attend only: shows the not-attended fee, not "0 fees"', by.get('Patient F', {}).get('unbilled') == '1 not attended£ 40.00', by.get('Patient F'))
         await pg.wait_for_function("document.querySelector('[data-upc-ready-to-bill] [data-zero]')", timeout=60000)

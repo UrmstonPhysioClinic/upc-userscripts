@@ -1,5 +1,8 @@
 # Changelog
 
+## Ready to bill: excess limit, 14 Nov 2026 (beta)
+- Ready to bill 0.4.2 (Carl, 14 Nov 2026): an excess on the intake form over £ 500 (was £ 2,000) is taken as a mistake (an extra 0, the annual limit) and the 2-fee rule is used instead. Real excesses run to about £ 300.
+
 ## Contacts made patients, 14 Nov 2026 (beta)
 - Core 0.1.44: when a Contact's status is changed, Halaxy gives them a patient number. Setting a status no longer reports that as "these details now read differently" (a number that was blank before may fill in). Anything else that changes is still reported.
 - Patient statuses 0.2.5: a change that went through but needs a look is logged as "Changed, but please check", not "Not changed".
