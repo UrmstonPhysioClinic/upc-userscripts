@@ -1,5 +1,8 @@
 # Changelog
 
+## Ready to bill: Discharged patients, 14 Nov 2026 (beta)
+- Ready to bill 0.4.1 (Carl, 14 Nov 2026): a patient whose status is Discharged and who has nothing booked is due straight away ("Discharged, nothing booked"), for any funder, without waiting for 14 quiet days, and is not held for the excess. The status comes with the calendar events already read, so no extra requests.
+
 ## Ready to bill: rolling instead of month end, 14 Nov 2026 (beta)
 - Ready to bill 0.4.0 (Carl, 14 Nov 2026): the month-end rule is gone. Bupa, AXA, WPA and Aviva patients are due once their oldest unbilled fee is 4 weeks old, unless their next visit is within 7 days (then after it, on the same bill), so billing is spread through the month and nobody drops off the list on a set day. The excess hold now also ends when no more fees are coming (no visit for 14 days, nothing booked). Authorisation used up, 14 days quiet and 3-month-old fees still make a patient due.
 
