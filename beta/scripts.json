@@ -95,7 +95,7 @@
     {
       "file": "ready-to-bill.user.js",
       "name": "UPC Billing: Ready to bill (beta)",
-      "version": "0.3.4"
+      "version": "0.4.0"
     },
     {
       "file": "rebate-sync.user.js",
