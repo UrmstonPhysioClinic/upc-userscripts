@@ -42,8 +42,8 @@ def fresh(today, drop_column=None):
         S['invoices'][iid] = {'id': iid, 'pid': pid, 'payer': payer, 'payerId': str(payer_id or pid), 'funder': funder, 'ref': ref,
                               'status': status, 'lines': lines}
 
-    def appt(pid, n, status=''):
-        S['events'].append({'id': len(S['events']) + 1, 'type': 'appointment', 'linkPaGId': pid, 'appointmentStatus': status,
+    def appt(pid, n, status='', ps='Claimant'):
+        S['events'].append({'id': len(S['events']) + 1, 'type': 'appointment', 'linkPaGId': pid, 'appointmentStatus': status, 'patientStatus': ps,
                             'start': int(datetime.datetime.combine(d(n), datetime.time(10)).timestamp())})
 
     def att(n, amt=4000, st='Attended', note=''):
@@ -106,6 +106,9 @@ def fresh(today, drop_column=None):
     # U: Bupa new claim, one fee 20 days ago, nothing booked -> the excess hold ends (no more fees coming): due
     inv(701, 321, 'Patient U', 'Bupa', [att(-20)], ref=(1, 5))
     appt(321, -20)
+    # V: Bupa new claim, one fee 3 days ago, nothing booked, marked Discharged -> due now (finished), not held
+    inv(711, 322, 'Patient V', 'Bupa', [att(-3)], ref=(1, 5))
+    appt(322, -3, ps='<span>Discharged</span>')
     # L: "3rd Party Funded" counts as a funder; seen 3 days ago, booked
     inv(611, 312, 'Patient L', '3rd Party Funded', [att(-3)])
     appt(312, -3); appt(312, 4)
@@ -273,7 +276,8 @@ async def main():
         rows = await pg.evaluate(ROWS_JS)
         by = {r['who']: r for r in rows}
         due = [r['who'] for r in rows if not r['off']]
-        check('due: authorisation used up, 14 days quiet, old fees, 4 weeks old, quiet ends the excess hold', sorted(due) == ['Patient A', 'Patient B', 'Patient D', 'Patient O', 'Patient S', 'Patient U'], rows)
+        check('due: authorisation used up, 14 days quiet, old fees, 4 weeks old, quiet ends the excess hold', sorted(due) == ['Patient A', 'Patient B', 'Patient D', 'Patient O', 'Patient S', 'Patient U', 'Patient V'], rows)
+        check('Discharged with nothing booked: due now, not held for the excess', by.get('Patient V', {}).get('why', '').startswith('Discharged, nothing booked') and 'Held' not in by['Patient V']['why'], by.get('Patient V'))
         check('4 weeks old: due, saying so', 'Fees from ' in by.get('Patient S', {}).get('why', '') and 'over 4 weeks old' in by['Patient S']['why'], by.get('Patient S'))
         check('4 weeks old but a visit within a week: waits for it', by.get('Patient T', {}).get('off') and 'billed after the visit on' in by['Patient T']['why'], by.get('Patient T'))
         check('held for the excess, but nothing booked for 14 days: due, not held', 'Held' not in by.get('Patient U', {}).get('why', 'Held') and 'No visit for 14 days' in by['Patient U']['why'], by.get('Patient U'))
@@ -329,7 +333,7 @@ async def main():
         cal = [x for x in reqs if x[1].endswith('/calendar/json')]
         check('one report and one calendar per check', len(reports) == 1 and len(cal) == 1, reqs)
         badge = await pg.evaluate("(document.querySelector('a.upc-rtb-menu .upc-rtb-badge') || {}).textContent")
-        check('count on the menu item', badge == '6', badge)
+        check('count on the menu item', badge == '7', badge)
         menu = await pg.evaluate("[...document.querySelectorAll('#mainMenu a.mainmenu-sublink')].map(a => a.getAttribute('href'))")
         check('menu item under Finances, over the Invoices page', '/a/pr/555/invoice/#upc-ready-to-bill' in menu and await pg.evaluate(
             "document.querySelector('.upc-rtb-menu').closest('.mainmenu-item').querySelector('.mainmenu-link-label').textContent") == 'Finances', menu)
@@ -343,7 +347,7 @@ async def main():
         await pg2.wait_for_selector('a.upc-rtb-menu', timeout=10000)
         await pg2.wait_for_timeout(3500)
         badge2 = await pg2.evaluate("(document.querySelector('a.upc-rtb-menu .upc-rtb-badge') || {}).textContent")
-        check('second tab shows the count without asking Halaxy', badge2 == '6' and [x for x in S['log'][n:] if not x[1].endswith('/invoice/')] == [], (badge2, S['log'][n:]))
+        check('second tab shows the count without asking Halaxy', badge2 == '7' and [x for x in S['log'][n:] if not x[1].endswith('/invoice/')] == [], (badge2, S['log'][n:]))
 
         # Check again: invoice details come from the cache
         n = len(S['log'])

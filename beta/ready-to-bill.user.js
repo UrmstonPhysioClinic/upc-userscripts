@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Ready to bill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.0
+// @version      0.4.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
@@ -33,7 +33,8 @@
  *    "Excess amount:" on their Initial Assessment Form (patient-reported, unconfirmed, used only to time
  *    the hold). Aviva and WPA forms don't ask, and a missing or unreadable answer falls back to: hold until
  *    there are at least 2 fees. A used-up authorisation, old fees, or no visit for 14 days with nothing booked
- *    (no more fees coming) override.
+ *    (no more fees coming) override. Patient status Discharged with nothing booked (read from the calendar
+ *    events) is due straight away, for any funder, and ends the excess hold.
  *  - Patients whose only unbilled fees are cancelled or did-not-attend: listed with each appointment's
  *    comments and Set to £ 0.00 (fee and funder rebate, after confirming), read when the page is open.
  *  - Shown only to Carl and Wendy, only inside Halaxy. The count on the menu is refreshed at most every
@@ -45,7 +46,7 @@
   if (window.__hxReadyToBill) return;
   window.__hxReadyToBill = true;
 
-  const VERSION = '0.4.0';
+  const VERSION = '0.4.1';
   const ROUTE = 'upc-ready-to-bill';
   const MENU_CLS = 'upc-rtb-menu';
   const ALLOWED = ['Carl Healy', 'Wendy Pritchard'];   // Carl, 7 Nov 2026: only the two of them
@@ -193,6 +194,9 @@
       const booked = mine.filter((e) => startMs(e) >= now && !/cancel|reject|declin/i.test(e.appointmentStatus || '')).map(startMs);
       g.lastSeen = attended.length ? Math.max(...attended) : null;
       g.nextBooked = booked.length ? Math.min(...booked) : null;
+      // The patient's status comes with each calendar event (no extra request): the latest one's.
+      const st = mine.slice().sort((a, b) => startMs(a) - startMs(b)).map((e) => e.patientStatus).filter(Boolean).pop();
+      g.discharged = /^discharged$/i.test(String(st || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim());
     });
 
     // Decide.
@@ -203,6 +207,10 @@
       if (authUsed) reasons.push('Authorisation used up (' + ref.position + ' of ' + ref.limit + ')');
       const quiet = !g.nextBooked && (!g.lastSeen || g.lastSeen < now - QUIET_DAYS * DAY);
       if (quiet) reasons.push('No visit for ' + QUIET_DAYS + ' days' + (g.lastSeen ? ' (last ' + label(g.lastSeen) + ')' : '') + ', nothing booked');
+      // Marked Discharged with nothing booked: treatment has finished, so bill now rather than wait for 14 quiet days
+      // (Carl, 14 Nov 2026). Any funder, as finished treatment is when all of them are billed.
+      const finished = g.discharged && !g.nextBooked;
+      if (finished && !quiet) reasons.push('Discharged, nothing booked');
       // Mid-treatment billing (4-weekly, old fees, the excess hold) is for Bupa, AXA, WPA and Aviva only.
       const old = g.mid && g.oldest !== null && g.oldest <= addMonths(day0, -OLD_MONTHS);
       if (old) reasons.push('Fees from ' + label(g.oldest) + ', over ' + OLD_MONTHS + ' months old');
@@ -213,7 +221,7 @@
       if (rolling && !visitSoon) reasons.push('Fees from ' + label(g.oldest) + ', over 4 weeks old');
       const afterVisit = rolling && visitSoon;
       // The excess hold ends when no more fees are coming (no visit for 14 days, nothing booked): Carl, 14 Nov 2026.
-      const mayHold = g.mid && g.newClaim && g.billable.length > 0 && !authUsed && !old && !quiet;
+      const mayHold = g.mid && g.newClaim && g.billable.length > 0 && !authUsed && !old && !quiet && !finished;
       let excess = null;
       if (mayHold && EXCESS_ON_FORM.test(g.funder) && g.patientId) {
         try { excess = await patientExcess(g, say); } catch (e) { tellHealthCheck(e); }   // fall back to 2 fees
