@@ -1,5 +1,9 @@
 # Changelog
 
+## Contacts made patients, 14 Nov 2026 (beta)
+- Core 0.1.44: when a Contact's status is changed, Halaxy gives them a patient number. Setting a status no longer reports that as "these details now read differently" (a number that was blank before may fill in). Anything else that changes is still reported.
+- Patient statuses 0.2.5: a change that went through but needs a look is logged as "Changed, but please check", not "Not changed".
+
 ## Ready to bill: Discharged patients, 14 Nov 2026 (beta)
 - Ready to bill 0.4.1 (Carl, 14 Nov 2026): a patient whose status is Discharged and who has nothing booked is due straight away ("Discharged, nothing booked"), for any funder, without waiting for 14 quiet days, and is not held for the excess. The status comes with the calendar events already read, so no extra requests.
 

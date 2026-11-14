@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Patient statuses (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.4
+// @version      0.2.5
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
@@ -41,7 +41,7 @@
   if (window.__hxPatientStatuses) return;
   window.__hxPatientStatuses = true;
 
-  const VERSION = '0.2.4';
+  const VERSION = '0.2.5';
   const ALLOWED = ['Carl Healy'];
   const DAY = 86400e3;
   const GAP_DAYS = 42;          // Carl, 11 Nov 2026: a gap counts; 6 weeks
@@ -244,7 +244,9 @@
           if (await U().patient.setStatus(x.id, x.from, x.to)) log({ id: x.id, name: x.name, from: x.from, to: x.to, why: x.why });
           n++;
         } catch (e) {
-          log({ id: x.id, name: x.name, from: x.from, to: x.to, why: x.why, error: e.message || String(e) });
+          // Changed, but something else on the Edit page reads differently: the change stands, with a note to check.
+          log({ id: x.id, name: x.name, from: x.from, to: x.to, why: x.why, [e.statusChanged ? 'check' : 'error']: e.message || String(e) });
+          if (e.statusChanged) n++;
           tellHealthCheck(e);
         }
       }
@@ -274,7 +276,7 @@
       (last ? 'Last checked ' + esc(when(last.at)) + (last.error ? ': <span class="upc-err">' + esc(last.error) + '</span>' : ', ' + (last.changed || 0) + ' changed.') : 'Not checked yet.') + '</p>' +
       (l.length ? '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th>When</th><th>Patient</th><th>Change</th><th>Why</th></tr></thead><tbody>' +
         l.map((x) => '<tr><td>' + esc(when(x.at)) + '</td><td><a href="' + esc(base + '/patient/' + x.id) + '" target="_blank" rel="noopener">' + esc(x.name) + '</a></td>' +
-          '<td>' + (x.to ? esc(NAME[x.from] || x.from) + ' to <b>' + esc(NAME[x.to]) + '</b>' : '') + (x.error ? ' <span class="upc-err">Not changed: ' + esc(x.error) + '</span>' : '') + '</td>' +
+          '<td>' + (x.to ? esc(NAME[x.from] || x.from) + ' to <b>' + esc(NAME[x.to]) + '</b>' : '') + (x.error ? ' <span class="upc-err">Not changed: ' + esc(x.error) + '</span>' : '') + (x.check ? ' <span class="upc-err">Changed, but please check: ' + esc(String(x.check).replace(/^The status was changed, but t/, 'T')) + '</span>' : '') + '</td>' +
           '<td>' + esc(x.why || '') + '</td></tr>').join('') + '</tbody></table>' : '<p>No changes yet.</p>') +
       '<p class="text-muted">Review and statuses other than Current, Claimant, Discharged and Contact are never changed. Patient statuses ' + VERSION + '.</p>';
   }
