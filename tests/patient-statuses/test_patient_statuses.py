@@ -78,8 +78,10 @@ def edit_page(pid):
     opts = ''.join("<option value='%s'%s>%s</option>" % (v, ' selected' if v == p['status'] else '', v.title()) for v in STATUSES)
     return ("<html><body><form id='patientGeneralEditForm' method='post'><input type='hidden' name='save_patient' value='1'>"
             "<input name='patientdetailmain[name][forename]' value='%s'><select name='patientdetailmain[linkPaG][customStatus]'>%s</select>"
+            # A Contact has no patient number; Halaxy gives one when they become a patient (14 Nov 2026)
+            "<input name='patientdetailmain[patientNumber][patientNumber]' value='%s'>"
             "<textarea name='patientdetailmain[linkPaG][note]'>Likes mornings</textarea><input type='hidden' name='patientdetailmain[_token]' value='ET'>"
-            "<button class='btn btn-primary btn-submit'>Save</button></form></body></html>" % (p['name'], opts))
+            "<button class='btn btn-primary btn-submit'>Save</button></form></body></html>" % (p['name'], opts, '' if p['status'] in ('contact', 'blocked') else str(5000 + pid)))
 
 
 def invoice_html(iid):
@@ -181,6 +183,7 @@ async def main():
         log = await pg.evaluate("JSON.parse(localStorage.getItem('upc-ps:log') || '[]')")
         n = next((x for x in log if x.get('name') == 'Patient N'), {})
         check('the patient\'s name, not the appointment type or phone, from a type booking\'s title', n.get('name') == 'Patient N', n)
+        check('a Contact made a patient gets a patient number: not reported as something else changing', not any(x.get('check') or x.get('error') for x in log), [x for x in log if x.get('check') or x.get('error')])
         check('each change logged with why', len(log) == 8 and n.get('from') == 'contact' and n.get('to') == 'claimant' and 'Contact with an appointment' in n.get('why', ''), log)
         check('no menu item or page any more', await pg.evaluate("!document.querySelector('a.upc-ps-menu') && !document.querySelector('[data-upc-patient-statuses]')"))
         # Recent changes dialog

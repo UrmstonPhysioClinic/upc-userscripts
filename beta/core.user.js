@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.43
+// @version      0.1.44
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.43';
+  const VERSION = '0.1.44';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -1405,8 +1405,14 @@
       const after = await read();
       if (String(after.sel.value).toLowerCase() !== opt.value.toLowerCase()) throw new UPCError('Halaxy did not keep the new status. Change it on the patient\'s Edit page instead.');
       const now = serialize(after.form).filter(([k]) => k !== 'patientdetailmain[_token]' && k !== FIELD).map((x) => x.join('='));
-      const changed = was.map((x) => x.join('=')).filter((x) => !now.includes(x));
-      if (changed.length) throw new UPCError('The status was changed, but these details now read differently on the Edit page: ' + changed.map((x) => x.split('=')[0]).join(', ') + '. Please check the patient.');
+      // A Contact made a patient is given a patient number by Halaxy (14 Nov 2026): a number that was blank before is
+      // expected to fill in, not a sign of something else changing.
+      const changed = was.filter(([k, v]) => !(/\[patientNumber\]/.test(k) && !String(v || '').trim())).map((x) => x.join('=')).filter((x) => !now.includes(x));
+      if (changed.length) {
+        const err = new UPCError('The status was changed, but these details now read differently on the Edit page: ' + changed.map((x) => x.split('=')[0]).join(', ') + '. Please check the patient.');
+        err.statusChanged = true;
+        throw err;
+      }
       return true;
     },
   };
