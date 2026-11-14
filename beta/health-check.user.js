@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.38
+// @version      1.1.39
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.38';
+  const VERSION = '1.1.39';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -414,6 +414,18 @@
         .concat(methods.length && !methods.includes('direct deposit') ? ['no Direct Deposit payment method'] : []);
       put('data-org-deposit-add', 'Add deposit pop-up', ['Bank statement'], problems);
     } catch (e) { put('data-org-deposit-add', 'Add deposit pop-up', ['Bank statement'], [e.message]); }
+    // Admin Notes (read only: the list and the Add pop-up; the statement register lives there, 14 Nov 2026)
+    try {
+      const res = await getJSON('/communication-log/organisation/' + ORG + '/list-data?viewMode=ajax');
+      const rows = res && res.data;
+      put('data-org-notes', 'Admin Notes list', ['Bank statement'], !Array.isArray(rows) ? ['not a list'] : rows.length ? keysMissing(rows, ['id', 'date', 'creator', 'content']).map((k) => 'field ' + k) : []);
+    } catch (e) { put('data-org-notes', 'Admin Notes list', ['Bank statement'], [e.message]); }
+    try {
+      const res = await getJSON('/communication-log/organisation/' + ORG + '/new');
+      const doc = new DOMParser().parseFromString(String((res && res.message) || ''), 'text/html');
+      const form = doc.querySelector('form#adminNoteForm');
+      put('data-org-note-add', 'Add Admin Note pop-up', ['Bank statement'], !form ? ['note form missing'] : ['form[logContent]', 'form[_token]', 'form[communicationDateTime][date]'].filter((n) => !form.querySelector('[name="' + n + '"]')).map((n) => 'field ' + n + ' missing'));
+    } catch (e) { put('data-org-note-add', 'Add Admin Note pop-up', ['Bank statement'], [e.message]); }
     try {
       const res = await hfetch('/a/pr/' + group() + '/organisation/' + ORG, { credentials: 'same-origin' });
       if (!res.ok) throw new Error('Halaxy returned ' + res.status + ' for the profile page');

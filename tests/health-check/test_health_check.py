@@ -88,6 +88,10 @@ async def halaxy(route):
         return await j([{'id': 1, 'title': 'Type', 'backgroundColor': '#FF0000', 'status': 'Active'}])
     if p.endswith('/funder/fee/data'):
         return await j([{'funder': 'Self-Funded', 'feeColour': '#FEF2C0', 'status': 'current', 'feeNumber': 'IA-IA'}])
+    if p.endswith('/communication-log/organisation/78812/list-data'):
+        return await j({'data': [{'id': 1, 'date': '2026-11-14 10:00:00', 'creator': 'Carl Healy', 'content': '<p>Starling statement</p>'}]})
+    if p.endswith('/communication-log/organisation/78812/new'):
+        return await j({'status': 'FORM', 'message': "<form id='adminNoteForm'><input name='form[_token]'><input name='form[communicationDateTime][date]'><textarea name='form[logContent]'></textarea></form>"})
     if p.endswith('/organisation/78812/balance/data'):
         return await j({'data': [{'id': 1, 'type': 'Direct Deposit', 'date': '2026-10-05T00:00:00', 'amount': 120, 'balance': 0}]})
     if p.endswith('/organisation/78812'):
@@ -184,8 +188,8 @@ async def main():
         stored = await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:halaxy'))")
         check('Halaxy version recorded', stored and stored['version'] == '4.12', stored)
         results = await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:results'))")
-        check('data checks ran', all(k in results for k in ('data-calendar', 'data-fees', 'data-practitioners', 'data-invoices', 'data-org-deposits', 'data-org-deposit-add', 'data-org-files')), list(results))
-        check('funder profile checks pass', all(not results[k]['problems'] for k in ('data-org-deposits', 'data-org-deposit-add', 'data-org-files')), {k: results.get(k) for k in ('data-org-deposits', 'data-org-deposit-add', 'data-org-files')})
+        check('data checks ran', all(k in results for k in ('data-calendar', 'data-fees', 'data-practitioners', 'data-invoices', 'data-org-deposits', 'data-org-deposit-add', 'data-org-files', 'data-org-notes', 'data-org-note-add')), list(results))
+        check('funder profile checks pass', all(not results[k]['problems'] for k in ('data-org-deposits', 'data-org-deposit-add', 'data-org-files', 'data-org-notes', 'data-org-note-add')), {k: results.get(k) for k in ('data-org-deposits', 'data-org-deposit-add', 'data-org-files')})
         check('add deposit pop-up only read', set(STATE.get('payReads', [])) == {'GET'}, STATE.get('payReads'))
         await pg.evaluate("window.__menu.find(m => m[0] === 'Health check: show results')[1]()")
         txt = await pg.evaluate("document.querySelector('[data-hx-health]').textContent")
