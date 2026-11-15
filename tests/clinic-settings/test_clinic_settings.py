@@ -44,8 +44,18 @@ async def halaxy(route):
         return await js([{'id': 11, 'name': 'Carl Healy'}, {'id': 12, 'name': 'Physio One'}, {'id': 13, 'name': '<b>Bad</b>'}])
     m = re.match(r'^/a/pr/555/communication-log/organisation/(\d+)/list-data$', p)
     if m:
+        # Halaxy's list can lag just after a save (live, 15 Nov 2026): S['lag'] leaves a new note out of the next list
+        hide = S.pop('hideOnce', None)
         return await js({'data': [{'id': n['id'], 'date': '2026-11-15 10:00:00', 'privacy': 'All', 'creator': 'Carl Healy', 'isImportant': False, 'content': n['html']}
-                                  for n in reversed(notes.get(int(m.group(1)), []))]})
+                                  for n in reversed(notes.get(int(m.group(1)), [])) if n['id'] != hide]})
+    m = re.match(r'^/a/pr/555/communication-log/organisation/(\d+)/(\d+)/delete(/([0-9a-f]+))?$', p)
+    if m:
+        org, nid = int(m.group(1)), int(m.group(2))
+        if not m.group(3):
+            return await js({'status': 'FORM', 'title': 'Delete Admin Note', 'message': "<div><a class='btn btn-outline-danger ajax' href='/a/pr/555/communication-log/organisation/%d/%d/delete/ab12'>Delete</a></div>" % (org, nid)})
+        notes[org] = [n for n in notes.get(org, []) if n['id'] != nid]
+        S.setdefault('deleted', []).append(nid)
+        return await js({'status': 'CLOSE', 'url': '/a/pr/555/communication-log/organisation/%d' % org})
     m = re.match(r'^/a/pr/555/communication-log/organisation/(\d+)/(new|(\d+)/edit)$', p)
     if m:
         org = int(m.group(1))
@@ -58,7 +68,10 @@ async def halaxy(route):
         if m.group(3):
             next(n for n in notes[org] if str(n['id']) == m.group(3))['html'] = html
         else:
-            notes.setdefault(org, []).append({'id': 50000 + len(notes.get(org, [])), 'html': html})
+            nid = 50000 + len(notes.get(org, [])) + len(S.get('deleted', []))
+            notes.setdefault(org, []).append({'id': nid, 'html': html})
+            if S.get('lag'):
+                S['hideOnce'] = nid
         return await js({'status': 'CLOSE', 'url': '/a/pr/555/communication-log'})
     if p.startswith('/a/pr/555/'):
         return await route.fulfill(body=page(S['user']), content_type='text/html')
@@ -109,6 +122,9 @@ async def main():
         await open_clinic(pg)
         boxes = await pg.evaluate("[...document.querySelectorAll('.upc-ss-clinic input[data-key]')].map((i) => [i.dataset.key, i.value, i.placeholder])")
         check('Carl: a box per setting, empty (default shown)', len(boxes) >= 20 and all(v == '' for _, v, _ in boxes) and dict((k, ph) for k, _, ph in boxes)['readyToBill.maxExcess'] == '500', boxes[:3])
+        await pg.wait_for_function("document.querySelectorAll('[data-people=\"forecourtLights.staff\"] input').length >= 6", timeout=10000)
+        fit = await pg.evaluate("(() => { const t = document.querySelector('.upc-ss-clinic table'); return [t.scrollWidth, t.parentElement.clientWidth]; })()")
+        check('the table fits the pop-up (long lists wrap)', fit[0] <= fit[1] + 1, fit)
         check('Halaxy look: inside the dialog, Halaxy table and form classes', await pg.evaluate("!!document.querySelector('.upc-ss-clinic table.table.table-striped.table-bordered input.form-control')"))
         # A value outside its limits: refused, nothing saved
         await pg.fill("input[data-key='readyToBill.rollingDays']", '500')
@@ -116,7 +132,8 @@ async def main():
         await pg.wait_for_function("document.querySelector('.upc-ss-clinic .upc-err')", timeout=10000)
         err = await pg.evaluate("document.querySelector('.upc-ss-clinic .upc-err').textContent")
         check('a value outside its limits: refused, saying the limits, nothing saved', 'whole number from 7 to 90' in err and not S['notes'].get(78842), err)
-        # Valid values
+        # Valid values (Halaxy's list lags once just after the note is made)
+        S['lag'] = True
         await pg.fill("input[data-key='readyToBill.rollingDays']", '28')
         await pg.fill("input[data-key='readyToBill.maxExcess']", '300')
         await pg.fill("input[data-key='reviewRequests.sendAt']", '09:15')
@@ -134,7 +151,10 @@ async def main():
         await pg.click("[data-a=save]")
         await pg.wait_for_function("document.querySelector('.upc-ss-clinic .upc-ok')", timeout=15000)
         check('an empty box: back to the default (line removed)', note_lines()[2:] == ['reviewRequests.sendAt = 09:15'] and await pg.evaluate("UPC.settings.get('readyToBill.maxExcess')") == 500, note_lines())
-        check('one note only', len(S['notes'][78842]) == 1, S['notes'])
+        check('one note only, although Halaxy\'s list lagged after it was made', len(S['notes'][78842]) == 1, S['notes'])
+        S['lag'] = False
+        lists = [x for x in S['log'] if x[1].endswith('/list-data')]
+        check('the notes list is asked afresh each time', len(lists) >= 3, lists)
 
         # People (stage 2): ticks for who sees a page, a list for who gets tasks
         await pg.wait_for_function("document.querySelectorAll('[data-people=\"readyToBill.people\"] input').length >= 3", timeout=10000)
@@ -163,6 +183,16 @@ async def main():
         allowed = await pg.evaluate("(() => { const m = %s.match(/const ALLOWED = \(\) => ([^;]+);/); const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d); return eval(m[1]); })()" % json.dumps(RTB))
         check('Ready to bill follows it (Wendy no longer sees it)', allowed == ['Carl Healy', 'Physio One'], allowed)
         check('no page errors (Carl)', not errors, errors)
+        await ctx.close()
+
+        # Two settings notes (one made while the list lagged): the newest is used; the older is deleted on the next save
+        S['notes'][78842].insert(0, {'id': 49000, 'html': '<p>UPC clinic settings</p><p>readyToBill.maxExcess = 999</p>'})
+        S['log'] = []
+        ctx, pg, errors = await open_pg(browser, 'Carl Healy')
+        await pg.wait_for_function("UPC.settings.readAt() > 0", timeout=20000)
+        check('two settings notes: the newest is used', await pg.evaluate("UPC.settings.get('readyToBill.maxExcess')") == 500 and await pg.evaluate("UPC.settings.get('reviewRequests.sendAt')") == '09:15')
+        res = await pg.evaluate("UPC.settings.save(Object.fromEntries(UPC.settings.all().map((r) => [r.def.key, r.changed ? r.value : '']))).then(() => 'ok', (e) => e.message)")
+        check('and the older one is deleted on the next save', res == 'ok' and S.get('deleted') == [49000] and len(S['notes'][78842]) == 1, (res, S.get('deleted'), S['notes']))
         await ctx.close()
 
         # Someone else: sees the values, can't change them; a hand-edited note

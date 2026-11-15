@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.51
+// @version      0.1.52
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.51';
+  const VERSION = '0.1.52';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -921,8 +921,10 @@
     },
     toHtml: (text) => String(text || '').split('\n').map((l) => '<p>' + esc(l) + '</p>').join(''),
     // [{ id, date, creator, privacy, important, text }], newest first as Halaxy lists them.
+    // Asked afresh each time (a time in the address, no browser cache): right after saving, an earlier copy of the list
+    // was seen (live, 15 Nov 2026: the new note missing).
     async list(kind, id) {
-      const res = await http.json(adminNotes.path(kind, id) + '/list-data?viewMode=ajax');
+      const res = await http.json(adminNotes.path(kind, id) + '/list-data?viewMode=ajax&_=' + Date.now(), { cache: 'no-store', headers: JSON_HEADERS });
       if (!res || !Array.isArray(res.data)) throw new UPCError('Halaxy\'s Admin Notes list has changed, so the notes could not be read.');
       return res.data.map((n) => ({ id: String(n.id), date: n.date || '', creator: clean(n.creator), privacy: clean(n.privacy), important: !!n.isImportant, text: adminNotes.toText(n.content) }));
     },
@@ -939,11 +941,21 @@
     // Adds a note (Access left as Halaxy offers it: All) and returns it, as listed afterwards.
     async add(kind, id, text) {
       const before = (await adminNotes.list(kind, id)).map((n) => n.id);
-      return adminNotes.save(adminNotes.path(kind, id) + '/new', text, async () => {
-        const added = (await adminNotes.list(kind, id)).filter((n) => !before.includes(n.id));
-        if (added.length !== 1 || added[0].text !== adminNotes.toText(adminNotes.toHtml(text))) throw new UPCError('Halaxy accepted the note but does not list it as written. Check the Admin Notes.');
-        return added[0];
-      });
+      const want = adminNotes.toText(adminNotes.toHtml(text));
+      return adminNotes.save(adminNotes.path(kind, id) + '/new', text, () => adminNotes.settle(kind, id, (notes) => {
+        const added = notes.filter((n) => !before.includes(n.id));
+        return added.length === 1 && added[0].text === want ? added[0] : null;
+      }, 'Halaxy accepted the note but does not list it as written. Check the Admin Notes.'));
+    },
+    // Reads the list until found(notes) gives the note (up to three looks, a second or two apart: Halaxy's list can lag
+    // just after a save), else fails with message.
+    async settle(kind, id, found, message) {
+      for (let i = 0; i < 3; i++) {
+        if (i) await sleep(1500 * i);
+        const n = found(await adminNotes.list(kind, id));
+        if (n) return n;
+      }
+      throw new UPCError(message);
     },
     // Deletes a note (capture 14 Nov 2026): GET .../:noteId/delete is Halaxy's "Delete Admin Note" pop-up, whose Delete
     // button is a link to .../:noteId/delete/<hex>; opening that deletes it. Checked by listing afterwards. Only used for
@@ -958,11 +970,9 @@
     },
     // Replaces a note's text (its date, owner and access stay as they are).
     async update(kind, id, noteId, text) {
-      return adminNotes.save(adminNotes.path(kind, id) + '/' + encodeURIComponent(noteId) + '/edit', text, async () => {
-        const n = (await adminNotes.list(kind, id)).find((x) => x.id === String(noteId));
-        if (!n || n.text !== adminNotes.toText(adminNotes.toHtml(text))) throw new UPCError('Halaxy does not show the note as changed. Check the Admin Notes.');
-        return n;
-      });
+      const want = adminNotes.toText(adminNotes.toHtml(text));
+      return adminNotes.save(adminNotes.path(kind, id) + '/' + encodeURIComponent(noteId) + '/edit', text, () => adminNotes.settle(kind, id,
+        (notes) => notes.find((x) => x.id === String(noteId) && x.text === want) || null, 'Halaxy does not show the note as changed. Check the Admin Notes.'));
     },
   };
 
@@ -2247,7 +2257,9 @@
       return [CLINIC_HEAD, CLINIC_INFO].concat(CLINIC_SETTINGS.filter((d) => values[d.key] !== undefined && values[d.key] !== null && values[d.key] !== '')
         .map((d) => d.key + ' = ' + settings.text(values[d.key]))).join('\n');
     },
-    note: (notes) => notes.filter((n) => n.text.split('\n')[0] === CLINIC_HEAD).sort((a, b) => Number(a.id) - Number(b.id))[0] || null,
+    // The newest settings note (the last save); any older copies are deleted on the next save.
+    notes: (notes) => notes.filter((n) => n.text.split('\n')[0].trim() === CLINIC_HEAD).sort((a, b) => Number(b.id) - Number(a.id)),
+    note: (notes) => settings.notes(notes)[0] || null,
     // Reads the note (force: now; otherwise only when an hour has passed, in the visible tab, Halaxy not busy).
     async refresh(force) {
       if (!force && (document.visibilityState !== 'visible' || http.pausedFor() > 0 || !background.due(settings.store.get('tried', 0), CLINIC_EVERY))) return false;
@@ -2266,7 +2278,7 @@
       const clean = {};
       for (const def of CLINIC_SETTINGS) {
         const raw = values[def.key];
-        if (raw === undefined || raw === null || (!Array.isArray(raw) && String(raw).trim() === '' && def.type !== 'people')) continue;
+        if (raw === undefined || raw === null || (!Array.isArray(raw) && String(raw).trim() === '')) continue;   // empty: the default (no ticks at all is refused below)
         const v = settings.check(def, raw);
         if (v === null) {
           throw new UPCError(def.script + ': "' + def.label + '" must be ' + (def.type === 'time' ? 'a time from ' + def.min + ' to ' + def.max : def.type === 'people' ? 'at least one person'
@@ -2275,9 +2287,11 @@
         if (!settings.same(v, def.def)) clean[def.key] = v;
       }
       const text = settings.format(clean);
-      const note = settings.note(await adminNotes.list('organisation', SHARED_ORG));
+      const all = settings.notes(await adminNotes.list('organisation', SHARED_ORG));
+      const note = all[0] || null;
       if (!note) await adminNotes.add('organisation', SHARED_ORG, text);
       else if (note.text !== text) await adminNotes.update('organisation', SHARED_ORG, note.id, text);
+      for (const old of all.slice(1)) { try { await adminNotes.remove('organisation', SHARED_ORG, old.id); } catch (e) { console.warn('[UPC settings]', e); } }
       await settings.refresh(true);
       return clean;
     },

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Script settings (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.1
+// @version      0.2.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/script-settings.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/script-settings.user.js
@@ -31,7 +31,7 @@
   if (window.__hxScriptSettings) return;
   window.__hxScriptSettings = true;
 
-  const VERSION = '0.2.1';
+  const VERSION = '0.2.2';
   const U = () => window.UPC;
   const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const STATUS = { running: 'running on this page', next: 'starts on next page', off: 'switched off', unused: 'not used on this page' };
@@ -49,9 +49,12 @@
     .upc-ss tr.upc-ss-grp th { font-weight: 600; }
     .upc-ss .upc-ss-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 12px; }
     .upc-ss .upc-ss-actions .btn { margin: 0; }
-    .upc-ss .upc-ss-clinic td { vertical-align: middle; }
+    .upc-ss .upc-ss-clinic table { table-layout: fixed; width: 100%; }
+    .upc-ss .upc-ss-clinic td, .upc-ss .upc-ss-clinic th { vertical-align: middle; overflow-wrap: anywhere; }
+    .upc-ss .upc-ss-clinic col.upc-ss-c1 { width: 36%; } .upc-ss .upc-ss-clinic col.upc-ss-c2 { width: 40%; } .upc-ss .upc-ss-clinic col.upc-ss-c3 { width: 24%; }
+    .upc-ss .upc-ss-clinic select.form-control { max-width: 100%; }
     .upc-ss .upc-ss-clinic input.form-control { display: inline-block; width: 96px; margin-right: 6px; }
-    .upc-ss .upc-ss-clinic td.upc-ss-def { white-space: nowrap; }
+
     .upc-ss .upc-ss-clinic .upc-ss-people { display: flex; flex-wrap: wrap; gap: 4px 14px; }
     .upc-ss .upc-ss-clinic .upc-ss-people label { font-weight: normal; margin: 0; cursor: pointer; white-space: nowrap; }
     .upc-ss .upc-ss-clinic select.form-control { display: inline-block; width: auto; min-width: 200px; }
@@ -122,7 +125,7 @@
     let h = '<div class="upc-ss-section upc-ss-clinic"><p class="text-muted">These apply on every PC. ' + (edit ? 'Leave a box empty for the default. ' : 'Only ' + esc(S.editors.join(' or ')) + ' can change them. ') +
       'Each PC uses a change within the hour.</p>';
     let script = '';
-    h += '<table class="table table-striped table-bordered w-100"><tbody>';
+    h += '<table class="table table-striped table-bordered w-100"><colgroup><col class="upc-ss-c1"><col class="upc-ss-c2"><col class="upc-ss-c3"></colgroup><tbody>';
     rows.forEach((r) => {
       const d = r.def;
       if (d.script !== script) { script = d.script; h += '<tr class="upc-ss-grp"><th colspan="2">' + esc(script) + '</th><th class="text-muted">Default</th></tr>'; }
