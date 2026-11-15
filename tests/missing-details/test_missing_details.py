@@ -273,6 +273,24 @@ async def main():
               and lines['302'] == ['dob phone'] and all(l.split(' | ')[1] == '2026-11-16 07:00' for l in note_text()[2:]), (read, note_text()))
         await ctx.close()
 
+        # Three PCs each made a note at the same moment (live, 15 Nov 2026): the oldest is used, the others' lines taken in,
+        # and the others relabelled as spare copies
+        head = '<p class="ck-text">UPC shared checks: Missing details</p><p class="ck-text">Kept by UPC scripts. Please do not edit: a line that is changed is dropped and checked again.</p>'
+        setup('Carl Healy', {78842: [{'id': 40001, 'html': head},
+                                     {'id': 40002, 'html': head + '<p class="ck-text">301 | 2026-11-16 08:00 | ok</p><p class="ck-text">302 | 2026-11-16 08:00 | dob phone</p>'},
+                                     {'id': 40003, 'html': head}]})
+        ctx = await context(browser)
+        pg = await ctx.new_page()
+        await pg.goto('https://eu.halaxy.com/a/pr/555/patient/#upc-missing-details')
+        await pg.wait_for_function("document.querySelector('[data-upc-missing-details] .card') && !document.querySelector('[data-upc-missing-details] [data-a=refresh]').disabled", timeout=90000)
+        by_id = {n['id']: [re.sub(r'<[^>]+>', '', x) for x in n['html'].split('</p>') if x.strip()] for n in S['notes'][78842]}
+        kept = {l.split(' | ')[0]: l.split(' | ')[2:] for l in by_id[40001][2:]}
+        read = sorted({int(x[1].split('/')[2]) for x in S['log'] if x[1].endswith('/edit') and x[1].startswith('/patient/')})
+        check('two PCs made a note at once: the oldest used, with the other copy\'s lines (those not read again)', len(S['notes'][78842]) == 3 and kept.get('301') == ['ok']
+              and kept.get('302') == ['dob phone'] and sorted(kept) == ['301', '302', '303', '304', '306', '308'] and 301 not in read and 302 not in read, (by_id, read))
+        check('the other copies relabelled, so nothing uses them again', all(by_id[i] == ['Spare copy of UPC shared checks: Missing details (two PCs started it at the same moment). It can be deleted.'] for i in (40002, 40003)), by_id)
+        await ctx.close()
+
         # Someone else (a physio): no page or menu item, but the banner still shows
         setup('Physio One')
         ctx = await context(browser)
