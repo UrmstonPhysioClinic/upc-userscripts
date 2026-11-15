@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Calendar: Forecourt lights (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.2
+// @version      0.2.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/forecourt-lights.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/forecourt-lights.user.js
@@ -36,7 +36,7 @@
   if (window.__hxForecourtLights) return;
   window.__hxForecourtLights = true;
 
-  const VERSION = '0.2.2';
+  const VERSION = '0.2.3';
   const LAT = 53.45, LON = -2.35, TZ = 'Europe/London';
   const STEP = 15;                      // the timer's segments, minutes
   const SNOOZE = 60 * 60e3;
@@ -44,7 +44,9 @@
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const DEFAULTS = { enabled: false, days: [false, false, false, false, false, false, false], offTime: '20:45', offset: 30, noticeTime: '09:00', skip: [], timerOn: null, who: [] };
-  const STAFF = ['Carl Healy', 'Diana Satalova', 'Lottie Harold', 'Roxanna Healy', 'Stephen Sharples', 'Wendy Pritchard'];
+  // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
+  const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
+  const STAFF = () => rule('forecourtLights.staff', ['Carl Healy', 'Diana Satalova', 'Lottie Harold', 'Roxanna Healy', 'Stephen Sharples', 'Wendy Pritchard']);
 
   const U = () => window.UPC;
   const canStore = typeof GM_getValue === 'function' && typeof GM_setValue === 'function';
@@ -60,7 +62,7 @@
     const named = String(h.pracName || (h.CalendarDefault || {}).pracName || '').trim();
     if (named) return named;
     const el = [...document.querySelectorAll('header *, nav *, .navbar *, #top *')]
-      .find((e) => !e.children.length && STAFF.some((n) => n.toLowerCase() === e.textContent.trim().toLowerCase()));
+      .find((e) => !e.children.length && STAFF().some((n) => n.toLowerCase() === e.textContent.trim().toLowerCase()));
     return el ? el.textContent.trim() : '';
   }
   const isFor = (s, user) => !(s.who || []).length || (s.who || []).some((n) => n.toLowerCase() === String(user || '').toLowerCase());
@@ -269,7 +271,7 @@
     d.body.innerHTML =
       '<div class="upc-fl-grid">' +
       '<label for="upc-fl-on">Reminders on this PC</label><div><label class="mb-0"><input type="checkbox" id="upc-fl-on"' + (s.enabled ? ' checked' : '') + '> Show forecourt light reminders here</label></div>' +
-      '<span>Remind</span><div class="upc-fl-days">' + [...new Set([...STAFF, ...(s.who || []), userName()].filter(Boolean))].map((n) =>
+      '<span>Remind</span><div class="upc-fl-days">' + [...new Set([...STAFF(), ...(s.who || []), userName()].filter(Boolean))].map((n) =>
         '<label><input type="checkbox" data-who="' + esc(n) + '"' + ((s.who || []).includes(n) ? ' checked' : '') + '> ' + esc(n) + '</label>').join('') +
         '<div class="text-muted w-100">Whoever is signed in to Halaxy on this PC. None ticked: anyone.</div></div>' +
       '<span>Clinic evenings</span><div class="upc-fl-days">' + DAYS.map((n, i) => '<label><input type="checkbox" data-day="' + i + '"' + (s.days[i] ? ' checked' : '') + '> ' + n + '</label>').join('') + '</div>' +

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Bank statement (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.4
+// @version      0.2.5
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
@@ -50,12 +50,12 @@
   if (window.__hxBankStatement) return;
   window.__hxBankStatement = true;
 
-  const VERSION = '0.2.4';
+  const VERSION = '0.2.5';
   const ROUTE = 'upc-bank-statement';
   const MENU_CLS = 'upc-bank-menu';
-  const ALLOWED = ['Carl Healy'];
+  const ALLOWED = () => rule('bankStatement.people', ['Carl Healy']);
   const METHOD = 'Direct Deposit';
-  const TASK_FOR = 'Carl Healy';
+  const TASK_FOR = () => rule('bankStatement.taskFor', 'Carl Healy');
   const LOOK_BACK_MONTHS = 18;
   const NEAR_BEFORE = 3, NEAR_AFTER = 14;   // days the bank date may be before / after the remittance's date
   const USUAL_DAYS = 5;   // Carl, 12 Nov 2026: Bupa (and AXA) almost always pay 2 days after the remittance date
@@ -97,8 +97,8 @@
   const payerIsFunder = (payer, funder) => { const p = String(payer).toLowerCase(), f = String(funder).toLowerCase(); return !!p && !!f && (p.includes(f) || f.includes(p)); };
 
   // Who's signed in: the core library's check (Halaxy can fill the name in late, so it keeps looking for 20 seconds).
-  const allowed = () => !!U() && U().user.is(ALLOWED);
-  const whenAllowed = (fn) => U().user.whenAllowed(ALLOWED, fn);
+  const allowed = () => !!U() && U().user.is(ALLOWED());
+  const whenAllowed = (fn) => U().user.whenAllowed(ALLOWED(), fn);
 
   // ------------------------------------------------------------------ reading the statement
 
@@ -580,7 +580,7 @@
 
   // A task for Carl: on the insurer's profile, or a general one when the profile isn't known.
   async function taskFor(r, title, comment) {
-    const task = { title, assignee: TASK_FOR, priority: 3, due: today(), by: 'Bank statement', comment };
+    const task = { title, assignee: TASK_FOR(), priority: 3, due: today(), by: 'Bank statement', comment };
     try {
       if (r.org) await U().tasks.addToOrganisation(r.org, task);
       else await U().tasks.addGeneral(task);
@@ -619,7 +619,7 @@
   const firstRead = (text) => (String(text || '').match(/^First read (.+)$/m) || [])[1];
   // Writes (or updates) this statement's register entry.
   async function writeRegister(st, results) {
-    const me = U().user.name(ALLOWED) || 'unknown';
+    const me = U().user.name(ALLOWED()) || 'unknown';
     const text = ['Starling statement ' + st.from + ' to ' + st.to, 'Fingerprint ' + st.fp,
       st.rows + ' transactions; opening ' + fmt(st.opening) + ', closing ' + fmt(st.closing),
       'First read ' + (firstRead(state.register && state.register.text) || today() + ' by ' + me),
@@ -799,7 +799,7 @@
   const plan = (r) => {
     const set = r.pick !== null && r.pick !== undefined ? r.options[r.pick] : null;
     const inv = set ? set.map((i) => esc(i.number) + ' ' + fmt(i.balance)).join(', ') : '';
-    if (needsTask(r)) return 'a task for ' + esc(TASK_FOR) + ' to check it';
+    if (needsTask(r)) return 'a task for ' + esc(TASK_FOR()) + ' to check it';
     if (r.deposit) return 'apply its deposit to ' + inv;
     if (r.remit && set) return 'add the deposit and apply it to ' + inv;
     return 'add the deposit (applied when its remittance comes)';
@@ -836,7 +836,7 @@
       const say = (t, err) => { U().ui.run.step(run, t, err); render(); };
       if (needsTask(r)) {
         say('Adding a task for ' + r.insurer + ' ' + fmt(r.amount) + ' (' + isoLabel(r.date) + ')...');
-        if (await checkTask(r)) say('Task added for ' + TASK_FOR + '.');
+        if (await checkTask(r)) say('Task added for ' + TASK_FOR() + '.');
         else say(r.insurer + ' ' + fmt(r.amount) + ': ' + r.error, true);
       } else {
         try {
@@ -847,7 +847,7 @@
           r.error = 'Not recorded: ' + (e.message || e);
           await taskFor(r, 'Bank statement could not record ' + r.insurer + ' ' + fmt(r.amount) + ' (' + isoLabel(r.date) + ')',
             ['Adding the deposit for the ' + r.insurer + ' payment of ' + fmt(r.amount) + ' (bank ' + isoLabel(r.date) + (r.ref ? ', ref ' + r.ref : '') + ') stopped: ' + (e.message || e), 'Check the profile\'s deposits, then open the statement again or add it by hand.']);
-          if (r.tasked) r.error += ' Task added for ' + TASK_FOR + '.';
+          if (r.tasked) r.error += ' Task added for ' + TASK_FOR() + '.';
           say(r.insurer + ' ' + fmt(r.amount) + ' (' + isoLabel(r.date) + '): ' + r.error, true);
         }
       }
@@ -889,7 +889,7 @@
     state.unmount = U().ui.mountPage('Bank statement', root, MENU_CLS);
     render();
     // Deposits still not applied 10 days on: a task on the insurer's profile (once a day).
-    U().deposits.lingering({ days: LINGER_DAYS(), assignee: TASK_FOR, by: 'Bank statement' }).catch(() => {});
+    U().deposits.lingering({ days: LINGER_DAYS(), assignee: TASK_FOR(), by: 'Bank statement' }).catch(() => {});
   }
   function unmount() {
     if (!state.unmount) return;

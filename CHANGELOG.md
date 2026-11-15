@@ -1,5 +1,11 @@
 # Changelog
 
+## Clinic settings stage 2: people, 15 Nov 2026 (beta)
+- Core 0.1.51: people settings. Who sees each page (Ready to bill, Missing details list, Insurer payments due, Open-ended patients, Review requests, Feedback alerts, Patient statuses, Bank statement; a page's list also decides on whose sign-in its background checks run), who gets each script's tasks (Feedback alerts, Remittances, Bank statement, Portal fill), and who Forecourt lights can remind. At least one person per page. Only Carl can change clinic settings (not itself a setting).
+- Script settings 0.2.1: ticks for people, a list for one person (offered: Halaxy's practitioner list, everyone named in a setting, who is signed in); a refused save keeps the changes on screen.
+- Remittances uses the same "not matched after" days as Bank statement. Portal fill passes the task owner to the portal, which names them if a fill stops.
+- Health check 1.1.45: wording for people settings it can't use.
+
 ## Clinic settings, 15 Nov 2026 (beta)
 - Core 0.1.50: `UPC.settings`, the rules every PC shares, kept in the Admin Note "UPC clinic settings" on UPC scripts (settings) (one `key = value` line for each value that differs from the default). Read about hourly by each PC; a value outside its limits or a line that can't be read falls back to the default.
 - Script settings 0.2.0: a Clinic settings section. Everyone sees the values; only Carl can change them ("Save for every PC"). Values outside their limits are refused.

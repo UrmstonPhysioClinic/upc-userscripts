@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Missing details (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.2
+// @version      0.2.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/missing-details.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/missing-details.user.js
@@ -41,10 +41,10 @@
   if (window.__hxMissingDetails) return;
   window.__hxMissingDetails = true;
 
-  const VERSION = '0.2.2';
+  const VERSION = '0.2.3';
   const ROUTE = 'upc-missing-details';
   const MENU_CLS = 'upc-md-menu';
-  const ADMINS = ['Carl Healy', 'Wendy Pritchard'];   // who sees the page (Carl, 15 Nov 2026: Carl and Wendy)
+  const ADMINS = () => rule('missingDetails.people', ['Carl Healy', 'Wendy Pritchard']);   // who sees the page (Carl, 15 Nov 2026: Carl and Wendy)
   const DAY = 86400e3;
   // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
   const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
@@ -61,7 +61,7 @@
   const store = { get: (k, d) => U().storage(KEY).get(k, d), set: (k, v) => U().storage(KEY).set(k, v) };
   const label = (ms) => U().dayLabel(ms);
   const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
-  const isAdmin = () => !!U() && U().user.is(ADMINS);
+  const isAdmin = () => !!U() && U().user.is(ADMINS());
 
   // ------------------------------------------------------------------ reading a patient
 
@@ -391,7 +391,7 @@
     setTimeout(background, 8000);
     setInterval(background, 30 * 60e3);
     // Carl and Wendy: the page under Patients, opening over Halaxy's Patient List (as Open-ended patients does).
-    U().user.whenAllowed(ADMINS, () => {
+    U().user.whenAllowed(ADMINS(), () => {
       U().ui.ensureMenuItem('Missing details', (section) => {
         const list = section && [...section.querySelectorAll('a.mainmenu-sublink')].find((a) => /^patient list$/i.test(clean(a.textContent)));
         return (list ? list.getAttribute('href').split('#')[0] : U().base() + '/patient/') + '#' + ROUTE;

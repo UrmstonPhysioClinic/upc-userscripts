@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Patient statuses (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.6
+// @version      0.2.7
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
@@ -41,8 +41,8 @@
   if (window.__hxPatientStatuses) return;
   window.__hxPatientStatuses = true;
 
-  const VERSION = '0.2.6';
-  const ALLOWED = ['Carl Healy'];
+  const VERSION = '0.2.7';
+  const ALLOWED = () => rule('patientStatuses.people', ['Carl Healy']);
   const DAY = 86400e3;
   // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
   const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
@@ -65,8 +65,8 @@
   const norm = (s) => String(s || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
 
   // Who's signed in: the core library's check (Halaxy can fill the name in late, so it keeps looking for 20 seconds).
-  const allowed = () => !!U() && U().user.is(ALLOWED);
-  const whenAllowed = (fn) => U().user.whenAllowed(ALLOWED, fn);
+  const allowed = () => !!U() && U().user.is(ALLOWED());
+  const whenAllowed = (fn) => U().user.whenAllowed(ALLOWED(), fn);
 
   // Treatment finished, in the last note (the core library's wording, shared with Review requests). "See as needed" and
   // other open-ended wording don't count: those patients are discharged by the 6-week gap instead.
@@ -274,7 +274,7 @@
     const l = store.get('log', []), last = store.get('lastRun', null);
     const when = (ms) => label(ms) + ' ' + new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
     dlg.root.setAttribute('data-upc-ps-log', '');
-    dlg.body.innerHTML = '<p class="text-muted">Statuses are kept up to date by themselves while ' + esc(ALLOWED[0]) + ' is signed in, every 3 hours. ' +
+    dlg.body.innerHTML = '<p class="text-muted">Statuses are kept up to date by themselves while ' + esc(ALLOWED()[0]) + ' is signed in, every 3 hours. ' +
       (last ? 'Last checked ' + esc(when(last.at)) + (last.error ? ': <span class="upc-err">' + esc(last.error) + '</span>' : ', ' + (last.changed || 0) + ' changed.') : 'Not checked yet.') + '</p>' +
       (l.length ? '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th>When</th><th>Patient</th><th>Change</th><th>Why</th></tr></thead><tbody>' +
         l.map((x) => '<tr><td>' + esc(when(x.at)) + '</td><td><a href="' + esc(base + '/patient/' + x.id) + '" target="_blank" rel="noopener">' + esc(x.name) + '</a></td>' +

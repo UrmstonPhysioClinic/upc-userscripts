@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Script settings (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.0
+// @version      0.2.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/script-settings.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/script-settings.user.js
@@ -31,7 +31,7 @@
   if (window.__hxScriptSettings) return;
   window.__hxScriptSettings = true;
 
-  const VERSION = '0.2.0';
+  const VERSION = '0.2.1';
   const U = () => window.UPC;
   const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const STATUS = { running: 'running on this page', next: 'starts on next page', off: 'switched off', unused: 'not used on this page' };
@@ -52,6 +52,9 @@
     .upc-ss .upc-ss-clinic td { vertical-align: middle; }
     .upc-ss .upc-ss-clinic input.form-control { display: inline-block; width: 96px; margin-right: 6px; }
     .upc-ss .upc-ss-clinic td.upc-ss-def { white-space: nowrap; }
+    .upc-ss .upc-ss-clinic .upc-ss-people { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+    .upc-ss .upc-ss-clinic .upc-ss-people label { font-weight: normal; margin: 0; cursor: pointer; white-space: nowrap; }
+    .upc-ss .upc-ss-clinic select.form-control { display: inline-block; width: auto; min-width: 200px; }
   `;
   function styles() {
     if (document.getElementById('upc-script-settings-css')) return;
@@ -88,11 +91,30 @@
 
   // ------------------------------------------------------------------ the pop-up
 
-  let dlg = null, st = null, needRefresh = false, busy = '', notice = '', view = 'main', clinicMsg = '', clinicErr = '';
+  let dlg = null, st = null, needRefresh = false, busy = '', notice = '', view = 'main', clinicMsg = '', clinicErr = '', names = null, draft = null;
 
   // ------------------------------------------------------------------ clinic settings (every PC)
 
-  const shown = (def, v) => (def.unit === '£' ? '£ ' + v : v + (def.unit ? ' ' + def.unit : ''));
+  const shown = (def, v) => (Array.isArray(v) ? v.join(', ') : def.unit === '£' ? '£ ' + v : v + (def.unit ? ' ' + def.unit : ''));
+  // The box for one setting: a number or time, ticks for people, a list for one person.
+  // What is in the boxes is kept (draft) while saving, so a refused save keeps the changes on screen.
+  function field(r) {
+    const d = r.def;
+    if (draft && Object.prototype.hasOwnProperty.call(draft, d.key)) {
+      r = Object.assign({}, r, { value: draft[d.key], changed: true });
+    }
+    if (d.type === 'people') {
+      const list = [...new Set((names || []).concat(r.value))];
+      return '<div class="upc-ss-people" data-people="' + esc(d.key) + '">' + list.map((n) => '<label><input type="checkbox" value="' + esc(n) + '"' + (r.value.includes(n) ? ' checked' : '') + '> ' + esc(n) + '</label>').join('') + '</div>';
+    }
+    if (d.type === 'person') {
+      const list = [...new Set((names || []).concat([r.value]))];
+      return '<select class="form-control" data-key="' + esc(d.key) + '">' + list.map((n) => '<option' + (n === r.value ? ' selected' : '') + '>' + esc(n) + '</option>').join('') + '</select>';
+    }
+    const val = r.changed ? r.value : '';   // empty: the default
+    return (d.unit === '£' ? '£ ' : '') + '<input class="form-control" type="' + (d.type === 'time' ? 'time' : 'number') + '" data-key="' + esc(d.key) + '" value="' + esc(val) + '" placeholder="' + esc(d.def) + '"' +
+      (d.type === 'time' ? '' : ' min="' + d.min + '" max="' + d.max + '" step="1"') + '>' + (d.unit && d.unit !== '£' ? esc(d.unit) : '');
+  }
   function renderClinic() {
     const S = U().settings;
     const edit = S.canEdit();
@@ -104,12 +126,8 @@
     rows.forEach((r) => {
       const d = r.def;
       if (d.script !== script) { script = d.script; h += '<tr class="upc-ss-grp"><th colspan="2">' + esc(script) + '</th><th class="text-muted">Default</th></tr>'; }
-      const val = r.value === d.def ? '' : r.value;
-      h += '<tr><td>' + esc(d.label) + '</td><td>' + (edit
-        ? (d.unit === '£' ? '£ ' : '') + '<input class="form-control" type="' + (d.type === 'time' ? 'time' : 'number') + '" data-key="' + esc(d.key) + '" value="' + esc(val) + '" placeholder="' + esc(d.def) + '"' +
-          (d.type === 'time' ? '' : ' min="' + d.min + '" max="' + d.max + '" step="1"') + '>' + (d.unit && d.unit !== '£' ? esc(d.unit) : '')
-        : '<strong>' + esc(shown(d, r.value)) + '</strong>') +
-        (r.bad ? ' <span class="upc-err">(saved value ' + esc(r.raw) + ' is outside ' + esc(d.min) + ' to ' + esc(d.max) + ': default used)</span>' : '') + '</td>' +
+      h += '<tr><td>' + esc(d.label) + '</td><td>' + (edit ? field(r) : '<strong>' + esc(shown(d, r.value)) + '</strong>') +
+        (r.bad ? ' <span class="upc-err">(saved value ' + esc(r.raw) + (d.type === 'people' || d.type === 'person' ? ' can\'t be used' : ' is outside ' + esc(d.min) + ' to ' + esc(d.max)) + ': default used)</span>' : '') + '</td>' +
         '<td class="upc-ss-def text-muted">' + esc(shown(d, d.def)) + '</td></tr>';
     });
     h += '</tbody></table>';
@@ -129,13 +147,16 @@
     const S = U().settings;
     clinicMsg = ''; clinicErr = '';
     if (a === 'reread') {
+      draft = null;
       busy = 'Reading...'; renderClinic();
       try { await S.refresh(true); clinicMsg = 'Read again.'; } catch (e) { clinicErr = 'Could not read the settings: ' + (e.message || e); }
     } else if (a === 'save') {
       const values = {};
-      dlg.body.querySelectorAll('input[data-key]').forEach((el) => { values[el.dataset.key] = el.value; });
+      dlg.body.querySelectorAll('input[data-key], select[data-key]').forEach((el) => { values[el.dataset.key] = el.value; });
+      dlg.body.querySelectorAll('[data-people]').forEach((el) => { values[el.dataset.people] = [...el.querySelectorAll('input:checked')].map((x) => x.value); });
+      draft = values;
       busy = 'Saving...'; renderClinic();
-      try { await S.save(values); clinicMsg = 'Saved. Every PC uses these within the hour.'; } catch (e) { clinicErr = 'Not saved: ' + (e.message || e); }
+      try { await S.save(values); draft = null; clinicMsg = 'Saved. Every PC uses these within the hour.'; } catch (e) { clinicErr = 'Not saved: ' + (e.message || e); }
     }
     busy = '';
     renderClinic();
@@ -193,7 +214,7 @@
     dlg = U().ui.dialog({ title: 'Script settings', key: 'upc-script-settings', onClose: () => { dlg = null; } });
     if (!dlg) return;
     dlg.root.classList.add('upc-ss');
-    notice = ''; view = 'main'; clinicMsg = ''; clinicErr = '';
+    notice = ''; view = 'main'; clinicMsg = ''; clinicErr = ''; draft = null;
     render();
     dlg.body.addEventListener('click', async (e) => {
       const it = e.target.closest('[data-item]');
@@ -201,8 +222,11 @@
       const a = e.target.closest('[data-a]');
       if (!a) return;
       if (a.dataset.a === 'close') { dlg.close(); dlg = null; }
-      else if (a.dataset.a === 'clinic') { view = 'clinic'; render(); }
-      else if (a.dataset.a === 'back') { view = 'main'; render(); }
+      else if (a.dataset.a === 'clinic') {
+        view = 'clinic'; render();
+        if (U().settings.canEdit() && U().settings.names && !names) { names = await U().settings.names(); if (view === 'clinic') render(); }
+      }
+      else if (a.dataset.a === 'back') { view = 'main'; draft = null; render(); }
       else if (a.dataset.a === 'reread' || a.dataset.a === 'save') clinicAction(a.dataset.a);
       else if (a.dataset.a === 'reload') location.reload();
       else if (a.dataset.a === 'check') {

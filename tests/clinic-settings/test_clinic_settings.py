@@ -40,6 +40,8 @@ async def halaxy(route):
     S['log'].append((req.method, re.sub(r'^/a/pr/555', '', p)))
     js = lambda o: route.fulfill(body=json.dumps(o), content_type='application/json')
     notes = S['notes']
+    if p.endswith('/lookup/practitioner'):
+        return await js([{'id': 11, 'name': 'Carl Healy'}, {'id': 12, 'name': 'Physio One'}, {'id': 13, 'name': '<b>Bad</b>'}])
     m = re.match(r'^/a/pr/555/communication-log/organisation/(\d+)/list-data$', p)
     if m:
         return await js({'data': [{'id': n['id'], 'date': '2026-11-15 10:00:00', 'privacy': 'All', 'creator': 'Carl Healy', 'isImportant': False, 'content': n['html']}
@@ -133,6 +135,33 @@ async def main():
         await pg.wait_for_function("document.querySelector('.upc-ss-clinic .upc-ok')", timeout=15000)
         check('an empty box: back to the default (line removed)', note_lines()[2:] == ['reviewRequests.sendAt = 09:15'] and await pg.evaluate("UPC.settings.get('readyToBill.maxExcess')") == 500, note_lines())
         check('one note only', len(S['notes'][78842]) == 1, S['notes'])
+
+        # People (stage 2): ticks for who sees a page, a list for who gets tasks
+        await pg.wait_for_function("document.querySelectorAll('[data-people=\"readyToBill.people\"] input').length >= 3", timeout=10000)
+        ticks = await pg.evaluate("[...document.querySelectorAll('[data-people=\"readyToBill.people\"] input')].map((i) => [i.value, i.checked])")
+        t = dict(ticks)
+        check('who sees Ready to bill: everyone offered (Halaxy\'s list and the names in settings), Carl and Wendy ticked', t.get('Carl Healy') and t.get('Wendy Pritchard') and t.get('Physio One') is False
+              and 'Stephen Sharples' in t and not any('<' in n or 'Bad' in n for n in t), ticks)
+        await pg.uncheck("[data-people='readyToBill.people'] input[value='Wendy Pritchard']")
+        await pg.check("[data-people='readyToBill.people'] input[value='Physio One']")
+        await pg.select_option("select[data-key='remittances.taskFor']", 'Physio One')
+        for n in ['Carl Healy']:
+            await pg.uncheck("[data-people='openEnded.people'] input[value='%s']" % n)
+        await pg.click("[data-a=save]")
+        await pg.wait_for_function("document.querySelector('.upc-ss-clinic .upc-err')", timeout=10000)
+        err = await pg.evaluate("document.querySelector('.upc-ss-clinic .upc-err').textContent")
+        kept = await pg.evaluate("[document.querySelector(\"[data-people='readyToBill.people'] input[value='Physio One']\").checked, document.querySelector(\"select[data-key='remittances.taskFor']\").value]")
+        check('a refused save keeps the changes on screen', kept == [True, 'Physio One'], kept)
+        check('nobody ticked: refused, nothing saved', 'Open-ended patients" must be at least one person' in err and not any('people' in l for l in note_lines()), err)
+        await pg.check("[data-people='openEnded.people'] input[value='Carl Healy']")
+        await pg.click("[data-a=save]")
+        await pg.wait_for_function("document.querySelector('.upc-ss-clinic .upc-ok')", timeout=15000)
+        lines = note_lines()[2:]
+        check('people saved: names only where they differ from the default', lines == ['reviewRequests.sendAt = 09:15', 'readyToBill.people = Carl Healy, Physio One', 'remittances.taskFor = Physio One'], lines)
+        got = await pg.evaluate("[UPC.settings.get('readyToBill.people'), UPC.settings.get('remittances.taskFor'), UPC.settings.get('openEnded.people')]")
+        check('read back as lists and names', got == [['Carl Healy', 'Physio One'], 'Physio One', ['Carl Healy']], got)
+        allowed = await pg.evaluate("(() => { const m = %s.match(/const ALLOWED = \(\) => ([^;]+);/); const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d); return eval(m[1]); })()" % json.dumps(RTB))
+        check('Ready to bill follows it (Wendy no longer sees it)', allowed == ['Carl Healy', 'Physio One'], allowed)
         check('no page errors (Carl)', not errors, errors)
         await ctx.close()
 
@@ -145,6 +174,7 @@ async def main():
         await open_clinic(pg)
         view = await pg.evaluate("({ inputs: document.querySelectorAll('.upc-ss-clinic input').length, save: !!document.querySelector('[data-a=save]'), text: document.querySelector('.upc-ss-clinic').textContent })")
         check('others: values shown, no boxes or Save', view['inputs'] == 0 and not view['save'] and '09:15' in view['text'] and 'Only Carl Healy can change them' in view['text'], view)
+        check('others: people shown as names', 'Carl Healy, Physio One' in view['text'], view['text'][:600])
         check('a value changed by hand outside its limits: default used, and said', await pg.evaluate("UPC.settings.get('readyToBill.quietDays')") == 14 and 'saved value 400 is outside 3 to 90' in view['text'], view['text'][:300])
         check('a line that can\'t be read: ignored, and listed', 'Wendy says hello' in view['text'] and await pg.evaluate("UPC.settings.problems()") == ['Wendy says hello'], view['text'][-400:])
         res = await pg.evaluate("UPC.settings.save({}).then(() => 'saved', (e) => e.message)")
