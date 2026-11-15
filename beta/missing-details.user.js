@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Missing details (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.0
+// @version      0.1.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/missing-details.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/missing-details.user.js
@@ -21,7 +21,8 @@
  *  - Read from the patient's Edit page (GET /patient/:id/edit, form#patientGeneralEditForm; one request, nothing saved).
  *  - Banner: on every page of a patient (profile, notes, invoices, edit) for everyone, whether or not they are booked,
  *    until the details are in. A patient known to be complete (checked in the last 30 days) costs nothing; one with gaps
- *    is read again when their page opens, so the banner goes as soon as the details are saved.
+ *    is read again on their next page after a visit to their Edit page (so the banner goes once the details are saved),
+ *    or after 10 minutes. On the Edit page itself the details are read from the page (no request).
  *  - In the background (each PC, visible tab, clinic hours, shared across tabs, every 3 hours): everyone booked in the
  *    next 14 days or seen in the last 30. Complete patients are read again after 30 days, those with gaps after a day,
  *    at most 40 a run. The patients with gaps are kept on this PC for Calendar controls, which marks their appointments.
@@ -34,13 +35,13 @@
   if (window.__hxMissingDetails) return;
   window.__hxMissingDetails = true;
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
   const ROUTE = 'upc-missing-details';
   const MENU_CLS = 'upc-md-menu';
   const ADMINS = ['Carl Healy', 'Wendy Pritchard'];   // who sees the page (Carl, 15 Nov 2026: Carl and Wendy)
   const DAY = 86400e3;
   const AHEAD_DAYS = 14, BACK_DAYS = 30;    // Carl, 15 Nov 2026
-  const KEEP_COMPLETE = 30 * DAY, KEEP_GAPS = DAY, RECHECK_ON_OPEN = 30e3;
+  const KEEP_COMPLETE = 30 * DAY, KEEP_GAPS = DAY, RECHECK_GAPS = 10 * 60e3;
   const SWEEP_EVERY = 3 * 3600e3, PER_RUN = 40;
   const SKIP_STATUS = /^(deleted|archived|deceased)$/i;
   const KEY = 'upc-md:';
@@ -126,13 +127,16 @@
     if (!id) { shownFor = null; paintBanner(); return; }
     paintBanner();
     const r = known()[id];
-    // Known complete: nothing to do. With gaps (or never read): read again, so the banner goes once they're saved.
-    if (shownFor === id && r && (!r.missing.length ? fresh(r) : Date.now() - r.at < RECHECK_ON_OPEN)) return;
-    if (r && !r.missing.length && fresh(r)) { shownFor = id; return; }
+    // On the Edit page itself the details are already on screen (as saved): read from there, no request, and note the
+    // visit, so the next page of this patient reads them again (in case they were just saved).
+    const onEdit = /\/patient\/\d+\/edit\/?$/.test(location.pathname) && document.querySelector('form#patientGeneralEditForm');
+    const edited = store.get('edited', {});
+    // Known complete: nothing to do. With gaps: read again only after a visit to their Edit page, or every 10 minutes.
+    if (!onEdit && r && !r.missing.length && fresh(r)) { shownFor = id; return; }
+    if (!onEdit && r && r.missing.length && !(edited[id] > r.at) && Date.now() - r.at < RECHECK_GAPS) { shownFor = id; return; }
     if (reading === id || (U().http.pausedFor && U().http.pausedFor() > 0)) return;
     reading = id;
-    // On the Edit page itself the details are already on screen (as saved): no request.
-    const onEdit = /\/patient\/\d+\/edit\/?$/.test(location.pathname) && document.querySelector('form#patientGeneralEditForm');
+    if (onEdit) { edited[id] = Date.now() + 1; Object.keys(edited).forEach((k) => { if (Date.now() - edited[k] > DAY) delete edited[k]; }); store.set('edited', edited); }
     try { remember(id, onEdit ? Object.assign(detailsFrom(document), { at: Date.now() }) : await readPatient(id)); shownFor = id; }
     catch (e) { tellHealthCheck(e); }
     finally { reading = null; }
@@ -209,7 +213,7 @@
   const CSS = `
     .upc-md-badge { display: inline-block; min-width: 18px; margin-left: 6px; padding: 0 5px; border-radius: 9px; font-size: .75em; line-height: 18px;
       text-align: center; font-weight: 600; color: #fff; background: var(--vs-notification-badge-bg-color, #ec6b65); vertical-align: middle; }
-    .upc-native.upc-md-banner { margin: 12px 24px 0; }
+    .upc-native.upc-md-banner { margin: 12px 24px 16px; }
     .upc-native.upc-md-banner a { margin-left: 8px; }
     .upc-md { max-width: 1100px; }
     .upc-md h1 { margin: 0 0 16px; }

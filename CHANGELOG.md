@@ -1,5 +1,9 @@
 # Changelog
 
+## Missing details 0.1.1, 15 Nov 2026 (beta)
+- Space below the banner, so it no longer touches the notes.
+- Fewer reads: a patient with gaps is read again only on the next page after a visit to their Edit page (when the details may have been saved), or after 10 minutes; moving between their pages otherwise costs nothing.
+
 ## Missing details, 15 Nov 2026 (beta)
 - New, Missing details 0.1.0 (Carl, 15 Nov 2026): patients missing a first or last name, date of birth, address (first line and postcode) or phone number.
   - A banner on every page of that patient for everyone, until the details are saved; it mentions email as well when there is none ("if they use one"), but email alone never brings it up.

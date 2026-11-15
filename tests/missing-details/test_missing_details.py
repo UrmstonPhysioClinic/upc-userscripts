@@ -141,6 +141,11 @@ async def main():
         await pg.wait_for_function(BANNER, timeout=20000)
         text = await pg.evaluate(BANNER)
         check('banner on a note page: what to collect, and a link to the Edit page', 'Missing details: date of birth, phone number. Please collect these from the patient.' in text and 'Edit details' in text, text)
+        n302 = edits(302)
+        await pg.goto('https://eu.halaxy.com/a/pr/555/patient/302/invoices')
+        await pg.wait_for_function(BANNER, timeout=20000)
+        await pg.wait_for_timeout(1000)
+        check('another page of the same patient: banner still there, not read again', edits(302) == n302, (n302, edits(302)))
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/305')
         await pg.wait_for_function(BANNER, timeout=20000)
         text = await pg.evaluate(BANNER)
@@ -161,6 +166,15 @@ async def main():
         await pg.wait_for_timeout(500)
         ids = await pg.evaluate("JSON.parse(localStorage.getItem('upc-md:ids') || '[]')")
         check('details saved: on the Edit page itself, read from the page (no extra request), banner gone, no longer marked', await pg.evaluate(BANNER) == '' and '305' not in ids and edits(305) == 2, (edits(305), ids))
+        # Back from the Edit page: read once more (the details may have just been saved)
+        S['patients'][303]['postcode'] = ''
+        await pg.goto('https://eu.halaxy.com/a/pr/555/patient/303/edit')
+        await pg.wait_for_function(BANNER, timeout=20000)
+        S['patients'][303]['postcode'] = 'M41 0AA'
+        n303 = edits(303)
+        await pg.goto('https://eu.halaxy.com/a/pr/555/patient/303')
+        await pg.wait_for_function("!document.querySelector('#pageContent > .upc-md-banner')", timeout=20000)
+        check('after a visit to the Edit page, the next page reads the details again and the banner goes', edits(303) == n303 + 1, (n303, edits(303)))
         check('no page errors', not errors, errors)
         await ctx.close()
 
