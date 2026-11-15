@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.52
+// @version      0.1.53
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.52';
+  const VERSION = '0.1.53';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -926,7 +926,12 @@
     async list(kind, id) {
       const res = await http.json(adminNotes.path(kind, id) + '/list-data?viewMode=ajax&_=' + Date.now(), { cache: 'no-store', headers: JSON_HEADERS });
       if (!res || !Array.isArray(res.data)) throw new UPCError('Halaxy\'s Admin Notes list has changed, so the notes could not be read.');
-      return res.data.map((n) => ({ id: String(n.id), date: n.date || '', creator: clean(n.creator), privacy: clean(n.privacy), important: !!n.isImportant, text: adminNotes.toText(n.content) }));
+      return res.data.map((n) => ({ id: String(n.id), date: n.date || '', creator: clean(n.creator), privacy: clean(n.privacy), important: !!n.isImportant, text: adminNotes.toText(adminNotes.body(n.content)) }));
+    },
+    // A listed note's content as written: Halaxy's list puts a "Log Notes" heading (p.font-weight-bold) before it and an
+    // empty div.form-row after it (capture 15 Nov 2026), so the first line read was "Log Notes", not the note's own.
+    body(html) {
+      return String(html || '').replace(/^\s*<p\b[^>]*\bfont-weight-bold\b[^>]*>\s*Log Notes\s*<\/p>/i, '').replace(/<div\b[^>]*\bform-row\b[^>]*>\s*<\/div>\s*$/i, '');
     },
     async save(path, text, check) {
       const { doc } = await http.popup(path);

@@ -303,7 +303,7 @@ async def halaxy(route):
     m = re_.match(r'^/a/pr/555/communication-log/organisation/(\d+)/list-data$', p)
     if m:
         return await js({'data': [{'id': n['id'], 'date': n['date'], 'channel': '', 'category': '', 'assignee': '', 'privacy': 'All', 'creator': n['creator'], 'isImportant': False, 'taskCount': 0,
-                                   'content': n['html'], 'actions': ''} for n in reversed(notes.get(int(m.group(1)), []))]})
+                                   'content': '\n<p class="font-weight-bold">Log Notes</p>\n' + n['html'] + '\n<div class="form-row mt-4">\n    </div>\n', 'actions': ''} for n in reversed(notes.get(int(m.group(1)), []))]})
     m = re_.match(r'^/a/pr/555/communication-log/organisation/(\d+)/(new|(\d+)/edit)$', p)
     if m:
         org = int(m.group(1))

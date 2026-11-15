@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.45
+// @version      1.1.46
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.45';
+  const VERSION = '1.1.46';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -425,7 +425,7 @@
     try {
       const res = await getJSON('/communication-log/organisation/78842/list-data?viewMode=ajax');
       const rows = res && res.data;
-      const heads = Array.isArray(rows) ? rows.map((r) => (new DOMParser().parseFromString(String(r.content || '').replace(/<\/p>/gi, '\n'), 'text/html').body.textContent || '').split('\n')[0].trim()).filter((h) => /^UPC shared checks: /.test(h)) : [];
+      const heads = Array.isArray(rows) ? rows.map((r) => (new DOMParser().parseFromString(String(r.content || '').replace(/<\/p>/gi, '\n'), 'text/html').body.textContent || '').split('\n').map((l) => l.trim()).filter((l) => l && l !== 'Log Notes')[0] || '').filter((h) => /^UPC shared checks: /.test(h)) : [];   // Halaxy's list heads each note "Log Notes" (capture 15 Nov 2026)
       const twice = [...new Set(heads.filter((h, i) => heads.indexOf(h) !== i))];
       // Two notes for one script (two PCs made one at the same moment) is harmless: the scripts merge them into the oldest
       // and relabel the others as spare copies on their next save. Mentioned, not a problem.

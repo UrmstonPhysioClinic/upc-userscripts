@@ -1,5 +1,8 @@
 # Changelog
 
+## Core 0.1.53, health check 1.1.46, 15 Nov 2026 (beta)
+- Admin Notes: Halaxy's notes list puts a "Log Notes" heading before each note's text and an empty div after it (capture 15 Nov 2026), so every note's first line read as "Log Notes" and the scripts never recognised their own notes (clinic settings fell back to the defaults and each save made a new note; each PC made its own shared-check note; the bank statement register entries weren't found). The heading and div are now left out when reading. Test mocks list notes the same way.
+
 ## Core 0.1.52, Script settings 0.2.2, 15 Nov 2026 (beta)
 - Admin Notes: the notes list is asked afresh each time (no cached copy), and after a save it is looked at up to three times before saying the note isn't there (live, 15 Nov 2026: "Halaxy accepted the note but does not list it as written" although it was saved; likely also behind the duplicate shared-check notes).
 - Clinic settings: the newest settings note is used; older copies are deleted on the next save. An empty value means the default for every kind of setting.

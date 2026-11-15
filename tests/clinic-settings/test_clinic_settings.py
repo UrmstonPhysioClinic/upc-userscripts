@@ -46,7 +46,7 @@ async def halaxy(route):
     if m:
         # Halaxy's list can lag just after a save (live, 15 Nov 2026): S['lag'] leaves a new note out of the next list
         hide = S.pop('hideOnce', None)
-        return await js({'data': [{'id': n['id'], 'date': '2026-11-15 10:00:00', 'privacy': 'All', 'creator': 'Carl Healy', 'isImportant': False, 'content': n['html']}
+        return await js({'data': [{'id': n['id'], 'date': '2026-11-15 10:00:00', 'privacy': 'All', 'creator': 'Carl Healy', 'isImportant': False, 'content': '\n<p class="font-weight-bold">Log Notes</p>\n' + n['html'] + '\n<div class="form-row mt-4">\n    </div>\n'}
                                   for n in reversed(notes.get(int(m.group(1)), [])) if n['id'] != hide]})
     m = re.match(r'^/a/pr/555/communication-log/organisation/(\d+)/(\d+)/delete(/([0-9a-f]+))?$', p)
     if m:

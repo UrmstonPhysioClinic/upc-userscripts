@@ -94,7 +94,7 @@ async def halaxy(route):
     notes = S['notes']
     m = re.match(r'^/a/pr/555/communication-log/organisation/(\d+)/list-data$', p)
     if m:
-        return await js({'data': [{'id': n['id'], 'date': '2026-11-15 10:00:00', 'privacy': 'All', 'creator': S['user'], 'isImportant': False, 'content': n['html']}
+        return await js({'data': [{'id': n['id'], 'date': '2026-11-15 10:00:00', 'privacy': 'All', 'creator': S['user'], 'isImportant': False, 'content': '\n<p class="font-weight-bold">Log Notes</p>\n' + n['html'] + '\n<div class="form-row mt-4">\n    </div>\n'}
                                   for n in reversed(notes.get(int(m.group(1)), []))]})
     # Delete (capture 14 Nov 2026): the pop-up's Delete button links to .../delete/<hex>; S['noDelete'] lists notes whose
     # pop-up has no Delete button (as if Halaxy had changed it)
