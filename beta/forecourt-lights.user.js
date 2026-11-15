@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Calendar: Forecourt lights (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.3
+// @version      0.3.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/forecourt-lights.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/forecourt-lights.user.js
@@ -29,14 +29,19 @@
  *    with the date they're next needed, and no reminders until then.
  *  - Shown only on PCs where it's switched on, and only to the people ticked (by who is signed in to
  *    Halaxy; nobody ticked means anyone), as a Halaxy-style pop-up in the tab being used.
- *    "Remind me later" hides it for an hour. Settings and what's been done are kept on this PC.
+ *    "Remind me later" hides it for an hour (on this PC).
+ *  - Shared by every PC (Carl, 15 Nov 2026): the clinic evenings, off time, minutes before sunset, reminder time and
+ *    dates to skip are clinic settings (Script settings > Clinic settings; until saved there, each PC keeps its own).
+ *    What's been done and what the timer is set to are kept in the Admin Note "UPC shared checks: Forecourt lights"
+ *    (core's UPC.shared), so Done on one PC clears the reminder on the others: a PC reads the note (at most every
+ *    5 minutes) only while a reminder is due or showing. Whether reminders show here, and for whom, stay per PC.
  */
 (() => {
   'use strict';
   if (window.__hxForecourtLights) return;
   window.__hxForecourtLights = true;
 
-  const VERSION = '0.2.3';
+  const VERSION = '0.3.0';
   const LAT = 53.45, LON = -2.35, TZ = 'Europe/London';
   const STEP = 15;                      // the timer's segments, minutes
   const SNOOZE = 60 * 60e3;
@@ -52,8 +57,51 @@
   const canStore = typeof GM_getValue === 'function' && typeof GM_setValue === 'function';
   const get = (k, d) => (canStore ? GM_getValue(k, d) : d);
   const set = (k, v) => { if (canStore) GM_setValue(k, v); };
-  const settings = () => Object.assign({}, DEFAULTS, get('settings', {}));
-  const state = () => Object.assign({ lastOffset: null, done: {}, snoozeUntil: 0, summerSaid: null }, get('state', {}));
+  const SHARED_EVERY = 5 * 60e3;
+  const shared = () => (U() && U().shared ? U().shared('Forecourt lights', { keep: 120 * DAY, file: 'forecourt-lights.user.js' }) : null);
+  const sharedRecs = () => { const sh = shared(); try { return sh && sh.cached ? sh.cached() : {}; } catch (e) { return {}; } };
+  const clinicSet = (k) => !!(U() && U().settings && U().settings.isSet && U().settings.def('forecourtLights.' + k) && U().settings.isSet('forecourtLights.' + k));
+  // This PC's settings, with the clinic's schedule where it has been set, and what the timer is set to from the shared note.
+  function settings() {
+    const s = Object.assign({}, DEFAULTS, get('settings', {}));
+    const S = U() && U().settings;
+    if (clinicSet('days')) s.days = DAYS.map((d) => S.get('forecourtLights.days').includes(d));
+    if (clinicSet('offTime')) s.offTime = S.get('forecourtLights.offTime');
+    if (clinicSet('offset')) s.offset = S.get('forecourtLights.offset');
+    if (clinicSet('noticeTime')) s.noticeTime = S.get('forecourtLights.noticeTime');
+    if (clinicSet('skip')) s.skip = S.get('forecourtLights.skip');
+    const t = sharedRecs().timerOn;
+    if (t && t.at !== null) s.timerOn = t.value === 'none' ? null : t.value;
+    return s;
+  }
+  // What's been done: this PC's, plus everything in the shared note (which wins for the timer's clock and summer).
+  function state() {
+    const st = Object.assign({ lastOffset: null, done: {}, snoozeUntil: 0, summerSaid: null }, get('state', {}));
+    st.done = Object.assign({}, st.done);
+    const recs = sharedRecs();
+    Object.keys(recs).forEach((k) => {
+      const r = recs[k];
+      if (r.at === null) return;
+      if (k.startsWith('done.')) st.done[k.slice(5)] = true;
+      else if (k === 'lastOffset' && /^-?\d+$/.test(r.value)) st.lastOffset = Number(r.value);
+      else if (k === 'summerSaid') st.summerSaid = r.value === 'none' ? null : r.value;
+    });
+    return st;
+  }
+  // Notes it for every PC (this PC's copy is kept too). Kept as pending until written, so a page left straight after
+  // Done (which stops the save) is written on the next page.
+  function share(outcomes) {
+    const sh = shared();
+    if (!sh) return;
+    const pending = Object.assign({}, get('pending', {}), outcomes || {});
+    if (!Object.keys(pending).length) return;
+    set('pending', pending);
+    sh.write(pending).then(() => {
+      const now = get('pending', {});
+      Object.keys(pending).forEach((k) => { if (now[k] === pending[k]) delete now[k]; });
+      set('pending', now);
+    }).catch((e) => console.warn('[UPC forecourt lights] shared note', e));
+  }
   const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
   // Who is signed in to Halaxy on this page.
@@ -190,18 +238,22 @@
   }
 
   function markDone(r) {
-    const st = state(), s = settings();
+    const st = Object.assign({ lastOffset: null, done: {}, snoozeUntil: 0, summerSaid: null }, get('state', {}));
+    const out = { ['done.' + r.key]: 'yes' };
     st.done[r.key] = true;
     if (r.kind === 'on') {
       st.lastOffset = r.offset;
       st.summerSaid = null;
-      if (s.timerOn !== hhmm(r.on)) set('settings', Object.assign(s, { timerOn: hhmm(r.on) }));
+      const mine = Object.assign({}, DEFAULTS, get('settings', {}));
+      if (mine.timerOn !== hhmm(r.on)) set('settings', Object.assign(mine, { timerOn: hhmm(r.on) }));
+      Object.assign(out, { timerOn: hhmm(r.on), lastOffset: String(r.offset), summerSaid: 'none' });
     }
-    if (r.kind === 'summer') st.summerSaid = r.day;
+    if (r.kind === 'summer') { st.summerSaid = r.day; out.summerSaid = r.day; }
     const cutoff = addDays(london(Date.now()).day, -30);
     Object.keys(st.done).forEach((k) => { if (k.slice(0, 10) < cutoff) delete st.done[k]; });
     st.snoozeUntil = 0;
     set('state', st);
+    share(out);
   }
 
   // ------------------------------------------------------------------ pop-ups
@@ -227,10 +279,19 @@
   }
 
   let open = null;   // { dialog, key }
-  function showReminder() {
-    if (!U() || document.hidden) return;
-    const s = settings(), st = state();
-    const r = due(Date.now(), s, st, userName());
+  let checking = false;
+  async function showReminder() {
+    if (!U() || document.hidden || checking) return;
+    let s = settings(), st = state();
+    let r = due(Date.now(), s, st, userName());
+    // A reminder due or showing: what the other PCs have done (the note, at most every 5 minutes).
+    if ((r || open) && shared() && !(U().http.pausedFor && U().http.pausedFor() > 0)) {
+      checking = true;
+      try { await shared().read(SHARED_EVERY); } catch (e) { /* this PC's own record still applies */ }
+      finally { checking = false; }
+      s = settings(); st = state();
+      r = due(Date.now(), s, st, userName());
+    }
     if (open && (!r || r.key !== open.key)) { const o = open; open = null; o.dialog.close(); }   // done in another tab
     if (!r || open || Date.now() < st.snoozeUntil) return;
     styles();
@@ -274,32 +335,40 @@
       '<span>Remind</span><div class="upc-fl-days">' + [...new Set([...STAFF(), ...(s.who || []), userName()].filter(Boolean))].map((n) =>
         '<label><input type="checkbox" data-who="' + esc(n) + '"' + ((s.who || []).includes(n) ? ' checked' : '') + '> ' + esc(n) + '</label>').join('') +
         '<div class="text-muted w-100">Whoever is signed in to Halaxy on this PC. None ticked: anyone.</div></div>' +
-      '<span>Clinic evenings</span><div class="upc-fl-days">' + DAYS.map((n, i) => '<label><input type="checkbox" data-day="' + i + '"' + (s.days[i] ? ' checked' : '') + '> ' + n + '</label>').join('') + '</div>' +
-      '<label for="upc-fl-off">Lights off at</label><input class="form-control" id="upc-fl-off" type="time" step="900" value="' + esc(s.offTime) + '">' +
-      '<label for="upc-fl-offset">Lights on, minutes before sunset</label><input class="form-control" id="upc-fl-offset" type="number" min="0" max="120" step="5" value="' + esc(s.offset) + '">' +
-      '<label for="upc-fl-notice">Show the reminder from</label><input class="form-control" id="upc-fl-notice" type="time" value="' + esc(s.noticeTime) + '">' +
+      '<span>Clinic evenings</span>' + (clinicSet('days') ? '<div><strong>' + esc(DAYS.filter((_, i) => s.days[i]).join(', ') || 'None') + '</strong></div>'
+        : '<div class="upc-fl-days">' + DAYS.map((n, i) => '<label><input type="checkbox" data-day="' + i + '"' + (s.days[i] ? ' checked' : '') + '> ' + n + '</label>').join('') + '</div>') +
+      '<label for="upc-fl-off">Lights off at</label>' + (clinicSet('offTime') ? '<div><strong>' + esc(s.offTime) + '</strong></div>' : '<input class="form-control" id="upc-fl-off" type="time" step="900" value="' + esc(s.offTime) + '">') +
+      '<label for="upc-fl-offset">Lights on, minutes before sunset</label>' + (clinicSet('offset') ? '<div><strong>' + esc(s.offset) + '</strong></div>' : '<input class="form-control" id="upc-fl-offset" type="number" min="0" max="120" step="5" value="' + esc(s.offset) + '">') +
+      '<label for="upc-fl-notice">Show the reminder from</label>' + (clinicSet('noticeTime') ? '<div><strong>' + esc(s.noticeTime) + '</strong></div>' : '<input class="form-control" id="upc-fl-notice" type="time" value="' + esc(s.noticeTime) + '">') +
       '<label for="upc-fl-timer">The timer\'s on time is set to</label><select class="form-control" id="upc-fl-timer">' + times.join('') + '</select>' +
-      '<label for="upc-fl-skip">Dates to skip (bank holidays, closures), one per line, e.g. 25-Dec-2026</label><textarea class="form-control" id="upc-fl-skip">' + esc((s.skip || []).map(label).join('\n')) + '</textarea>' +
-      '</div><p class="upc-err" data-err></p>' +
+      '<label for="upc-fl-skip">Dates to skip (bank holidays, closures)' + (clinicSet('skip') ? '' : ', one per line, e.g. 25-Dec-2026') + '</label>' + (clinicSet('skip') ? '<div><strong>' + esc((s.skip || []).map(label).join(', ') || 'None') + '</strong></div>'
+        : '<textarea class="form-control" id="upc-fl-skip">' + esc((s.skip || []).map(label).join('\n')) + '</textarea>') +
+      '</div><p class="text-muted mt-2">' + (['days', 'offTime', 'offset', 'noticeTime', 'skip'].some(clinicSet) ? 'Values in bold are clinic settings, the same on every PC: Carl changes them in Script settings &gt; Clinic settings. '
+        : 'Clinic evenings, times and dates to skip apply to this PC only until they are set in Script settings &gt; Clinic settings, which applies them to every PC. ') +
+        'What the timer is set to and what has been done are shared by every PC.</p><p class="upc-err" data-err></p>' +
       '<h6 class="mt-3">The next two weeks</h6><table class="table table-striped table-bordered w-100"><thead><tr><th>Date</th><th>Sunset</th><th>Lights on</th><th>Clinic evening</th></tr></thead><tbody>' + rows.join('') + '</tbody></table>' +
-      '<div class="text-muted">Sunset for Urmston, worked out on this PC. Lights on is rounded down to the timer\'s 15-minute steps. Settings are kept on this PC only. Forecourt lights ' + VERSION + '</div>' +
+      '<div class="text-muted">Sunset for Urmston, worked out on this PC. Lights on is rounded down to the timer\'s 15-minute steps. Forecourt lights ' + VERSION + '</div>' +
       '<div class="upc-fl-actions"><button type="button" class="btn btn-outline-primary" data-upc-close>Cancel</button><button type="button" class="btn btn-primary" data-a="save">Save</button></div>';
     d.body.querySelector('[data-a=save]').addEventListener('click', () => {
       const q = (id) => d.body.querySelector('#' + id);
       const bad = [];
-      const off = q('upc-fl-off').value, notice = q('upc-fl-notice').value, offset = parseInt(q('upc-fl-offset').value, 10);
+      const mine = Object.assign({}, DEFAULTS, get('settings', {}));
+      const off = q('upc-fl-off') ? q('upc-fl-off').value : mine.offTime, notice = q('upc-fl-notice') ? q('upc-fl-notice').value : mine.noticeTime;
+      const offset = q('upc-fl-offset') ? parseInt(q('upc-fl-offset').value, 10) : mine.offset;
       if (toMin(off) === null) bad.push('Lights off at needs a time such as 20:45.');
       if (toMin(notice) === null) bad.push('Show the reminder from needs a time such as 09:00.');
       if (!(offset >= 0 && offset <= 120)) bad.push('Minutes before sunset needs a number from 0 to 120.');
       const skip = [];
-      q('upc-fl-skip').value.split(/[\n,]+/).map((x) => x.trim()).filter(Boolean).forEach((x) => {
+      (q('upc-fl-skip') ? q('upc-fl-skip').value : (mine.skip || []).map(label).join('\n')).split(/[\n,]+/).map((x) => x.trim()).filter(Boolean).forEach((x) => {
         const day = parseDate(x);
         if (day === null) bad.push('"' + x + '" isn\'t a date (use e.g. 25-Dec-2026).');
         else skip.push(day);
       });
       if (bad.length) { d.body.querySelector('[data-err]').textContent = bad.join(' '); return; }
-      set('settings', { enabled: q('upc-fl-on').checked, days: DAYS.map((_, i) => d.body.querySelector('[data-day="' + i + '"]').checked), offTime: off, offset, noticeTime: notice,
-        skip: [...new Set(skip)].sort(), timerOn: q('upc-fl-timer').value || null,
+      const timerOn = q('upc-fl-timer').value || null;
+      if (timerOn !== s.timerOn) share({ timerOn: timerOn || 'none' });
+      set('settings', { enabled: q('upc-fl-on').checked, days: DAYS.map((_, i) => { const b = d.body.querySelector('[data-day="' + i + '"]'); return b ? b.checked : !!mine.days[i]; }), offTime: off, offset, noticeTime: notice,
+        skip: [...new Set(skip)].sort(), timerOn,
         who: [...d.body.querySelectorAll('[data-who]')].filter((x) => x.checked).map((x) => x.dataset.who) });
       const st = state(); st.snoozeUntil = 0; set('state', st);
       d.close();
@@ -312,6 +381,7 @@
   function start() {
     if (!U()) { console.error('[UPC forecourt lights] needs the core library'); return; }
     setTimeout(showReminder, 2000);   // after Halaxy has settled
+    setTimeout(() => { if (Object.keys(get('pending', {})).length) share({}); }, 4000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) showReminder(); });
     setInterval(showReminder, 5 * 60e3);
   }

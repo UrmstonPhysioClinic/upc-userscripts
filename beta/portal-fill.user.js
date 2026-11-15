@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Portal fill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.17
+// @version      0.1.18
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
@@ -47,7 +47,7 @@
   if (window.__hxPortalFill) return;
   window.__hxPortalFill = true;
 
-  const VERSION = '0.1.17';
+  const VERSION = '0.1.18';
   const KEY = 'portal-claim';
   const MAX_AGE = 4 * 3600e3;
   const PORTALS = {
@@ -113,7 +113,14 @@
       }
     }
     if (!invoiceId) return;
-    const settings = () => Object.assign({}, DEFAULTS, GM_getValue('settings', {}));
+    // The payee details: the clinic's (Script settings > Clinic settings) where set; until then this PC's own, or the defaults.
+    const CLINIC_KEYS = { payee: 'portalFill.payee', providerCode: 'portalFill.providerCode', email: 'portalFill.email', phone: 'portalFill.phone' };
+    const clinicSet = (k) => !!(U() && U().settings && U().settings.isSet && U().settings.def(CLINIC_KEYS[k]) && U().settings.isSet(CLINIC_KEYS[k]));
+    const settings = () => {
+      const s = Object.assign({}, DEFAULTS, GM_getValue('settings', {}));
+      Object.keys(CLINIC_KEYS).forEach((k) => { if (clinicSet(k)) s[k] = U().settings.get(CLINIC_KEYS[k]); });
+      return s;
+    };
 
     function tellHealthCheck(e) {
       const message = (e && e.message) || String(e);
@@ -338,9 +345,11 @@
       const dlg = U().ui.dialog({ title: 'Portal fill: settings', key: 'upc-portal-fill-settings', small: true });
       if (!dlg) return;
       const s = settings();
-      const row = (k, label, help) => '<div class="form-group"><label for="upc-pf-' + k + '">' + esc(label) + '</label><input class="form-control" id="upc-pf-' + k + '" data-k="' + k + '" value="' + esc(s[k]) + '">' +
-        (help ? '<small class="text-muted">' + esc(help) + '</small>' : '') + '</div>';
-      dlg.body.innerHTML = '<p>The payee details AXA asks for on every invoice. Kept on this PC.</p>' + row('payee', 'Name of payee') + row('providerCode', 'AXA provider code') +
+      const row = (k, label, help) => '<div class="form-group"><label for="upc-pf-' + k + '">' + esc(label) + '</label>' + (clinicSet(k) ? '<div><strong>' + esc(s[k]) + '</strong></div>'
+        : '<input class="form-control" id="upc-pf-' + k + '" data-k="' + k + '" value="' + esc(s[k]) + '">') + (help ? '<small class="text-muted">' + esc(help) + '</small>' : '') + '</div>';
+      const shared = Object.keys(CLINIC_KEYS).every(clinicSet);
+      dlg.body.innerHTML = '<p>The payee details AXA asks for on every invoice. ' + (shared ? 'They are clinic settings, the same on every PC: Carl changes them in Script settings &gt; Clinic settings.'
+        : 'Until they are set in Script settings &gt; Clinic settings (which applies them to every PC), boxes here are kept on this PC.') + '</p>' + row('payee', 'Name of payee') + row('providerCode', 'AXA provider code') +
         row('email', 'Payee email address', 'For AXA\'s queries about the payment.') + row('phone', 'Payee phone number') +
         '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-c="no">Cancel</button><button type="button" class="btn btn-primary" data-c="yes">Save</button></div>';
       dlg.body.addEventListener('click', (e) => {
@@ -348,6 +357,8 @@
         if (!b) return;
         if (b.dataset.c === 'yes') {
           const v = {};
+          const mine = Object.assign({}, DEFAULTS, GM_getValue('settings', {}));
+          Object.keys(DEFAULTS).forEach((k) => { v[k] = mine[k]; });
           dlg.body.querySelectorAll('[data-k]').forEach((i) => { v[i.dataset.k] = clean(i.value); });
           GM_setValue('settings', v);
         }

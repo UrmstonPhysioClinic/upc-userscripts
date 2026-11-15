@@ -5,12 +5,15 @@ Checks: sunset for Urmston against the astral library over a year (within 2 minu
 sunset minus 30 minutes rounded down to 15; the reminders (on, adjust, set, clock change, heads-up,
 off the next day and until done, nothing on a following clinic evening, summer said once, skipped
 dates, nothing before the reminder time, nothing when switched off); the pop-up (Done records the
-timer's on time, Remind me later hides it for an hour); the settings pop-up; no requests to Halaxy.
+timer's on time, Remind me later hides it for an hour); the settings pop-up; no requests to Halaxy except the shared
+note while a reminder is due. Shared between PCs (each with its own storage): Done on one PC clears the reminder on the
+others (and closes one already showing within 5 minutes), and they take the timer's on time from it; the clinic's
+schedule (clinic settings) is used once set, shown in bold in the settings pop-up.
 
 Run:  python3 tests/forecourt-lights/test_forecourt_lights.py [beta|stable]
 Needs: Python 3 with Playwright (Chromium) and astral (pip install astral).
 """
-import asyncio, datetime, json, sys
+import asyncio, datetime, html, json, re, sys, urllib.parse
 from pathlib import Path
 from zoneinfo import ZoneInfo
 from astral import LocationInfo
@@ -38,9 +41,38 @@ def check(name, ok, detail=''):
         FAILS.append(name)
 
 REQS = []
+NOTES = {}   # organisation id -> [{'id', 'html'}] (Admin Notes, capture 14 and 15 Nov 2026)
 async def halaxy(route):
-    REQS.append(route.request.url)
+    req = route.request
+    REQS.append(req.url)
+    p = urllib.parse.urlparse(req.url).path
+    js = lambda o: route.fulfill(body=json.dumps(o), content_type='application/json')
+    m = re.match(r'^/a/pr/555/communication-log/organisation/(\d+)/list-data$', p)
+    if m:
+        return await js({'data': [{'id': n['id'], 'date': '2026-11-10 10:00:00', 'privacy': 'All', 'creator': 'Wendy Pritchard', 'isImportant': False,
+                                   'content': '\n<p class="font-weight-bold">Log Notes</p>\n' + n['html'] + '\n<div class="form-row mt-4">\n    </div>\n'}
+                                  for n in reversed(NOTES.get(int(m.group(1)), []))]})
+    m = re.match(r'^/a/pr/555/communication-log/organisation/(\d+)/(new|(\d+)/edit)$', p)
+    if m:
+        org = int(m.group(1))
+        if req.method == 'GET':
+            return await js({'status': 'FORM', 'title': 'Add Admin Note', 'message': "<form id='adminNoteForm'><input type='hidden' name='form[_token]' value='tn'>"
+                             "<select name='form[privacy]'><option value='3' selected>All</option></select><textarea name='form[logContent]'></textarea></form>"})
+        g = dict(urllib.parse.parse_qsl(req.post_data or '', keep_blank_values=True))
+        h = g['form[logContent]']
+        if m.group(3):
+            next(n for n in NOTES[org] if str(n['id']) == m.group(3))['html'] = h
+        else:
+            NOTES.setdefault(org, []).append({'id': 60000 + sum(len(v) for v in NOTES.values()), 'html': h})
+        return await js({'status': 'CLOSE', 'url': '/a/pr/555/communication-log'})
     await route.fulfill(body=PAGE, content_type='text/html')
+
+def note_lines(head):
+    for n in NOTES.get(78842, []):
+        lines = [html.unescape(re.sub(r'<[^>]+>', '', x)) for x in n['html'].split('</p>') if x.strip()]
+        if lines and lines[0] == head:
+            return lines
+    return []
 
 def at(s):   # London wall time -> epoch ms
     return int(datetime.datetime.fromisoformat(s).replace(tzinfo=LON).timestamp() * 1000)
@@ -163,9 +195,63 @@ async def main():
         await pg.click('[data-upc-dialog="upc-forecourt-settings"] [data-a=save]')
         s = await pg.evaluate("GM_getValue('settings', {})")
         check('settings saved', s['who'] == ['Wendy Pritchard'] and s['days'][3] and s['days'][1] and s['skip'] == ['2026-12-25', '2026-12-28', '2027-01-01'] and s['timerOn'] == '15:30' and s['enabled'], s)
-        check('no requests to Halaxy beyond the page itself (and core\'s hourly clinic settings read)', all(u.startswith('https://eu.halaxy.com/a/pr/555/calendar') or '/communication-log/organisation/78842/list-data' in u for u in REQS), REQS)
+        check('no requests to Halaxy beyond the page itself and the settings organisation\'s notes', all(u.startswith('https://eu.halaxy.com/a/pr/555/calendar') or '/communication-log/organisation/78842/' in u for u in REQS), REQS)
+        for _ in range(60):
+            lines = note_lines('UPC shared checks: Forecourt lights')
+            if any(l.startswith('timerOn | ') and l.endswith(' | 15:30') for l in lines):
+                break
+            await pg.wait_for_timeout(250)
+        check('Done (the page left straight after: written on the next page) and the timer setting noted for every PC', any(l.startswith('done.2026-11-10:on | ') and l.endswith(' | yes') for l in lines)
+              and any(l.startswith('timerOn | ') and l.endswith(' | 15:30') for l in lines) and any(l.startswith('lastOffset | ') and l.endswith(' | 0') for l in lines), lines)
         check('no page errors', not errors, errors)
         await ctx.close()
+
+        # Another PC (its own storage), with its own older record of the timer: Done elsewhere means no pop-up here
+        async def pc(settings, when):
+            c = await browser.new_context(timezone_id='Europe/London')
+            await c.clock.install(time=when)
+            await c.route('https://eu.halaxy.com/**', halaxy)
+            await c.add_init_script(GM + "localStorage.getItem('upc-gm:fl:settings') || localStorage.setItem('upc-gm:fl:settings', %s);" % json.dumps(json.dumps(settings)))
+            await c.add_init_script(GM + CORE)
+            await c.add_init_script(GM + SCRIPT)
+            g = await c.new_page()
+            g.on('pageerror', lambda e: errors.append(str(e)))
+            await g.goto('https://eu.halaxy.com/a/pr/555/calendar')
+            await g.wait_for_function('window.upcForecourtLights')
+            return c, g
+        c2, g2 = await pc(dict(BASE, timerOn='16:00'), datetime.datetime(2026, 11, 10, 11, 0, tzinfo=LON))
+        await g2.wait_for_timeout(4000)
+        check('another PC: no pop-up, as it was done on the first', await g2.evaluate("!document.querySelector('[data-upc-dialog=\"upc-forecourt-lights\"]')"))
+        check('another PC: the timer\'s on time from the note', await g2.evaluate("window.upcForecourtLights.settings().timerOn") == '15:30')
+        await c2.close()
+
+        # A pop-up already showing on another PC closes within 5 minutes of Done elsewhere (here: the next day's off)
+        c3, g3 = await pc(dict(BASE, timerOn='15:30'), datetime.datetime(2026, 11, 11, 10, 0, tzinfo=LON))
+        await g3.wait_for_selector('[data-upc-dialog="upc-forecourt-lights"]', timeout=10000)
+        c4, g4 = await pc(dict(BASE, timerOn='15:30'), datetime.datetime(2026, 11, 11, 10, 1, tzinfo=LON))
+        await g4.wait_for_selector('[data-upc-dialog="upc-forecourt-lights"]', timeout=10000)
+        await g4.click('[data-upc-dialog="upc-forecourt-lights"] [data-a=done]')
+        for _ in range(40):
+            if any(l.startswith('done.2026-11-10:off |') for l in note_lines('UPC shared checks: Forecourt lights')):
+                break
+            await g4.wait_for_timeout(250)
+        await c4.close()
+        await g3.clock.fast_forward('00:05:30')
+        await g3.wait_for_timeout(2000)
+        check('a pop-up showing on another PC closes after Done elsewhere', await g3.evaluate("!document.querySelector('[data-upc-dialog=\"upc-forecourt-lights\"]')"))
+        await c3.close()
+
+        # The clinic's schedule (clinic settings), once set, is used on every PC and shown in bold
+        NOTES[78842].append({'id': 69000, 'html': '<p>UPC clinic settings</p><p>forecourtLights.days = Wed</p><p>forecourtLights.offTime = 21:00</p>'})
+        c5, g5 = await pc(dict(BASE, timerOn='15:30'), datetime.datetime(2026, 11, 10, 10, 0, tzinfo=LON))
+        await g5.wait_for_function("UPC.settings.readAt() > 0", timeout=20000)
+        got = await g5.evaluate("(() => { const s = window.upcForecourtLights.settings(); return [s.days, s.offTime, s.offset]; })()")
+        check('clinic schedule used once set (the rest still this PC\'s)', got == [[False, False, True, False, False, False, False], '21:00', 30], got)
+        await g5.evaluate("window.upcForecourtLights.showSettings()")
+        await g5.wait_for_selector('[data-upc-dialog="upc-forecourt-settings"]')
+        view = await g5.evaluate("({ dayBoxes: document.querySelectorAll('[data-day]').length, off: !!document.querySelector('#upc-fl-off'), offset: !!document.querySelector('#upc-fl-offset'), text: document.querySelector('[data-upc-dialog=\"upc-forecourt-settings\"]').innerText })")
+        check('settings pop-up: clinic values shown, not editable; the rest still is', view['dayBoxes'] == 0 and not view['off'] and view['offset'] and 'Wed' in view['text'] and 'Clinic settings' in view['text'], view)
+        await c5.close()
         await browser.close()
 
     print('\n%d failed' % len(FAILS) if FAILS else '\nAll passed')

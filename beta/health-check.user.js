@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.46
+// @version      1.1.47
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.46';
+  const VERSION = '1.1.47';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -444,7 +444,7 @@
     if (window.UPC && UPC.settings) {
       try {
         await UPC.settings.refresh(true);
-        const bad = UPC.settings.all().filter((r) => r.bad).map((r) => r.def.script + ': "' + r.def.label + '" is ' + r.raw + (r.def.type === 'people' || r.def.type === 'person' ? ', which can\'t be used' : ', outside ' + r.def.min + ' to ' + r.def.max) + ' (default ' + UPC.settings.text(r.def.def) + ' used)');
+        const bad = UPC.settings.all().filter((r) => r.bad).map((r) => r.def.script + ': "' + r.def.label + '" is ' + r.raw + (r.def.min === undefined ? ', which can\'t be used' : ', outside ' + r.def.min + ' to ' + r.def.max) + ' (default ' + UPC.settings.text(r.def.def) + ' used)');
         const lines = UPC.settings.problems().map((l) => 'line not understood: "' + l + '" (ignored)');
         put('data-clinic-settings', 'Clinic settings: some can\'t be used', ['Script settings'], bad.concat(lines),
           UPC.settings.all().filter((r) => r.changed).length + ' changed from the default.', true);

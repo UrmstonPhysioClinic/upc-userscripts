@@ -1,5 +1,12 @@
 # Changelog
 
+## Clinic settings stage 3, 15 Nov 2026 (beta)
+- Core 0.1.54: new kinds of clinic setting (days of the week, dates, text, words, an order of names); saving one value keeps the others; `UPC.settings.isSet`; `UPC.shared(...).cached()`.
+- Forecourt lights 0.3.0: clinic evenings, off time, minutes before sunset, reminder time and dates to skip are clinic settings (until set there, each PC keeps its own). Done marks and what the timer is set to are shared by every PC (Admin Note "UPC shared checks: Forecourt lights"), so Done on one PC clears the reminder on the others (a pop-up already showing closes within 5 minutes). A PC reads the note only while a reminder is due or showing; a Done the page left before saving is written on the next page. Whether reminders show on a PC, and for whom, stay per PC.
+- Portal fill 0.1.18: AXA payee details are clinic settings (until set there, each PC keeps its own).
+- Calendar controls 2.15: the column order for All practitioners (by name) and the professions left out are clinic settings (until set there, the order by Halaxy ID as before).
+- Script settings 0.2.3: ticks for days, a box of dates, text boxes, and up and down buttons for the calendar order. Health check 1.1.47: wording for the new kinds.
+
 ## Core 0.1.53, health check 1.1.46, 15 Nov 2026 (beta)
 - Admin Notes: Halaxy's notes list puts a "Log Notes" heading before each note's text and an empty div after it (capture 15 Nov 2026), so every note's first line read as "Log Notes" and the scripts never recognised their own notes (clinic settings fell back to the defaults and each save made a new note; each PC made its own shared-check note; the bank statement register entries weren't found). The heading and div are now left out when reading. Test mocks list notes the same way.
 

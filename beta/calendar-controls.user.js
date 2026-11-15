@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Calendar: Calendar controls (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      2.14
+// @version      2.15
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/calendar-controls.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/calendar-controls.user.js
@@ -30,7 +30,9 @@
   const DEFAULT_NEW_DURATION_MINUTES = 30; // starting duration for new appointments (0 = Halaxy's default)
   const DURATION_FROM_FEES = true;         // adding/changing/removing a fee sets the duration to the fees' total
   const TIME_PICKER_24H = true;            // one 00-23 hour box instead of 1-12 + AM/PM on appointment forms
-  const EXCLUDE_PROFESSIONS = ['Administrator'];
+  const EXCLUDE_PROFESSIONS = ['Administrator'];   // default; Script settings > Clinic settings once set there
+  const clinicSet = (k) => !!(window.UPC && UPC.settings && UPC.settings.isSet && UPC.settings.def(k) && UPC.settings.isSet(k));
+  const clinicRule = (k, d) => (clinicSet(k) ? UPC.settings.get(k) : d);
 
   // Column order for "All practitioners" (Halaxy practitioner IDs). Anyone not listed
   // follows in the order they joined (Halaxy IDs increase over time).
@@ -1375,15 +1377,18 @@
     const out = [];
     document.querySelectorAll('#swapPracList .profession-prac-list .toggle-prac').forEach((cb) => {
       const id = parseInt(cb.dataset.pracid, 10);
-      if (EXCLUDE_PROFESSIONS.includes(cb.dataset.profession) || seen.has(id)) return;
+      const hide = clinicRule('calendar.hideProfessions', EXCLUDE_PROFESSIONS).map((x) => x.toLowerCase());
+      if (hide.includes(String(cb.dataset.profession || '').toLowerCase()) || seen.has(id)) return;
       seen.add(id);
       out.push({ id, name: cb.dataset.pracname });
     });
-    const rank = (id) => {
-      const i = PRACTITIONER_ORDER.indexOf(id);
-      return i === -1 ? PRACTITIONER_ORDER.length : i;
+    // The clinic's order by name (Script settings > Clinic settings) once set there; until then the IDs above.
+    const named = clinicSet('calendar.order') ? UPC.settings.get('calendar.order').map((n) => n.toLowerCase()) : null;
+    const rank = (p) => {
+      const i = named ? named.indexOf(String(p.name || '').trim().toLowerCase()) : PRACTITIONER_ORDER.indexOf(p.id);
+      return i === -1 ? (named || PRACTITIONER_ORDER).length : i;
     };
-    return out.sort((a, b) => rank(a.id) - rank(b.id) || a.id - b.id);
+    return out.sort((a, b) => rank(a) - rank(b) || a.id - b.id);
   }
 
   function showPractitioners(list) {
