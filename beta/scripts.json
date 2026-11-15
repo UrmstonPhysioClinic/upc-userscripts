@@ -14,7 +14,7 @@
     {
       "file": "core.user.js",
       "name": "UPC System: Core library (beta)",
-      "version": "0.1.46"
+      "version": "0.1.47"
     },
     {
       "file": "alerts.user.js",
@@ -68,7 +68,7 @@
     {
       "file": "missing-details.user.js",
       "name": "UPC Patients: Missing details (beta)",
-      "version": "0.2.0"
+      "version": "0.2.1"
     },
     {
       "file": "mobile-layout.user.js",
