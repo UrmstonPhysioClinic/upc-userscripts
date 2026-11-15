@@ -1,5 +1,10 @@
 # Changelog
 
+## Core 0.1.52, Script settings 0.2.2, 15 Nov 2026 (beta)
+- Admin Notes: the notes list is asked afresh each time (no cached copy), and after a save it is looked at up to three times before saying the note isn't there (live, 15 Nov 2026: "Halaxy accepted the note but does not list it as written" although it was saved; likely also behind the duplicate shared-check notes).
+- Clinic settings: the newest settings note is used; older copies are deleted on the next save. An empty value means the default for every kind of setting.
+- Script settings: the Clinic settings table fits the pop-up (fixed column widths, long lists wrap).
+
 ## Clinic settings stage 2: people, 15 Nov 2026 (beta)
 - Core 0.1.51: people settings. Who sees each page (Ready to bill, Missing details list, Insurer payments due, Open-ended patients, Review requests, Feedback alerts, Patient statuses, Bank statement; a page's list also decides on whose sign-in its background checks run), who gets each script's tasks (Feedback alerts, Remittances, Bank statement, Portal fill), and who Forecourt lights can remind. At least one person per page. Only Carl can change clinic settings (not itself a setting).
 - Script settings 0.2.1: ticks for people, a list for one person (offered: Halaxy's practitioner list, everyone named in a setting, who is signed in); a refused save keeps the changes on screen.
