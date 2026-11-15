@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Review requests (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.5.4
+// @version      0.5.5
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
@@ -44,18 +44,20 @@
   if (window.__hxReviewRequests) return;
   window.__hxReviewRequests = true;
 
-  const VERSION = '0.5.4';
+  const VERSION = '0.5.5';
   const ROUTE = 'upc-review-requests';
   const MENU_CLS = 'upc-rr-menu';
   const ALLOWED = ['Carl Healy'];          // Carl, 10 Nov 2026: just me for now
   const TEMPLATE = 'Review Request';       // follow-up template and email template
   const REMINDER = 'Review Reminder';      // optional: used only if Carl sets it up in Halaxy
-  const SEND_AT = [10, 30];                // weekday late morning
+  // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
+  const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
+  const SEND_AT = () => String(rule('reviewRequests.sendAt', '10:30')).split(':').map(Number);   // weekday late morning
 
   // The next weekday 10:30 that's at least 15 minutes away.
   function sendTime(from) {
     const d = new Date(from || Date.now());
-    d.setHours(SEND_AT[0], SEND_AT[1], 0, 0);
+    d.setHours(SEND_AT()[0], SEND_AT()[1], 0, 0);
     if (d.getTime() < Date.now() + 15 * 60e3) d.setDate(d.getDate() + 1);
     while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
     return d;
@@ -64,7 +66,7 @@
     String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
   const LABEL = 'No review request';
   const DAY = 86400e3;
-  const SAID_DAYS = 1, QUIET_DAYS = 14, MAX_DAYS = 28, MIN_AGE = 16;
+  const SAID_DAYS = 1, QUIET_DAYS = () => rule('reviewRequests.quietDays', 14), MAX_DAYS = () => rule('reviewRequests.maxDays', 28), MIN_AGE = () => rule('reviewRequests.minAge', 16);
   const FINISHED = ['discharged', 'goals met', 'no further treatment', 'self-managing', 'see as needed'];   // phrase kinds that say treatment has finished
   const REFRESH_EVERY = 12 * 3600e3, PAGE_FRESH = 30 * 60e3, KEEP = 7 * DAY;
   const KEY = 'upc-rr:';
@@ -180,7 +182,7 @@
     const d = await getDetails();
     if (JSON.stringify(d.userLabels || []).toLowerCase().includes(LABEL.toLowerCase())) { out.verdict = 'left'; out.why = 'labelled ' + LABEL; return out; }
     const dob = U().parseDay(d.dob) !== null ? U().parseDay(d.dob) : Date.parse(d.dob);
-    if (dob && !isNaN(dob) && Date.now() - dob < MIN_AGE * 365.25 * DAY) { out.verdict = 'left'; out.why = 'under ' + MIN_AGE; return out; }
+    if (dob && !isNaN(dob) && Date.now() - dob < MIN_AGE() * 365.25 * DAY) { out.verdict = 'left'; out.why = 'under ' + MIN_AGE(); return out; }
     const owes = (await U().patient.invoices(p.id)).some((r) => /not yet paid|part/i.test(String(r.status || '')) && Number(String(r.balance).replace(/[^\d.-]/g, '')) > 0);
     if (owes) { out.verdict = 'left'; out.why = 'has an unpaid invoice'; }
     return out;
@@ -194,7 +196,7 @@
     const responses = await U().surveys.list().catch((e) => { tellHealthCheck(e); return []; });
     say('Reading Tasks & Follow-Ups...');
     const asked = new Set((await U().followUps.list()).filter((r) => new RegExp('^' + TEMPLATE + '$', 'i').test(U().clean(r.title))).map((r) => r.linkPaGId));
-    const events = await calendar(day0 - (MAX_DAYS + 120) * DAY, day0 + 120 * DAY, say);
+    const events = await calendar(day0 - (MAX_DAYS() + 120) * DAY, day0 + 120 * DAY, say);
     const startMs = (e) => (typeof e.start === 'number' ? e.start * 1000 : Date.parse(e.start));
     const byPatient = new Map();
     events.forEach((e) => {
@@ -205,7 +207,7 @@
     const counts = { asked: 0, left: 0, none: 0, ended: 0, soon: 0 };
     const rows = [];
     const fresh = (r) => r && now - r.at <= KEEP && r.links && r.rules === RULES;
-    const toRead = [...byPatient.values()].filter((evs) => { const last = evs.filter((e) => startMs(e) < now && !e.appointmentStatus).map(startMs); return last.length && Math.max(...last) >= now - MAX_DAYS * DAY; }).length;
+    const toRead = [...byPatient.values()].filter((evs) => { const last = evs.filter((e) => startMs(e) < now && !e.appointmentStatus).map(startMs); return last.length && Math.max(...last) >= now - MAX_DAYS() * DAY; }).length;
     let read = 0;
     for (const [id, evs] of byPatient) {
       const past = evs.filter((e) => startMs(e) < now).sort((a, b) => startMs(b) - startMs(a));
@@ -213,7 +215,7 @@
       const booked = evs.some((e) => startMs(e) >= now && !/cancel|reject|declin|did-not-attend/i.test(e.appointmentStatus || ''));
       if (!attended.length || booked) continue;
       const lastSeen = startMs(attended[0]);
-      if (lastSeen > now - SAID_DAYS * DAY || lastSeen < now - MAX_DAYS * DAY) continue;
+      if (lastSeen > now - SAID_DAYS * DAY || lastSeen < now - MAX_DAYS() * DAY) continue;
       if (past[0] && past[0].appointmentStatus) { counts.ended++; continue; }   // finished on a cancellation or missed appointment
       if (asked.has(id)) { counts.asked++; continue; }
       const name = U().clean(U().htmlDoc(attended[0].title || '').body.textContent).replace(/^[\s*★]+/, '') || 'Patient';
@@ -229,7 +231,7 @@
       if (r.verdict === 'none') { counts.none++; continue; }
       if (r.verdict === 'left') { counts.left++; continue; }
       // Seen in the last 2 weeks: only once the notes say treatment has finished (they may still book).
-      if (lastSeen > now - QUIET_DAYS * DAY && !(r.good || []).some((x) => FINISHED.includes(x))) { counts.soon++; continue; }
+      if (lastSeen > now - QUIET_DAYS() * DAY && !(r.good || []).some((x) => FINISHED.includes(x))) { counts.soon++; continue; }
       rows.push(Object.assign({ id, name, lastSeen }, r));
     }
     Object.keys(cache).forEach((k) => { if (now - cache[k].at > KEEP) delete cache[k]; });
@@ -339,9 +341,9 @@
       if (rest.length) h += '<div class="card"><div class="card-header"><h2>Worth a look (' + rest.length + ')</h2></div><div class="card-body p-0"><table class="table table-bordered w-100 m-0">' + head + '<tbody>' + rest.map(rowHtml).join('') + '</tbody></table></div></div>';
       const c = r.counts;
       h += '<p class="text-muted">Patients with nothing booked, from the day after their last visit when the notes say treatment has finished (discharged, goals met, self-managing), ' +
-        'otherwise once ' + QUIET_DAYS / 7 + ' weeks have passed, and up to ' + MAX_DAYS / 7 + ' weeks after their last visit. Left out: ' + c.asked + ' already sent a review request, ' +
-        c.left + ' labelled ' + esc(LABEL) + ', under ' + MIN_AGE + ' or owing money, ' + c.ended + ' whose last appointment was cancelled or missed, ' +
-        (c.soon || 0) + ' seen in the last ' + QUIET_DAYS / 7 + ' weeks whose notes don\'t say they\'ve finished, and ' + c.none + ' with no good-outcome signs in their last two notes or Progress Update form.</p>';
+        'otherwise once ' + QUIET_DAYS() + ' days have passed, and up to ' + MAX_DAYS() + ' days after their last visit. Left out: ' + c.asked + ' already sent a review request, ' +
+        c.left + ' labelled ' + esc(LABEL) + ', under ' + MIN_AGE() + ' or owing money, ' + c.ended + ' whose last appointment was cancelled or missed, ' +
+        (c.soon || 0) + ' seen in the last ' + QUIET_DAYS() + ' days whose notes don\'t say they\'ve finished, and ' + c.none + ' with no good-outcome signs in their last two notes or Progress Update form.</p>';
     }
     h += '<div class="text-muted upc-version">Review requests ' + VERSION + '</div></div>';
     root.innerHTML = h;

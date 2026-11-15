@@ -1,5 +1,11 @@
 # Changelog
 
+## Clinic settings, 15 Nov 2026 (beta)
+- Core 0.1.50: `UPC.settings`, the rules every PC shares, kept in the Admin Note "UPC clinic settings" on UPC scripts (settings) (one `key = value` line for each value that differs from the default). Read about hourly by each PC; a value outside its limits or a line that can't be read falls back to the default.
+- Script settings 0.2.0: a Clinic settings section. Everyone sees the values; only Carl can change them ("Save for every PC"). Values outside their limits are refused.
+- Ready to bill, Insurer payments due, Open-ended patients, Patient statuses, Review requests, Missing details and Bank statement read their rules from it (excess limit, rolling and quiet periods, overdue days, look-back windows, discharge gap, send time, minimum age and so on). Page text gives periods in days.
+- Health check 1.1.44: reads the clinic settings daily and lists any value it can't use.
+
 ## Core 0.1.49, health check 1.1.43, 15 Nov 2026 (beta)
 - Shared checks: spare copies of a shared note are deleted (Carl, 15 Nov 2026), through Halaxy's own Delete Admin Note pop-up, checked by listing afterwards. Only the scripts' own copies are touched; one Halaxy won't delete is relabelled "Spare copy ..." and tried again on a later save. Core `UPC.adminNotes.remove`.
 - Health check: opens (never confirms) the Delete Admin Note pop-up on UPC scripts (settings) to check its Delete link is there.

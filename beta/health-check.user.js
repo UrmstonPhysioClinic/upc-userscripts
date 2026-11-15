@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.43
+// @version      1.1.44
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.43';
+  const VERSION = '1.1.44';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -231,8 +231,8 @@
   async function runDataChecks() {
     if (!group()) return;
     store.set('dataAt', Date.now());   // claim it, so other tabs don't run it too
-    const put = (id, title, scripts, problems, info) => {
-      saveResult(id, { title, scripts, problems, info: info || '', at: Date.now(), page: 'data' });
+    const put = (id, title, scripts, problems, info, plain) => {
+      saveResult(id, { title, scripts, problems, info: info || '', at: Date.now(), page: 'data', plain: !!plain });
     };
     const OA = ['Outstanding actions'];
 
@@ -440,6 +440,16 @@
         (heads.length ? heads.length + ' shared note' + (heads.length === 1 ? '' : 's') + '.' : 'No shared notes yet.') +
         twice.map((h) => ' Two are called "' + h + '": the scripts merge them on their next check.').join(''));
     } catch (e) { put('data-shared-notes', 'Shared checks (UPC scripts (settings) Admin Notes)', ['Missing details'], [e.message]); }
+    // Clinic settings (15 Nov 2026): the note read afresh; values outside their limits and lines that can't be read.
+    if (window.UPC && UPC.settings) {
+      try {
+        await UPC.settings.refresh(true);
+        const bad = UPC.settings.all().filter((r) => r.bad).map((r) => r.def.script + ': "' + r.def.label + '" is ' + r.raw + ', outside ' + r.def.min + ' to ' + r.def.max + ' (default ' + r.def.def + ' used)');
+        const lines = UPC.settings.problems().map((l) => 'line not understood: "' + l + '" (ignored)');
+        put('data-clinic-settings', 'Clinic settings: some can\'t be used', ['Script settings'], bad.concat(lines),
+          UPC.settings.all().filter((r) => r.value !== r.def.def).length + ' changed from the default.', true);
+      } catch (e) { put('data-clinic-settings', 'Clinic settings could not be read', ['Script settings'], [e.message], '', true); }
+    }
     try {
       const res = await getJSON('/communication-log/organisation/' + ORG + '/new');
       const doc = new DOMParser().parseFromString(String((res && res.message) || ''), 'text/html');
@@ -498,7 +508,7 @@
     const results = store.get('results', {});
     Object.keys(results).forEach((id) => {
       const r = results[id];
-      if (r.problems && r.problems.length) out.push({ title: r.title + ' has changed', scripts: r.scripts, lines: r.problems, at: r.at });
+      if (r.problems && r.problems.length) out.push({ title: r.plain ? r.title : r.title + ' has changed', scripts: r.scripts, lines: r.problems, at: r.at });
     });
     const now = Date.now();
     store.get('errors', []).filter((e) => now - e.at < ERRORS_KEEP_HOURS * 3600e3).forEach((e) => {

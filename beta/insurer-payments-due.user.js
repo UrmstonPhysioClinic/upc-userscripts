@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Insurer payments due (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.6
+// @version      0.1.7
 // @upc-was      funder-chaser.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/insurer-payments-due.user.js
@@ -31,12 +31,14 @@
   if (window.__hxFunderChaser) return;
   window.__hxFunderChaser = true;
 
-  const VERSION = '0.1.6';
+  const VERSION = '0.1.7';
   const ROUTE = 'upc-funder-chaser';
   const MENU_CLS = 'upc-fc-menu';
   const ALLOWED = ['Carl Healy'];
   const DAY = 86400e3;
-  const OVERDUE_DAYS = 30;             // Carl, 11 Nov 2026: 30 days for every insurer to start with
+  // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
+  const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
+  const OVERDUE_DAYS = () => rule('insurerPayments.overdueDays', 30);   // Carl, 11 Nov 2026: 30 days for every insurer to start with
   const LOOK_BACK_MONTHS = 18;         // how far back the report is read
   const REFRESH_EVERY = 12 * 3600e3;   // menu count: twice a day (it reads 18 months of the Unpaid Invoices report)
   const PAGE_FRESH = 10 * 60e3;
@@ -76,7 +78,7 @@
       inv.amount += l.amount || 0;
       inv.fees += 1;
     });
-    const cutoff = today() - OVERDUE_DAYS * DAY;
+    const cutoff = today() - OVERDUE_DAYS() * DAY;
     const rows = [...invoices.values()].filter((i) => i.when !== null && i.when <= cutoff && (i.balance === null || i.balance > 0))
       .map((i) => Object.assign(i, { days: Math.floor((today() - i.when) / DAY), issued: /issued/i.test(i.status) }))
       .sort((a, b) => a.when - b.when);
@@ -115,7 +117,7 @@
     if (!b) { b = document.createElement('span'); b.className = 'upc-fc-badge'; a.appendChild(b); }
     const text = n > 99 ? '99+' : String(n);
     if (b.textContent !== text) b.textContent = text;
-    const title = n + ' insurer invoice' + (n === 1 ? '' : 's') + ' unpaid after ' + OVERDUE_DAYS + ' days';
+    const title = n + ' insurer invoice' + (n === 1 ? '' : 's') + ' unpaid after ' + OVERDUE_DAYS() + ' days';
     if (b.title !== title) b.title = title;
   }
 
@@ -156,13 +158,13 @@
     if (r) {
       const due = r.rows.filter((x) => x.issued), active = r.rows.filter((x) => !x.issued);
       const total = due.reduce((t, x) => t + (x.balance === null ? x.amount : x.balance), 0);
-      h += '<div class="card"><div class="card-header"><h2>Unpaid after ' + OVERDUE_DAYS + ' days (' + due.length + (due.length ? ', ' + fmt(total) : '') + ')</h2></div><div class="card-body p-0">' +
-        (due.length ? table(due, false) : '<p class="text-muted m-3">No insurer invoice marked Issued is unpaid after ' + OVERDUE_DAYS + ' days.</p>') + '</div></div>';
+      h += '<div class="card"><div class="card-header"><h2>Unpaid after ' + OVERDUE_DAYS() + ' days (' + due.length + (due.length ? ', ' + fmt(total) : '') + ')</h2></div><div class="card-body p-0">' +
+        (due.length ? table(due, false) : '<p class="text-muted m-3">No insurer invoice marked Issued is unpaid after ' + OVERDUE_DAYS() + ' days.</p>') + '</div></div>';
       if (active.length) {
-        h += '<div class="card"><div class="card-header"><h2>Not marked Issued after ' + OVERDUE_DAYS + ' days (' + active.length + ')</h2></div><div class="card-body p-0">' +
+        h += '<div class="card"><div class="card-header"><h2>Not marked Issued after ' + OVERDUE_DAYS() + ' days (' + active.length + ')</h2></div><div class="card-body p-0">' +
           '<p class="text-muted m-3">Still Active, so perhaps never submitted. Not counted on the menu.</p>' + table(active, true) + '</div></div>';
       }
-      h += '<p class="text-muted">Insurer invoices (billed to the funder itself) with something still to pay, ' + OVERDUE_DAYS + ' days or more after their invoice date. ' +
+      h += '<p class="text-muted">Insurer invoices (billed to the funder itself) with something still to pay, ' + OVERDUE_DAYS() + ' days or more after their invoice date. ' +
         'A remittance attached doesn\'t take an invoice off the list: only the payment, once recorded, does.</p>';
     }
     h += '<div class="text-muted upc-version">Insurer payments due ' + VERSION + '</div></div>';

@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         UPC System: Script settings (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.1
+// @version      0.2.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/script-settings.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/script-settings.user.js
-// @description  "Script settings" in Halaxy's account menu (your name, top right): every script's options, which scripts run on this PC, stable or beta, and updates. Replaces the Tampermonkey menu.
+// @description  "Script settings" in Halaxy's account menu (your name, top right): every script's options, which scripts run on this PC, stable or beta, updates, and the clinic settings every PC shares (Carl changes them). Replaces the Tampermonkey menu.
 // @match        https://*.halaxy.com/a/*
 // @run-at       document-idle
 // @grant        none
@@ -23,13 +23,15 @@
  *  - Once the menu item is in place the page is marked data-upc-script-settings, so the loader leaves
  *    scripts' items out of the Tampermonkey menu. The loader's own "UPC scripts: settings and updates"
  *    stays there as a way in if Halaxy's menu ever changes.
+ *  - Clinic settings (Carl, 15 Nov 2026): the rules every PC shares (core's UPC.settings, kept in an Admin Note on
+ *    UPC scripts (settings)). Everyone can see them; only Carl can change them. Each PC uses a change within the hour.
  */
 (() => {
   'use strict';
   if (window.__hxScriptSettings) return;
   window.__hxScriptSettings = true;
 
-  const VERSION = '0.1.1';
+  const VERSION = '0.2.0';
   const U = () => window.UPC;
   const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const STATUS = { running: 'running on this page', next: 'starts on next page', off: 'switched off', unused: 'not used on this page' };
@@ -47,6 +49,9 @@
     .upc-ss tr.upc-ss-grp th { font-weight: 600; }
     .upc-ss .upc-ss-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 12px; }
     .upc-ss .upc-ss-actions .btn { margin: 0; }
+    .upc-ss .upc-ss-clinic td { vertical-align: middle; }
+    .upc-ss .upc-ss-clinic input.form-control { display: inline-block; width: 96px; margin-right: 6px; }
+    .upc-ss .upc-ss-clinic td.upc-ss-def { white-space: nowrap; }
   `;
   function styles() {
     if (document.getElementById('upc-script-settings-css')) return;
@@ -83,10 +88,62 @@
 
   // ------------------------------------------------------------------ the pop-up
 
-  let dlg = null, st = null, needRefresh = false, busy = '', notice = '';
+  let dlg = null, st = null, needRefresh = false, busy = '', notice = '', view = 'main', clinicMsg = '', clinicErr = '';
+
+  // ------------------------------------------------------------------ clinic settings (every PC)
+
+  const shown = (def, v) => (def.unit === '£' ? '£ ' + v : v + (def.unit ? ' ' + def.unit : ''));
+  function renderClinic() {
+    const S = U().settings;
+    const edit = S.canEdit();
+    const rows = S.all();
+    let h = '<div class="upc-ss-section upc-ss-clinic"><p class="text-muted">These apply on every PC. ' + (edit ? 'Leave a box empty for the default. ' : 'Only ' + esc(S.editors.join(' or ')) + ' can change them. ') +
+      'Each PC uses a change within the hour.</p>';
+    let script = '';
+    h += '<table class="table table-striped table-bordered w-100"><tbody>';
+    rows.forEach((r) => {
+      const d = r.def;
+      if (d.script !== script) { script = d.script; h += '<tr class="upc-ss-grp"><th colspan="2">' + esc(script) + '</th><th class="text-muted">Default</th></tr>'; }
+      const val = r.value === d.def ? '' : r.value;
+      h += '<tr><td>' + esc(d.label) + '</td><td>' + (edit
+        ? (d.unit === '£' ? '£ ' : '') + '<input class="form-control" type="' + (d.type === 'time' ? 'time' : 'number') + '" data-key="' + esc(d.key) + '" value="' + esc(val) + '" placeholder="' + esc(d.def) + '"' +
+          (d.type === 'time' ? '' : ' min="' + d.min + '" max="' + d.max + '" step="1"') + '>' + (d.unit && d.unit !== '£' ? esc(d.unit) : '')
+        : '<strong>' + esc(shown(d, r.value)) + '</strong>') +
+        (r.bad ? ' <span class="upc-err">(saved value ' + esc(r.raw) + ' is outside ' + esc(d.min) + ' to ' + esc(d.max) + ': default used)</span>' : '') + '</td>' +
+        '<td class="upc-ss-def text-muted">' + esc(shown(d, d.def)) + '</td></tr>';
+    });
+    h += '</tbody></table>';
+    const probs = S.problems();
+    if (probs.length) h += '<p class="upc-err">Lines in the settings note that could not be read (ignored): ' + probs.map(esc).join('; ') + '</p>';
+    if (clinicErr) h += '<p class="upc-err">' + esc(clinicErr) + '</p>';
+    if (clinicMsg) h += '<p class="upc-ok">' + esc(clinicMsg) + '</p>';
+    const at = S.readAt();
+    h += '<div class="text-muted">' + (at ? 'Read from Halaxy at ' + new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + esc(U().dayLabel(at)) + '.' : 'Not read from Halaxy yet on this PC: defaults shown.') + '</div></div>';
+    h += '<div class="upc-ss-actions"><button type="button" class="btn btn-outline-primary" data-a="back">Back</button>' +
+      '<button type="button" class="btn btn-outline-primary" data-a="reread"' + (busy ? ' disabled' : '') + '>Read again now</button>' +
+      (edit ? '<button type="button" class="btn btn-primary" data-a="save"' + (busy ? ' disabled' : '') + '>' + (busy || 'Save for every PC') + '</button>' : '') +
+      '<button type="button" class="btn btn-primary" data-a="close">Close</button></div>';
+    dlg.body.innerHTML = h;
+  }
+  async function clinicAction(a) {
+    const S = U().settings;
+    clinicMsg = ''; clinicErr = '';
+    if (a === 'reread') {
+      busy = 'Reading...'; renderClinic();
+      try { await S.refresh(true); clinicMsg = 'Read again.'; } catch (e) { clinicErr = 'Could not read the settings: ' + (e.message || e); }
+    } else if (a === 'save') {
+      const values = {};
+      dlg.body.querySelectorAll('input[data-key]').forEach((el) => { values[el.dataset.key] = el.value; });
+      busy = 'Saving...'; renderClinic();
+      try { await S.save(values); clinicMsg = 'Saved. Every PC uses these within the hour.'; } catch (e) { clinicErr = 'Not saved: ' + (e.message || e); }
+    }
+    busy = '';
+    renderClinic();
+  }
 
   function render() {
     if (!dlg) return;
+    if (view === 'clinic' && U().settings) { renderClinic(); return; }
     const names = {};
     (st ? st.scripts : []).forEach((x) => { names[x.file] = shortName(x.name); });
     const groups = [];
@@ -98,7 +155,10 @@
     const fullNames = {};
     (st ? st.scripts : []).forEach((x) => { fullNames[x.file] = x.name; });
     const ordered = sortGrouped(groups, (g) => fullNames[g.script] || g.script).map((o) => o.x);
-    let h = '<div class="upc-ss-section"><h5>Options</h5>';
+    let h = '';
+    if (U().settings) h += '<div class="upc-ss-section"><h5>Clinic settings</h5><p class="text-muted">Rules every PC shares (billing, reminders, lists).</p>' +
+      '<button type="button" class="btn btn-outline-primary-light" data-a="clinic">Clinic settings</button></div>';
+    h += '<div class="upc-ss-section"><h5>Options</h5>';
     h += ordered.length ? ordered.map((g) => '<div class="upc-ss-group"><div class="text-muted">' + esc(names[g.script] || g.script.replace(/\.user\.js$/, '')) + '</div><div class="upc-ss-items">' +
       g.items.map((it) => '<button type="button" class="btn btn-outline-primary-light" data-item="' + esc(it.id) + '">' + esc(it.label) + '</button>').join('') + '</div></div>').join('')
       : '<p class="text-muted">No script has options on this page.</p>';
@@ -133,7 +193,7 @@
     dlg = U().ui.dialog({ title: 'Script settings', key: 'upc-script-settings', onClose: () => { dlg = null; } });
     if (!dlg) return;
     dlg.root.classList.add('upc-ss');
-    notice = '';
+    notice = ''; view = 'main'; clinicMsg = ''; clinicErr = '';
     render();
     dlg.body.addEventListener('click', async (e) => {
       const it = e.target.closest('[data-item]');
@@ -141,6 +201,9 @@
       const a = e.target.closest('[data-a]');
       if (!a) return;
       if (a.dataset.a === 'close') { dlg.close(); dlg = null; }
+      else if (a.dataset.a === 'clinic') { view = 'clinic'; render(); }
+      else if (a.dataset.a === 'back') { view = 'main'; render(); }
+      else if (a.dataset.a === 'reread' || a.dataset.a === 'save') clinicAction(a.dataset.a);
       else if (a.dataset.a === 'reload') location.reload();
       else if (a.dataset.a === 'check') {
         busy = 'Checking...';

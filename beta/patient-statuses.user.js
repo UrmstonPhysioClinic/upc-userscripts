@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Patient statuses (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.5
+// @version      0.2.6
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
@@ -41,10 +41,12 @@
   if (window.__hxPatientStatuses) return;
   window.__hxPatientStatuses = true;
 
-  const VERSION = '0.2.5';
+  const VERSION = '0.2.6';
   const ALLOWED = ['Carl Healy'];
   const DAY = 86400e3;
-  const GAP_DAYS = 42;          // Carl, 11 Nov 2026: a gap counts; 6 weeks
+  // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
+  const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
+  const GAP_DAYS = () => rule('patientStatuses.gapDays', 42);   // Carl, 11 Nov 2026: a gap counts; 6 weeks
   const BACK_DAYS = 183, AHEAD_DAYS = 122;
   const MANAGED = ['current', 'claimant', 'discharged'];
   const FROM = MANAGED.concat(['contact']);
@@ -52,7 +54,7 @@
   const FUNDED_TYPE = /insurance|referral/i;
   const KNOWN = MANAGED.concat(['review', 'archived', 'waiting list', 'blocked', 'deleted', 'deceased', 'contact', 'lead']);
   const NAME = { current: 'Current', claimant: 'Claimant', discharged: 'Discharged', contact: 'Contact' };
-  const EVERY = 3 * 3600e3, MAX_CHANGES = 15, LOG_SIZE = 100;   // at most 15 changes a run, a few seconds apart
+  const EVERY = 3 * 3600e3, MAX_CHANGES = () => rule('patientStatuses.maxChanges', 15), LOG_SIZE = 100;   // at most 15 changes a run, a few seconds apart
   const KEY = 'upc-ps:';
 
   const U = () => window.UPC;
@@ -166,7 +168,7 @@
         } else {
           const last = attended[attended.length - 1];
           const gap = Math.floor((now - startMs(last)) / DAY);
-          if (gap >= GAP_DAYS) {
+          if (gap >= GAP_DAYS()) {
             to = 'discharged';
             why = 'No appointment for ' + Math.floor(gap / 7) + ' weeks (last ' + label(startMs(last)) + '), nothing booked';
           } else if (status !== 'discharged') {
@@ -236,7 +238,7 @@
       let n = 0;
       for (const x of r.rows) {
         if (!x.to) { log({ id: x.id, name: x.name, error: x.error }); continue; }
-        if (n >= MAX_CHANGES) break;   // the rest next time
+        if (n >= MAX_CHANGES()) break;   // the rest next time
         if (U().http.pausedFor() > 0) break;
         if (n) await U().background.pause(3000, 6000);   // a few seconds between changes, as a person would take
         beat();
