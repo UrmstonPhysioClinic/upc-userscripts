@@ -68,7 +68,7 @@
     {
       "file": "missing-details.user.js",
       "name": "UPC Patients: Missing details (beta)",
-      "version": "0.1.0"
+      "version": "0.1.1"
     },
     {
       "file": "mobile-layout.user.js",
