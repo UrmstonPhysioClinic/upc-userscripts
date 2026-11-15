@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Missing details (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.2
+// @version      0.2.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/missing-details.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/missing-details.user.js
@@ -29,13 +29,19 @@
  *  - Patients > Missing details (Carl and Wendy): who is missing what, their next appointment and with whom (or when
  *    they were last seen), and a link to their Edit page. Soonest appointment first. A count on the menu (not email).
  *  - No pop-ups (Carl, 15 Nov 2026: the banner first; a pop-up only if it proves too easy to miss).
+ *  - Shared between the PCs (Carl, 15 Nov 2026; core's UPC.shared): what each PC finds goes in the Admin Note
+ *    "UPC shared checks: Missing details" on UPC scripts (settings), as patient id | when | codes (never names). Before
+ *    checking, a PC reads the note, takes what the others found, and claims the patients it is about to check, so the
+ *    clinic reads each patient once rather than once per PC. A PC notes a patient's outcome there when it differs from
+ *    the note (details just saved, new gaps). Every PC reads the note every 30 minutes, so banners and calendar marks
+ *    follow. If the note can't be read, each PC checks for itself as before.
  */
 (() => {
   'use strict';
   if (window.__hxMissingDetails) return;
   window.__hxMissingDetails = true;
 
-  const VERSION = '0.1.2';
+  const VERSION = '0.2.0';
   const ROUTE = 'upc-missing-details';
   const MENU_CLS = 'upc-md-menu';
   const ADMINS = ['Carl Healy', 'Wendy Pritchard'];   // who sees the page (Carl, 15 Nov 2026: Carl and Wendy)
@@ -43,7 +49,8 @@
   const AHEAD_DAYS = 14, BACK_DAYS = 30;    // Carl, 15 Nov 2026
   const KEEP_COMPLETE = 30 * DAY, KEEP_GAPS = DAY, RECHECK_GAPS = 10 * 60e3;
   const SWEEP_EVERY = 3 * 3600e3, PER_RUN = 40;
-  const SKIP_STATUS = /^(deleted|archived|deceased)$/i;
+  const SKIP_STATUS = /^(deleted|archived|deceased|off)$/i;
+  const SHARE_EVERY = 30 * 60e3;
   const KEY = 'upc-md:';
 
   const U = () => window.UPC;
@@ -84,12 +91,44 @@
   }
   // The per-PC record of each patient checked; the ids with gaps are kept apart for Calendar controls.
   const known = () => store.get('patients', {});
-  function remember(id, r) {
+  function rememberAll(found) {
     const all = known();
-    all[id] = { at: r.at, name: r.name, status: r.status, missing: r.missing, email: r.email };
+    Object.keys(found).forEach((id) => { const r = found[id]; all[id] = { at: r.at, name: r.name || (all[id] && all[id].name) || '', status: r.status, missing: r.missing, email: r.email }; });
     Object.keys(all).forEach((k) => { if (Date.now() - all[k].at > 2 * KEEP_COMPLETE) delete all[k]; });
     store.set('patients', all);
     store.set('ids', Object.keys(all).filter((k) => all[k].missing.length && !SKIP_STATUS.test(all[k].status || '')));
+  }
+  const remember = (id, r) => rememberAll({ [id]: r });
+
+  // ------------------------------------------------------------------ shared with the other PCs
+
+  // In the note: what is missing ('ok' if nothing), 'noemail', and 'off' for a Deleted, Archived or Deceased patient.
+  const toValue = (r) => (r.missing.length ? r.missing : ['ok']).concat(r.email ? [] : ['noemail'], SKIP_STATUS.test(r.status || '') ? ['off'] : []).join(' ');
+  function fromValue(v, at) {
+    const t = String(v || '').split(' ');
+    return { at, name: '', status: t.includes('off') ? 'off' : '', missing: t.filter((x) => FIELD_NAMES[x]), email: !t.includes('noemail') };
+  }
+  const shared = () => (U().shared ? U().shared('Missing details', { keep: KEEP_COMPLETE, file: 'missing-details.user.js' }) : null);
+  // Takes what the other PCs found when it is newer than this PC's own (times in the note are to the minute).
+  function takeShared(recs) {
+    const mine = known(), found = {};
+    Object.keys(recs || {}).forEach((id) => {
+      const r = recs[id];
+      if (r.at !== null && /^\d+$/.test(id) && (!mine[id] || r.at > mine[id].at + 60e3)) found[id] = fromValue(r.value, r.at);
+    });
+    if (Object.keys(found).length) rememberAll(found);
+    store.set('sharedAt', Date.now());
+  }
+  // A patient read on their own page: noted for the others when it differs from what the note says.
+  async function share(id, r) {
+    const sh = shared();
+    if (!sh) return;
+    try {
+      const now = toValue(r);
+      const differs = (recs) => { const was = recs[id] && recs[id].at !== null ? recs[id].value : null; return was !== now && (was !== null || r.missing.length > 0); };
+      // This PC's copy of the note first; if that differs, the note itself (a save may not have finished).
+      if (differs(await sh.read(SHARE_EVERY)) && differs(await sh.read(0))) await sh.write({ [id]: now });
+    } catch (e) { console.warn('[UPC missing details] shared note', e); }
   }
   const fresh = (r) => r && Date.now() - r.at < (r.missing.length ? KEEP_GAPS : KEEP_COMPLETE);
   const missingText = (r) => r.missing.map((m) => FIELD_NAMES[m]).join(', ');
@@ -128,21 +167,29 @@
     const id = patientId();
     if (!id) { shownFor = null; paintBanner(); return; }
     paintBanner();
-    const r = known()[id];
     // On the Edit page itself the details are already on screen (as saved): read from there, no request, and note the
     // visit, so the next page of this patient reads them again (in case they were just saved).
     const onEdit = /\/patient\/\d+\/edit\/?$/.test(location.pathname) && document.querySelector('form#patientGeneralEditForm');
     const edited = store.get('edited', {});
     // Known complete: nothing to do. With gaps: read again only after a visit to their Edit page, or every 10 minutes.
-    if (!onEdit && r && !r.missing.length && fresh(r)) { shownFor = id; return; }
-    if (!onEdit && r && r.missing.length && !(edited[id] > r.at) && Date.now() - r.at < RECHECK_GAPS) { shownFor = id; return; }
+    const settled = (r) => !onEdit && r && (r.missing.length ? !(edited[id] > r.at) && Date.now() - r.at < RECHECK_GAPS : fresh(r));
+    if (settled(known()[id])) { shownFor = id; return; }
     if (reading === id || (U().http.pausedFor && U().http.pausedFor() > 0)) return;
     reading = id;
-    if (onEdit) { edited[id] = Date.now() + 1; Object.keys(edited).forEach((k) => { if (Date.now() - edited[k] > DAY) delete edited[k]; }); store.set('edited', edited); }
-    try { remember(id, onEdit ? Object.assign(detailsFrom(document), { at: Date.now() }) : await readPatient(id)); shownFor = id; }
-    catch (e) { tellHealthCheck(e); }
-    finally { reading = null; }
-    paintBanner();
+    try {
+      // What the other PCs found may do (this PC's copy of the note, read again if older than 30 minutes).
+      const r0 = known()[id];
+      if (!onEdit && !(r0 && edited[id] > r0.at) && shared()) {
+        try { takeShared(await shared().read(SHARE_EVERY)); } catch (e) { /* the note can't be read: check here */ }
+        if (settled(known()[id])) { shownFor = id; return; }
+      }
+      if (onEdit) { edited[id] = Date.now() + 1; Object.keys(edited).forEach((k) => { if (Date.now() - edited[k] > DAY) delete edited[k]; }); store.set('edited', edited); }
+      const r = onEdit ? Object.assign(detailsFrom(document), { at: Date.now() }) : await readPatient(id);
+      remember(id, r);
+      shownFor = id;
+      share(id, r);
+    } catch (e) { tellHealthCheck(e); }
+    finally { reading = null; paintBanner(); }
   }
 
   // ------------------------------------------------------------------ the background check
@@ -164,12 +211,29 @@
       people.set(id, p);
     });
     const list = [...people.values()].filter((p) => p.next !== null || p.lastSeen !== null);
-    const todo = list.filter((p) => !fresh(known()[p.id])).sort((a, b) => (a.next || Infinity) - (b.next || Infinity)).slice(0, PER_RUN);
+    // What the other PCs have found, and whom they are checking now.
+    let sh = shared(), others = {};
+    if (sh) {
+      say('Reading what the other PCs found...');
+      try { const recs = await sh.read(0); takeShared(recs); others = recs; } catch (e) { sh = null; console.warn('[UPC missing details] shared note', e); }
+    }
+    const busy = (id) => { const c = others[id] && others[id].claim; return !!(c && c.by !== sh.me && c.until > Date.now()); };
+    let todo = list.filter((p) => !fresh(known()[p.id]) && !(sh && busy(p.id))).sort((a, b) => (a.next || Infinity) - (b.next || Infinity)).slice(0, PER_RUN);
+    if (sh && todo.length) {
+      try { const mine = await sh.claim(todo.map((p) => p.id)); todo = todo.filter((p) => mine.includes(p.id)); }
+      catch (e) { sh = null; console.warn('[UPC missing details] shared note', e); }
+    }
+    const outcomes = {};
     let n = 0;
-    for (const p of todo) {
-      if (U().http.pausedFor && U().http.pausedFor() > 0) break;
-      say('Checking ' + (p.name || 'a patient') + ' (' + (++n) + ' of ' + todo.length + ')...');
-      try { remember(p.id, await readPatient(p.id)); } catch (e) { tellHealthCheck(e); if (/has changed/.test(e.message || '')) throw e; }
+    try {
+      for (const p of todo) {
+        if (U().http.pausedFor && U().http.pausedFor() > 0) break;
+        say('Checking ' + (p.name || 'a patient') + ' (' + (++n) + ' of ' + todo.length + ')...');
+        try { const r = await readPatient(p.id); remember(p.id, r); outcomes[p.id] = toValue(r); } catch (e) { tellHealthCheck(e); if (/has changed/.test(e.message || '')) throw e; }
+      }
+    } finally {
+      // Noted for the other PCs, and this PC's claims let go (also when stopped part way).
+      if (sh) { say('Noting what was found for the other PCs...'); try { await sh.write(outcomes); } catch (e) { console.warn('[UPC missing details] shared note', e); } }
     }
     let pracs = {};
     try { (await U().http.json('/lookup/practitioner?clinic=&include_id=&type=') || []).forEach((x) => { pracs[String(x.id)] = clean(x.name); }); } catch (e) { pracs = {}; }
@@ -190,7 +254,16 @@
   async function background() {
     if (!U() || !U().background.ok() || locked()) return;
     const last = store.get('result', null);
-    if (last && last.by === VERSION && !U().background.due(last.at, SWEEP_EVERY)) return;
+    if (last && last.by === VERSION && !U().background.due(last.at, SWEEP_EVERY)) {
+      // Between checks: what the other PCs found, every 30 minutes (one request), for the banner and calendar marks.
+      const sh = shared();
+      if (sh && U().background.due(store.get('sharedAt', 0), SHARE_EVERY)) {
+        store.set('sharedAt', Date.now());
+        try { takeShared(await sh.read(0)); } catch (e) { /* tried again in 30 minutes */ }
+        paintBanner();
+      }
+      return;
+    }
     try { await sweepLocked(); } catch (e) { console.warn('[UPC missing details]', e); }
     paintBadge();
     paintBanner();

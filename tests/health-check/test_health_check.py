@@ -90,6 +90,10 @@ async def halaxy(route):
         return await j([{'funder': 'Self-Funded', 'feeColour': '#FEF2C0', 'status': 'current', 'feeNumber': 'IA-IA'}])
     if p.endswith('/communication-log/organisation/78812/list-data'):
         return await j({'data': [{'id': 1, 'date': '2026-11-14 10:00:00', 'creator': 'Carl Healy', 'content': '<p>Starling statement</p>'}]})
+    if p.endswith('/communication-log/organisation/78842/list-data'):
+        return await j({'data': [{'id': 2, 'date': '2026-11-15 10:00:00', 'creator': 'Carl Healy', 'content': '<p>UPC shared checks: Missing details</p><p>301 | 2026-11-15 10:00 | ok</p>'},
+                                 {'id': 3, 'date': '2026-11-14 10:00:00', 'creator': 'Carl Healy', 'content': '<p>UPC shared checks: Missing details</p>'},
+                                 {'id': 4, 'date': '2026-11-14 10:00:00', 'creator': 'Carl Healy', 'content': '<p>Something else</p>'}]})
     if p.endswith('/communication-log/organisation/78812/new'):
         return await j({'status': 'FORM', 'message': "<form id='adminNoteForm'><input name='form[_token]'><input name='form[communicationDateTime][date]'><textarea name='form[logContent]'></textarea></form>"})
     if p.endswith('/organisation/78812/balance/data'):
@@ -188,7 +192,9 @@ async def main():
         stored = await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:halaxy'))")
         check('Halaxy version recorded', stored and stored['version'] == '4.12', stored)
         results = await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:results'))")
-        check('data checks ran', all(k in results for k in ('data-calendar', 'data-fees', 'data-practitioners', 'data-invoices', 'data-org-deposits', 'data-org-deposit-add', 'data-org-files', 'data-org-notes', 'data-org-note-add')), list(results))
+        check('data checks ran', all(k in results for k in ('data-calendar', 'data-fees', 'data-practitioners', 'data-invoices', 'data-org-deposits', 'data-org-deposit-add', 'data-org-files', 'data-org-notes', 'data-org-note-add', 'data-shared-notes')), list(results))
+        sh = results.get('data-shared-notes') or {}
+        check('shared notes: read, and two notes for one script mentioned (not a problem)', sh.get('problems') == [] and sh.get('info') == '2 shared notes. Two are called "UPC shared checks: Missing details": the newer one is used, the older can be deleted.', sh)
         check('funder profile checks pass', all(not results[k]['problems'] for k in ('data-org-deposits', 'data-org-deposit-add', 'data-org-files', 'data-org-notes', 'data-org-note-add')), {k: results.get(k) for k in ('data-org-deposits', 'data-org-deposit-add', 'data-org-files')})
         check('add deposit pop-up only read', set(STATE.get('payReads', [])) == {'GET'}, STATE.get('payReads'))
         await pg.evaluate("window.__menu.find(m => m[0] === 'Health check: show results')[1]()")
