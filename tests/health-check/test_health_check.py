@@ -194,7 +194,7 @@ async def main():
         results = await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:results'))")
         check('data checks ran', all(k in results for k in ('data-calendar', 'data-fees', 'data-practitioners', 'data-invoices', 'data-org-deposits', 'data-org-deposit-add', 'data-org-files', 'data-org-notes', 'data-org-note-add', 'data-shared-notes')), list(results))
         sh = results.get('data-shared-notes') or {}
-        check('shared notes: read, and two notes for one script mentioned (not a problem)', sh.get('problems') == [] and sh.get('info') == '2 shared notes. Two are called "UPC shared checks: Missing details": the newer one is used, the older can be deleted.', sh)
+        check('shared notes: read, and two notes for one script mentioned (not a problem)', sh.get('problems') == [] and sh.get('info') == '2 shared notes. Two are called "UPC shared checks: Missing details": the scripts merge them on their next check.', sh)
         check('funder profile checks pass', all(not results[k]['problems'] for k in ('data-org-deposits', 'data-org-deposit-add', 'data-org-files', 'data-org-notes', 'data-org-note-add')), {k: results.get(k) for k in ('data-org-deposits', 'data-org-deposit-add', 'data-org-files')})
         check('add deposit pop-up only read', set(STATE.get('payReads', [])) == {'GET'}, STATE.get('payReads'))
         await pg.evaluate("window.__menu.find(m => m[0] === 'Health check: show results')[1]()")

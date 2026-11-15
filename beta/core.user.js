@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.47
+// @version      0.1.48
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.47';
+  const VERSION = '0.1.48';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -1007,12 +1007,30 @@
         return [k, r.at === null ? '-' : stamp(r.at), r.at === null ? '-' : r.value].concat(r.claim ? ['checking ' + r.claim.by + ' until ' + stamp(r.claim.until)] : []).join(' | ');
       })).join('\n');
     }
-    // The note among the organisation's Admin Notes: the newest whose first line is ours, or the one this PC last used
-    // (if its first line was lost).
+    // The note among the organisation's Admin Notes: the oldest whose first line is ours (so every PC settles on the same
+    // one, live 15 Nov 2026: three PCs made one each at the same moment), or the one this PC last used (if its first line
+    // was lost). Lines in any other copies are taken in (the newest check wins); those copies are relabelled on the next save.
+    const SPARE = 'Spare copy of ' + head + ' (two PCs started it at the same moment). It can be deleted.';
     function pick(notes) {
-      const note = notes.find((n) => n.text.split('\n')[0] === head) || notes.find((n) => n.id === st.get('noteId', ''));
+      const ours = notes.filter((n) => n.text.split('\n')[0] === head).sort((a, b) => Number(a.id) - Number(b.id));
+      const note = ours[0] || notes.find((n) => n.id === st.get('noteId', '')) || null;
       const got = note ? parse(note.text) : { recs: {}, bad: 0 };
-      return Object.assign({ note: note || null }, got);
+      const spares = ours.slice(1);
+      spares.forEach((n) => {
+        const more = parse(n.text).recs;
+        Object.keys(more).forEach((k) => {
+          const a = got.recs[k], b = more[k];
+          if (!a) { got.recs[k] = b; return; }
+          if (b.at !== null && (a.at === null || b.at > a.at)) { a.at = b.at; a.value = b.value; }
+          if (!a.claim && b.claim) a.claim = b.claim;
+        });
+      });
+      return Object.assign({ note, spares }, got);
+    }
+    async function retire(spares) {
+      for (const n of spares) {
+        try { await adminNotes.update('organisation', SHARED_ORG, n.id, SPARE); } catch (e) { console.warn('[UPC shared]', e); }
+      }
     }
     function remember(got) {
       if (got.note) st.set('noteId', got.note.id);
@@ -1043,7 +1061,7 @@
         if (r.at === null && !r.claim) delete recs[k];
       });
       const text = format(recs);
-      if (got.note && got.note.text === text) return remember(got);
+      if (got.note && got.note.text === text) { await retire(got.spares); return remember(got); }
       let saved = null;
       try {
         saved = got.note ? await adminNotes.update('organisation', SHARED_ORG, got.note.id, text) : await adminNotes.add('organisation', SHARED_ORG, text);
@@ -1051,6 +1069,7 @@
         if (!/does not (list|show) the note as/.test(e.message || '')) throw e;
       }
       if (got.bad) tellRepaired(got.bad);
+      if (saved) await retire(got.spares);
       if (saved) return remember({ note: saved, recs: parse(saved.text).recs });
       return read(0);
     }

@@ -1,5 +1,8 @@
 # Changelog
 
+## Core 0.1.48, health check 1.1.42, 15 Nov 2026 (beta)
+- Shared checks: when several PCs make the same note at once (live, 15 Nov 2026: three for Missing details), every PC uses the oldest, takes in the others' lines (newest check wins) and relabels the others "Spare copy of ... It can be deleted." The health check's wording follows.
+
 ## Missing details 0.2.1, core 0.1.47, 15 Nov 2026 (beta)
 - What a PC already knew before the shared note existed (or knows more recently than the note) is added to the note with the time it was found, so earlier checks are shared straight away rather than as each patient comes due. A newer line in the note always wins.
 

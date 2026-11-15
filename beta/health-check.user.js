@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.41
+// @version      1.1.42
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.41';
+  const VERSION = '1.1.42';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -427,10 +427,11 @@
       const rows = res && res.data;
       const heads = Array.isArray(rows) ? rows.map((r) => (new DOMParser().parseFromString(String(r.content || '').replace(/<\/p>/gi, '\n'), 'text/html').body.textContent || '').split('\n')[0].trim()).filter((h) => /^UPC shared checks: /.test(h)) : [];
       const twice = [...new Set(heads.filter((h, i) => heads.indexOf(h) !== i))];
-      // Two notes for one script (two PCs made one at the same moment) is harmless: the newer is used. Mentioned, not a problem.
+      // Two notes for one script (two PCs made one at the same moment) is harmless: the scripts merge them into the oldest
+      // and relabel the others as spare copies on their next save. Mentioned, not a problem.
       put('data-shared-notes', 'Shared checks (UPC scripts (settings) Admin Notes)', ['Missing details'], !Array.isArray(rows) ? ['not a list'] : [],
         (heads.length ? heads.length + ' shared note' + (heads.length === 1 ? '' : 's') + '.' : 'No shared notes yet.') +
-        twice.map((h) => ' Two are called "' + h + '": the newer one is used, the older can be deleted.').join(''));
+        twice.map((h) => ' Two are called "' + h + '": the scripts merge them on their next check.').join(''));
     } catch (e) { put('data-shared-notes', 'Shared checks (UPC scripts (settings) Admin Notes)', ['Missing details'], [e.message]); }
     try {
       const res = await getJSON('/communication-log/organisation/' + ORG + '/new');
