@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.55
+// @version      0.1.56
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.55';
+  const VERSION = '0.1.56';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -2222,7 +2222,8 @@
   // { key, script, label, unit, def, min, max, type: 'number' (whole numbers) | 'time' ('HH:MM') | 'people' (names, at
   // least one) | 'person' (one name) | 'order' (names in order, at least one) | 'weekdays' ('Mon'..'Sun', may be none) |
   // 'dates' ('YYYY-MM-DD', may be none; '25-Dec-2026' and '25/12/2026' are read too) | 'words' (may be none) | 'text' (one
-  // line matching def.re, up to def.max characters) }. Names are Halaxy users' full names, as signed in ('Carl Healy').
+  // line matching def.re, up to def.max characters) | 'audience' ('everyone', or names, may be none: who a per-person
+  // option is on for) | 'choice' (one of def.options' keys) }. Names are Halaxy users' full names, as signed in ('Carl Healy').
   // An empty list is kept in the note as "none".
   const CARL = 'Carl Healy', WENDY = 'Wendy Pritchard';
   const CLINIC_SETTINGS = [
@@ -2272,6 +2273,14 @@
     { key: 'portalFill.phone', script: 'Portal fill (AXA payee details)', label: 'Payee phone number', type: 'text', def: '01617484100', max: 20, re: /^\+?[0-9 ()]{6,20}$/ },
     { key: 'calendar.order', script: 'Calendar', label: 'Column order for All practitioners (anyone else follows)', type: 'order', def: ['Roxanna Healy', CARL, 'Diana Satalova', 'Stephen Sharples'] },
     { key: 'calendar.hideProfessions', script: 'Calendar', label: 'Professions left out of All practitioners', type: 'words', def: ['Administrator'] },
+    // Per person (Carl, 15 Nov 2026: settings follow the account, not the PC; only Carl changes them). Until saved here,
+    // each PC keeps its own switch.
+    { key: 'forecourtLights.remind', script: 'Per person', label: 'Forecourt lights reminders for', type: 'audience', def: [] },
+    { key: 'alerts.arrivalChime', script: 'Per person', label: 'Arrival chime for', type: 'audience', def: 'everyone' },
+    { key: 'alerts.chatAlarm', script: 'Per person', label: 'Chat alarm for', type: 'audience', def: 'everyone' },
+    { key: 'branding.on', script: 'Per person', label: 'Clinic branding for', type: 'audience', def: 'everyone' },
+    { key: 'branding.font', script: 'Per person', label: 'Branding font', type: 'choice', def: 'headings', options: { all: 'Website font everywhere', headings: 'Website font for headings only', halaxy: 'Halaxy\'s own font' } },
+    { key: 'blockReporting.userpilot', script: 'Per person', label: 'Halaxy\'s tours and announcements (Userpilot) shown to', type: 'audience', def: [] },
   ];
   const NAME_RE = /^[A-Za-z][A-Za-z' .-]{0,39}$/;
   const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -2294,6 +2303,13 @@
     // The value as kept in the note, checked: a whole number within limits, or a time HH:MM within limits; else null.
     check(def, raw) {
       if (raw === null || raw === undefined) return null;
+      if (def.type === 'choice') { const c = String(raw).trim(); return Object.prototype.hasOwnProperty.call(def.options, c) ? c : null; }
+      if (def.type === 'audience') {
+        if (!Array.isArray(raw) && /^\s*everyone\s*$/i.test(String(raw))) return 'everyone';
+        const list = [...new Set((Array.isArray(raw) ? raw : /^\s*none\s*$/i.test(String(raw)) ? [] : String(raw).split(',')).map((x) => String(x).replace(/\s+/g, ' ').trim()).filter(Boolean))];
+        if (list.length === 1 && list[0].toLowerCase() === 'everyone') return 'everyone';
+        return list.length <= 30 && list.every((n) => NAME_RE.test(n)) ? list : null;
+      }
       if (['order', 'weekdays', 'dates', 'words'].includes(def.type)) {
         const items = (Array.isArray(raw) ? raw : /^\s*none\s*$/i.test(String(raw)) ? [] : String(raw).split(/[,\n]/)).map((x) => String(x).replace(/\s+/g, ' ').trim()).filter(Boolean);
         let out;
@@ -2334,7 +2350,21 @@
     },
     def: (key) => CLINIC_SETTINGS.find((d) => d.key === key),
     same: (a, b) => (Array.isArray(a) || Array.isArray(b) ? String(a) === String(b) : a === b),
-    text: (v) => (Array.isArray(v) ? (v.length ? v.join(', ') : 'none') : String(v)),
+    text: (v) => (Array.isArray(v) ? (v.length ? v.join(', ') : 'none') : String(v)),   // 'everyone' stays as it is
+    // For an 'audience' setting: true when it is on for the signed-in person (or for `name`).
+    forMe(key, name) {
+      const v = settings.get(key), me = String(name || user.name([]) || '').toLowerCase();
+      return v === 'everyone' || (Array.isArray(v) && !!me && v.some((n) => n.toLowerCase() === me));
+    },
+    // What applies to whoever is signed in on this PC, kept for scripts that start before the page (and core) are
+    // ready: { user, values: { key: true/false or the choice } } for per-person settings saved in Clinic settings.
+    rememberMine() {
+      const me = user.name([]);
+      if (!me) return;
+      const out = {};
+      CLINIC_SETTINGS.filter((d) => (d.type === 'audience' || d.type === 'choice') && settings.isSet(d.key)).forEach((d) => { out[d.key] = d.type === 'choice' ? settings.get(d.key) : settings.forMe(d.key, me); });
+      try { localStorage.setItem('upc-settings:mine', JSON.stringify({ user: me, values: out })); } catch (e) { /* storage blocked */ }
+    },
     // True when the clinic has saved a usable value (not just the default), for scripts that fall back to their own.
     isSet(key) { const r = settings.all().find((x) => x.def.key === key); return !!r && r.raw !== null && !r.bad; },
     isoDay,
@@ -2385,6 +2415,7 @@
       settings.store.set('values', got.values);
       settings.store.set('problems', got.problems);
       settings.store.set('at', Date.now());
+      settings.rememberMine();
       try { document.dispatchEvent(new CustomEvent('upc-settings-changed')); } catch (e) { /* ignore */ }
       return true;
     },
@@ -2398,7 +2429,7 @@
         if (raw === undefined || raw === null || (!Array.isArray(raw) && String(raw).trim() === '')) continue;   // empty: the default (no ticks at all is refused below)
         const v = settings.check(def, raw);
         if (v === null) {
-          throw new UPCError(def.script + ': "' + def.label + '" must be ' + (def.type === 'time' ? 'a time from ' + def.min + ' to ' + def.max : def.type === 'people' || def.type === 'order' ? 'at least one person'
+          throw new UPCError(def.script + ': "' + def.label + '" must be ' + (def.type === 'audience' ? 'everyone, or people ticked' : def.type === 'choice' ? 'one of the choices' : def.type === 'time' ? 'a time from ' + def.min + ' to ' + def.max : def.type === 'people' || def.type === 'order' ? 'at least one person'
             : def.type === 'person' ? 'one person' : def.type === 'dates' ? 'dates such as 25-Dec-2026, one per line' : def.type === 'weekdays' ? 'days of the week'
               : def.type === 'words' ? 'words separated by commas' : def.type === 'text' ? 'filled in as expected (up to ' + def.max + ' characters)' : 'a whole number from ' + def.min + ' to ' + def.max) + '.');
         }
@@ -2417,7 +2448,7 @@
     async names() {
       const out = new Set();
       try { (await http.json('/lookup/practitioner?clinic=&include_id=&type=') || []).forEach((x) => { const n = clean(x.name); if (NAME_RE.test(n)) out.add(n); }); } catch (e) { /* the lists below still apply */ }
-      settings.all().forEach((r) => { if (['people', 'person', 'order'].includes(r.def.type)) [].concat(r.def.def, r.value).forEach((n) => out.add(n)); });
+      settings.all().forEach((r) => { if (['people', 'person', 'order', 'audience'].includes(r.def.type)) [].concat(r.def.def, r.value).forEach((n) => { if (n !== 'everyone') out.add(n); }); });
       const me = user.name([]);
       if (me && NAME_RE.test(me)) out.add(me);
       return [...out].sort((a, b) => a.localeCompare(b));
@@ -2426,6 +2457,7 @@
 
   // A read soon after the page opens, then about hourly (settings.refresh skips when not due).
   setTimeout(() => { settings.refresh().catch(() => {}); }, 6000);
+  setTimeout(() => { settings.rememberMine(); }, 3000);   // who is signed in on this page, for the next page's early scripts
   setInterval(() => { settings.refresh().catch(() => {}); }, 10 * 60e3);
   window.addEventListener('storage', (e) => { if (e.key === 'upc-settings:values') { try { document.dispatchEvent(new CustomEvent('upc-settings-changed')); } catch (x) { /* ignore */ } } });
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Calendar: Alerts (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.0.1
+// @version      1.0.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/alerts.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/alerts.user.js
@@ -28,26 +28,43 @@
   if (window.__hxAlerts) return;
   window.__hxAlerts = true;
 
-  const VERSION = '1.0.1';
+  const VERSION = '1.0.2';
   const CHAT_BADGE_ID = 'btn-chat-popover-open';
   const REPEAT_EVERY_SECONDS = (window.__hxAlertsTest && window.__hxAlertsTest.repeatSeconds) || 15;   // chat alarm repeat
   const MAX_REPEATS = 10;            // set to 0 to sound once only
   const SHARED = 'upc-alerts:';      // storage keys shared by this PC's Halaxy tabs
   const TAB = Math.random().toString(36).slice(2);
 
-  // ---- Per-PC switches (Tampermonkey menu) ----
+  // Per-person settings (Script settings > Clinic settings, Carl 15 Nov 2026): once saved there they follow the person
+  // signed in, on any PC; until then this PC's own switch. Read from core when it knows who is signed in, else from what
+  // core kept for this PC's last sign-in (scripts that start before the page is ready).
+  const personal = (key) => {
+    try {
+      const S = window.UPC && UPC.settings;
+      if (S && S.def(key) && S.isSet(key) && UPC.user.name([])) return S.def(key).type === 'choice' ? S.get(key) : S.forMe(key);
+      const m = JSON.parse(localStorage.getItem('upc-settings:mine') || 'null');
+      if (m && m.values && Object.prototype.hasOwnProperty.call(m.values, key)) return m.values[key];
+    } catch (e) { /* this PC's own */ }
+    return undefined;
+  };
+  // ---- Switches: per person once set in Clinic settings; until then per PC (Tampermonkey menu) ----
   const canStore = typeof GM_getValue === 'function' && typeof GM_setValue === 'function';
-  const arrivalOn = canStore ? GM_getValue('arrivalChime', true) : true;
-  const chatOn = canStore ? GM_getValue('chatAlarm', true) : true;
+  const pArrival = personal('alerts.arrivalChime'), pChat = personal('alerts.chatAlarm');
+  const arrivalOn = pArrival !== undefined ? !!pArrival : canStore ? GM_getValue('arrivalChime', true) : true;
+  const chatOn = pChat !== undefined ? !!pChat : canStore ? GM_getValue('chatAlarm', true) : true;
   if (canStore && typeof GM_registerMenuCommand === 'function') {
-    GM_registerMenuCommand('Arrival chime: ' + (arrivalOn ? 'on (click to turn off)' : 'off (click to turn on)'), () => {
-      GM_setValue('arrivalChime', !arrivalOn);
-      location.reload();
-    });
-    GM_registerMenuCommand('Chat alarm: ' + (chatOn ? 'on (click to turn off)' : 'off (click to turn on)'), () => {
-      GM_setValue('chatAlarm', !chatOn);
-      location.reload();
-    });
+    if (pArrival === undefined) {
+      GM_registerMenuCommand('Arrival chime: ' + (arrivalOn ? 'on (click to turn off)' : 'off (click to turn on)'), () => {
+        GM_setValue('arrivalChime', !arrivalOn);
+        location.reload();
+      });
+    }
+    if (pChat === undefined) {
+      GM_registerMenuCommand('Chat alarm: ' + (chatOn ? 'on (click to turn off)' : 'off (click to turn on)'), () => {
+        GM_setValue('chatAlarm', !chatOn);
+        location.reload();
+      });
+    }
   }
   if (!arrivalOn && !chatOn) return;
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Block reporting to Halaxy (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.0
+// @version      0.2.1
 // @upc-was      block-error-reporting.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/block-reporting.user.js
@@ -36,13 +36,26 @@
 (function () {
   'use strict';
   if (window.__upcBlockReporting) return;
-  const VERSION = '0.2.0';
+  const VERSION = '0.2.1';
   const blocked = { scripts: 0, requests: 0 };
   window.__upcBlockReporting = { version: VERSION, blocked };
 
+  // Per-person settings (Script settings > Clinic settings, Carl 15 Nov 2026): once saved there they follow the person
+  // signed in, on any PC; until then this PC's own switch. Read from core when it knows who is signed in, else from what
+  // core kept for this PC's last sign-in (scripts that start before the page is ready).
+  const personal = (key) => {
+    try {
+      const S = window.UPC && UPC.settings;
+      if (S && S.def(key) && S.isSet(key) && UPC.user.name([])) return S.def(key).type === 'choice' ? S.get(key) : S.forMe(key);
+      const m = JSON.parse(localStorage.getItem('upc-settings:mine') || 'null');
+      if (m && m.values && Object.prototype.hasOwnProperty.call(m.values, key)) return m.values[key];
+    } catch (e) { /* this PC's own */ }
+    return undefined;
+  };
   const canStore = typeof GM_getValue === 'function' && typeof GM_setValue === 'function';
-  const allowUserpilot = canStore ? GM_getValue('allowUserpilot', false) : false;
-  if (canStore && typeof GM_registerMenuCommand === 'function') {
+  const pUserpilot = personal('blockReporting.userpilot');
+  const allowUserpilot = pUserpilot !== undefined ? !!pUserpilot : canStore ? GM_getValue('allowUserpilot', false) : false;
+  if (pUserpilot === undefined && canStore && typeof GM_registerMenuCommand === 'function') {
     GM_registerMenuCommand('Halaxy\'s tours and announcements (Userpilot): ' + (allowUserpilot ? 'shown (click to block)' : 'blocked (click to show)'), () => {
       GM_setValue('allowUserpilot', !allowUserpilot);
       location.reload();

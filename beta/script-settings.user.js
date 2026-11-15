@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Script settings (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.3
+// @version      0.2.4
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/script-settings.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/script-settings.user.js
@@ -31,7 +31,7 @@
   if (window.__hxScriptSettings) return;
   window.__hxScriptSettings = true;
 
-  const VERSION = '0.2.3';
+  const VERSION = '0.2.4';
   const U = () => window.UPC;
   const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const STATUS = { running: 'running on this page', next: 'starts on next page', off: 'switched off', unused: 'not used on this page' };
@@ -105,7 +105,7 @@
 
   const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const dayText = (iso) => { const [y, m, d] = String(iso).split('-'); return d + '-' + MON[+m - 1] + '-' + y; };
-  const shown = (def, v) => (def.type === 'dates' ? (v.length ? v.map(dayText).join(', ') : 'none') : Array.isArray(v) ? (v.length ? v.join(', ') : 'none')
+  const shown = (def, v) => (def.type === 'choice' ? def.options[v] || v : v === 'everyone' ? 'Everyone' : def.type === 'dates' ? (v.length ? v.map(dayText).join(', ') : 'none') : Array.isArray(v) ? (v.length ? v.join(', ') : 'none')
     : def.unit === '£' ? '£ ' + v : v + (def.unit ? ' ' + def.unit : ''));
   // The box for one setting: a number or time, ticks for people, a list for one person.
   // What is in the boxes is kept (draft) while saving, so a refused save keeps the changes on screen.
@@ -117,6 +117,15 @@
     if (d.type === 'people') {
       const list = [...new Set((names || []).concat(r.value))];
       return '<div class="upc-ss-people" data-people="' + esc(d.key) + '">' + list.map((n) => '<label><input type="checkbox" value="' + esc(n) + '"' + (r.value.includes(n) ? ' checked' : '') + '> ' + esc(n) + '</label>').join('') + '</div>';
+    }
+    if (d.type === 'audience') {
+      const all = r.value === 'everyone';
+      const picked = Array.isArray(r.value) ? r.value : [];
+      return '<div class="upc-ss-people" data-audience="' + esc(d.key) + '"><label><input type="checkbox" data-everyone' + (all ? ' checked' : '') + '> <strong>Everyone</strong></label>' +
+        [...new Set((names || []).concat(picked))].map((n) => '<label><input type="checkbox" value="' + esc(n) + '"' + (all || picked.includes(n) ? ' checked' : '') + (all ? ' disabled' : '') + '> ' + esc(n) + '</label>').join('') + '</div>';
+    }
+    if (d.type === 'choice') {
+      return '<select class="form-control" data-key="' + esc(d.key) + '">' + Object.entries(d.options).map(([k, l]) => '<option value="' + esc(k) + '"' + (k === r.value ? ' selected' : '') + '>' + esc(l) + '</option>').join('') + '</select>';
     }
     if (d.type === 'weekdays') {
       return '<div class="upc-ss-people" data-list="' + esc(d.key) + '">' + ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((n) => '<label><input type="checkbox" value="' + n + '"' + (r.value.includes(n) ? ' checked' : '') + '> ' + n + '</label>').join('') + '</div>';
@@ -181,6 +190,9 @@
       const values = {};
       dlg.body.querySelectorAll('input[data-key], select[data-key]').forEach((el) => { values[el.dataset.key] = el.value; });
       dlg.body.querySelectorAll('[data-people]').forEach((el) => { values[el.dataset.people] = [...el.querySelectorAll('input:checked')].map((x) => x.value); });
+      dlg.body.querySelectorAll('[data-audience]').forEach((el) => {
+        values[el.dataset.audience] = el.querySelector('[data-everyone]').checked ? 'everyone' : [...el.querySelectorAll('input[value]:checked')].map((x) => x.value);
+      });
       dlg.body.querySelectorAll('[data-list]').forEach((el) => { values[el.dataset.list] = [...el.querySelectorAll('input:checked')].map((x) => x.value); });
       dlg.body.querySelectorAll('[data-lines]').forEach((el) => { values[el.dataset.lines] = el.value.split(/\n+/).map((x) => x.trim()).filter(Boolean); });
       dlg.body.querySelectorAll('[data-order]').forEach((el) => {
@@ -250,6 +262,12 @@
     dlg.root.classList.add('upc-ss');
     notice = ''; view = 'main'; clinicMsg = ''; clinicErr = ''; draft = null;
     render();
+    // "Everyone" ticked: the names are ticked too and can't be changed (untick it to choose people).
+    dlg.body.addEventListener('change', (e) => {
+      const ev = e.target.closest('[data-everyone]');
+      if (!ev) return;
+      ev.closest('[data-audience]').querySelectorAll('input[value]').forEach((x) => { x.disabled = ev.checked; if (ev.checked) x.checked = true; });
+    });
     dlg.body.addEventListener('click', async (e) => {
       const it = e.target.closest('[data-item]');
       if (it) { const id = it.dataset.item; dlg.close(); dlg = null; if (window.__upcLoader && window.__upcLoader.run) window.__upcLoader.run(id); return; }

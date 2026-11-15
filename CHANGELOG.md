@@ -1,5 +1,11 @@
 # Changelog
 
+## Per-person settings, 15 Nov 2026 (beta)
+- Core 0.1.56: per-person clinic settings ("Everyone", or people ticked) and choices: Forecourt lights reminders, arrival chime, chat alarm, clinic branding, branding font, Halaxy's tours (Userpilot). They follow whoever is signed in, on any PC; only Carl changes them (Script settings > Clinic settings). Core keeps what applies to this PC's last sign-in for scripts that start before the page is ready.
+- Alerts 1.0.2, Block reporting 0.2.1, Branding 2.9.4: use them once set; until then the PC's own switch (and the Tampermonkey menu switch is only offered until then).
+- Forecourt lights 0.3.1: who is reminded is per person once set; "Remind me later" follows the person to other PCs; checks again as soon as the clinic settings are read.
+- Script settings 0.2.4: Everyone or people ticks, and choice lists.
+
 ## Money checks shared between PCs, 15 Nov 2026 (beta)
 - Core 0.1.55: the insurer profiles seen (for matching bank lines and for the ten-day deposit check) are shared by every PC (Admin Note "UPC shared checks: Insurer profiles"; written after a step the user confirmed, never while only reading); the ten-day deposit check runs once a day for the clinic (claimed in the note), over every PC's profiles. One save at a time per shared note on a page (two at once each wrote over the other's change).
 - Remittances 0.4.3: remittances waiting for their money are shared (Admin Note "UPC shared checks: Remittances waiting"; done once paid), so the ten-day check covers every PC's and runs once a day for the clinic.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Look: Branding (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      2.9.3
+// @version      2.9.4
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/branding.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/branding.user.js
@@ -450,16 +450,31 @@ ${S} .mainmenu-collapsed #logoWrapper { height: 2.34rem !important; }
 
   // ---- Apply ----------------------------------------------------------------
 
-  const enabled = GM_getValue('enabled', true);
+  // Per-person settings (Script settings > Clinic settings, Carl 15 Nov 2026): once saved there they follow the person
+  // signed in, on any PC; until then this PC's own switch. Read from core when it knows who is signed in, else from what
+  // core kept for this PC's last sign-in (scripts that start before the page is ready).
+  const personal = (key) => {
+    try {
+      const S = window.UPC && UPC.settings;
+      if (S && S.def(key) && S.isSet(key) && UPC.user.name([])) return S.def(key).type === 'choice' ? S.get(key) : S.forMe(key);
+      const m = JSON.parse(localStorage.getItem('upc-settings:mine') || 'null');
+      if (m && m.values && Object.prototype.hasOwnProperty.call(m.values, key)) return m.values[key];
+    } catch (e) { /* this PC's own */ }
+    return undefined;
+  };
+  const pOn = personal('branding.on'), pFont = personal('branding.font');
+  const enabled = pOn !== undefined ? !!pOn : GM_getValue('enabled', true);
 
-  GM_registerMenuCommand(`Clinic branding: ${enabled ? 'on (click to turn off)' : 'off (click to turn on)'}`, () => {
-    GM_setValue('enabled', !enabled);
-    location.reload();
-  });
+  if (pOn === undefined) {
+    GM_registerMenuCommand(`Clinic branding: ${enabled ? 'on (click to turn off)' : 'off (click to turn on)'}`, () => {
+      GM_setValue('enabled', !enabled);
+      location.reload();
+    });
+  }
 
   const FONT_MODES = { all: 'website font everywhere', headings: 'website font for headings only', halaxy: "Halaxy's own font" };
-  const fontMode = FONT_MODES[GM_getValue('fontMode')] ? GM_getValue('fontMode') : OPTIONS.websiteFont;
-  if (enabled) {
+  const fontMode = FONT_MODES[pFont] ? pFont : FONT_MODES[GM_getValue('fontMode')] ? GM_getValue('fontMode') : OPTIONS.websiteFont;
+  if (enabled && pFont === undefined) {
     Object.entries(FONT_MODES).forEach(([mode, label]) => {
       GM_registerMenuCommand(`${mode === fontMode ? '\u2713 ' : '   '}Font: ${label}`, () => {
         GM_setValue('fontMode', mode);
