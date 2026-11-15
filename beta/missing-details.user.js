@@ -183,8 +183,9 @@
         try { takeShared(await shared().read(SHARE_EVERY)); } catch (e) { /* the note can't be read: check here */ }
         if (settled(known()[id])) { shownFor = id; return; }
       }
-      if (onEdit) { edited[id] = Date.now() + 1; Object.keys(edited).forEach((k) => { if (Date.now() - edited[k] > DAY) delete edited[k]; }); store.set('edited', edited); }
       const r = onEdit ? Object.assign(detailsFrom(document), { at: Date.now() }) : await readPatient(id);
+      // Marked as visited just after this reading (same clock), so the next page of this patient reads again.
+      if (onEdit) { edited[id] = r.at + 1; Object.keys(edited).forEach((k) => { if (Date.now() - edited[k] > DAY) delete edited[k]; }); store.set('edited', edited); }
       remember(id, r);
       shownFor = id;
       share(id, r);
