@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Open-ended patients (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.8
+// @version      0.1.9
 // @upc-was      check-ins.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/open-ended-patients.user.js
@@ -30,10 +30,10 @@
   if (window.__hxCheckIns) return;
   window.__hxCheckIns = true;
 
-  const VERSION = '0.1.8';
+  const VERSION = '0.1.9';
   const ROUTE = 'upc-check-ins';
   const MENU_CLS = 'upc-ci-menu';
-  const ALLOWED = ['Carl Healy'];
+  const ALLOWED = () => rule('openEnded.people', ['Carl Healy']);
   const DAY = 86400e3;
   // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
   const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
@@ -51,8 +51,8 @@
   const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
 
   // Who's signed in: the core library's check (Halaxy can fill the name in late, so it keeps looking for 20 seconds).
-  const allowed = () => !!U() && U().user.is(ALLOWED);
-  const whenAllowed = (fn) => U().user.whenAllowed(ALLOWED, fn);
+  const allowed = () => !!U() && U().user.is(ALLOWED());
+  const whenAllowed = (fn) => U().user.whenAllowed(ALLOWED(), fn);
 
   // ------------------------------------------------------------------ open-ended wording
 

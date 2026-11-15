@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.50
+// @version      0.1.51
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.50';
+  const VERSION = '0.1.51';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -2146,7 +2146,9 @@
   const CLINIC_INFO = 'Changed in Script settings > Clinic settings. Please do not edit here: a line that is changed by hand is ignored.';
   const CLINIC_EDITORS = ['Carl Healy'];
   const CLINIC_EVERY = 3600e3;
-  // { key, script, label, unit, def, min, max, type: 'number' (whole numbers) | 'time' ('HH:MM') }
+  // { key, script, label, unit, def, min, max, type: 'number' (whole numbers) | 'time' ('HH:MM') | 'people' (names, at
+  // least one) | 'person' (one name) }. Names are Halaxy users' full names, as signed in ('Carl Healy').
+  const CARL = 'Carl Healy', WENDY = 'Wendy Pritchard';
   const CLINIC_SETTINGS = [
     { key: 'readyToBill.maxExcess', script: 'Ready to bill', label: 'Highest believable excess (above it, taken as a slip)', unit: '£', def: 500, min: 50, max: 5000 },
     { key: 'readyToBill.rollingDays', script: 'Ready to bill', label: 'Bill once the oldest unbilled fee is', unit: 'days old', def: 28, min: 7, max: 90 },
@@ -2166,16 +2168,37 @@
     { key: 'reviewRequests.minAge', script: 'Review requests', label: 'Leave out patients under', unit: 'years old', def: 16, min: 0, max: 25 },
     { key: 'missingDetails.aheadDays', script: 'Missing details', label: 'Check patients booked in the next', unit: 'days', def: 14, min: 1, max: 60 },
     { key: 'missingDetails.backDays', script: 'Missing details', label: 'and those seen in the last', unit: 'days', def: 30, min: 0, max: 180 },
-    { key: 'bankStatement.lingerDays', script: 'Bank statement', label: 'Task for a deposit with no remittance after', unit: 'days', def: 10, min: 3, max: 60 },
+    { key: 'bankStatement.lingerDays', script: 'Bank statement', label: 'Task when a deposit and its remittance are still not matched after', unit: 'days', def: 10, min: 3, max: 60 },
     { key: 'bankStatement.dueFromDay', script: 'Bank statement', label: 'Remind about last month\'s statement from day', unit: 'of the month', def: 15, min: 1, max: 28 },
+    // People (stage 2, Carl 15 Nov 2026). A page's list also decides on whose sign-in its background checks run.
+    { key: 'readyToBill.people', script: 'Who sees what', label: 'Ready to bill', type: 'people', def: [CARL, WENDY] },
+    { key: 'missingDetails.people', script: 'Who sees what', label: 'Missing details list (everyone sees the banner)', type: 'people', def: [CARL, WENDY] },
+    { key: 'insurerPayments.people', script: 'Who sees what', label: 'Insurer payments due', type: 'people', def: [CARL] },
+    { key: 'openEnded.people', script: 'Who sees what', label: 'Open-ended patients', type: 'people', def: [CARL] },
+    { key: 'reviewRequests.people', script: 'Who sees what', label: 'Review requests', type: 'people', def: [CARL] },
+    { key: 'feedbackAlerts.people', script: 'Who sees what', label: 'Feedback alerts (checked while they are signed in)', type: 'people', def: [CARL] },
+    { key: 'patientStatuses.people', script: 'Who sees what', label: 'Patient statuses (kept up to date while they are signed in)', type: 'people', def: [CARL] },
+    { key: 'bankStatement.people', script: 'Who sees what', label: 'Bank statement', type: 'people', def: [CARL] },
+    { key: 'feedbackAlerts.taskFor', script: 'Who gets tasks', label: 'Feedback to look at', type: 'person', def: CARL },
+    { key: 'remittances.taskFor', script: 'Who gets tasks', label: 'Remittances (bill the excess, checks, stops)', type: 'person', def: CARL },
+    { key: 'bankStatement.taskFor', script: 'Who gets tasks', label: 'Bank statement (payments to check, deposits waiting)', type: 'person', def: CARL },
+    { key: 'portalFill.taskFor', script: 'Who gets tasks', label: 'Portal fill stopped', type: 'person', def: CARL },
+    { key: 'forecourtLights.staff', script: 'Forecourt lights', label: 'Who can be reminded', type: 'people', def: [CARL, 'Diana Satalova', 'Lottie Harold', 'Roxanna Healy', 'Stephen Sharples', WENDY] },
   ];
+  const NAME_RE = /^[A-Za-z][A-Za-z' .-]{0,39}$/;
   const settings = {
     defs: CLINIC_SETTINGS,
     editors: CLINIC_EDITORS,
     store: storage('upc-settings:'),
     // The value as kept in the note, checked: a whole number within limits, or a time HH:MM within limits; else null.
     check(def, raw) {
-      const s = String(raw === null || raw === undefined ? '' : raw).trim();
+      if (raw === null || raw === undefined) return null;
+      if (def.type === 'people' || def.type === 'person') {
+        const list = [...new Set((Array.isArray(raw) ? raw : String(raw).split(',')).map((x) => String(x).replace(/\s+/g, ' ').trim()).filter(Boolean))];
+        if (!list.length || list.length > (def.type === 'person' ? 1 : 20) || !list.every((n) => NAME_RE.test(n))) return null;
+        return def.type === 'person' ? list[0] : list;
+      }
+      const s = String(raw).trim();
       if (def.type === 'time') {
         const m = /^(\d{1,2}):(\d\d)$/.exec(s);
         if (!m || +m[1] > 23 || +m[2] > 59) return null;
@@ -2187,6 +2210,8 @@
       return n >= def.min && n <= def.max ? n : null;
     },
     def: (key) => CLINIC_SETTINGS.find((d) => d.key === key),
+    same: (a, b) => (Array.isArray(a) || Array.isArray(b) ? String(a) === String(b) : a === b),
+    text: (v) => (Array.isArray(v) ? v.join(', ') : String(v)),
     // The value every script uses: the clinic's, or the default.
     get(key) {
       const def = settings.def(key);
@@ -2200,7 +2225,7 @@
       return CLINIC_SETTINGS.map((def) => {
         const raw = Object.prototype.hasOwnProperty.call(vals, def.key) ? vals[def.key] : null;
         const v = settings.check(def, raw);
-        return { def, raw, value: v === null ? def.def : v, bad: raw !== null && v === null };
+        return { def, raw, value: v === null ? def.def : v, bad: raw !== null && v === null, changed: v !== null && !settings.same(v, def.def) };
       });
     },
     // Lines the scripts couldn't read (not "key = value" or not a known key), from the last read.
@@ -2212,7 +2237,7 @@
       const values = {}, problems = [];
       lines.slice(1).forEach((l, i) => {
         if (i === 0 && l === CLINIC_INFO) return;
-        const m = /^([A-Za-z]+\.[A-Za-z]+) = (.{1,40})$/.exec(l);
+        const m = /^([A-Za-z]+\.[A-Za-z]+) = (.{1,400})$/.exec(l);
         if (!m || !settings.def(m[1])) { problems.push(l.slice(0, 60)); return; }
         values[m[1]] = m[2];
       });
@@ -2220,7 +2245,7 @@
     },
     format(values) {
       return [CLINIC_HEAD, CLINIC_INFO].concat(CLINIC_SETTINGS.filter((d) => values[d.key] !== undefined && values[d.key] !== null && values[d.key] !== '')
-        .map((d) => d.key + ' = ' + values[d.key])).join('\n');
+        .map((d) => d.key + ' = ' + settings.text(values[d.key]))).join('\n');
     },
     note: (notes) => notes.filter((n) => n.text.split('\n')[0] === CLINIC_HEAD).sort((a, b) => Number(a.id) - Number(b.id))[0] || null,
     // Reads the note (force: now; otherwise only when an hour has passed, in the visible tab, Halaxy not busy).
@@ -2241,10 +2266,13 @@
       const clean = {};
       for (const def of CLINIC_SETTINGS) {
         const raw = values[def.key];
-        if (raw === undefined || raw === null || String(raw).trim() === '') continue;
+        if (raw === undefined || raw === null || (!Array.isArray(raw) && String(raw).trim() === '' && def.type !== 'people')) continue;
         const v = settings.check(def, raw);
-        if (v === null) throw new UPCError(def.script + ': "' + def.label + '" must be ' + (def.type === 'time' ? 'a time from ' + def.min + ' to ' + def.max : 'a whole number from ' + def.min + ' to ' + def.max) + '.');
-        if (v !== def.def) clean[def.key] = v;
+        if (v === null) {
+          throw new UPCError(def.script + ': "' + def.label + '" must be ' + (def.type === 'time' ? 'a time from ' + def.min + ' to ' + def.max : def.type === 'people' ? 'at least one person'
+            : def.type === 'person' ? 'one person' : 'a whole number from ' + def.min + ' to ' + def.max) + '.');
+        }
+        if (!settings.same(v, def.def)) clean[def.key] = v;
       }
       const text = settings.format(clean);
       const note = settings.note(await adminNotes.list('organisation', SHARED_ORG));
@@ -2252,6 +2280,15 @@
       else if (note.text !== text) await adminNotes.update('organisation', SHARED_ORG, note.id, text);
       await settings.refresh(true);
       return clean;
+    },
+    // Names to offer for people settings: Halaxy's practitioner list, everyone named in a setting, and who is signed in.
+    async names() {
+      const out = new Set();
+      try { (await http.json('/lookup/practitioner?clinic=&include_id=&type=') || []).forEach((x) => { const n = clean(x.name); if (NAME_RE.test(n)) out.add(n); }); } catch (e) { /* the lists below still apply */ }
+      settings.all().forEach((r) => { if (r.def.type === 'people' || r.def.type === 'person') [].concat(r.def.def, r.value).forEach((n) => out.add(n)); });
+      const me = user.name([]);
+      if (me && NAME_RE.test(me)) out.add(me);
+      return [...out].sort((a, b) => a.localeCompare(b));
     },
   };
 

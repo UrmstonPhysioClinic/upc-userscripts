@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Portal fill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.16
+// @version      0.1.17
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
@@ -47,7 +47,7 @@
   if (window.__hxPortalFill) return;
   window.__hxPortalFill = true;
 
-  const VERSION = '0.1.16';
+  const VERSION = '0.1.17';
   const KEY = 'portal-claim';
   const MAX_AGE = 4 * 3600e3;
   const PORTALS = {
@@ -56,7 +56,9 @@
   };
   // The clinic's own payee details for AXA (Carl, 11 Nov 2026: "there is nothing secret"). Can be changed per PC in Script settings.
   const DEFAULTS = { payee: 'Urmston Physio Clinic', providerCode: 'ZZ03779', email: 'admin@urmstonphysioclinic.com', phone: '01617484100' };
-  const OWNER = 'Carl Healy';   // gets a task in Halaxy when a fill fails (Carl, 11 Nov 2026)
+  // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
+  const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
+  const OWNER = () => rule('portalFill.taskFor', 'Carl Healy');   // gets a task in Halaxy when a fill fails (Carl, 11 Nov 2026)
   const clean = (s) => String(s === null || s === undefined ? '' : s).replace(/\s+/g, ' ').trim();
   const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -99,15 +101,15 @@
     async function notifyOwner(invId, number, portalName, reason, where, key) {
       try {
         await U().tasks.addToInvoice(invId, {
-          title: 'Portal fill stopped: ' + portalName + (number ? ', ' + number : ''), assignee: OWNER, priority: 2, due: U().dayLabel(Date.now()),
+          title: 'Portal fill stopped: ' + portalName + (number ? ', ' + number : ''), assignee: OWNER(), priority: 2, due: U().dayLabel(Date.now()),
           by: 'Portal fill', comment: ['The ' + portalName + ' portal fill stopped (' + where + '): ' + reason, 'Submit the claim by hand, or run the fill again once the cause is fixed',
             'Portal fill ' + VERSION + (key ? ', ' + key : '')],
           key: key || undefined,
         });
-        return OWNER + ' has been sent a task in Halaxy and will pick it up.';
+        return OWNER() + ' has been sent a task in Halaxy and will pick it up.';
       } catch (x) {
         tellHealthCheck(x);
-        return 'A task for ' + OWNER + ' couldn\'t be added (' + (x.message || x) + '): please tell him.';
+        return 'A task for ' + OWNER() + ' couldn\'t be added (' + (x.message || x) + '): please tell them.';
       }
     }
     if (!invoiceId) return;
@@ -202,7 +204,7 @@
       }
       const s = settings();
       const out = {
-        v: 1, kind, forHost: PORTALS[kind].host, at: Date.now(), status: 'ready', progress: {},
+        v: 1, kind, forHost: PORTALS[kind].host, at: Date.now(), status: 'ready', progress: {}, owner: OWNER(),
         invoiceId, invoiceUrl: location.origin + U().base() + '/invoice/' + invoiceId, number: noLeadingZero(inv.number), shownNumber: clean(inv.number),
         invoiceDate: invDate ? slash(invDate) : '', total: pounds(lines.reduce((t, l) => t + l.amount, 0)),
         membership, authorisation, condition,
@@ -430,7 +432,7 @@
     // Anything unexpected: the fill stops and Halaxy sends Carl a task (Carl, 11 Nov 2026).
     const stop = async (message) => {
       if (claim) { claim.status = 'failed'; claim.reason = message; claim.failedAt = Date.now(); await save(); }
-      say(message + ' The fill has stopped. ' + OWNER.split(' ')[0] + ' has been notified (a task in Halaxy) and will pick it up.', true, true);
+      say(message + ' The fill has stopped. ' + ((claim && claim.owner) || OWNER()).split(' ')[0] + ' has been notified (a task in Halaxy) and will pick it up.', true, true);
     };
 
     // ---------------------------------------------------------------- filling fields

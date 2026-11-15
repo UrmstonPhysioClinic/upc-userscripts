@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Ready to bill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.3
+// @version      0.4.4
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
@@ -46,10 +46,10 @@
   if (window.__hxReadyToBill) return;
   window.__hxReadyToBill = true;
 
-  const VERSION = '0.4.3';
+  const VERSION = '0.4.4';
   const ROUTE = 'upc-ready-to-bill';
   const MENU_CLS = 'upc-rtb-menu';
-  const ALLOWED = ['Carl Healy', 'Wendy Pritchard'];   // Carl, 7 Nov 2026: only the two of them
+  const ALLOWED = () => rule('readyToBill.people', ['Carl Healy', 'Wendy Pritchard']);   // Carl, 7 Nov 2026: only the two of them
   const DAY = 86400e3;
   // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
   const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
@@ -75,8 +75,8 @@
   // ------------------------------------------------------------------ who may see it
 
   // Who's signed in: the core library's check (Halaxy can fill the name in late, so it keeps looking for 20 seconds).
-  const userName = () => U().user.name(ALLOWED);
-  const allowed = () => !!U() && U().user.is(ALLOWED);
+  const userName = () => U().user.name(ALLOWED());
+  const allowed = () => !!U() && U().user.is(ALLOWED());
 
   // ------------------------------------------------------------------ the check
 
@@ -519,7 +519,7 @@
     setTimeout(refreshCount, 3000);
     setInterval(refreshCount, 10 * 60e3);
   }
-  const begin = () => { if (U()) U().user.whenAllowed(ALLOWED, start); else start(); };
+  const begin = () => { if (U()) U().user.whenAllowed(ALLOWED(), start); else start(); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', begin, { once: true });
   else begin();
 

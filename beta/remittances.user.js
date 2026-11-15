@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.1
+// @version      0.4.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -36,7 +36,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.4.1';
+  const VERSION = '0.4.2';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -807,7 +807,9 @@
   }
 
   // Who bills the patient for an excess (Carl, 9 Nov 2026). Matched by name in the task's Assign to list.
-  const TASK_FOR = 'Carl Healy';
+  // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
+  const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
+  const TASK_FOR = () => rule('remittances.taskFor', 'Carl Healy');
   const MON3 = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const todayLabel = () => { const d = new Date(); return String(d.getDate()).padStart(2, '0') + '-' + MON3[d.getMonth()] + '-' + d.getFullYear(); };
 
@@ -867,9 +869,9 @@
       'paid ' + list.map((y) => y.item.invoice + ' ' + (typeof paidOn(y) === 'number' ? fmt(paidOn(y)) : '?')).join(', ')]
       .filter(Boolean).join('; ').replace(/^./, (ch) => ch.toUpperCase());
   };
-  const DAY = 86400e3, LINGER_DAYS = 10;
+  const DAY = 86400e3, LINGER_DAYS = () => rule('bankStatement.lingerDays', 10);
   const remStore = () => UPC.storage('upc-remit:');
-  const orgTask = (orgId, title, comment) => UPC.tasks.addToOrganisation(orgId, { title, assignee: TASK_FOR, priority: 3, due: todayLabel(), by: 'Remittances', comment });
+  const orgTask = (orgId, title, comment) => UPC.tasks.addToOrganisation(orgId, { title, assignee: TASK_FOR(), priority: 3, due: todayLabel(), by: 'Remittances', comment });
 
   // Files the remittance on the insurer's profile: once, under its name. The same file filed before gets its details
   // brought up to date (keeping any deposit note); a different file under that name is left, this one filed as well,
@@ -967,9 +969,9 @@
     st.set('lingerDay', day);
     const w = st.get('awaiting', {});
     for (const [name, a] of Object.entries(w)) {
-      if (Date.now() - a.since < LINGER_DAYS * DAY) continue;
+      if (Date.now() - a.since < LINGER_DAYS() * DAY) continue;
       const inv = await UPC.invoice.fetch(a.invoiceId);
-      if (inv.outstanding !== 0) await orgTask(a.org, 'Remittance ' + name + ': no payment from the bank after ' + LINGER_DAYS + ' days', ['No deposit for this remittance has come from the bank statement yet (' + a.number + ' is still unpaid).', 'Check the bank, or ask the insurer.']);
+      if (inv.outstanding !== 0) await orgTask(a.org, 'Remittance ' + name + ': no payment from the bank after ' + LINGER_DAYS() + ' days', ['No deposit for this remittance has come from the bank statement yet (' + a.number + ' is still unpaid).', 'Check the bank, or ask the insurer.']);
       delete w[name];
       st.set('awaiting', w);
     }
@@ -1008,10 +1010,10 @@
           const remit = (state.remit.insurer || 'Insurer') + ' remittance' + (state.remit.date ? ' ' + state.remit.date : '') + (state.remit.reference ? ', ref ' + state.remit.reference : '');
           try {
             const added = await UPC.tasks.addToInvoice(id, {
-              title: 'Bill excess: ' + m.number + ' (' + remit + ')', assignee: TASK_FOR, priority: 2, due: todayLabel(),
+              title: 'Bill excess: ' + m.number + ' (' + remit + ')', assignee: TASK_FOR(), priority: 2, due: todayLabel(),
               by: 'Remittances', comment: [(m.owes !== null ? 'Patient owes ' + fmt(m.owes) + ' on ' + m.number : ''), 'Moved to the patient: ' + m.lines.join(', '), 'From the ' + remit, 'Bill the patient for the excess'],
             });
-            say('  ' + (added ? 'Task added for ' + TASK_FOR + ' to bill the patient on ' + m.number + '.' : 'A task to bill the patient is already on ' + m.number + '.'));
+            say('  ' + (added ? 'Task added for ' + TASK_FOR() + ' to bill the patient on ' + m.number + '.' : 'A task to bill the patient is already on ' + m.number + '.'));
           } catch (e) {
             say('  The excess is moved, but the task to bill the patient was not added (' + (e.message || e) + '). Add it on ' + m.number + ' by hand.', true);
           }
@@ -1036,12 +1038,12 @@
         say(x.item.invoice + ' stopped: ' + x.error, true);
         try {
           await UPC.tasks.addToInvoice(x.invoiceId, {
-            title: 'Remittances stopped on ' + x.item.invoice + ': please check', assignee: TASK_FOR, priority: 3, due: todayLabel(), by: 'Remittances',
+            title: 'Remittances stopped on ' + x.item.invoice + ': please check', assignee: TASK_FOR(), priority: 3, due: todayLabel(), by: 'Remittances',
             comment: ['Moving the excess (' + fmt(x.shortfall) + ') stopped: ' + failed,
               putBack ? 'Everything was put back as it was before Remittances started on this invoice.' : 'Not put back: ' + left.join('; '),
               'From the ' + (state.remit.insurer || 'insurer') + ' remittance' + (state.remit.date ? ' ' + state.remit.date : '') + (state.remit.reference ? ', ref ' + state.remit.reference : '')],
           });
-          say('  Task added for ' + TASK_FOR + ' on ' + x.item.invoice + '.');
+          say('  Task added for ' + TASK_FOR() + ' on ' + x.item.invoice + '.');
         } catch (te) { say('  The task could not be added (' + (te.message || te) + '). Please note this one by hand.', true); }
       }
     }
@@ -1100,7 +1102,7 @@
           say((unsure ? 'Could not compare it with ' + other + ' already on ' + x.item.invoice : x.item.invoice + ' already has a different file called ' + other) + ': attached this remittance with its details as well. Check the other one.', true);
           try {
             await UPC.tasks.addToInvoice(x.invoiceId, {
-              title: 'Check the remittance attached to ' + x.item.invoice, assignee: TASK_FOR, priority: 2, due: todayLabel(), by: 'Remittances',
+              title: 'Check the remittance attached to ' + x.item.invoice, assignee: TASK_FOR(), priority: 2, due: todayLabel(), by: 'Remittances',
               comment: [(unsure ? 'Remittances could not compare ' : 'Remittances found a different file in ') + other + ' (attached ' + there.map((at) => at.created).join(', ') + ').',
                 'It attached the ' + named + ' with its details as well. If the other file is the wrong document, delete it.'],
             });
@@ -1160,7 +1162,7 @@
     state.unmount = UPC.ui.mountPage('Remittances', root, MENU_CLS);
     // Payments still not in the bank, and deposits still not applied, 10 days on: tasks (once a day).
     lingering().catch(() => {});
-    UPC.deposits.lingering({ days: LINGER_DAYS, assignee: TASK_FOR, by: 'Remittances' }).catch(() => {});
+    UPC.deposits.lingering({ days: LINGER_DAYS(), assignee: TASK_FOR(), by: 'Remittances' }).catch(() => {});
   }
   function unmount() {
     if (!state.unmount) return;

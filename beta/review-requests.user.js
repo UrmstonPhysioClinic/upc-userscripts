@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Review requests (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.5.5
+// @version      0.5.6
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
@@ -44,10 +44,10 @@
   if (window.__hxReviewRequests) return;
   window.__hxReviewRequests = true;
 
-  const VERSION = '0.5.5';
+  const VERSION = '0.5.6';
   const ROUTE = 'upc-review-requests';
   const MENU_CLS = 'upc-rr-menu';
-  const ALLOWED = ['Carl Healy'];          // Carl, 10 Nov 2026: just me for now
+  const ALLOWED = () => rule('reviewRequests.people', ['Carl Healy']);   // Carl, 10 Nov 2026: just me for now
   const TEMPLATE = 'Review Request';       // follow-up template and email template
   const REMINDER = 'Review Reminder';      // optional: used only if Carl sets it up in Halaxy
   // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
@@ -79,7 +79,7 @@
   const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
 
   // Who's signed in: the core library's check (Halaxy can fill the name in late, so it keeps looking for 20 seconds).
-  const allowed = () => !!U() && U().user.is(ALLOWED);
+  const allowed = () => !!U() && U().user.is(ALLOWED());
 
   // ------------------------------------------------------------------ reading the notes
 
@@ -474,7 +474,7 @@
     setTimeout(refreshCount, 5000);
     setInterval(refreshCount, 30 * 60e3);
   }
-  const begin = () => { if (U()) U().user.whenAllowed(ALLOWED, start); else start(); };
+  const begin = () => { if (U()) U().user.whenAllowed(ALLOWED(), start); else start(); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', begin, { once: true });
   else begin();
 

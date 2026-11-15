@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Feedback alerts (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.5
+// @version      0.1.6
 // @upc-was      survey-feedback.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/feedback-alerts.user.js
@@ -36,9 +36,11 @@
   if (window.__hxSurveyFeedback) return;
   window.__hxSurveyFeedback = true;
 
-  const VERSION = '0.1.5';
-  const ALLOWED = ['Carl Healy'];   // Carl, 11 Nov 2026
-  const ASSIGNEE = 'Carl Healy';
+  const VERSION = '0.1.6';
+  // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
+  const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
+  const ALLOWED = () => rule('feedbackAlerts.people', ['Carl Healy']);   // Carl, 11 Nov 2026
+  const ASSIGNEE = () => rule('feedbackAlerts.taskFor', 'Carl Healy');
   const MAX_SCORE = 35;             // the Feedback Request template: 3 x 5 + 2 x 5 + 2 x 5
   const DAY = 86400e3;
   const CHECK_EVERY = 2 * 3600e3, WINDOW = 14 * DAY, KEEP = 60 * DAY, RETRY_UNMATCHED = 3;
@@ -56,7 +58,7 @@
   const BAND = { excellent: 'Excellent', satisfactory: 'Satisfactory', below: 'Below expected' };
 
   // Who's signed in: the core library's check (Halaxy can fill the name in late, so it keeps looking for 20 seconds).
-  const allowed = () => !!U() && U().user.is(ALLOWED);
+  const allowed = () => !!U() && U().user.is(ALLOWED());
 
   function tellHealthCheck(e) {
     const message = (e && e.message) || String(e);
@@ -78,7 +80,7 @@
       'Score: ' + r.total + ' of ' + MAX_SCORE + ', ' + (r.level || BAND[band])];
     r.answers.forEach((x) => lines.push(x.question + ' ' + (x.answer ? answerText(x.answer) : '(not answered)')));
     lines.push('Survey response ' + row.id + '. Completing this task marks it dealt with');
-    return { title: 'Feedback to look at: ' + (r.level || BAND[band]) + ' (' + r.total + ' of ' + MAX_SCORE + ')', assignee: ASSIGNEE, priority: band === 'below' ? 3 : 2,
+    return { title: 'Feedback to look at: ' + (r.level || BAND[band]) + ' (' + r.total + ' of ' + MAX_SCORE + ')', assignee: ASSIGNEE(), priority: band === 'below' ? 3 : 2,
       due: label(Date.now()), by: 'Feedback alerts', comment: lines, key: 'Survey response ' + row.id };
   }
 
@@ -229,7 +231,7 @@
     setTimeout(background, 8000);
     setInterval(background, 15 * 60e3);
   }
-  const begin = () => { if (U()) U().user.whenAllowed(ALLOWED, start); else start(); };
+  const begin = () => { if (U()) U().user.whenAllowed(ALLOWED(), start); else start(); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', begin, { once: true });
   else begin();
 
