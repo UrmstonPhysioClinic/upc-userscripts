@@ -479,7 +479,8 @@ async def main():
         btn = await pg.evaluate("document.querySelector('[data-upc-bank-statement] [data-a=all]').textContent")
         check('record button: every payment ready (remittance matches to add and apply, the rest as deposits)', btn == 'Record 8 payments', btn)
         reads = [x for x in S['log'] if x[1].endswith('/report/finance/0')]
-        check('two report requests (unpaid invoices, payments recorded); nothing written while matching', len(reads) == 2 and sorted(S['reports']) == ['1', '5'] and not [x for x in S['log'] if x[0] == 'POST'], [x for x in S['log'] if x[0] == 'POST'])
+        check('two report requests (unpaid invoices, payments recorded); nothing written while matching', len(reads) == 2 and sorted(S['reports']) == ['1', '5'] and not [x for x in S['log'] if x[0] == 'POST' and not x[1].startswith('/a/pr/555/communication-log/organisation/78842/')],   # the scripts' own shared notes aside (the daily check)
+              [x for x in S['log'] if x[0] == 'POST'])
 
         # choose Simplyhealth's remittance, then cancel: nothing written
         await pg.click('[data-upc-bank-statement] input[data-pick="8:0"]')
@@ -491,7 +492,7 @@ async def main():
         check('confirm says what happens to each', 'Direct Deposit' in conf and 'add the deposit and apply it to UPC-0902 £ 80.00, UPC-0901 £ 40.00' in conf and 'AXA £ 75.00, 12-Oct-2026: add the deposit (applied when its remittance comes)' in conf, conf)
         await pg.click('[data-upc-bank-confirm] [data-c=no]')
         await pg.wait_for_timeout(500)
-        check('cancel: nothing written', not [x for x in S['log'] if x[0] == 'POST'], S['log'])
+        check('cancel: nothing written (the scripts\' own shared notes aside)', not [x for x in S['log'] if x[0] == 'POST' and not x[1].startswith('/a/pr/555/communication-log/organisation/78842/')], S['log'])
 
         # confirm: nine deposits, three applied
         try:
@@ -534,7 +535,10 @@ async def main():
         check('the register says it was read before', 'This statement was read before (11-Nov-2026 by Carl Healy)' in seen, seen[:400])
         check('nothing written on opening again', not S['added'] and not S['allocs'] and not [x for x in S['log'] if x[0] == 'POST'], [x for x in S['log'] if x[0] == 'POST'])
         # 10 days on, deposits still waiting get a task on their profile (once a day)
-        lin = await pg.evaluate("(async () => { localStorage.removeItem('upc-funder-orgs:lingerDay'); const a = await UPC.deposits.lingering({ days: 10, assignee: 'Carl Healy', by: 'Bank statement' }); const b = await UPC.deposits.lingering({ days: 10, assignee: 'Carl Healy', by: 'Bank statement' }); return [a, b]; })()")
+        # (a new day: this PC's and the shared note's record of today's check removed)
+        for n in S['notes'].get(78842, []):
+            n['html'] = re.sub(r'<p[^>]*>lingerDay \|[^<]*</p>', '', n['html'])
+        lin = await pg.evaluate("(async () => { localStorage.removeItem('upc-funder-orgs:lingerDay'); localStorage.removeItem('upc-shared:insurer-profiles:cache'); const a = await UPC.deposits.lingering({ days: 10, assignee: 'Carl Healy', by: 'Bank statement' }); const b = await UPC.deposits.lingering({ days: 10, assignee: 'Carl Healy', by: 'Bank statement' }); return [a, b]; })()")
         check('deposits waiting over 10 days: a task each on the profile, applied ones left, once a day', len(lin[0]) == 6 and 'AXA deposit 12-Oct-2026 £ 75.00: not applied after 10 days' in lin[0] and not lin[1]
               and any('not applied after 10 days' in t.get('form[title]', '') for t in S['orgtasks'].get(502, [])) and not S['orgtasks'].get(506), (lin, S['orgtasks']))
         await ctx.close()
@@ -669,7 +673,7 @@ async def main():
         await pg.wait_for_function("/^Finished:/.test((document.querySelector('[data-upc-bank-statement] .upc-run-now') || {}).textContent || '')", timeout=60000)
         check('old line recorded on its own when asked: one deposit, the same register entry updated', [(o, f['form[amount]']) for o, f in S['added']] == [(502, '75.00')] and len(S['notes'].get(78812, [])) == 1
               and 'AXA £ 75.00 ref GB33AXA0001: deposit added' in note_text(78812)
-              and 'before the switch to deposits, not found as recorded: to check' in note_text(78812) and [x[1] for x in S['notePosts']] == ['new', '33001/edit'], (S['added'], S['notes'], S.get('notePosts')))
+              and 'before the switch to deposits, not found as recorded: to check' in note_text(78812) and [x[1].split('/')[-1] for x in S['notePosts'] if x[0] == 78812] == ['new', 'edit'], (S['added'], S['notes'], S.get('notePosts')))
         await ctx.close()
 
         # Halaxy sends the report page without its table once (a hiccup): asked again 20 seconds later, read as normal;

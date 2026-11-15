@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.2
+// @version      0.4.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -36,7 +36,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.4.2';
+  const VERSION = '0.4.3';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -871,6 +871,21 @@
   };
   const DAY = 86400e3, LINGER_DAYS = () => rule('bankStatement.lingerDays', 10);
   const remStore = () => UPC.storage('upc-remit:');
+  // Remittances waiting for their money, for every PC (Carl, 15 Nov 2026): the shared note "UPC shared checks:
+  // Remittances waiting", one line per remittance (remit.<first invoice id> | when | org .. inv .. num .. since .. name ..,
+  // or 'done' once paid), so the ten-day check runs once a day for the clinic whichever PC loaded the remittance.
+  const waitShared = () => (UPC.shared ? UPC.shared('Remittances waiting', { keep: 120 * DAY, file: 'remittances.user.js' }) : null);
+  const waitValue = (a, name) => 'org ' + a.org + ' inv ' + a.invoiceId + ' num ' + String(a.number).replace(/[^A-Za-z0-9-]/g, '') + ' since ' + a.since +
+    ' name ' + String(name).replace(/£\s?/g, '').replace(/[^A-Za-z0-9 _.:,-]/g, '').slice(0, 120);
+  const fromWait = (v) => { const m = /^org (\d+) inv (\d+) num (\S+) since (\d+) name (.+)$/.exec(v || ''); return m ? { name: m[5], a: { org: m[1], invoiceId: m[2], number: m[3], since: +m[4] } } : null; };
+  function noteWaiting(a, name) {
+    const sh = waitShared();
+    if (sh) sh.write({ ['remit.' + a.invoiceId]: a ? waitValue(a, name) : 'done' }).catch((e) => console.warn('[UPC remittances] shared note', e));
+  }
+  function noteDone(invoiceId) {
+    const sh = waitShared();
+    if (sh && invoiceId) sh.write({ ['remit.' + invoiceId]: 'done' }).catch((e) => console.warn('[UPC remittances] shared note', e));
+  }
   const orgTask = (orgId, title, comment) => UPC.tasks.addToOrganisation(orgId, { title, assignee: TASK_FOR(), priority: 3, due: todayLabel(), by: 'Remittances', comment });
 
   // Files the remittance on the insurer's profile: once, under its name. The same file filed before gets its details
@@ -929,6 +944,7 @@
       const w = remStore().get('awaiting', {});
       w[identity()] = { org: orgId, invoiceId: list[0].invoiceId, number: list[0].item.invoice, since: remitMs || Date.now() };
       remStore().set('awaiting', w);
+      noteWaiting(w[identity()], identity());
       return;
     }
     if (pick.length > 1) {
@@ -949,6 +965,7 @@
     }
     say('Applied the deposit to ' + list.map((x) => x.item.invoice).join(', ') + '.');
     const w = remStore().get('awaiting', {}); delete w[identity()]; remStore().set('awaiting', w);
+    noteDone(list[0].invoiceId);
     // Every copy of the remittance says which deposit paid it.
     const text = 'deposit ' + fmt(total) + ' from the bank ' + dep.date + ', applied ' + todayLabel();
     for (const x of attachable()) {
@@ -962,18 +979,33 @@
   }
 
   // Remittances whose payment hasn't reached the bank (no deposit) 10 days on: a task on the insurer's profile, once.
-  // Checked once a day per PC when the page opens; one already paid is forgotten.
+  // Checked once a day for the clinic (the shared note; this PC alone if it can't be read) when the page opens, over the
+  // remittances waiting on every PC; one already paid is forgotten.
   async function lingering() {
     const st = remStore(), day = todayLabel();
-    if (st.get('lingerDay', '') === day || UPC.http.pausedFor() > 0) return;
-    st.set('lingerDay', day);
+    if (UPC.http.pausedFor() > 0) return;
+    const sh = waitShared();
+    if (!(await UPC.deposits.dailyTurn(sh, st))) return;
     const w = st.get('awaiting', {});
-    for (const [name, a] of Object.entries(w)) {
-      if (Date.now() - a.since < LINGER_DAYS() * DAY) continue;
-      const inv = await UPC.invoice.fetch(a.invoiceId);
-      if (inv.outstanding !== 0) await orgTask(a.org, 'Remittance ' + name + ': no payment from the bank after ' + LINGER_DAYS() + ' days', ['No deposit for this remittance has come from the bank statement yet (' + a.number + ' is still unpaid).', 'Check the bank, or ask the insurer.']);
-      delete w[name];
-      st.set('awaiting', w);
+    const items = Object.entries(w).map(([name, a]) => ({ name, a, local: true }));
+    if (sh) {
+      Object.entries(sh.cached()).forEach(([k, r]) => {
+        const got = /^remit\.\d+$/.test(k) && r.at !== null && r.value !== 'done' ? fromWait(r.value) : null;
+        if (got && !items.some((x) => String(x.a.invoiceId) === got.a.invoiceId)) items.push(got);
+        if (r.value === 'done') items.forEach((x) => { if ('remit.' + x.a.invoiceId === k) x.paid = true; });
+      });
+    }
+    try {
+      for (const x of items) {
+        if (x.paid) { if (x.local) { delete w[x.name]; st.set('awaiting', w); } continue; }
+        if (Date.now() - x.a.since < LINGER_DAYS() * DAY) continue;
+        const inv = await UPC.invoice.fetch(x.a.invoiceId);
+        if (inv.outstanding !== 0) await orgTask(x.a.org, 'Remittance ' + x.name + ': no payment from the bank after ' + LINGER_DAYS() + ' days', ['No deposit for this remittance has come from the bank statement yet (' + x.a.number + ' is still unpaid).', 'Check the bank, or ask the insurer.']);
+        if (x.local) { delete w[x.name]; st.set('awaiting', w); }
+        noteDone(x.a.invoiceId);
+      }
+    } finally {
+      if (sh) await sh.write({ lingerDay: day }).catch(() => {});
     }
   }
 
@@ -1119,6 +1151,7 @@
     UPC.ui.run.end(run, 'Finished. Open the invoices to check.');
     state.busy = false;
     state.applied = true;   // load the remittance again to run it again
+    if (UPC.deposits.flushOrgs) UPC.deposits.flushOrgs().catch(() => {});   // the insurer profiles seen, for every PC
     render();
   }
 

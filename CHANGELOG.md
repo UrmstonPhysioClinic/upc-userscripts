@@ -1,5 +1,10 @@
 # Changelog
 
+## Money checks shared between PCs, 15 Nov 2026 (beta)
+- Core 0.1.55: the insurer profiles seen (for matching bank lines and for the ten-day deposit check) are shared by every PC (Admin Note "UPC shared checks: Insurer profiles"; written after a step the user confirmed, never while only reading); the ten-day deposit check runs once a day for the clinic (claimed in the note), over every PC's profiles. One save at a time per shared note on a page (two at once each wrote over the other's change).
+- Remittances 0.4.3: remittances waiting for their money are shared (Admin Note "UPC shared checks: Remittances waiting"; done once paid), so the ten-day check covers every PC's and runs once a day for the clinic.
+- Bank statement 0.2.6: reads the shared profiles before matching; notes the profiles seen after recording.
+
 ## Clinic settings stage 3, 15 Nov 2026 (beta)
 - Core 0.1.54: new kinds of clinic setting (days of the week, dates, text, words, an order of names); saving one value keeps the others; `UPC.settings.isSet`; `UPC.shared(...).cached()`.
 - Forecourt lights 0.3.0: clinic evenings, off time, minutes before sunset, reminder time and dates to skip are clinic settings (until set there, each PC keeps its own). Done marks and what the timer is set to are shared by every PC (Admin Note "UPC shared checks: Forecourt lights"), so Done on one PC clears the reminder on the others (a pop-up already showing closes within 5 minutes). A PC reads the note only while a reminder is due or showing; a Done the page left before saving is written on the next page. Whether reminders show on a PC, and for whom, stay per PC.
