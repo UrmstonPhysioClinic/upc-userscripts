@@ -257,6 +257,22 @@ async def main():
         check('second PC: calendar marks from the note', sorted(ids) == ['302', '308'], ids)
         await ctx.close()
 
+        # A PC that checked everyone before the note existed: what it knew goes into the note, with the time it was found
+        setup('Carl Healy', {})
+        ctx = await context(browser)
+        two_h = int((NOW - datetime.timedelta(hours=2)).timestamp() * 1000)
+        old = {str(i): {'at': two_h, 'name': 'x', 'status': 'current', 'missing': m, 'email': True} for i, m in
+               [(301, []), (302, ['dob', 'phone']), (303, ['address']), (304, []), (306, []), (308, ['first', 'last'])]}
+        await ctx.add_init_script("if (!localStorage.getItem('upc-md:patients')) localStorage.setItem('upc-md:patients', %s)" % json.dumps(json.dumps(old)))
+        pg = await ctx.new_page()
+        await pg.goto('https://eu.halaxy.com/a/pr/555/patient/#upc-missing-details')
+        await pg.wait_for_function("document.querySelector('[data-upc-missing-details] .card') && !document.querySelector('[data-upc-missing-details] [data-a=refresh]').disabled", timeout=90000)
+        lines = note_lines()
+        read = [x for x in S['log'] if x[1].endswith('/edit') and x[1].startswith('/patient/')]
+        check('a PC\'s earlier checks are shared, with when they were found (no Edit pages read)', not read and sorted(lines) == ['301', '302', '303', '304', '306', '308']
+              and lines['302'] == ['dob phone'] and all(l.split(' | ')[1] == '2026-11-16 07:00' for l in note_text()[2:]), (read, note_text()))
+        await ctx.close()
+
         # Someone else (a physio): no page or menu item, but the banner still shows
         setup('Physio One')
         ctx = await context(browser)

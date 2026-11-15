@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.46
+// @version      0.1.47
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.46';
+  const VERSION = '0.1.47';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -1069,18 +1069,28 @@
         }));
         return keys.filter((k) => after[k] && after[k].claim && after[k].claim.by === me);
       },
-      // Records outcomes { key: value } (found now) and lets go of this PC's claims. Tried twice if another PC's save wins.
+      // Records outcomes { key: value } (found now) or { key: { value, at } } (found earlier, kept with its time; a newer
+      // line already in the note wins), and lets go of this PC's claims. Tried twice if another PC's save wins.
       async write(outcomes) {
-        const keys = Object.keys(outcomes).filter((k) => KEY_RE.test(k) && VALUE_RE.test(String(outcomes[k])));
+        const norm = {};
+        Object.keys(outcomes).forEach((k) => {
+          const o = outcomes[k], value = String(o && typeof o === 'object' ? o.value : o), at = o && typeof o === 'object' && o.at ? o.at : null;
+          if (KEY_RE.test(k) && VALUE_RE.test(value) && (at === null || at > Date.now() - keep)) norm[k] = { value, at };
+        });
+        const keys = Object.keys(norm);
         // This PC's copy of the note is changed first, so a save cut short (the page left) is noticed next time.
         const c = st.get('cache', null);
-        if (c && keys.length) { keys.forEach((k) => { c.recs[k] = { at: Date.now(), value: String(outcomes[k]), claim: null }; }); st.set('cache', c); }
+        if (c && keys.length) { keys.forEach((k) => { c.recs[k] = { at: norm[k].at || Date.now(), value: norm[k].value, claim: null }; }); st.set('cache', c); }
         const change = (recs, now) => {
-          keys.forEach((k) => { recs[k] = { at: now, value: String(outcomes[k]), claim: null }; });
+          keys.forEach((k) => {
+            const at = norm[k].at || now, was = recs[k];
+            if (was && was.at !== null && was.at >= at - 60e3 && norm[k].at) return;   // the note already has this or newer
+            recs[k] = { at, value: norm[k].value, claim: was && was.claim && was.claim.by !== me ? was.claim : null };
+          });
           Object.values(recs).forEach((r) => { if (r.claim && r.claim.by === me) r.claim = null; });
         };
         let after = await save(change);
-        if (keys.some((k) => !after[k] || after[k].value !== String(outcomes[k]))) after = await save(change);
+        if (keys.some((k) => !after[k] || after[k].at === null)) after = await save(change);
         return after;
       },
       stamp, unstamp, parse, format,

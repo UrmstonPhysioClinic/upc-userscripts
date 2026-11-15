@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Missing details (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.0
+// @version      0.2.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/missing-details.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/missing-details.user.js
@@ -41,7 +41,7 @@
   if (window.__hxMissingDetails) return;
   window.__hxMissingDetails = true;
 
-  const VERSION = '0.2.0';
+  const VERSION = '0.2.1';
   const ROUTE = 'upc-missing-details';
   const MENU_CLS = 'upc-md-menu';
   const ADMINS = ['Carl Healy', 'Wendy Pritchard'];   // who sees the page (Carl, 15 Nov 2026: Carl and Wendy)
@@ -233,8 +233,17 @@
         try { const r = await readPatient(p.id); remember(p.id, r); outcomes[p.id] = toValue(r); } catch (e) { tellHealthCheck(e); if (/has changed/.test(e.message || '')) throw e; }
       }
     } finally {
-      // Noted for the other PCs, and this PC's claims let go (also when stopped part way).
-      if (sh) { say('Noting what was found for the other PCs...'); try { await sh.write(outcomes); } catch (e) { console.warn('[UPC missing details] shared note', e); } }
+      // Noted for the other PCs, and this PC's claims let go (also when stopped part way). What this PC already knew
+      // and the note lacks (or has older) goes in too, with its own time, so a PC's earlier checks are shared.
+      if (sh) {
+        const mine = known();
+        list.forEach((p) => {
+          const r = mine[p.id], o = others[p.id];
+          if (!outcomes[p.id] && fresh(r) && !(o && o.at !== null && o.at >= r.at - 60e3)) outcomes[p.id] = { value: toValue(r), at: r.at };
+        });
+        say('Noting what was found for the other PCs...');
+        try { await sh.write(outcomes); } catch (e) { console.warn('[UPC missing details] shared note', e); }
+      }
     }
     let pracs = {};
     try { (await U().http.json('/lookup/practitioner?clinic=&include_id=&type=') || []).forEach((x) => { pracs[String(x.id)] = clean(x.name); }); } catch (e) { pracs = {}; }
