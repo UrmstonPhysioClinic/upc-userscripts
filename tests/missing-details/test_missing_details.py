@@ -96,6 +96,18 @@ async def halaxy(route):
     if m:
         return await js({'data': [{'id': n['id'], 'date': '2026-11-15 10:00:00', 'privacy': 'All', 'creator': S['user'], 'isImportant': False, 'content': n['html']}
                                   for n in reversed(notes.get(int(m.group(1)), []))]})
+    # Delete (capture 14 Nov 2026): the pop-up's Delete button links to .../delete/<hex>; S['noDelete'] lists notes whose
+    # pop-up has no Delete button (as if Halaxy had changed it)
+    m = re.match(r'^/a/pr/555/communication-log/organisation/(\d+)/(\d+)/delete(/([0-9a-f]+))?$', p)
+    if m:
+        org, nid = int(m.group(1)), int(m.group(2))
+        if not m.group(3):
+            btn = '' if nid in S.get('noDelete', ()) else "<a class='btn btn-outline-danger ajax' href='/a/pr/555/communication-log/organisation/%d/%d/delete/ab12cd'>Delete</a>" % (org, nid)
+            return await js({'status': 'FORM', 'title': 'Delete Admin Note', 'message': "<div class='row'><div class='col-12'>Are you sure?</div>"
+                             "<a class='ajax btn btn-outline-primary' href='/a/pr/555/communication-log/organisation/%d'>Cancel</a>%s</div>" % (org, btn)})
+        notes[org] = [n for n in notes.get(org, []) if n['id'] != nid]
+        S.setdefault('deleted', []).append(nid)
+        return await js({'status': 'CLOSE', 'message': '', 'url': '/a/pr/555/communication-log/organisation/%d' % org})
     m = re.match(r'^/a/pr/555/communication-log/organisation/(\d+)/(new|(\d+)/edit)$', p)
     if m:
         org = int(m.group(1))
@@ -274,11 +286,15 @@ async def main():
         await ctx.close()
 
         # Three PCs each made a note at the same moment (live, 15 Nov 2026): the oldest is used, the others' lines taken in,
-        # and the others relabelled as spare copies
+        # and the others deleted (one whose Delete button is missing is relabelled as a spare copy instead); an old spare
+        # copy is deleted too
+        spare = '<p class="ck-text">Spare copy of UPC shared checks: Missing details (two PCs started it at the same moment). It can be deleted.</p>'
         head = '<p class="ck-text">UPC shared checks: Missing details</p><p class="ck-text">Kept by UPC scripts. Please do not edit: a line that is changed is dropped and checked again.</p>'
         setup('Carl Healy', {78842: [{'id': 40001, 'html': head},
                                      {'id': 40002, 'html': head + '<p class="ck-text">301 | 2026-11-16 08:00 | ok</p><p class="ck-text">302 | 2026-11-16 08:00 | dob phone</p>'},
-                                     {'id': 40003, 'html': head}]})
+                                     {'id': 40003, 'html': head}, {'id': 40004, 'html': head}, {'id': 40005, 'html': spare},
+                                     {'id': 40006, 'html': '<p class="ck-text">Something else</p>'}]})
+        S['noDelete'] = [40004]
         ctx = await context(browser)
         pg = await ctx.new_page()
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/#upc-missing-details')
@@ -286,9 +302,11 @@ async def main():
         by_id = {n['id']: [re.sub(r'<[^>]+>', '', x) for x in n['html'].split('</p>') if x.strip()] for n in S['notes'][78842]}
         kept = {l.split(' | ')[0]: l.split(' | ')[2:] for l in by_id[40001][2:]}
         read = sorted({int(x[1].split('/')[2]) for x in S['log'] if x[1].endswith('/edit') and x[1].startswith('/patient/')})
-        check('two PCs made a note at once: the oldest used, with the other copy\'s lines (those not read again)', len(S['notes'][78842]) == 3 and kept.get('301') == ['ok']
+        check('two PCs made a note at once: the oldest used, with the other copy\'s lines (those not read again)', kept.get('301') == ['ok']
               and kept.get('302') == ['dob phone'] and sorted(kept) == ['301', '302', '303', '304', '306', '308'] and 301 not in read and 302 not in read, (by_id, read))
-        check('the other copies relabelled, so nothing uses them again', all(by_id[i] == ['Spare copy of UPC shared checks: Missing details (two PCs started it at the same moment). It can be deleted.'] for i in (40002, 40003)), by_id)
+        check('the other copies deleted, and an old spare copy; nothing else touched', sorted(S.get('deleted', [])) == [40002, 40003, 40005] and sorted(by_id) == [40001, 40004, 40006]
+              and by_id[40006] == ['Something else'], (S.get('deleted'), sorted(by_id)))
+        check('a copy Halaxy would not delete: relabelled, so nothing uses it again', by_id.get(40004) == ['Spare copy of UPC shared checks: Missing details (two PCs started it at the same moment). It can be deleted.'], by_id.get(40004))
         await ctx.close()
 
         # Someone else (a physio): no page or menu item, but the banner still shows

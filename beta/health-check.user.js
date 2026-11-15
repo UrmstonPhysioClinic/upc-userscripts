@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.42
+// @version      1.1.43
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.42';
+  const VERSION = '1.1.43';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -429,7 +429,14 @@
       const twice = [...new Set(heads.filter((h, i) => heads.indexOf(h) !== i))];
       // Two notes for one script (two PCs made one at the same moment) is harmless: the scripts merge them into the oldest
       // and relabel the others as spare copies on their next save. Mentioned, not a problem.
-      put('data-shared-notes', 'Shared checks (UPC scripts (settings) Admin Notes)', ['Missing details'], !Array.isArray(rows) ? ['not a list'] : [],
+      // The Delete Admin Note pop-up (only opened, never confirmed), used to remove spare copies.
+      let del = [];
+      if (Array.isArray(rows) && rows.length) {
+        const pop = await getJSON('/communication-log/organisation/78842/' + encodeURIComponent(rows[0].id) + '/delete');
+        const d = new DOMParser().parseFromString(String((pop && pop.message) || ''), 'text/html');
+        if (![...d.querySelectorAll('a[href]')].some((a) => /\/communication-log\/organisation\/78842\/\d+\/delete\/[0-9a-z]+/i.test(a.getAttribute('href')))) del = ['the Delete Admin Note pop-up has no Delete link (spare copies are relabelled instead)'];
+      }
+      put('data-shared-notes', 'Shared checks (UPC scripts (settings) Admin Notes)', ['Missing details'], !Array.isArray(rows) ? ['not a list'] : del,
         (heads.length ? heads.length + ' shared note' + (heads.length === 1 ? '' : 's') + '.' : 'No shared notes yet.') +
         twice.map((h) => ' Two are called "' + h + '": the scripts merge them on their next check.').join(''));
     } catch (e) { put('data-shared-notes', 'Shared checks (UPC scripts (settings) Admin Notes)', ['Missing details'], [e.message]); }
