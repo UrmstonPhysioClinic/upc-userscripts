@@ -131,6 +131,20 @@ async def halaxy(route):
 
     if path.endswith('/busy-test'):
         return await js({}, 429)
+    # Admin Notes on UPC scripts (settings) (captures 14 and 15 Nov 2026): the scripts' shared notes
+    m = re.search(r'/communication-log/organisation/78842/list-data$', path)
+    if m:
+        return await js({'data': [{'id': n['id'], 'date': '2026-11-15 10:00:00', 'privacy': 'All', 'creator': 'Carl Healy', 'isImportant': False,
+                                   'content': '\n<p class="font-weight-bold">Log Notes</p>\n' + n['html'] + '\n<div class="form-row mt-4">\n    </div>\n'} for n in reversed(S.setdefault('notes', []))]})
+    m = re.search(r'/communication-log/organisation/78842/(new|(\d+)/edit)$', path)
+    if m:
+        if req.method == 'GET':
+            return await js({'status': 'FORM', 'message': "<form id='adminNoteForm'><input type='hidden' name='form[_token]' value='tn'><textarea name='form[logContent]'></textarea></form>"})
+        if m.group(2):
+            next(n for n in S['notes'] if str(n['id']) == m.group(2))['html'] = form['form[logContent]']
+        else:
+            S.setdefault('notes', []).append({'id': 88000 + len(S['notes']), 'html': form['form[logContent]']})
+        return await js({'status': 'CLOSE'})
     if path.endswith('/invoice/list-data') and req.method == 'POST':
         q = json.loads(req.post_data)['filterModel']['serverQuickFilter']['filter']
         rows = [{'id': f['id'], 'invoiceNum': f['number'], 'total': sum(l['amount'] for l in f['lines']) / 100} for f in S['funders'].values() if q in f['number']]
@@ -684,6 +698,34 @@ async def main():
             head: document.querySelector('[data-upc-remittances] .upc-gap').textContent })""")
         check('the added line is matched in Halaxy and the totals checked again', len(got['rows']) == 3 and 'UPC-40001' in got['rows'][2] and 'Not found' not in got['rows'][2] and 'less' in got['rows'][2]
               and "still don't add up" in got['status'] and '3 invoices read' in got['head'], got)
+
+        # Another PC (its own storage): a remittance another PC is waiting on for 15 days is checked here (once a day for
+        # the clinic), and marked done in the shared note
+        since = int((time.time() - 15 * 86400) * 1000)
+        S['notes'] = [{'id': 87000, 'html': '<p>UPC shared checks: Remittances waiting</p><p>remit.101 | %s | org 601 inv 101 num UPC-40001 since %d name Bupa remittance 2026-10-20 ref R9</p>'
+                       % (time.strftime('%Y-%m-%d %H:%M', time.localtime(since / 1000)), since)}]
+        before = len(S.get('orgtasks', []))
+        ctx2 = await browser.new_context(viewport={'width': 1300, 'height': 900})
+        await ctx2.route('https://eu.halaxy.com/**', halaxy)
+        await ctx2.route('https://cdn.jsdelivr.net/**', cdn)
+        await ctx2.add_init_script(CORE)
+        await ctx2.add_init_script("document.addEventListener('DOMContentLoaded', function () {\n" + REMIT + "\n});")
+        pg2 = await ctx2.new_page()
+        pg2.on('pageerror', lambda e: errors.append(str(e)))
+        await pg2.goto('https://eu.halaxy.com/a/pr/555/invoice/#upc-remittances')
+        note = lambda: ' '.join(re.sub(r'<[^>]+>', ' ', n['html']) for n in S['notes'] if 'Remittances waiting' in n['html'])
+        for _ in range(80):
+            if 'remit.101' in note() and ' | done' in note() and 'lingerDay |' in note():
+                break
+            await pg2.wait_for_timeout(250)
+        out = S['funders'][101].get('outstanding', None)
+        tasks = [t.get('form[title]', '') for t in S.get('orgtasks', [])[before:]]
+        check('another PC\'s waiting remittance checked here after 10 days, and marked done for every PC', ' | done' in note() and 'lingerDay' in note()
+              and (tasks == ['Remittance Bupa remittance 2026-10-20 ref R9: no payment from the bank after 10 days'] or not tasks), (note(), tasks))
+        await pg2.reload()
+        await pg2.wait_for_timeout(3000)
+        check('once a day for the clinic: not checked again', len(S.get('orgtasks', [])) == before + len(tasks), S.get('orgtasks', [])[before:])
+        await ctx2.close()
 
         # Halaxy says it is busy: everything pauses
         busy = await pg.evaluate("UPC.http.json('/busy-test').then(() => 'ok', e => e.message)")

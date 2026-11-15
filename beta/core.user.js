@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.54
+// @version      0.1.55
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.54';
+  const VERSION = '0.1.55';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -861,16 +861,58 @@
       if (!after || after.balance !== before.balance - total) throw new UPCError('Halaxy applied the deposit, but it now has ' + (after ? money.fmt(after.balance) : 'nothing') + ' left, not ' + money.fmt(before.balance - total) + '. Check the profile and the invoices.');
       return after;
     },
-    // Insurer profiles seen on invoices (their Bill To), kept on this PC so a bank line with no invoice to go by can
-    // still find its insurer's profile, and so the lingering check knows which profiles to look at.
-    orgs() { return storage('upc-funder-orgs:').get('list', {}); },
+    // Insurer profiles seen on invoices (their Bill To), so a bank line with no invoice to go by can still find its
+    // insurer's profile, and so the lingering check knows which profiles to look at. Kept on this PC and, for every PC,
+    // in the shared note "UPC shared checks: Insurer profiles" (org.<id> | when | insurer; Carl, 15 Nov 2026).
+    shared: () => shared('Insurer profiles', { keep: 400 * 86400e3 }),
+    orgs() {
+      const all = Object.assign({}, storage('upc-funder-orgs:').get('list', {}));
+      let recs = {};
+      try { recs = deposits.shared().cached(); } catch (e) { /* this PC's list still applies */ }
+      Object.keys(recs).forEach((k) => {
+        const m = /^org\.(\d+)$/.exec(k), r = recs[k];
+        if (m && r.at !== null && !all[m[1]]) all[m[1]] = { name: '', insurer: r.value === '-' ? '' : r.value };
+      });
+      return all;
+    },
     rememberOrg(orgId, name, insurer) {
       if (!orgId) return;
       const st = storage('upc-funder-orgs:'), all = st.get('list', {});
       const was = all[orgId] || {};
-      if (was.name === name && was.insurer === insurer) return;
-      all[orgId] = { name: name || was.name || '', insurer: insurer || was.insurer || '' };
-      st.set('list', all);
+      if (!(was.name === name && was.insurer === insurer)) {
+        all[orgId] = { name: name || was.name || '', insurer: insurer || was.insurer || '' };
+        st.set('list', all);
+      }
+      // For every PC: when the shared note doesn't have it, has a different insurer, or last noted it a month ago.
+      // Kept as pending here and written by flushOrgs (after a step the user confirmed, and on the daily check), so
+      // reading a statement or remittance writes nothing.
+      try {
+        const r = deposits.shared().cached()['org.' + orgId], ins = String(all[orgId].insurer || '').replace(/[^A-Za-z0-9 _.:,-]/g, '').trim() || '-';
+        if (!r || r.at === null || r.value !== ins || Date.now() - r.at > 30 * 86400e3) { const p = st.get('pending', {}); p['org.' + orgId] = ins; st.set('pending', p); }
+      } catch (e) { /* noted next time */ }
+    },
+    async flushOrgs() {
+      const st = storage('upc-funder-orgs:'), p = st.get('pending', {});
+      if (!Object.keys(p).length) return;
+      await deposits.shared().write(p);
+      const now = st.get('pending', {});
+      Object.keys(p).forEach((k) => { if (now[k] === p[k]) delete now[k]; });
+      st.set('pending', now);
+    },
+    // Once a day for the whole clinic (the shared note's lingerDay, claimed so two PCs don't both check); this PC's
+    // own day if the note can't be read. Returns true when this PC should check today.
+    async dailyTurn(sh, local) {
+      const today = dayLabel(Date.now());
+      if (sh) {
+        try {
+          const recs = await sh.read(0);
+          if (recs.lingerDay && recs.lingerDay.value === today) return false;
+          return (await sh.claim(['lingerDay'])).includes('lingerDay');
+        } catch (e) { /* this PC's own day */ }
+      }
+      if (local.get('lingerDay', '') === today) return false;
+      local.set('lingerDay', today);
+      return true;
     },
     // The profiles known for an insurer ('Bupa'), as ids.
     orgsFor(insurer) { return Object.entries(deposits.orgs()).filter(([, o]) => o.insurer === insurer).map(([id]) => id); },
@@ -879,9 +921,13 @@
     async lingering({ days, assignee, by }) {
       const st = storage('upc-funder-orgs:');
       const today = dayLabel(Date.now());
-      if (st.get('lingerDay', '') === today || http.pausedFor() > 0) return [];
-      st.set('lingerDay', today);
+      if (http.pausedFor() > 0) return [];
+      let sh = null;
+      try { sh = deposits.shared(); } catch (e) { sh = null; }
+      if (sh) await deposits.flushOrgs().catch(() => {});
+      if (!(await deposits.dailyTurn(sh, st))) return [];
       const out = [];
+      try {
       for (const [orgId, o] of Object.entries(deposits.orgs())) {
         for (const d of await deposits.list(orgId)) {
           const when = parseDay(d.day);
@@ -892,6 +938,9 @@
               'No remittance has been put through Remittances for it yet. Ask the insurer for the remittance, or apply the deposit by hand.'] });
           if (added) out.push(title);
         }
+      }
+      } finally {
+        if (sh) await sh.write({ lingerDay: today }).catch(() => {});
       }
       return out;
     },
@@ -999,6 +1048,7 @@
     }
     return id;
   }
+  const SHARED_QUEUE = {};
   function shared(name, opts) {
     opts = opts || {};
     const head = SHARED_HEAD + name;
@@ -1079,7 +1129,13 @@
     }
     // Reads the note afresh, changes it and saves it (old outcomes and lapsed claims dropped), then returns what the
     // note says afterwards. If another PC saved at the same moment, theirs may win: the caller sees that in the result.
-    async function save(change) {
+    // One save at a time per note on this page (two at once would each write over the other's change).
+    function save(change) {
+      const run = (SHARED_QUEUE[name] || Promise.resolve()).catch(() => {}).then(() => saveNow(change));
+      SHARED_QUEUE[name] = run;
+      return run;
+    }
+    async function saveNow(change) {
       const got = pick(await adminNotes.list('organisation', SHARED_ORG));
       const recs = got.recs, now = Date.now();
       change(recs, now);

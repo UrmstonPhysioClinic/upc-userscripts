@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Bank statement (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.5
+// @version      0.2.6
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
@@ -50,7 +50,7 @@
   if (window.__hxBankStatement) return;
   window.__hxBankStatement = true;
 
-  const VERSION = '0.2.5';
+  const VERSION = '0.2.6';
   const ROUTE = 'upc-bank-statement';
   const MENU_CLS = 'upc-bank-menu';
   const ALLOWED = () => rule('bankStatement.people', ['Carl Healy']);
@@ -371,6 +371,8 @@
         if (ids.length > 1) return { why: 'its invoices are billed to different profiles' };
       }
       if (orgByInsurer.has(r.insurer)) return orgByInsurer.get(r.insurer);
+      // The profiles every PC has seen (shared note, read at most every 10 minutes), as well as this PC's.
+      if (U().deposits.shared) { try { await U().deposits.shared().read(10 * 60e3); } catch (e) { /* this PC's list still applies */ } }
       let known = U().deposits.orgsFor(r.insurer);
       if (!known.length) {
         const one = open.find((i) => i.insurer === r.insurer);
@@ -854,6 +856,8 @@
       U().ui.run.tick(run);
       render();
     }
+    // The insurer profiles seen, for every PC.
+    if (U().deposits.flushOrgs) await U().deposits.flushOrgs().catch(() => {});
     // The statement register: what this statement was and what became of each insurer payment.
     try { U().ui.run.step(run, 'Updating the statement register...'); await writeRegister(state.statement, state.results); }
     catch (e) { U().ui.run.step(run, 'The statement register on the Starling Bank profile could not be updated (' + (e.message || e) + ').', true); }
