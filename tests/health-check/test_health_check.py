@@ -90,6 +90,9 @@ async def halaxy(route):
         return await j([{'funder': 'Self-Funded', 'feeColour': '#FEF2C0', 'status': 'current', 'feeNumber': 'IA-IA'}])
     if p.endswith('/communication-log/organisation/78812/list-data'):
         return await j({'data': [{'id': 1, 'date': '2026-11-14 10:00:00', 'creator': 'Carl Healy', 'content': '<p>Starling statement</p>'}]})
+    if re.search(r'/communication-log/organisation/78842/\d+/delete$', p):
+        return await j({'status': 'FORM', 'title': 'Delete Admin Note', 'message': "<div><a class='ajax btn btn-outline-primary' href='/a/pr/555/communication-log/organisation/78842'>Cancel</a>"
+                        "<a class='btn btn-outline-danger ajax' href='/a/pr/555/communication-log/organisation/78842/2/delete/ab12'>Delete</a></div>"})
     if p.endswith('/communication-log/organisation/78842/list-data'):
         return await j({'data': [{'id': 2, 'date': '2026-11-15 10:00:00', 'creator': 'Carl Healy', 'content': '<p>UPC shared checks: Missing details</p><p>301 | 2026-11-15 10:00 | ok</p>'},
                                  {'id': 3, 'date': '2026-11-14 10:00:00', 'creator': 'Carl Healy', 'content': '<p>UPC shared checks: Missing details</p>'},

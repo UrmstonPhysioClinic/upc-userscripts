@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.48
+// @version      0.1.49
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.48';
+  const VERSION = '0.1.49';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -945,6 +945,17 @@
         return added[0];
       });
     },
+    // Deletes a note (capture 14 Nov 2026): GET .../:noteId/delete is Halaxy's "Delete Admin Note" pop-up, whose Delete
+    // button is a link to .../:noteId/delete/<hex>; opening that deletes it. Checked by listing afterwards. Only used for
+    // the scripts' own spare shared-check notes (Carl, 15 Nov 2026).
+    async remove(kind, id, noteId) {
+      const del = adminNotes.path(kind, id) + '/' + encodeURIComponent(noteId) + '/delete';
+      const { doc } = await http.popup(del);
+      const link = [...doc.querySelectorAll('a[href]')].find((a) => a.getAttribute('href').split('?')[0].replace(/^.*\/a\/pr\/\d+/, '').startsWith(del + '/'));
+      if (!link) throw new UPCError('Halaxy\'s Delete Admin Note pop-up has changed, so the note was not deleted.');
+      await http.json(link.getAttribute('href').replace(/^.*\/a\/pr\/\d+/, ''));
+      if ((await adminNotes.list(kind, id)).some((n) => n.id === String(noteId))) throw new UPCError('Halaxy still lists the note after deleting it.');
+    },
     // Replaces a note's text (its date, owner and access stay as they are).
     async update(kind, id, noteId, text) {
       return adminNotes.save(adminNotes.path(kind, id) + '/' + encodeURIComponent(noteId) + '/edit', text, async () => {
@@ -1009,13 +1020,14 @@
     }
     // The note among the organisation's Admin Notes: the oldest whose first line is ours (so every PC settles on the same
     // one, live 15 Nov 2026: three PCs made one each at the same moment), or the one this PC last used (if its first line
-    // was lost). Lines in any other copies are taken in (the newest check wins); those copies are relabelled on the next save.
+    // was lost). Lines in any other copies are taken in (the newest check wins); those copies are deleted on the next save
+    // (Carl, 15 Nov 2026), or relabelled as spare if Halaxy won't delete them (and deleted on a later save).
     const SPARE = 'Spare copy of ' + head + ' (two PCs started it at the same moment). It can be deleted.';
     function pick(notes) {
       const ours = notes.filter((n) => n.text.split('\n')[0] === head).sort((a, b) => Number(a.id) - Number(b.id));
       const note = ours[0] || notes.find((n) => n.id === st.get('noteId', '')) || null;
       const got = note ? parse(note.text) : { recs: {}, bad: 0 };
-      const spares = ours.slice(1);
+      const spares = ours.slice(1).concat(notes.filter((n) => n.text === SPARE));
       spares.forEach((n) => {
         const more = parse(n.text).recs;
         Object.keys(more).forEach((k) => {
@@ -1029,6 +1041,8 @@
     }
     async function retire(spares) {
       for (const n of spares) {
+        try { await adminNotes.remove('organisation', SHARED_ORG, n.id); continue; } catch (e) { console.warn('[UPC shared]', e); }
+        if (n.text === SPARE) continue;
         try { await adminNotes.update('organisation', SHARED_ORG, n.id, SPARE); } catch (e) { console.warn('[UPC shared]', e); }
       }
     }

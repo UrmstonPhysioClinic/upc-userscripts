@@ -1,5 +1,9 @@
 # Changelog
 
+## Core 0.1.49, health check 1.1.43, 15 Nov 2026 (beta)
+- Shared checks: spare copies of a shared note are deleted (Carl, 15 Nov 2026), through Halaxy's own Delete Admin Note pop-up, checked by listing afterwards. Only the scripts' own copies are touched; one Halaxy won't delete is relabelled "Spare copy ..." and tried again on a later save. Core `UPC.adminNotes.remove`.
+- Health check: opens (never confirms) the Delete Admin Note pop-up on UPC scripts (settings) to check its Delete link is there.
+
 ## Core 0.1.48, health check 1.1.42, 15 Nov 2026 (beta)
 - Shared checks: when several PCs make the same note at once (live, 15 Nov 2026: three for Missing details), every PC uses the oldest, takes in the others' lines (newest check wins) and relabels the others "Spare copy of ... It can be deleted." The health check's wording follows.
 
