@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Missing details (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.1
+// @version      0.1.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/missing-details.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/missing-details.user.js
@@ -35,7 +35,7 @@
   if (window.__hxMissingDetails) return;
   window.__hxMissingDetails = true;
 
-  const VERSION = '0.1.1';
+  const VERSION = '0.1.2';
   const ROUTE = 'upc-missing-details';
   const MENU_CLS = 'upc-md-menu';
   const ADMINS = ['Carl Healy', 'Wendy Pritchard'];   // who sees the page (Carl, 15 Nov 2026: Carl and Wendy)
@@ -102,7 +102,9 @@
 
   // ------------------------------------------------------------------ the banner on a patient's pages
 
-  const patientId = () => (location.pathname.match(/\/a\/pr\/\d+\/patient\/(\d+)(?:\/|$)/) || [])[1] || null;
+  // /patient/:id/... and the tabs addressed the other way round, /patient/invoice/:id/ and /patient/appointment/:id/
+  // (capture 15 Nov 2026).
+  const patientId = () => (location.pathname.match(/\/a\/pr\/\d+\/patient\/(?:[a-z-]+\/)?(\d+)(?:\/|$)/i) || [])[1] || null;
   let shownFor = null, reading = null;
   function paintBanner() {
     const id = patientId();

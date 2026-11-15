@@ -1,5 +1,8 @@
 # Changelog
 
+## Missing details 0.1.2, 15 Nov 2026 (beta)
+- The banner also shows on a patient's Invoices and Appointments tabs (addressed /patient/invoice/:id/ and /patient/appointment/:id/).
+
 ## Missing details 0.1.1, 15 Nov 2026 (beta)
 - Space below the banner, so it no longer touches the notes.
 - Fewer reads: a patient with gaps is read again only on the next page after a visit to their Edit page (when the details may have been saved), or after 10 minutes; moving between their pages otherwise costs nothing.

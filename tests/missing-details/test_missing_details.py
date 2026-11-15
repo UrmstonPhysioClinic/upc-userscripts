@@ -142,7 +142,7 @@ async def main():
         text = await pg.evaluate(BANNER)
         check('banner on a note page: what to collect, and a link to the Edit page', 'Missing details: date of birth, phone number. Please collect these from the patient.' in text and 'Edit details' in text, text)
         n302 = edits(302)
-        await pg.goto('https://eu.halaxy.com/a/pr/555/patient/302/invoices')
+        await pg.goto('https://eu.halaxy.com/a/pr/555/patient/invoice/302/')
         await pg.wait_for_function(BANNER, timeout=20000)
         await pg.wait_for_timeout(1000)
         check('another page of the same patient: banner still there, not read again', edits(302) == n302, (n302, edits(302)))
@@ -154,7 +154,7 @@ async def main():
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/301')
         await pg.wait_for_timeout(1500)
         check('a complete patient: no banner, not read again', await pg.evaluate(BANNER) == '' and edits(301) == n301, (await pg.evaluate(BANNER), edits(301)))
-        await pg.goto('https://eu.halaxy.com/a/pr/555/patient/304/invoices')
+        await pg.goto('https://eu.halaxy.com/a/pr/555/patient/appointment/304/')
         await pg.wait_for_timeout(1500)
         check('only the email missing: no banner', await pg.evaluate(BANNER) == '')
 
