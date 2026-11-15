@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.45
+// @version      0.1.46
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.45';
+  const VERSION = '0.1.46';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -954,6 +954,138 @@
       });
     },
   };
+
+  // Checks shared between the PCs (Carl, 15 Nov 2026). One Admin Note per script on the "UPC scripts (settings)"
+  // organisation holds what each PC found, so the other PCs needn't check again, and claims ("checking"), so two PCs
+  // don't check the same thing at once. Ids and short codes only, never names. Lines:
+  //   <key> | <when found> | <what was found> [| checking <pc> until <time>]
+  // A line that can't be read is dropped when the note is next saved (and the health check is told); a note that has
+  // lost its first line is found again by its id and rewritten; a deleted note is made again by the next save.
+  const SHARED_ORG = '78842';
+  const SHARED_HEAD = 'UPC shared checks: ';
+  const SHARED_INFO = 'Kept by UPC scripts. Please do not edit: a line that is changed is dropped and checked again.';
+  function pcId() {
+    let id = null;
+    try { id = localStorage.getItem('upc-core:pc'); } catch (e) { /* storage blocked */ }
+    if (!/^[a-z0-9]{4}$/.test(id || '')) {
+      id = Math.random().toString(36).slice(2, 6).padEnd(4, '0');
+      try { localStorage.setItem('upc-core:pc', id); } catch (e) { /* storage blocked */ }
+    }
+    return id;
+  }
+  function shared(name, opts) {
+    opts = opts || {};
+    const head = SHARED_HEAD + name;
+    const keep = opts.keep || 30 * 86400e3, claimFor = opts.claimFor || 5 * 60e3, max = opts.max || 1500;
+    const st = storage('upc-shared:' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + ':');
+    const me = pcId();
+    const p2 = (n) => String(n).padStart(2, '0');
+    const stamp = (ms) => { const d = new Date(ms); return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes()); };
+    const unstamp = (s) => { const m = /^(\d{4})-(\d\d)-(\d\d) (\d\d):(\d\d)$/.exec(s || ''); return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]).getTime() : null; };
+    const KEY_RE = /^[A-Za-z0-9_.:-]{1,40}$/, VALUE_RE = /^[A-Za-z0-9 _.:,-]{1,200}$/;
+    // { recs: { key: { at, value, claim: { by, until } | null } }, bad: number of lines that couldn't be read }
+    function parse(text) {
+      const lines = String(text || '').split('\n');
+      const recs = {};
+      let bad = lines[0] === head ? 0 : 1;
+      lines.slice(1).forEach((l, i) => {
+        if (i === 0 && l === SHARED_INFO) return;
+        const f = l.split(' | ');
+        const at = f[1] === '-' ? null : unstamp(f[1]);
+        const claim = f[3] ? /^checking ([a-z0-9]{4}) until (\d{4}-\d\d-\d\d \d\d:\d\d)$/.exec(f[3]) : null;
+        const ok = f.length >= 3 && f.length <= 4 && KEY_RE.test(f[0]) && !recs[f[0]] && (f[1] === '-' ? f[2] === '-' : at !== null && VALUE_RE.test(f[2])) &&
+          (f.length === 3 ? f[1] !== '-' : !!claim);
+        if (!ok) { bad++; return; }
+        recs[f[0]] = { at, value: at === null ? null : f[2], claim: claim ? { by: claim[1], until: unstamp(claim[2]) } : null };
+      });
+      return { recs, bad };
+    }
+    function format(recs) {
+      const keys = Object.keys(recs).sort((a, b) => (recs[b].at || 0) - (recs[a].at || 0)).slice(0, max).sort();
+      return [head, SHARED_INFO].concat(keys.map((k) => {
+        const r = recs[k];
+        return [k, r.at === null ? '-' : stamp(r.at), r.at === null ? '-' : r.value].concat(r.claim ? ['checking ' + r.claim.by + ' until ' + stamp(r.claim.until)] : []).join(' | ');
+      })).join('\n');
+    }
+    // The note among the organisation's Admin Notes: the newest whose first line is ours, or the one this PC last used
+    // (if its first line was lost).
+    function pick(notes) {
+      const note = notes.find((n) => n.text.split('\n')[0] === head) || notes.find((n) => n.id === st.get('noteId', ''));
+      const got = note ? parse(note.text) : { recs: {}, bad: 0 };
+      return Object.assign({ note: note || null }, got);
+    }
+    function remember(got) {
+      if (got.note) st.set('noteId', got.note.id);
+      st.set('cache', { at: Date.now(), recs: got.recs });
+      return got.recs;
+    }
+    function tellRepaired(n) {
+      try {
+        document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: opts.file || 'core.user.js',
+          message: 'Its shared note on UPC scripts (settings) had ' + n + ' line' + (n === 1 ? '' : 's') + ' that could not be read, so the note was rewritten (those checks are simply done again).' }) }));
+      } catch (e) { /* ignore */ }
+    }
+    async function read(maxAge) {
+      const c = st.get('cache', null);
+      if (c && maxAge && Date.now() - c.at < maxAge) return c.recs;
+      return remember(pick(await adminNotes.list('organisation', SHARED_ORG)));
+    }
+    // Reads the note afresh, changes it and saves it (old outcomes and lapsed claims dropped), then returns what the
+    // note says afterwards. If another PC saved at the same moment, theirs may win: the caller sees that in the result.
+    async function save(change) {
+      const got = pick(await adminNotes.list('organisation', SHARED_ORG));
+      const recs = got.recs, now = Date.now();
+      change(recs, now);
+      Object.keys(recs).forEach((k) => {
+        const r = recs[k];
+        if (r.claim && !(r.claim.until > now)) r.claim = null;
+        if (r.at !== null && now - r.at > keep) { r.at = null; r.value = null; }
+        if (r.at === null && !r.claim) delete recs[k];
+      });
+      const text = format(recs);
+      if (got.note && got.note.text === text) return remember(got);
+      let saved = null;
+      try {
+        saved = got.note ? await adminNotes.update('organisation', SHARED_ORG, got.note.id, text) : await adminNotes.add('organisation', SHARED_ORG, text);
+      } catch (e) {
+        if (!/does not (list|show) the note as/.test(e.message || '')) throw e;
+      }
+      if (got.bad) tellRepaired(got.bad);
+      if (saved) return remember({ note: saved, recs: parse(saved.text).recs });
+      return read(0);
+    }
+    return {
+      me,
+      // { key: { at, value, claim } }; maxAge: use this PC's last read if it is younger than that (ms).
+      read,
+      // Claims the keys nobody else is checking; returns those this PC now holds.
+      async claim(keys) {
+        if (!keys.length) return [];
+        const after = await save((recs, now) => keys.forEach((k) => {
+          if (!KEY_RE.test(String(k))) return;
+          const r = recs[k] || (recs[k] = { at: null, value: null, claim: null });
+          if (r.claim && r.claim.by !== me && r.claim.until > now) return;
+          r.claim = { by: me, until: now + claimFor };
+        }));
+        return keys.filter((k) => after[k] && after[k].claim && after[k].claim.by === me);
+      },
+      // Records outcomes { key: value } (found now) and lets go of this PC's claims. Tried twice if another PC's save wins.
+      async write(outcomes) {
+        const keys = Object.keys(outcomes).filter((k) => KEY_RE.test(k) && VALUE_RE.test(String(outcomes[k])));
+        // This PC's copy of the note is changed first, so a save cut short (the page left) is noticed next time.
+        const c = st.get('cache', null);
+        if (c && keys.length) { keys.forEach((k) => { c.recs[k] = { at: Date.now(), value: String(outcomes[k]), claim: null }; }); st.set('cache', c); }
+        const change = (recs, now) => {
+          keys.forEach((k) => { recs[k] = { at: now, value: String(outcomes[k]), claim: null }; });
+          Object.values(recs).forEach((r) => { if (r.claim && r.claim.by === me) r.claim = null; });
+        };
+        let after = await save(change);
+        if (keys.some((k) => !after[k] || after[k].value !== String(outcomes[k]))) after = await save(change);
+        return after;
+      },
+      stamp, unstamp, parse, format,
+    };
+  }
 
   const orgFiles = {
     // The files on a funder profile, as its Attachments box lists them in the page (capture 13 Nov 2026): one
@@ -1962,7 +2094,7 @@
   };
 
   window.UPC = Object.freeze({
-    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, forms, notes, followUps, patient, tasks, surveys, reports, dayLabel, parseDay, rebate, files, deposits, orgFiles, adminNotes, load, ui,
+    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, forms, notes, followUps, patient, tasks, surveys, reports, dayLabel, parseDay, rebate, files, deposits, orgFiles, adminNotes, shared, load, ui,
     user, storage, calendar, wording, background,
   });
 })();

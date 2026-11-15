@@ -6,7 +6,12 @@ Checks: mandatory details (first and last name, date of birth, an address with a
 the Edit page; email mentioned but not counted; who is checked (booked in the next 14 days or seen in the last 30, not
 cancelled, not deleted); the list for Carl and Wendy, soonest appointment first, with the practitioner; the menu count;
 the banner on every page of a patient for everyone, whether booked or not, gone once the details are saved; complete
-patients not read again; the ids kept for Calendar controls; nothing saved to Halaxy.
+patients not read again; the ids kept for Calendar controls; nothing saved to Halaxy except the shared note.
+
+Shared between PCs (UPC.shared, Admin Note on organisation 78842): the first PC claims and checks, and notes what it found
+(ids and codes, no names); a second PC (its own storage) takes that and reads no Edit pages; a patient another PC is
+checking is left alone; a damaged line is dropped when the note is next saved; a patient read on their own page is noted
+when the outcome differs from the note.
 
 Run:  python3 tests/missing-details/test_missing_details.py
 """
@@ -28,9 +33,9 @@ def check(name, ok, detail=''):
         FAILS.append(name)
 
 
-def setup(user='Carl Healy'):
+def setup(user='Carl Healy', notes=None):
     S.clear()
-    S.update({'patients': {}, 'events': [], 'log': [], 'user': user})
+    S.update({'patients': {}, 'events': [], 'log': [], 'user': user, 'notes': notes if notes is not None else {}})
 
     def patient(pid, name, appts, status='current', first=None, last=None, dob=True, line1='1 Test Street', postcode='M41 0AA', phone='0161 000 0000', email='a@b.c'):
         S['patients'][pid] = {'name': name, 'status': status, 'first': name.split()[0] if first is None else first, 'last': name.split()[1] if last is None else last, 'dob': dob, 'line1': line1, 'postcode': postcode, 'phone': phone, 'email': email}
@@ -85,6 +90,26 @@ async def halaxy(route):
         q = urllib.parse.parse_qs(u.query)
         lo, hi = int(q['start'][0]), int(q['end'][0])
         return await js({'payload': {'events': [e for e in S['events'] if lo <= e['start'] < hi]}})
+    # Admin Notes (capture 14 Nov 2026): list-data with the whole text, Add and Edit pop-ups (form#adminNoteForm)
+    notes = S['notes']
+    m = re.match(r'^/a/pr/555/communication-log/organisation/(\d+)/list-data$', p)
+    if m:
+        return await js({'data': [{'id': n['id'], 'date': '2026-11-15 10:00:00', 'privacy': 'All', 'creator': S['user'], 'isImportant': False, 'content': n['html']}
+                                  for n in reversed(notes.get(int(m.group(1)), []))]})
+    m = re.match(r'^/a/pr/555/communication-log/organisation/(\d+)/(new|(\d+)/edit)$', p)
+    if m:
+        org = int(m.group(1))
+        if req.method == 'GET':
+            old = next((n for n in notes.get(org, []) if str(n['id']) == m.group(3)), None)
+            return await js({'status': 'FORM', 'title': 'Add Admin Note', 'message': "<form id='adminNoteForm'><input type='hidden' name='form[_token]' value='tn'>"
+                             "<select name='form[privacy]'><option value='3' selected>All</option></select><textarea name='form[logContent]'>%s</textarea></form>" % (old['html'] if old else '')})
+        g = dict(urllib.parse.parse_qsl(req.post_data or '', keep_blank_values=True))
+        html = g['form[logContent]'].replace('<p>', '<p class="ck-text">')
+        if m.group(3):
+            next(n for n in notes[org] if str(n['id']) == m.group(3))['html'] = html
+        else:
+            notes.setdefault(org, []).append({'id': 33000 + sum(len(v) for v in notes.values()), 'html': html})
+        return await js({'status': 'CLOSE', 'url': '/a/pr/555/communication-log'})
     m = re.match(r'^/a/pr/555/patient/(\d+)/edit$', p)
     if m:
         return await route.fulfill(body=page_html(S['user'], edit_form(int(m.group(1)))), content_type='text/html')
@@ -106,6 +131,15 @@ BANNER = "(document.querySelector('#pageContent > .upc-md-banner') || {}).textCo
 edits = lambda pid: len([x for x in S['log'] if x == ('GET', '/patient/%d/edit' % pid)])
 
 
+def note_text(notes=None):
+    ns = (notes if notes is not None else S['notes']).get(78842, [])
+    return [re.sub(r'<[^>]+>', '', x).replace('&#39;', "'").replace('&amp;', '&') for x in re.split(r'</p>', ns[-1]['html']) if x.strip()] if ns else []
+
+
+def note_lines(notes=None):
+    return {l.split(' | ')[0]: l.split(' | ')[2:] for l in note_text(notes)[2:]}
+
+
 async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch()
@@ -114,6 +148,7 @@ async def main():
         pg = await ctx.new_page()
         errors = []
         pg.on('pageerror', lambda e: errors.append(str(e)))
+        pg.on('console', lambda m: print('CONSOLE', m.text[:300]) if m.type in ('warning', 'error') else None)
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/#upc-missing-details')
         await pg.wait_for_function("document.querySelector('[data-upc-missing-details] .card') && !document.querySelector('[data-upc-missing-details] [data-a=refresh]').disabled", timeout=90000)
         cards = await pg.evaluate(ROWS)
@@ -130,9 +165,16 @@ async def main():
         check('links to the Edit page', link == '/a/pr/555/patient/302/edit', link)
         badge = await pg.evaluate("(document.querySelector('a.upc-md-menu .upc-md-badge') || {}).textContent")
         check('menu item under Patients with the count (not email)', badge == '3', badge)
-        read = sorted({int(x[1].split('/')[2]) for x in S['log'] if x[1].endswith('/edit')})
+        read = sorted({int(x[1].split('/')[2]) for x in S['log'] if x[1].endswith('/edit') and x[1].startswith('/patient/')})
         check('Edit pages read only for patients in the window', read == [301, 302, 303, 304, 306, 308], read)
-        check('nothing saved', not [x for x in S['log'] if x[0] == 'POST'], [x for x in S['log'] if x[0] == 'POST'])
+        posts = [x for x in S['log'] if x[0] == 'POST']
+        check('nothing saved except the shared note', posts and all(x[1].startswith('/communication-log/organisation/78842/') for x in posts), posts)
+        txt = note_text()
+        lines = note_lines()
+        check('shared note: our heading, one line per patient checked, claims let go', txt[:1] == ['UPC shared checks: Missing details'] and sorted(lines) == ['301', '302', '303', '304', '306', '308']
+              and all(len(v) == 1 for v in lines.values()), txt)
+        check('shared note: codes only, no names', lines.get('302') == ['dob phone'] and lines.get('301') == ['ok'] and lines.get('304') == ['ok noemail'] and lines.get('306') == ['dob phone off']
+              and lines.get('308') == ['first last'] and not any('Patient' in l for l in txt), txt)
         ids = await pg.evaluate("JSON.parse(localStorage.getItem('upc-md:ids') || '[]')")
         check('the patients with gaps kept for the calendar marker (not Deleted or complete)', sorted(ids) == ['302', '303', '308'], ids)
 
@@ -150,6 +192,11 @@ async def main():
         await pg.wait_for_function(BANNER, timeout=20000)
         text = await pg.evaluate(BANNER)
         check('a patient outside the window, not booked: read when their page opens, banner shown', 'Missing details: phone number. Please collect this from the patient.' in text and edits(305) == 1, (text, edits(305)))
+        for _ in range(40):
+            if note_lines().get('305'):
+                break
+            await pg.wait_for_timeout(250)
+        check('read on their page, with gaps: noted for the other PCs', note_lines().get('305') == ['phone'], note_text())
         n301 = edits(301)
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/301')
         await pg.wait_for_timeout(1500)
@@ -166,6 +213,11 @@ async def main():
         await pg.wait_for_timeout(500)
         ids = await pg.evaluate("JSON.parse(localStorage.getItem('upc-md:ids') || '[]')")
         check('details saved: on the Edit page itself, read from the page (no extra request), banner gone, no longer marked', await pg.evaluate(BANNER) == '' and '305' not in ids and edits(305) == 2, (edits(305), ids))
+        for _ in range(40):
+            if note_lines().get('305') == ['ok']:
+                break
+            await pg.wait_for_timeout(250)
+        check('details saved: the note says so for the other PCs', note_lines().get('305') == ['ok'], (note_text(), S['log'][-12:]))
         # Back from the Edit page: read once more (the details may have just been saved)
         S['patients'][303]['postcode'] = ''
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/303/edit')
@@ -176,6 +228,33 @@ async def main():
         await pg.wait_for_function("!document.querySelector('#pageContent > .upc-md-banner')", timeout=20000)
         check('after a visit to the Edit page, the next page reads the details again and the banner goes', edits(303) == n303 + 1, (n303, edits(303)))
         check('no page errors', not errors, errors)
+        await ctx.close()
+
+        # A second PC (its own storage), sharing the note: another PC is checking 303, and someone typed into the note
+        notes = S['notes']
+        setup('Wendy Pritchard', notes)
+        n = notes[78842][-1]
+        n['html'] = re.sub(r'<p class="ck-text">303 \|[^<]*</p>', '<p class="ck-text">303 | - | - | checking zzzz until 2026-11-16 09:30</p>', n['html']) + '<p class="ck-text">Remember to ring Bob</p>'
+        before = len(notes[78842])
+        ctx = await context(browser)
+        pg = await ctx.new_page()
+        repaired = []
+        await pg.expose_function('upcRepaired', lambda m: repaired.append(m))
+        await pg.add_init_script("document.addEventListener('upc-loader-error', (e) => window.upcRepaired(e.detail))")
+        await pg.goto('https://eu.halaxy.com/a/pr/555/patient/#upc-missing-details')
+        await pg.wait_for_function("document.querySelector('[data-upc-missing-details] .card') && !document.querySelector('[data-upc-missing-details] [data-a=refresh]').disabled", timeout=90000)
+        cards = await pg.evaluate(ROWS)
+        names = [r[0] for r in (cards[0][1] if cards else [])]
+        read = sorted({int(x[1].split('/')[2]) for x in S['log'] if x[1].endswith('/edit') and x[0] == 'GET' and x[1].startswith('/patient/')})
+        check('second PC: takes what the first found, no Edit pages read, same list (names from the calendar)', read == [] and names == ['Patient B', 'Patient H'], (read, cards))
+        check('second PC: leaves alone a patient another PC is checking', edits(303) == 0 and note_lines().get('303') == ['-', 'checking zzzz until 2026-11-16 09:30'], note_text())
+        check('a line typed into the note is dropped when it is next saved, the health check told, no second note', 'Remember to ring Bob' not in note_text() and len(notes[78842]) == before
+              and any('could not be read' in m for m in repaired), (note_text(), repaired))
+        await pg.goto('https://eu.halaxy.com/a/pr/555/patient/302/clinical')
+        await pg.wait_for_function(BANNER, timeout=20000)
+        check('second PC: banner from the note, no Edit page read', 'date of birth, phone number' in await pg.evaluate(BANNER) and edits(302) == 0, edits(302))
+        ids = await pg.evaluate("JSON.parse(localStorage.getItem('upc-md:ids') || '[]')")
+        check('second PC: calendar marks from the note', sorted(ids) == ['302', '308'], ids)
         await ctx.close()
 
         # Someone else (a physio): no page or menu item, but the banner still shows

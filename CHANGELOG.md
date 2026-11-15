@@ -1,5 +1,10 @@
 # Changelog
 
+## Shared checks between PCs, 15 Nov 2026 (beta)
+- Core 0.1.46: `UPC.shared(name)`, one Admin Note per script on UPC scripts (settings) (organisation 78842) holding what each PC found (id | when | codes, never names) and claims, so two PCs don't check the same thing. Lines that can't be read are dropped on the next save and the health check is told; a note that lost its heading is found by its id and rewritten; a deleted note is made again.
+- Missing details 0.2.0: reads the note before checking, claims the patients it is about to check (40 at a time) and notes what it found, so the clinic reads each patient once instead of once per PC. A patient read on their own page is noted when the outcome differs (details just saved, new gaps). Every PC reads the note every 30 minutes for banners and calendar marks. If the note can't be read, each PC checks for itself as before.
+- Health check 1.1.41: reads the shared notes daily; two notes for one script are mentioned (the newer is used).
+
 ## Missing details 0.1.2, 15 Nov 2026 (beta)
 - The banner also shows on a patient's Invoices and Appointments tabs (addressed /patient/invoice/:id/ and /patient/appointment/:id/).
 
