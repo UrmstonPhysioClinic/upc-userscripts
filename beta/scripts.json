@@ -3,7 +3,7 @@
     {
       "file": "health-check.user.js",
       "name": "UPC System: Health check (beta)",
-      "version": "1.1.39"
+      "version": "1.1.40"
     },
     {
       "file": "block-reporting.user.js",
@@ -34,7 +34,7 @@
     {
       "file": "calendar-controls.user.js",
       "name": "UPC Calendar: Calendar controls (beta)",
-      "version": "2.13"
+      "version": "2.14"
     },
     {
       "file": "email-html.user.js",
@@ -64,6 +64,11 @@
       "name": "UPC Billing: Invoice Funder (beta)",
       "version": "0.8.3",
       "was": "bill-funder.user.js"
+    },
+    {
+      "file": "missing-details.user.js",
+      "name": "UPC Patients: Missing details (beta)",
+      "version": "0.1.0"
     },
     {
       "file": "mobile-layout.user.js",

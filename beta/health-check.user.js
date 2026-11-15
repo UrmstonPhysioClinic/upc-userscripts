@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.39
+// @version      1.1.40
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.39';
+  const VERSION = '1.1.40';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -45,7 +45,7 @@
     'invoice-funder.user.js': 'Invoice Funder', 'ready-to-bill.user.js': 'Ready to bill', 'portal-fill.user.js': 'Portal fill', 'remittances.user.js': 'Remittances',
     'rebate-sync.user.js': 'Rebate sync', 'bank-statement.user.js': 'Bank statement', 'insurer-payments-due.user.js': 'Insurer payments due',
     // Patients
-    'patient-statuses.user.js': 'Patient statuses', 'open-ended-patients.user.js': 'Open-ended patients', 'review-requests.user.js': 'Review requests',
+    'patient-statuses.user.js': 'Patient statuses', 'open-ended-patients.user.js': 'Open-ended patients', 'missing-details.user.js': 'Missing details', 'review-requests.user.js': 'Review requests',
     'feedback-alerts.user.js': 'Feedback alerts',
     // Calendar
     'calendar-controls.user.js': 'Calendar controls', 'outstanding-actions.user.js': 'Outstanding actions', 'task-stamps.user.js': 'Task stamps',
@@ -373,9 +373,10 @@
         if (!res.ok) throw new Error('Halaxy returned ' + res.status + ' for the patient Edit page');
         const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
         const need = ['firstline', 'postcode'].map((k) => 'patientdetailmain[linkPaG][linkpagaddresses][0][address][' + k + ']')
-          .concat(['forename', 'surname'].map((k) => 'patientdetailmain[name][' + k + ']')).concat(['patientdetailmain[linkPaG][customStatus]']);
-        put('data-patient-edit', 'Patient Edit page', ['Portal fill', 'Review requests', 'Patient statuses'], need.filter((n) => !doc.querySelector('[name="' + n + '"]')).map((n) => 'field ' + n + ' missing'));
-      } catch (e) { put('data-patient-edit', 'Patient Edit page', ['Portal fill', 'Review requests', 'Patient statuses'], [e.message]); }
+          .concat(['forename', 'surname'].map((k) => 'patientdetailmain[name][' + k + ']')).concat(['patientdetailmain[linkPaG][customStatus]'])
+          .concat(['day', 'month', 'year'].map((k) => 'patientdetailmain[dob][' + k + ']')).concat(['patientdetailmain[linkPaG][linkphonepas][0][phone][number]', 'patientdetailmain[contactEmail]']);
+        put('data-patient-edit', 'Patient Edit page', ['Portal fill', 'Review requests', 'Patient statuses', 'Missing details'], need.filter((n) => !doc.querySelector('[name="' + n + '"]')).map((n) => 'field ' + n + ' missing'));
+      } catch (e) { put('data-patient-edit', 'Patient Edit page', ['Portal fill', 'Review requests', 'Patient statuses', 'Missing details'], [e.message]); }
     }
 
     // Invoice settings (cogwheel): Invoice Funder reads and sets the status here.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Calendar: Calendar controls (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      2.13
+// @version      2.14
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/calendar-controls.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/calendar-controls.user.js
@@ -383,11 +383,36 @@
       } catch (e) { /* draw as Halaxy would */ }
       return data;
     }
+    // Missing details (15 Nov 2026): a patient whose mandatory details are missing gets a warning sign before their name.
+    // The list comes from the Missing details script's check on this PC (no requests here).
+    let missingAt = 0, missingSet = new Set();
+    const missingIds = () => {
+      if (Date.now() - missingAt > 5000) {
+        missingAt = Date.now();
+        try { missingSet = new Set(JSON.parse(localStorage.getItem('upc-md:ids') || '[]').map(String)); } catch (e) { missingSet = new Set(); }
+      }
+      return missingSet;
+    };
+    const marked = (ev) => (ev && ev.linkPaGId && missingIds().has(String(ev.linkPaGId)) && typeof ev.title === 'string' && !ev.title.startsWith('\u26a0') ? Object.assign({}, ev, { title: '\u26a0 ' + ev.title }) : null);
+    function markMissing(data) {
+      try {
+        if (!data || typeof data !== 'object') return data;
+        if (data.linkPaGId !== undefined) return marked(data) || data;
+        if (data.attributes && data.attributes.linkPaGId !== undefined) {
+          const m = marked(data.attributes);
+          return m ? Object.assign(Object.create(Object.getPrototypeOf(data)), data, { attributes: m }) : data;
+        }
+        const k = Object.keys(data).find((x) => data[x] && typeof data[x] === 'object' && data[x].linkPaGId !== undefined);
+        const m = k && marked(data[k]);
+        if (m) return Object.assign({}, data, { [k]: m });
+      } catch (e) { /* draw as Halaxy would */ }
+      return data;
+    }
     function wrapTemplate(HC) {
       if (!ZERO_LOOKS_PAID || !HC || HC.__upcZeroWrap) return;
       HC.__upcZeroWrap = true;
       let raw = HC.tEvent;
-      const wrap = (fn) => (typeof fn === 'function' ? function (data) { return fn.call(this, adjust(data), ...[].slice.call(arguments, 1)); } : fn);
+      const wrap = (fn) => (typeof fn === 'function' ? function (data) { return fn.call(this, markMissing(adjust(data)), ...[].slice.call(arguments, 1)); } : fn);
       let wrapped = wrap(raw);
       try {
         Object.defineProperty(HC, 'tEvent', {

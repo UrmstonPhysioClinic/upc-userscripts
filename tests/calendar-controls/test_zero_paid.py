@@ -23,7 +23,7 @@ CORE = (ROOT / 'beta' / 'core.user.js').read_text().replace('perMinute: 45,', 'p
 
 EVENTS = [
     {'id': 11, 'type': 'appointment', 'invoiceID': 1, 'invoiceStatus': 'Paid In Full', 'invStatusCss': 'inv-paid', 'start': 1000, 'end': 1900},
-    {'id': 12, 'type': 'appointment', 'invoiceID': 2, 'invoiceStatus': 'Manual Payments', 'invStatusCss': 'inv-unpaid', 'start': 1000, 'end': 1900},   # £0
+    {'id': 12, 'type': 'appointment', 'invoiceID': 2, 'invoiceStatus': 'Manual Payments', 'invStatusCss': 'inv-unpaid', 'start': 1000, 'end': 1900, 'linkPaGId': 502, 'title': 'Patient B'},   # £0; missing details
     {'id': 13, 'type': 'appointment', 'invoiceID': 3, 'invoiceStatus': 'Stored Creditcard', 'invStatusCss': 'inv-unpaid', 'start': 1000, 'end': 1900},  # £40 due
     {'id': 14, 'type': 'personal', 'start': 1000, 'end': 1900},
 ]
@@ -50,7 +50,7 @@ PAGE = """<!doctype html><html><head><script>JQUERY</script><script>
     RenderPrac: { toggleMultiPrac: f, renderMultiPracCalendar: f },
     initForPrac: function () {
       // As Halaxy: compile the appointment template at start-up, then load and draw the appointments.
-      HkCalendar.tEvent = function (d) { return '<i data-id="' + d.id + '" class="' + d.invStatusCss + '" title="' + d.invoiceStatus + '">£</i>'; };
+      HkCalendar.tEvent = function (d) { return '<i data-id="' + d.id + '" class="' + d.invStatusCss + '" title="' + d.invoiceStatus + '">£' + (d.title || '') + '</i>'; };
       $.getJSON('/a/pr/555/calendar/json', { start: 1000, end: 2000 }, function (j) { models.length = 0; j.payload.events.forEach(function (e) { models.push(e); }); HkCalendar.eventsView.render(); });
     }
   };
@@ -101,12 +101,18 @@ async def main():
         check('one invoice list request, for the dates on screen', len(LOG) == 1 and LOG[0]['filterModel']['invoiceDate']['type'] == 'inRange', LOG)
         check('no page errors', not errors, errors)
 
+        check('no warning sign without missing details', '\u26a0' not in await pg.evaluate("document.getElementById('ev').textContent"))
+
         pg2 = await ctx.new_page()
         await pg2.goto('https://eu.halaxy.com/a/pr/555/calendar')
+        await pg2.evaluate("localStorage.setItem('upc-md:ids', JSON.stringify(['502']))")
+        await pg2.reload()
         await pg2.wait_for_selector('#ev i[data-id="12"]')
         await pg2.wait_for_timeout(1500)
         icons2 = await pg2.evaluate(ICONS)
         check('another tab draws it paid straight away, without asking Halaxy again', '12:inv-paid:Paid In Full' in icons2 and len(LOG) == 1, (icons2, LOG))
+        names = await pg2.evaluate("[...document.querySelectorAll('#ev i')].map((i) => i.textContent)")
+        check('missing details: a warning sign before the patient\'s name, only on theirs', any(n.endswith('\u26a0 Patient B') for n in names) and sum('\u26a0' in n for n in names) == 1, names)
         await ctx.close()
 
         LOG.clear()

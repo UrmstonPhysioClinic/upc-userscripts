@@ -1,5 +1,13 @@
 # Changelog
 
+## Missing details, 15 Nov 2026 (beta)
+- New, Missing details 0.1.0 (Carl, 15 Nov 2026): patients missing a first or last name, date of birth, address (first line and postcode) or phone number.
+  - A banner on every page of that patient for everyone, until the details are saved; it mentions email as well when there is none ("if they use one"), but email alone never brings it up.
+  - Patients > Missing details for Carl and Wendy: everyone booked in the next 14 days or seen in the last 30 with gaps, soonest appointment first, with the practitioner and a link to the Edit page; a count on the menu; a separate greyed list of those with only no email.
+  - Read from each patient's Edit page (nothing saved): complete patients again after 30 days, those with gaps after a day, at most 40 a run every 3 hours in the background.
+- Calendar controls 2.14: a warning sign before the name on the appointments of patients missing details (from Missing details' check on that PC; no extra requests).
+- Health check 1.1.40: the Edit page's date of birth, phone and email fields.
+
 ## Statement register as Admin Notes, 14 Nov 2026 (beta)
 - Bank statement 0.2.3 (Carl, 14 Nov 2026): each statement's register entry is now an Admin Note on the Starling Bank profile, not a PDF file. Same details (period, fingerprint, balances, who read it and when, each insurer payment and what became of it); one request reads every entry, and saving one is the Admin Note pop-up only.
 - Core 0.1.45: `UPC.adminNotes` (list, add, update) for organisations and patients.
