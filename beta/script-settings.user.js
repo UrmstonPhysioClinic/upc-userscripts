@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Script settings (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.2
+// @version      0.2.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/script-settings.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/script-settings.user.js
@@ -31,7 +31,7 @@
   if (window.__hxScriptSettings) return;
   window.__hxScriptSettings = true;
 
-  const VERSION = '0.2.2';
+  const VERSION = '0.2.3';
   const U = () => window.UPC;
   const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const STATUS = { running: 'running on this page', next: 'starts on next page', off: 'switched off', unused: 'not used on this page' };
@@ -53,6 +53,11 @@
     .upc-ss .upc-ss-clinic td, .upc-ss .upc-ss-clinic th { vertical-align: middle; overflow-wrap: anywhere; }
     .upc-ss .upc-ss-clinic col.upc-ss-c1 { width: 36%; } .upc-ss .upc-ss-clinic col.upc-ss-c2 { width: 40%; } .upc-ss .upc-ss-clinic col.upc-ss-c3 { width: 24%; }
     .upc-ss .upc-ss-clinic select.form-control { max-width: 100%; }
+    .upc-ss .upc-ss-clinic input.upc-ss-wide { width: 100%; }
+    .upc-ss .upc-ss-clinic textarea.form-control { width: 100%; min-height: 70px; }
+    .upc-ss .upc-ss-clinic .upc-ss-ord { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+    .upc-ss .upc-ss-clinic .upc-ss-ord span { flex: 1; }
+    .upc-ss .upc-ss-clinic .upc-ss-ord .btn { margin: 0; padding: 0 8px; }
     .upc-ss .upc-ss-clinic input.form-control { display: inline-block; width: 96px; margin-right: 6px; }
 
     .upc-ss .upc-ss-clinic .upc-ss-people { display: flex; flex-wrap: wrap; gap: 4px 14px; }
@@ -98,7 +103,10 @@
 
   // ------------------------------------------------------------------ clinic settings (every PC)
 
-  const shown = (def, v) => (Array.isArray(v) ? v.join(', ') : def.unit === '£' ? '£ ' + v : v + (def.unit ? ' ' + def.unit : ''));
+  const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const dayText = (iso) => { const [y, m, d] = String(iso).split('-'); return d + '-' + MON[+m - 1] + '-' + y; };
+  const shown = (def, v) => (def.type === 'dates' ? (v.length ? v.map(dayText).join(', ') : 'none') : Array.isArray(v) ? (v.length ? v.join(', ') : 'none')
+    : def.unit === '£' ? '£ ' + v : v + (def.unit ? ' ' + def.unit : ''));
   // The box for one setting: a number or time, ticks for people, a list for one person.
   // What is in the boxes is kept (draft) while saving, so a refused save keeps the changes on screen.
   function field(r) {
@@ -109,6 +117,22 @@
     if (d.type === 'people') {
       const list = [...new Set((names || []).concat(r.value))];
       return '<div class="upc-ss-people" data-people="' + esc(d.key) + '">' + list.map((n) => '<label><input type="checkbox" value="' + esc(n) + '"' + (r.value.includes(n) ? ' checked' : '') + '> ' + esc(n) + '</label>').join('') + '</div>';
+    }
+    if (d.type === 'weekdays') {
+      return '<div class="upc-ss-people" data-list="' + esc(d.key) + '">' + ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((n) => '<label><input type="checkbox" value="' + n + '"' + (r.value.includes(n) ? ' checked' : '') + '> ' + n + '</label>').join('') + '</div>';
+    }
+    if (d.type === 'dates') {
+      return '<textarea class="form-control" data-lines="' + esc(d.key) + '" placeholder="e.g. 25-Dec-2026, one per line">' + esc((Array.isArray(r.value) ? r.value : []).map((x) => (/^\d{4}-/.test(x) ? dayText(x) : x)).join('\n')) + '</textarea>';
+    }
+    if (d.type === 'words' || d.type === 'text') {
+      return '<input class="form-control upc-ss-wide" type="text" data-key="' + esc(d.key) + '" value="' + esc(Array.isArray(r.value) ? r.value.join(', ') : r.value) + '"' + (d.type === 'words' ? ' placeholder="none"' : '') + '>';
+    }
+    if (d.type === 'order') {
+      const row = (n) => '<div class="upc-ss-ord" data-name="' + esc(n) + '"><span>' + esc(n) + '</span>' +
+        '<button type="button" class="btn btn-outline-primary-light" data-a="up" title="Move up">&uarr;</button><button type="button" class="btn btn-outline-primary-light" data-a="down" title="Move down">&darr;</button></div>';
+      const others = (names || []).filter((n) => !r.value.includes(n));
+      return '<div data-order="' + esc(d.key) + '">' + r.value.map(row).join('') +
+        '<div class="text-muted upc-ss-ord-rest" data-rest>Below here: not in the order (they follow in the order they joined Halaxy).</div>' + others.map(row).join('') + '</div>';
     }
     if (d.type === 'person') {
       const list = [...new Set((names || []).concat([r.value]))];
@@ -130,7 +154,7 @@
       const d = r.def;
       if (d.script !== script) { script = d.script; h += '<tr class="upc-ss-grp"><th colspan="2">' + esc(script) + '</th><th class="text-muted">Default</th></tr>'; }
       h += '<tr><td>' + esc(d.label) + '</td><td>' + (edit ? field(r) : '<strong>' + esc(shown(d, r.value)) + '</strong>') +
-        (r.bad ? ' <span class="upc-err">(saved value ' + esc(r.raw) + (d.type === 'people' || d.type === 'person' ? ' can\'t be used' : ' is outside ' + esc(d.min) + ' to ' + esc(d.max)) + ': default used)</span>' : '') + '</td>' +
+        (r.bad ? ' <span class="upc-err">(saved value ' + esc(r.raw) + (d.min === undefined ? ' can\'t be used' : ' is outside ' + esc(d.min) + ' to ' + esc(d.max)) + ': default used)</span>' : '') + '</td>' +
         '<td class="upc-ss-def text-muted">' + esc(shown(d, d.def)) + '</td></tr>';
     });
     h += '</tbody></table>';
@@ -157,6 +181,13 @@
       const values = {};
       dlg.body.querySelectorAll('input[data-key], select[data-key]').forEach((el) => { values[el.dataset.key] = el.value; });
       dlg.body.querySelectorAll('[data-people]').forEach((el) => { values[el.dataset.people] = [...el.querySelectorAll('input:checked')].map((x) => x.value); });
+      dlg.body.querySelectorAll('[data-list]').forEach((el) => { values[el.dataset.list] = [...el.querySelectorAll('input:checked')].map((x) => x.value); });
+      dlg.body.querySelectorAll('[data-lines]').forEach((el) => { values[el.dataset.lines] = el.value.split(/\n+/).map((x) => x.trim()).filter(Boolean); });
+      dlg.body.querySelectorAll('[data-order]').forEach((el) => {
+        const rows = [...el.children], cut = rows.findIndex((x) => x.hasAttribute('data-rest'));
+        values[el.dataset.order] = rows.slice(0, cut < 0 ? rows.length : cut).filter((x) => x.dataset.name).map((x) => x.dataset.name);
+      });
+      dlg.body.querySelectorAll('input[type=text][data-key]').forEach((el) => { const d = U().settings.def(el.dataset.key); if (d && d.type === 'words') values[el.dataset.key] = el.value.trim() ? el.value : []; });
       draft = values;
       busy = 'Saving...'; renderClinic();
       try { await S.save(values); draft = null; clinicMsg = 'Saved. Every PC uses these within the hour.'; } catch (e) { clinicErr = 'Not saved: ' + (e.message || e); }
@@ -231,6 +262,11 @@
       }
       else if (a.dataset.a === 'back') { view = 'main'; draft = null; render(); }
       else if (a.dataset.a === 'reread' || a.dataset.a === 'save') clinicAction(a.dataset.a);
+      else if (a.dataset.a === 'up' || a.dataset.a === 'down') {
+        const row = a.closest('[data-name]');
+        const to = a.dataset.a === 'up' ? row.previousElementSibling : row.nextElementSibling;   // past the "Below here" line too
+        if (to && (to.dataset.name || to.hasAttribute('data-rest'))) { if (a.dataset.a === 'up') to.before(row); else to.after(row); }
+      }
       else if (a.dataset.a === 'reload') location.reload();
       else if (a.dataset.a === 'check') {
         busy = 'Checking...';

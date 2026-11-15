@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.53
+// @version      0.1.54
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.53';
+  const VERSION = '0.1.54';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -1106,6 +1106,8 @@
       me,
       // { key: { at, value, claim } }; maxAge: use this PC's last read if it is younger than that (ms).
       read,
+      // This PC's last read, without asking Halaxy ({} if none).
+      cached: () => ((st.get('cache', null) || {}).recs || {}),
       // Claims the keys nobody else is checking; returns those this PC now holds.
       async claim(keys) {
         if (!keys.length) return [];
@@ -2162,7 +2164,10 @@
   const CLINIC_EDITORS = ['Carl Healy'];
   const CLINIC_EVERY = 3600e3;
   // { key, script, label, unit, def, min, max, type: 'number' (whole numbers) | 'time' ('HH:MM') | 'people' (names, at
-  // least one) | 'person' (one name) }. Names are Halaxy users' full names, as signed in ('Carl Healy').
+  // least one) | 'person' (one name) | 'order' (names in order, at least one) | 'weekdays' ('Mon'..'Sun', may be none) |
+  // 'dates' ('YYYY-MM-DD', may be none; '25-Dec-2026' and '25/12/2026' are read too) | 'words' (may be none) | 'text' (one
+  // line matching def.re, up to def.max characters) }. Names are Halaxy users' full names, as signed in ('Carl Healy').
+  // An empty list is kept in the note as "none".
   const CARL = 'Carl Healy', WENDY = 'Wendy Pritchard';
   const CLINIC_SETTINGS = [
     { key: 'readyToBill.maxExcess', script: 'Ready to bill', label: 'Highest believable excess (above it, taken as a slip)', unit: '£', def: 500, min: 50, max: 5000 },
@@ -2199,8 +2204,33 @@
     { key: 'bankStatement.taskFor', script: 'Who gets tasks', label: 'Bank statement (payments to check, deposits waiting)', type: 'person', def: CARL },
     { key: 'portalFill.taskFor', script: 'Who gets tasks', label: 'Portal fill stopped', type: 'person', def: CARL },
     { key: 'forecourtLights.staff', script: 'Forecourt lights', label: 'Who can be reminded', type: 'people', def: [CARL, 'Diana Satalova', 'Lottie Harold', 'Roxanna Healy', 'Stephen Sharples', WENDY] },
+    // Stage 3 (Carl, 15 Nov 2026). Forecourt lights: until these are saved here, each PC keeps the schedule it had.
+    { key: 'forecourtLights.days', script: 'Forecourt lights', label: 'Clinic evenings (lights needed)', type: 'weekdays', def: [] },
+    { key: 'forecourtLights.offTime', script: 'Forecourt lights', label: 'Lights off at', type: 'time', def: '20:45', min: '17:00', max: '23:45' },
+    { key: 'forecourtLights.offset', script: 'Forecourt lights', label: 'Lights on before sunset', unit: 'minutes', def: 30, min: 0, max: 120 },
+    { key: 'forecourtLights.noticeTime', script: 'Forecourt lights', label: 'Show the reminder from', type: 'time', def: '09:00', min: '06:00', max: '20:00' },
+    { key: 'forecourtLights.skip', script: 'Forecourt lights', label: 'Dates to skip (bank holidays, closures)', type: 'dates', def: [] },
+    { key: 'portalFill.payee', script: 'Portal fill (AXA payee details)', label: 'Name of payee', type: 'text', def: 'Urmston Physio Clinic', max: 60, re: /^[A-Za-z0-9][A-Za-z0-9 &'.,()-]*$/ },
+    { key: 'portalFill.providerCode', script: 'Portal fill (AXA payee details)', label: 'AXA provider code', type: 'text', def: 'ZZ03779', max: 20, re: /^[A-Za-z0-9]+$/ },
+    { key: 'portalFill.email', script: 'Portal fill (AXA payee details)', label: 'Payee email address (for AXA\'s queries)', type: 'text', def: 'admin@urmstonphysioclinic.com', max: 80, re: /^[^\s@,]+@[^\s@,]+\.[A-Za-z]{2,}$/ },
+    { key: 'portalFill.phone', script: 'Portal fill (AXA payee details)', label: 'Payee phone number', type: 'text', def: '01617484100', max: 20, re: /^\+?[0-9 ()]{6,20}$/ },
+    { key: 'calendar.order', script: 'Calendar', label: 'Column order for All practitioners (anyone else follows)', type: 'order', def: ['Roxanna Healy', CARL, 'Diana Satalova', 'Stephen Sharples'] },
+    { key: 'calendar.hideProfessions', script: 'Calendar', label: 'Professions left out of All practitioners', type: 'words', def: ['Administrator'] },
   ];
   const NAME_RE = /^[A-Za-z][A-Za-z' .-]{0,39}$/;
+  const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // A typed date ('2026-12-25', '25-Dec-2026', '25/12/2026') as 'YYYY-MM-DD', or null.
+  function isoDay(text) {
+    const t = String(text || '').trim();
+    let y, m, d, x;
+    if ((x = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(t))) [y, m, d] = [+x[1], +x[2], +x[3]];
+    else if ((x = /^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/.exec(t))) [d, m, y] = [+x[1], +x[2], +x[3]];
+    else if ((x = /^(\d{1,2})[\s-]+([A-Za-z]{3})[A-Za-z]*[\s-]+(\d{4})$/.exec(t))) { m = MONTH_NAMES.findIndex((n) => n.toLowerCase() === x[2].toLowerCase()) + 1; [d, y] = [+x[1], +x[3]]; }
+    else return null;
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    return m >= 1 && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d ? dt.toISOString().slice(0, 10) : null;
+  }
   const settings = {
     defs: CLINIC_SETTINGS,
     editors: CLINIC_EDITORS,
@@ -2208,6 +2238,28 @@
     // The value as kept in the note, checked: a whole number within limits, or a time HH:MM within limits; else null.
     check(def, raw) {
       if (raw === null || raw === undefined) return null;
+      if (['order', 'weekdays', 'dates', 'words'].includes(def.type)) {
+        const items = (Array.isArray(raw) ? raw : /^\s*none\s*$/i.test(String(raw)) ? [] : String(raw).split(/[,\n]/)).map((x) => String(x).replace(/\s+/g, ' ').trim()).filter(Boolean);
+        let out;
+        if (def.type === 'weekdays') {
+          const idx = items.map((x) => WEEKDAYS.findIndex((w) => w.toLowerCase() === x.slice(0, 3).toLowerCase()));
+          if (idx.some((i) => i < 0)) return null;
+          out = [...new Set(idx)].sort((a, b) => a - b).map((i) => WEEKDAYS[i]);
+        } else if (def.type === 'dates') {
+          out = items.map(isoDay);
+          if (out.some((x) => !x) || out.length > 100) return null;
+          out = [...new Set(out)].sort();
+        } else {
+          out = [...new Set(items)];
+          const re = def.type === 'order' ? NAME_RE : /^[A-Za-z][A-Za-z &'-]{0,39}$/;
+          if (!out.every((x) => re.test(x)) || out.length > 20 || (def.type === 'order' && !out.length)) return null;
+        }
+        return out;
+      }
+      if (def.type === 'text') {
+        const t = String(raw).replace(/\s+/g, ' ').trim();
+        return t && t.length <= def.max && def.re.test(t) ? t : null;
+      }
       if (def.type === 'people' || def.type === 'person') {
         const list = [...new Set((Array.isArray(raw) ? raw : String(raw).split(',')).map((x) => String(x).replace(/\s+/g, ' ').trim()).filter(Boolean))];
         if (!list.length || list.length > (def.type === 'person' ? 1 : 20) || !list.every((n) => NAME_RE.test(n))) return null;
@@ -2226,7 +2278,10 @@
     },
     def: (key) => CLINIC_SETTINGS.find((d) => d.key === key),
     same: (a, b) => (Array.isArray(a) || Array.isArray(b) ? String(a) === String(b) : a === b),
-    text: (v) => (Array.isArray(v) ? v.join(', ') : String(v)),
+    text: (v) => (Array.isArray(v) ? (v.length ? v.join(', ') : 'none') : String(v)),
+    // True when the clinic has saved a usable value (not just the default), for scripts that fall back to their own.
+    isSet(key) { const r = settings.all().find((x) => x.def.key === key); return !!r && r.raw !== null && !r.bad; },
+    isoDay,
     // The value every script uses: the clinic's, or the default.
     get(key) {
       const def = settings.def(key);
@@ -2282,12 +2337,14 @@
       if (!settings.canEdit()) throw new UPCError('Only ' + CLINIC_EDITORS.join(' or ') + ' can change the clinic settings.');
       const clean = {};
       for (const def of CLINIC_SETTINGS) {
-        const raw = values[def.key];
+        let raw = values[def.key];
+        if (raw === undefined) { const cur = settings.all().find((x) => x.def.key === def.key); if (cur && cur.raw !== null && !cur.bad) raw = cur.value; }   // not given: kept as it is
         if (raw === undefined || raw === null || (!Array.isArray(raw) && String(raw).trim() === '')) continue;   // empty: the default (no ticks at all is refused below)
         const v = settings.check(def, raw);
         if (v === null) {
-          throw new UPCError(def.script + ': "' + def.label + '" must be ' + (def.type === 'time' ? 'a time from ' + def.min + ' to ' + def.max : def.type === 'people' ? 'at least one person'
-            : def.type === 'person' ? 'one person' : 'a whole number from ' + def.min + ' to ' + def.max) + '.');
+          throw new UPCError(def.script + ': "' + def.label + '" must be ' + (def.type === 'time' ? 'a time from ' + def.min + ' to ' + def.max : def.type === 'people' || def.type === 'order' ? 'at least one person'
+            : def.type === 'person' ? 'one person' : def.type === 'dates' ? 'dates such as 25-Dec-2026, one per line' : def.type === 'weekdays' ? 'days of the week'
+              : def.type === 'words' ? 'words separated by commas' : def.type === 'text' ? 'filled in as expected (up to ' + def.max + ' characters)' : 'a whole number from ' + def.min + ' to ' + def.max) + '.');
         }
         if (!settings.same(v, def.def)) clean[def.key] = v;
       }
@@ -2304,7 +2361,7 @@
     async names() {
       const out = new Set();
       try { (await http.json('/lookup/practitioner?clinic=&include_id=&type=') || []).forEach((x) => { const n = clean(x.name); if (NAME_RE.test(n)) out.add(n); }); } catch (e) { /* the lists below still apply */ }
-      settings.all().forEach((r) => { if (r.def.type === 'people' || r.def.type === 'person') [].concat(r.def.def, r.value).forEach((n) => out.add(n)); });
+      settings.all().forEach((r) => { if (['people', 'person', 'order'].includes(r.def.type)) [].concat(r.def.def, r.value).forEach((n) => out.add(n)); });
       const me = user.name([]);
       if (me && NAME_RE.test(me)) out.add(me);
       return [...out].sort((a, b) => a.localeCompare(b));
