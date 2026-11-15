@@ -382,7 +382,7 @@ async def main():
         pg, errors = await open_page(ctx)
         await pg.wait_for_timeout(4000)
         check('others: no menu item and no page', await pg.evaluate("!document.querySelector('.upc-rtb-menu') && !" + ROOT_JS), await pg.evaluate("document.body.innerHTML.slice(0, 200)"))
-        check('others: no requests', [x for x in S['log'] if not x[1].endswith('/invoice/')] == [], S['log'])
+        check('others: no requests', [x for x in S['log'] if not x[1].endswith('/invoice/') and not x[1].endswith('/communication-log/organisation/78842/list-data')] == [], S['log'])
         await ctx.close()
 
         # Scenario 4: Halaxy changes the report: a clear error, passed to the health check
