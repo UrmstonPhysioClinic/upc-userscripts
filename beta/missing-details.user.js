@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Missing details (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.1
+// @version      0.2.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/missing-details.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/missing-details.user.js
@@ -41,12 +41,14 @@
   if (window.__hxMissingDetails) return;
   window.__hxMissingDetails = true;
 
-  const VERSION = '0.2.1';
+  const VERSION = '0.2.2';
   const ROUTE = 'upc-missing-details';
   const MENU_CLS = 'upc-md-menu';
   const ADMINS = ['Carl Healy', 'Wendy Pritchard'];   // who sees the page (Carl, 15 Nov 2026: Carl and Wendy)
   const DAY = 86400e3;
-  const AHEAD_DAYS = 14, BACK_DAYS = 30;    // Carl, 15 Nov 2026
+  // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
+  const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
+  const AHEAD_DAYS = () => rule('missingDetails.aheadDays', 14), BACK_DAYS = () => rule('missingDetails.backDays', 30);    // Carl, 15 Nov 2026
   const KEEP_COMPLETE = 30 * DAY, KEEP_GAPS = DAY, RECHECK_GAPS = 10 * 60e3;
   const SWEEP_EVERY = 3 * 3600e3, PER_RUN = 40;
   const SKIP_STATUS = /^(deleted|archived|deceased|off)$/i;
@@ -201,14 +203,14 @@
     say = say || (() => {});
     const now = Date.now(), day0 = today();
     say('Reading the calendar...');
-    const events = await U().calendar.appointments(day0 - BACK_DAYS * DAY, day0 + (AHEAD_DAYS + 1) * DAY);
+    const events = await U().calendar.appointments(day0 - BACK_DAYS() * DAY, day0 + (AHEAD_DAYS() + 1) * DAY);
     const people = new Map();   // id -> { next, nextPrac, lastSeen, name }
     events.forEach((e) => {
       if (!e.linkPaGId || (e.type && e.type !== 'appointment')) return;
       const id = String(e.linkPaGId), t = startMs(e);
       const p = people.get(id) || { id, next: null, nextPrac: null, lastSeen: null, name: clean(U().htmlDoc(e.title || '').body.textContent).replace(/^[\s*★⚠]+/, '') };
-      if (t >= now && t <= day0 + (AHEAD_DAYS + 1) * DAY && live(e) && (p.next === null || t < p.next)) { p.next = t; p.nextPrac = e.practitionerID; }
-      if (t < now && t >= day0 - BACK_DAYS * DAY && !e.appointmentStatus && (p.lastSeen === null || t > p.lastSeen)) p.lastSeen = t;
+      if (t >= now && t <= day0 + (AHEAD_DAYS() + 1) * DAY && live(e) && (p.next === null || t < p.next)) { p.next = t; p.nextPrac = e.practitionerID; }
+      if (t < now && t >= day0 - BACK_DAYS() * DAY && !e.appointmentStatus && (p.lastSeen === null || t > p.lastSeen)) p.lastSeen = t;
       people.set(id, p);
     });
     const list = [...people.values()].filter((p) => p.next !== null || p.lastSeen !== null);
@@ -328,9 +330,9 @@
       const need = r.rows.filter((x) => x.missing.length), email = r.rows.filter((x) => !x.missing.length);
       const table = (rows, off) => '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th>Patient</th><th>Missing</th><th>Next appointment</th><th></th></tr></thead><tbody>' + rows.map((x) => row(x, off)).join('') + '</tbody></table>';
       h += '<div class="card"><div class="card-header"><h2>Missing mandatory details (' + need.length + ')</h2></div><div class="card-body p-0">' +
-        (need.length ? table(need, false) : '<p class="text-muted m-3">Everyone booked in the next ' + AHEAD_DAYS + ' days or seen in the last ' + BACK_DAYS + ' has their mandatory details.</p>') + '</div></div>';
+        (need.length ? table(need, false) : '<p class="text-muted m-3">Everyone booked in the next ' + AHEAD_DAYS() + ' days or seen in the last ' + BACK_DAYS() + ' has their mandatory details.</p>') + '</div></div>';
       if (email.length) h += '<div class="card"><div class="card-header"><h2>No email address (' + email.length + ')</h2></div><div class="card-body p-0">' + table(email, true) + '</div></div>';
-      h += '<p class="text-muted">Patients booked in the next ' + AHEAD_DAYS + ' days or seen in the last ' + BACK_DAYS + ' days. Mandatory: first and last name, date of birth, an address with a postcode, and a phone number. ' +
+      h += '<p class="text-muted">Patients booked in the next ' + AHEAD_DAYS() + ' days or seen in the last ' + BACK_DAYS() + ' days. Mandatory: first and last name, date of birth, an address with a postcode, and a phone number. ' +
         'Everyone who opens a patient with gaps sees a banner, and their appointments are marked in the calendar.' + (r.unchecked ? ' ' + r.unchecked + ' still to check (checked a few at a time).' : '') + '</p>';
     }
     h += '<div class="text-muted upc-version">Missing details ' + VERSION + '</div></div>';

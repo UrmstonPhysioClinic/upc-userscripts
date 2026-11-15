@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Bank statement (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.3
+// @version      0.2.4
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
@@ -50,7 +50,7 @@
   if (window.__hxBankStatement) return;
   window.__hxBankStatement = true;
 
-  const VERSION = '0.2.3';
+  const VERSION = '0.2.4';
   const ROUTE = 'upc-bank-statement';
   const MENU_CLS = 'upc-bank-menu';
   const ALLOWED = ['Carl Healy'];
@@ -70,7 +70,9 @@
   // only fills in its register: a line not found as recorded is shown to check, never added as a deposit by Record all
   // (Carl, 13 Nov 2026: going back over old statements must not count money twice).
   const CHANGEOVER = '2026-11-01';
-  const LINGER_DAYS = 10;   // a deposit with no remittance this long after it reached the bank gets a task (Carl, 13 Nov 2026)
+  // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
+  const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
+  const LINGER_DAYS = () => rule('bankStatement.lingerDays', 10);   // a deposit with no remittance this long after it reached the bank gets a task (Carl, 13 Nov 2026)
   const REGISTER_ORG = '78812';   // the "Starling Bank (statements)" profile, which keeps a register of each statement read
   const PATIENT_METHODS = /^(card|online payment|discount|stripe|gift card|debt written off|cash)\b/i;   // not how insurers pay
   const PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/';
@@ -633,8 +635,8 @@
   // before the 15th, the month before that. Checked at most once a day, in the visible tab, shared across tabs.
   const KEY = 'upc-bank:';
   const store = { get: (k, d) => U().storage(KEY).get(k, d), set: (k, v) => U().storage(KEY).set(k, v) };
-  const DUE_FROM_DAY = 15;
-  const monthDue = (now) => { const d = new Date(now); const back = d.getDate() >= DUE_FROM_DAY ? 1 : 2; const m = new Date(d.getFullYear(), d.getMonth() - back, 1); return m.getFullYear() + '-' + String(m.getMonth() + 1).padStart(2, '0'); };
+  const DUE_FROM_DAY = () => rule('bankStatement.dueFromDay', 15);
+  const monthDue = (now) => { const d = new Date(now); const back = d.getDate() >= DUE_FROM_DAY() ? 1 : 2; const m = new Date(d.getFullYear(), d.getMonth() - back, 1); return m.getFullYear() + '-' + String(m.getMonth() + 1).padStart(2, '0'); };
   const monthName = (ym) => new Date(+ym.slice(0, 4), +ym.slice(5) - 1, 1).toLocaleString('en-GB', { month: 'long', year: 'numeric' });
   // A register covers a month when its statement starts by the month's end and runs to its last week or later.
   const covers = (sp, ym) => {
@@ -887,7 +889,7 @@
     state.unmount = U().ui.mountPage('Bank statement', root, MENU_CLS);
     render();
     // Deposits still not applied 10 days on: a task on the insurer's profile (once a day).
-    U().deposits.lingering({ days: LINGER_DAYS, assignee: TASK_FOR, by: 'Bank statement' }).catch(() => {});
+    U().deposits.lingering({ days: LINGER_DAYS(), assignee: TASK_FOR, by: 'Bank statement' }).catch(() => {});
   }
   function unmount() {
     if (!state.unmount) return;

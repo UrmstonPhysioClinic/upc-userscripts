@@ -163,7 +163,7 @@ async def main():
         await pg.click('[data-upc-dialog="upc-forecourt-settings"] [data-a=save]')
         s = await pg.evaluate("GM_getValue('settings', {})")
         check('settings saved', s['who'] == ['Wendy Pritchard'] and s['days'][3] and s['days'][1] and s['skip'] == ['2026-12-25', '2026-12-28', '2027-01-01'] and s['timerOn'] == '15:30' and s['enabled'], s)
-        check('no requests to Halaxy beyond the page itself', all(u.startswith('https://eu.halaxy.com/a/pr/555/calendar') for u in REQS), REQS)
+        check('no requests to Halaxy beyond the page itself (and core\'s hourly clinic settings read)', all(u.startswith('https://eu.halaxy.com/a/pr/555/calendar') or '/communication-log/organisation/78842/list-data' in u for u in REQS), REQS)
         check('no page errors', not errors, errors)
         await ctx.close()
         await browser.close()

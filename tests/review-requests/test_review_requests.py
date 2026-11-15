@@ -229,7 +229,7 @@ async def main():
         check('a survey from someone with the same name but another date of birth is ignored', 'Patient C' not in by, sorted(by))
         check('discharged 2 days ago: asked straight away', by.get('Patient N', {}).get('off') is False and 'discharged' in by['Patient N']['why'], by.get('Patient N'))
         foot = await pg.evaluate(ROOT_JS + ".querySelector('.upc-rr > p.text-muted').textContent")
-        check('left out and counted: asked, labelled/under 16/owing, cancelled, no good signs', "Left out: 1 already sent a review request, 3 labelled No review request, under 16 or owing money, 1 whose last appointment was cancelled or missed, 1 seen in the last 2 weeks whose notes don't say they've finished, and 3 with no good-outcome signs" in foot, foot)
+        check('left out and counted: asked, labelled/under 16/owing, cancelled, no good signs', "Left out: 1 already sent a review request, 3 labelled No review request, under 16 or owing money, 1 whose last appointment was cancelled or missed, 1 seen in the last 14 days whose notes don't say they've finished, and 3 with no good-outcome signs" in foot, foot)
         check('menu count', await pg.evaluate("(document.querySelector('a.upc-rr-menu .upc-rr-badge') || {}).textContent") == '3')
         menu = await pg.evaluate("[...document.querySelectorAll('#mainMenu a.mainmenu-sublink')].map(a => a.getAttribute('href'))")
         check('menu item under Patients, over the Patient List', '/a/pr/555/patient/#upc-review-requests' in menu, menu)
@@ -312,7 +312,7 @@ async def main():
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/#upc-review-requests')
         await pg.wait_for_timeout(6000)
         check('others: no menu item, no page, no requests', await pg.evaluate("!document.querySelector('.upc-rr-menu') && !" + ROOT_JS)
-              and [x for x in S['log'] if not re.search(r'/patient/?$', x[1])] == [], S['log'])
+              and [x for x in S['log'] if not re.search(r'/patient/?$|/communication-log/organisation/78842/list-data$', x[1])] == [], S['log'])   # core's hourly clinic settings read allowed
         await ctx.close()
 
         # The phrase reader

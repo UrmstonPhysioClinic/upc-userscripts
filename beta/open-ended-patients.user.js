@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Open-ended patients (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.7
+// @version      0.1.8
 // @upc-was      check-ins.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/open-ended-patients.user.js
@@ -30,13 +30,15 @@
   if (window.__hxCheckIns) return;
   window.__hxCheckIns = true;
 
-  const VERSION = '0.1.7';
+  const VERSION = '0.1.8';
   const ROUTE = 'upc-check-ins';
   const MENU_CLS = 'upc-ci-menu';
   const ALLOWED = ['Carl Healy'];
   const DAY = 86400e3;
-  const AFTER_DAYS = 21;       // Carl, 11 Nov 2026: 3 weeks after the last visit
-  const UP_TO_DAYS = 91;       // not further back than about 3 months
+  // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
+  const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
+  const AFTER_DAYS = () => rule('openEnded.afterDays', 21);   // Carl, 11 Nov 2026: 3 weeks after the last visit
+  const UP_TO_DAYS = () => rule('openEnded.upToDays', 91);    // not further back than about 3 months
   const REFRESH_EVERY = 12 * 3600e3, PAGE_FRESH = 30 * 60e3, KEEP = 7 * DAY;
   const KEY = 'upc-ci:';
   const RULES = 2;   // bump when the wording list changes, so patients are read again
@@ -72,7 +74,7 @@
     say = say || (() => {});
     const now = Date.now(), day0 = today();
     const cache = store.get('cache', {});
-    const events = await calendar(day0 - (UP_TO_DAYS + 30) * DAY, day0 + 120 * DAY, say);
+    const events = await calendar(day0 - (UP_TO_DAYS() + 30) * DAY, day0 + 120 * DAY, say);
     const startMs = (e) => (typeof e.start === 'number' ? e.start * 1000 : Date.parse(e.start));
     const byPatient = new Map();
     events.forEach((e) => {
@@ -88,8 +90,8 @@
       const booked = evs.some((e) => startMs(e) >= now && !/cancel|reject|declin|did-not-attend/i.test(e.appointmentStatus || ''));
       if (!attended.length || booked) continue;
       const lastSeen = startMs(attended[0]);
-      if (lastSeen < now - UP_TO_DAYS * DAY) continue;
-      if (lastSeen > now - AFTER_DAYS * DAY) { counts.recent++; continue; }
+      if (lastSeen < now - UP_TO_DAYS() * DAY) continue;
+      if (lastSeen > now - AFTER_DAYS() * DAY) { counts.recent++; continue; }
       if (past[0] && past[0].appointmentStatus && startMs(past[0]) > lastSeen) { counts.ended++; continue; }   // last one cancelled or missed
       const name = U().clean(U().htmlDoc(attended[0].title || '').body.textContent).replace(/^[\s*★]+/, '') || 'Patient';
       candidates.push({ id, name, lastSeen });
@@ -194,8 +196,8 @@
           : '<p class="text-muted m-3">Nobody left open-ended is due a check-in.</p>') + '</div></div>';
       if (bad.length) h += '<p class="upc-err">Notes not read for ' + bad.map((x) => esc(x.name) + ' (' + esc(x.error) + ')').join(', ') + '.</p>';
       const c = r.counts || {};
-      h += '<p class="text-muted">Patients last seen ' + AFTER_DAYS + ' days to 3 months ago, with nothing booked, whose latest note leaves treatment open-ended ' +
-        '("open return", "book again if needed", "see how things go", "come back if needed" and similar). Left out: ' + (c.recent || 0) + ' seen in the last ' + AFTER_DAYS + ' days, ' +
+      h += '<p class="text-muted">Patients last seen ' + AFTER_DAYS() + ' to ' + UP_TO_DAYS() + ' days ago, with nothing booked, whose latest note leaves treatment open-ended ' +
+        '("open return", "book again if needed", "see how things go", "come back if needed" and similar). Left out: ' + (c.recent || 0) + ' seen in the last ' + AFTER_DAYS() + ' days, ' +
         (c.ended || 0) + ' whose last appointment was cancelled or missed, ' + (c.none || 0) + ' whose last note doesn\'t leave it open. Nothing is sent from here yet.</p>';
     }
     h += '<div class="text-muted upc-version">Open-ended patients ' + VERSION + '</div></div>';

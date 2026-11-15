@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.49
+// @version      0.1.50
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.49';
+  const VERSION = '0.1.50';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -2136,8 +2136,132 @@
     openEnded(text) { return wording.find(text, wording.OPEN_ENDED); },
   };
 
+  // ------------------------------------------------------------------ clinic settings
+
+  // Settings shared by every PC (Carl, 15 Nov 2026): one Admin Note, "UPC clinic settings", on UPC scripts (settings),
+  // one "key = value" line each, changed only through Script settings > Clinic settings by CLINIC_EDITORS. Each PC reads it
+  // about hourly (visible tab, shared across tabs) and keeps a copy; a value missing, unreadable or outside its limits
+  // falls back to its default, and the health check lists it.
+  const CLINIC_HEAD = 'UPC clinic settings';
+  const CLINIC_INFO = 'Changed in Script settings > Clinic settings. Please do not edit here: a line that is changed by hand is ignored.';
+  const CLINIC_EDITORS = ['Carl Healy'];
+  const CLINIC_EVERY = 3600e3;
+  // { key, script, label, unit, def, min, max, type: 'number' (whole numbers) | 'time' ('HH:MM') }
+  const CLINIC_SETTINGS = [
+    { key: 'readyToBill.maxExcess', script: 'Ready to bill', label: 'Highest believable excess (above it, taken as a slip)', unit: '£', def: 500, min: 50, max: 5000 },
+    { key: 'readyToBill.rollingDays', script: 'Ready to bill', label: 'Bill once the oldest unbilled fee is', unit: 'days old', def: 28, min: 7, max: 90 },
+    { key: 'readyToBill.soonDays', script: 'Ready to bill', label: 'Unless the next appointment is within', unit: 'days', def: 7, min: 0, max: 28 },
+    { key: 'readyToBill.quietDays', script: 'Ready to bill', label: 'Bill when nothing is booked and no visit for', unit: 'days', def: 14, min: 3, max: 90 },
+    { key: 'readyToBill.minFees', script: 'Ready to bill', label: 'With no excess known, hold a new claim until there are', unit: 'fees', def: 2, min: 1, max: 10 },
+    { key: 'readyToBill.oldMonths', script: 'Ready to bill', label: 'Bill fees older than', unit: 'months', def: 3, min: 1, max: 12 },
+    { key: 'readyToBill.windowMonths', script: 'Ready to bill', label: 'Leave out fees older than', unit: 'months', def: 6, min: 2, max: 24 },
+    { key: 'insurerPayments.overdueDays', script: 'Insurer payments due', label: 'An insurer invoice is overdue after', unit: 'days', def: 30, min: 7, max: 180 },
+    { key: 'openEnded.afterDays', script: 'Open-ended patients', label: 'List patients last seen at least', unit: 'days ago', def: 21, min: 7, max: 90 },
+    { key: 'openEnded.upToDays', script: 'Open-ended patients', label: 'and at most', unit: 'days ago', def: 91, min: 30, max: 365 },
+    { key: 'patientStatuses.gapDays', script: 'Patient statuses', label: 'Discharged when nothing is booked and no appointment for', unit: 'days', def: 42, min: 14, max: 365 },
+    { key: 'patientStatuses.maxChanges', script: 'Patient statuses', label: 'Most status changes in one run', unit: 'changes', def: 15, min: 1, max: 50 },
+    { key: 'reviewRequests.sendAt', script: 'Review requests', label: 'Send at (weekdays)', unit: '', def: '10:30', min: '07:00', max: '20:00', type: 'time' },
+    { key: 'reviewRequests.quietDays', script: 'Review requests', label: 'Ask once there has been no visit for', unit: 'days', def: 14, min: 1, max: 60 },
+    { key: 'reviewRequests.maxDays', script: 'Review requests', label: 'Stop asking after', unit: 'days since the last visit', def: 28, min: 7, max: 120 },
+    { key: 'reviewRequests.minAge', script: 'Review requests', label: 'Leave out patients under', unit: 'years old', def: 16, min: 0, max: 25 },
+    { key: 'missingDetails.aheadDays', script: 'Missing details', label: 'Check patients booked in the next', unit: 'days', def: 14, min: 1, max: 60 },
+    { key: 'missingDetails.backDays', script: 'Missing details', label: 'and those seen in the last', unit: 'days', def: 30, min: 0, max: 180 },
+    { key: 'bankStatement.lingerDays', script: 'Bank statement', label: 'Task for a deposit with no remittance after', unit: 'days', def: 10, min: 3, max: 60 },
+    { key: 'bankStatement.dueFromDay', script: 'Bank statement', label: 'Remind about last month\'s statement from day', unit: 'of the month', def: 15, min: 1, max: 28 },
+  ];
+  const settings = {
+    defs: CLINIC_SETTINGS,
+    editors: CLINIC_EDITORS,
+    store: storage('upc-settings:'),
+    // The value as kept in the note, checked: a whole number within limits, or a time HH:MM within limits; else null.
+    check(def, raw) {
+      const s = String(raw === null || raw === undefined ? '' : raw).trim();
+      if (def.type === 'time') {
+        const m = /^(\d{1,2}):(\d\d)$/.exec(s);
+        if (!m || +m[1] > 23 || +m[2] > 59) return null;
+        const t = String(m[1]).padStart(2, '0') + ':' + m[2];
+        return t >= def.min && t <= def.max ? t : null;
+      }
+      if (!/^\d+$/.test(s)) return null;
+      const n = Number(s);
+      return n >= def.min && n <= def.max ? n : null;
+    },
+    def: (key) => CLINIC_SETTINGS.find((d) => d.key === key),
+    // The value every script uses: the clinic's, or the default.
+    get(key) {
+      const def = settings.def(key);
+      if (!def) throw new UPCError('No clinic setting called ' + key + '.');
+      const v = settings.check(def, (settings.store.get('values', {}) || {})[key]);
+      return v === null ? def.def : v;
+    },
+    // [{ def, value, raw, bad }] for the Script settings page and the health check.
+    all() {
+      const vals = settings.store.get('values', {}) || {};
+      return CLINIC_SETTINGS.map((def) => {
+        const raw = Object.prototype.hasOwnProperty.call(vals, def.key) ? vals[def.key] : null;
+        const v = settings.check(def, raw);
+        return { def, raw, value: v === null ? def.def : v, bad: raw !== null && v === null };
+      });
+    },
+    // Lines the scripts couldn't read (not "key = value" or not a known key), from the last read.
+    problems: () => settings.store.get('problems', []),
+    readAt: () => settings.store.get('at', 0),
+    canEdit: () => user.is(CLINIC_EDITORS),
+    parse(text) {
+      const lines = String(text || '').split('\n');
+      const values = {}, problems = [];
+      lines.slice(1).forEach((l, i) => {
+        if (i === 0 && l === CLINIC_INFO) return;
+        const m = /^([A-Za-z]+\.[A-Za-z]+) = (.{1,40})$/.exec(l);
+        if (!m || !settings.def(m[1])) { problems.push(l.slice(0, 60)); return; }
+        values[m[1]] = m[2];
+      });
+      return { values, problems };
+    },
+    format(values) {
+      return [CLINIC_HEAD, CLINIC_INFO].concat(CLINIC_SETTINGS.filter((d) => values[d.key] !== undefined && values[d.key] !== null && values[d.key] !== '')
+        .map((d) => d.key + ' = ' + values[d.key])).join('\n');
+    },
+    note: (notes) => notes.filter((n) => n.text.split('\n')[0] === CLINIC_HEAD).sort((a, b) => Number(a.id) - Number(b.id))[0] || null,
+    // Reads the note (force: now; otherwise only when an hour has passed, in the visible tab, Halaxy not busy).
+    async refresh(force) {
+      if (!force && (document.visibilityState !== 'visible' || http.pausedFor() > 0 || !background.due(settings.store.get('tried', 0), CLINIC_EVERY))) return false;
+      settings.store.set('tried', Date.now());
+      const note = settings.note(await adminNotes.list('organisation', SHARED_ORG));
+      const got = note ? settings.parse(note.text) : { values: {}, problems: [] };
+      settings.store.set('values', got.values);
+      settings.store.set('problems', got.problems);
+      settings.store.set('at', Date.now());
+      try { document.dispatchEvent(new CustomEvent('upc-settings-changed')); } catch (e) { /* ignore */ }
+      return true;
+    },
+    // Saves the values ({ key: value }; empty means the default) to the note, for every PC. Only CLINIC_EDITORS.
+    async save(values) {
+      if (!settings.canEdit()) throw new UPCError('Only ' + CLINIC_EDITORS.join(' or ') + ' can change the clinic settings.');
+      const clean = {};
+      for (const def of CLINIC_SETTINGS) {
+        const raw = values[def.key];
+        if (raw === undefined || raw === null || String(raw).trim() === '') continue;
+        const v = settings.check(def, raw);
+        if (v === null) throw new UPCError(def.script + ': "' + def.label + '" must be ' + (def.type === 'time' ? 'a time from ' + def.min + ' to ' + def.max : 'a whole number from ' + def.min + ' to ' + def.max) + '.');
+        if (v !== def.def) clean[def.key] = v;
+      }
+      const text = settings.format(clean);
+      const note = settings.note(await adminNotes.list('organisation', SHARED_ORG));
+      if (!note) await adminNotes.add('organisation', SHARED_ORG, text);
+      else if (note.text !== text) await adminNotes.update('organisation', SHARED_ORG, note.id, text);
+      await settings.refresh(true);
+      return clean;
+    },
+  };
+
+  // A read soon after the page opens, then about hourly (settings.refresh skips when not due).
+  setTimeout(() => { settings.refresh().catch(() => {}); }, 6000);
+  setInterval(() => { settings.refresh().catch(() => {}); }, 10 * 60e3);
+  window.addEventListener('storage', (e) => { if (e.key === 'upc-settings:values') { try { document.dispatchEvent(new CustomEvent('upc-settings-changed')); } catch (x) { /* ignore */ } } });
+
   window.UPC = Object.freeze({
-    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, forms, notes, followUps, patient, tasks, surveys, reports, dayLabel, parseDay, rebate, files, deposits, orgFiles, adminNotes, shared, load, ui,
+    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, forms, notes, followUps, patient, tasks, surveys, reports, dayLabel, parseDay, rebate, files, deposits, orgFiles, adminNotes, shared, settings, load, ui,
     user, storage, calendar, wording, background,
   });
 })();

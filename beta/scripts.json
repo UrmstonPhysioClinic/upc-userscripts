@@ -3,7 +3,7 @@
     {
       "file": "health-check.user.js",
       "name": "UPC System: Health check (beta)",
-      "version": "1.1.43"
+      "version": "1.1.44"
     },
     {
       "file": "block-reporting.user.js",
@@ -14,7 +14,7 @@
     {
       "file": "core.user.js",
       "name": "UPC System: Core library (beta)",
-      "version": "0.1.49"
+      "version": "0.1.50"
     },
     {
       "file": "alerts.user.js",
@@ -24,7 +24,7 @@
     {
       "file": "bank-statement.user.js",
       "name": "UPC Billing: Bank statement (beta)",
-      "version": "0.2.3"
+      "version": "0.2.4"
     },
     {
       "file": "branding.user.js",
@@ -56,7 +56,7 @@
     {
       "file": "insurer-payments-due.user.js",
       "name": "UPC Billing: Insurer payments due (beta)",
-      "version": "0.1.6",
+      "version": "0.1.7",
       "was": "funder-chaser.user.js"
     },
     {
@@ -68,7 +68,7 @@
     {
       "file": "missing-details.user.js",
       "name": "UPC Patients: Missing details (beta)",
-      "version": "0.2.1"
+      "version": "0.2.2"
     },
     {
       "file": "mobile-layout.user.js",
@@ -79,7 +79,7 @@
     {
       "file": "open-ended-patients.user.js",
       "name": "UPC Patients: Open-ended patients (beta)",
-      "version": "0.1.7",
+      "version": "0.1.8",
       "was": "check-ins.user.js"
     },
     {
@@ -90,7 +90,7 @@
     {
       "file": "patient-statuses.user.js",
       "name": "UPC Patients: Patient statuses (beta)",
-      "version": "0.2.5"
+      "version": "0.2.6"
     },
     {
       "file": "portal-fill.user.js",
@@ -100,7 +100,7 @@
     {
       "file": "ready-to-bill.user.js",
       "name": "UPC Billing: Ready to bill (beta)",
-      "version": "0.4.2"
+      "version": "0.4.3"
     },
     {
       "file": "rebate-sync.user.js",
@@ -115,12 +115,12 @@
     {
       "file": "review-requests.user.js",
       "name": "UPC Patients: Review requests (beta)",
-      "version": "0.5.4"
+      "version": "0.5.5"
     },
     {
       "file": "script-settings.user.js",
       "name": "UPC System: Script settings (beta)",
-      "version": "0.1.1"
+      "version": "0.2.0"
     },
     {
       "file": "task-stamps.user.js",
