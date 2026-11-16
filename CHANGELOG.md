@@ -1,5 +1,9 @@
 # Changelog
 
+## Schedule excess 0.1.2, 16 Nov 2026 (beta)
+- The payment is checked on the invoice afterwards ("Scheduled (23-Nov-2026 22:57)" in place of "Available"; the pop-up's own total stays at 0, so 0.1.1 reported a scheduled payment as not scheduled, live 16 Nov 2026). A payment already scheduled is found the same way.
+- Scheduled exactly a week from when the button is pressed, to the minute (Halaxy fills a time an hour ahead).
+
 ## Schedule excess 0.1.1, 16 Nov 2026 (beta)
 - Charge excess renamed Schedule excess (Carl), and the button sits after Process Now and its drop-down. Halaxy's Process Now and Mark as Paid carry their address in data-modal-href, not href (live, 16 Nov 2026).
 - Health check 1.1.51: checks #btn-email-invoice itself (it is the Send link) and Process Now, found either way.

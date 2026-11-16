@@ -39,7 +39,7 @@
     {
       "file": "charge-excess.user.js",
       "name": "UPC Billing: Schedule excess (beta)",
-      "version": "0.1.1"
+      "version": "0.1.2"
     },
     {
       "file": "email-html.user.js",
