@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Invoice Funder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.8.3
+// @version      0.8.4
 // @upc-was      bill-funder.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/invoice-funder.user.js
@@ -41,7 +41,7 @@
   if (window.__upcBillFunder) return;
   window.__upcBillFunder = true;
 
-  const VERSION = '0.8.3';
+  const VERSION = '0.8.4';
   const MAX_AGE_DAYS = 183;   // about 6 months
   const NOT_ATTENDED = /cancel|did-not-attend|dna|reject|declin|reschedul/i;
   const DAY = 86400e3;
@@ -276,9 +276,9 @@
     function render() {
       const p = st.plan;
       dlg.setTitle('Invoice Funder');
-      let h = '<div class="text-muted">Merges the chosen fees onto one invoice, then invoices the funder once, so the patient\'s excess is charged once. Halaxy\'s own steps; nothing changes until you confirm.</div>';
+      let h = '';
       if (st.phase === 'loading') h += '<p>' + esc(st.status) + '</p>';
-      if (st.error) h += '<p class="upc-warn upc-gap">' + esc(st.error) + '</p>';
+      if (st.error) h += '<div class="alert alert-warning upc-warn upc-gap">' + esc(st.error) + '</div>';
       // While it works: a progress bar and the current step only (Carl, 13 Nov 2026); the fees again once it has finished.
       const working = st.phase === 'running' || st.phase === 'zeroing';
       if (p && st.phase !== 'loading' && !working) {
@@ -287,20 +287,20 @@
           h += '<table class="table w-100"><thead><tr><th></th><th>Date</th><th>Fee</th><th>Invoice</th><th class="number">Amount</th><th>Notes</th></tr></thead><tbody>';
           p.fees.forEach((f, i) => {
             const notes = [];
-            if (f.notAttended) notes.push('<span class="upc-warn">' + esc(f.apptStatus.replace(/-/g, ' ')) + ': not ticked, include only if you mean to bill it</span>');
+            if (f.notAttended) notes.push('<span class="upc-warn">' + esc(f.apptStatus.replace(/-/g, ' ').replace(/^./, (x) => x.toUpperCase())) + '</span>');
             if (f.isCurrent) notes.push('<span class="text-muted">On this invoice</span>');
-            if (!f.amount) notes.push('<span class="text-muted">£0 fee: not ticked</span>');
+            if (!f.amount) notes.push('<span class="text-muted">£ 0.00 fee</span>');
             if (f.referral) notes.push((f.beyondAuth ? '<span class="upc-warn">' : '<span class="text-muted">') + 'Appointment ' + f.referral.position + ' of ' + f.referral.limit + ' authorised' + (f.beyondAuth ? ': beyond the authorisation' : '') + '</span>');
             if (f.comment) notes.push('<div class="upc-note">' + esc(f.comment) + '</div>');
             else if (f.commentError) notes.push('<span class="text-muted">Comments could not be read: open the appointment to check.</span>');
-            h += '<tr class="' + (f.selected ? '' : 'upc-off') + '"><td><input type="checkbox" data-i="' + i + '" ' + (f.selected ? 'checked' : '') + (st.phase !== 'choose' ? ' disabled' : '') + ' aria-label="Include ' + esc(dateLabel(f.when)) + '"></td>' +
+            h += '<tr><td><input type="checkbox" data-i="' + i + '" ' + (f.selected ? 'checked' : '') + (st.phase !== 'choose' ? ' disabled' : '') + ' aria-label="Include ' + esc(dateLabel(f.when)) + '"></td>' +
               '<td>' + esc(dateLabel(f.when)) + '</td><td>' + esc(f.name) + (f.practitioner ? '<div class="text-muted">' + esc(f.practitioner) + '</div>' : '') + '</td>' +
               '<td><a href="' + esc(U().base() + '/invoice/' + f.invoiceId) + '" target="_blank" rel="noopener">' + esc(f.invoiceNumber) + '</a></td><td class="number">' + fmt(f.amount) + '</td><td>' + notes.join('<br>') + '</td></tr>';
           });
           h += '</tbody></table>';
           const c = chosen();
           h += '<div class="upc-gap font-weight-bold">' + c.length + ' fee' + (c.length === 1 ? '' : 's') + ' chosen, total ' + fmt(c.reduce((s, f) => s + f.amount, 0)) + '.</div>';
-          if (c.some((f) => f.beyondAuth)) h += '<p class="upc-warn upc-gap">Some chosen fees are beyond the authorisation. The insurer may not pay them.</p>';
+          if (c.some((f) => f.beyondAuth)) h += '<div class="alert alert-warning upc-warn upc-gap">Some chosen fees are beyond the authorisation. The insurer may not pay them.</div>';
         }
         // Left out, one line per invoice and reason, to match against Halaxy's merge menu.
         const groups = [];
@@ -318,19 +318,21 @@
         const total = fmt(c.reduce((s, f) => s + f.amount, 0));
         const funder = esc(p.current.funderName || 'the funder');
         h += '<div class="upc-box upc-log"><b>Confirm</b><br>' + (needsMerge()
-          ? 'Merge ' + c.length + ' fees (' + total + ') onto the latest of their invoices, then invoice ' + funder + ' once as a new organisation invoice (dated today, due in 3 months), keeping the patient invoice, and mark that patient invoice Issued. Fees on invoices emptied by the merge are moved and those invoices are deleted by Halaxy, as its merge does.'
-          : 'Nothing to merge: ' + (c.length === 1 ? 'the fee is' : 'the fees are') + ' already on ' + esc(c[0].invoiceNumber) + '. Invoice ' + funder + ' once from it (' + total + ') as a new organisation invoice (dated today, due in 3 months), keeping the patient invoice, and mark it Issued.') + '</div>';
+          ? 'Merge ' + c.length + ' fees (' + total + ') onto the latest of their invoices and bill ' + funder + ' on a new invoice, due in 3 months. Invoices left empty are deleted. The patient invoice is marked Issued.'
+          : 'Bill ' + funder + ' for ' + total + ' from ' + esc(c[0].invoiceNumber) + ' on a new invoice, due in 3 months. ' + esc(c[0].invoiceNumber) + ' is marked Issued.') + '</div>';
       }
       if (st.prog) h += U().ui.run.html(st.prog);
       if (st.result) {
         const r = st.result;
-        h += '<p class="upc-ok upc-gap">Billed. ' + esc(r.patientInvoiceNumber) + ' is billed to the funder on <a href="' + esc(U().base() + '/invoice/' + r.orgInvoiceId) + '" target="_blank" rel="noopener">' + esc(r.orgInvoiceNumber || 'the new organisation invoice') + '</a>' + (r.amount !== null && r.amount !== undefined ? ' (' + fmt(r.amount) + ')' : '') +
-          (r.amount !== null && r.amount !== undefined && r.expectTotal !== undefined && r.amount !== r.expectTotal ? '.</p><p class="upc-warn upc-gap">Check ' + esc(r.orgInvoiceNumber || 'the funder invoice') + ': it totals ' + fmt(r.amount) + ', but the fees chosen total ' + fmt(r.expectTotal) + '.</p><p class="upc-gap">Also' : '') +
-          (r.issuedError ? '.</p><p class="upc-warn upc-gap">Billing is done, but ' + esc(r.patientInvoiceNumber) + ' could not be marked Issued (' + esc(r.issuedError) + '). Set it with the cogwheel.</p>' : ', and ' + esc(r.patientInvoiceNumber) + ' is marked Issued.</p>');
-        h += r.datesError ? '<p class="upc-warn">The funder invoice dates were not set (' + esc(r.datesError) + '). Set the invoice date to ' + esc(r.invDate) + ' and the due date to ' + esc(r.dueDate) + ' with its cogwheel.</p>'
+        const hasAmount = r.amount !== null && r.amount !== undefined;
+        h += '<div class="alert alert-success upc-ok upc-gap">Billed. ' + esc(r.patientInvoiceNumber) + ' is billed to the funder on <a href="' + esc(U().base() + '/invoice/' + r.orgInvoiceId) + '" target="_blank" rel="noopener">' + esc(r.orgInvoiceNumber || 'the new organisation invoice') + '</a>' + (hasAmount ? ' (' + fmt(r.amount) + ')' : '') +
+          (r.issuedError ? '.' : ', and ' + esc(r.patientInvoiceNumber) + ' is marked Issued.') + '</div>';
+        if (hasAmount && r.expectTotal !== undefined && r.amount !== r.expectTotal) h += '<div class="alert alert-warning upc-warn">Check ' + esc(r.orgInvoiceNumber || 'the funder invoice') + ': it totals ' + fmt(r.amount) + ', but the fees chosen total ' + fmt(r.expectTotal) + '.</div>';
+        if (r.issuedError) h += '<div class="alert alert-warning upc-warn">' + esc(r.patientInvoiceNumber) + ' could not be marked Issued (' + esc(r.issuedError) + '). Set it with the cogwheel.</div>';
+        h += r.datesError ? '<div class="alert alert-warning upc-warn">The funder invoice dates were not set (' + esc(r.datesError) + '). Set the invoice date to ' + esc(r.invDate) + ' and the due date to ' + esc(r.dueDate) + ' with its cogwheel.</div>'
           : '<p class="text-muted">' + esc(r.orgInvoiceNumber || 'The funder invoice') + ': invoice date ' + esc(r.invDate) + ', due ' + esc(r.dueDate) + '.</p>';
-        if (r.dateFixes && r.dateFixes.length) h += '<p class="text-muted">Fee date' + (r.dateFixes.length === 1 ? '' : 's') + ' corrected on ' + esc(r.orgInvoiceNumber || 'the funder invoice') + ' (Halaxy copied ' + (r.dateFixes.length === 1 ? 'it' : 'them') + ' wrongly): ' + esc(r.dateFixes.map((f) => f.from + ' to ' + f.to).join(', ')) + '.</p>';
-        if (r.feeDateError) h += '<p class="upc-warn">Check the fee dates on ' + esc(r.orgInvoiceNumber || 'the funder invoice') + ': ' + esc(r.feeDateError) + '.</p>';
+        if (r.dateFixes && r.dateFixes.length) h += '<p class="text-muted">Fee date' + (r.dateFixes.length === 1 ? '' : 's') + ' corrected on ' + esc(r.orgInvoiceNumber || 'the funder invoice') + ': ' + esc(r.dateFixes.map((f) => f.from + ' to ' + f.to).join(', ')) + '.</p>';
+        if (r.feeDateError) h += '<div class="alert alert-warning upc-warn">Check the fee dates on ' + esc(r.orgInvoiceNumber || 'the funder invoice') + ': ' + esc(r.feeDateError) + '.</div>';
         // Bupa and AXA claims: the next step is the insurer's portal (Portal fill, on the funder invoice).
         const portal = /bupa/i.test(p.current.funderName || '') ? 'Bupa' : /axa/i.test(p.current.funderName || '') ? 'AXA' : '';
         if (portal && r.orgInvoiceId) h += '<p><a class="btn btn-outline-primary-light" href="' + esc(U().base() + '/invoice/' + r.orgInvoiceId + '#upc-portal-fill') + '" target="_blank" rel="noopener">Fill on the ' + portal + ' portal</a></p>';
@@ -338,8 +340,7 @@
       // After billing: cancelled or did-not-attend fees left out, to keep or set to £0.
       const left = leftover();
       if (st.result && left.length) {
-        h += '<div class="upc-gap"><b>Not billed to ' + esc(p.current.funderName || 'the funder') + '</b>' +
-          '<div class="text-muted">These cancelled or did-not-attend fees were left out. Keep any you will charge another way; set the rest to £ 0.00. Nothing changes until you confirm.</div>' +
+        h += '<div class="upc-gap"><b>Cancelled or did not attend: not billed to ' + esc(p.current.funderName || 'the funder') + '</b>' +
           '<table class="table w-100"><thead><tr><th>Date</th><th>Fee</th><th>Invoice</th><th class="number">Amount</th><th>Comments</th><th>Keep or set to £ 0.00</th></tr></thead><tbody>';
         left.forEach((f) => {
           const key = String(f.lineId);
@@ -362,10 +363,10 @@
       // Halaxy's original, at the left like Halaxy's own Merge Invoices: before anything has changed only.
       const nativeOk = (st.phase === 'loading' || st.phase === 'choose' || st.phase === 'error') && !st.confirm;
       h += '<div class="upc-actions">' + (nativeOk ? '<button type="button" class="btn btn-outline-primary-light upc-native-funder" data-a="native" title="Halaxy\'s own Invoice Funder: bills this invoice only, without merging">Use Halaxy\'s Invoice Funder</button>' : '') +
-        '<span class="text-muted upc-version">Clinic version ' + VERSION + '</span>';
+        '<span class="upc-spacer"></span>';
       if (st.phase === 'choose' && !st.confirm) h += '<button type="button" class="btn btn-outline-primary" data-a="close">Cancel</button><button type="button" class="btn btn-primary" data-a="next" ' + (chosen().length ? '' : 'disabled') + '>' + goLabel() + '</button>';
       else if (st.confirm) h += '<button type="button" class="btn btn-outline-primary" data-a="back">Back</button><button type="button" class="btn btn-primary" data-a="go">' + goLabel() + '</button>';
-      else if (st.phase === 'running' || st.phase === 'zeroing') h += '<button type="button" class="btn btn-primary" disabled>Working...</button>';
+      else if (st.phase === 'running' || st.phase === 'zeroing') h += '<button type="button" class="btn btn-primary" disabled>' + (st.phase === 'zeroing' ? 'Setting to £ 0.00...' : 'Billing...') + '</button>';
       else if (st.phase === 'done' && st.zeroConfirm) h += '<button type="button" class="btn btn-outline-primary" data-a="zeroback">Back</button><button type="button" class="btn btn-primary" data-a="zerogo">Set ' + toZero().length + ' to £ 0.00</button>';
       else if (st.phase === 'done' && left.length) h += '<button type="button" class="btn btn-outline-primary" data-a="reload">Close and reload</button><button type="button" class="btn btn-primary" data-a="zeronext" ' + (toZero().length ? '' : 'disabled') + '>Set chosen fees to £ 0.00</button>';
       else h += '<button type="button" class="btn btn-primary" data-a="' + (st.result || st.phase === 'failed' ? 'reload' : 'close') + '">' + (st.result || st.phase === 'failed' ? 'Close and reload' : 'Close') + '</button>';

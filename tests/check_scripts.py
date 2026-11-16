@@ -25,6 +25,13 @@ SUSPECT = [
     (re.compile(r'(?i)(api[_-]?key|secret|password)\s*[:=]\s*[\'"][^\'"]{6,}'), 'secret'),
     (re.compile(r'(?i)bearer\s+[a-z0-9._-]{20,}'), 'token'),
 ]
+WORDING = [
+    ('red-text paragraph (use alert alert-danger / -warning / -success)', re.compile(r'<p class="(?:[\w-]+ )*upc-(?:err|warn|ok)\b')),
+    ('faded rows (upc-off)', re.compile(r'\bupc-off\b')),
+    ('version line on a page (upc-version)', re.compile(r'\bupc-version\b')),
+    ('"Check again" (use "Check now")', re.compile(r'Check again')),
+    ('em dash', re.compile('\u2014')),
+]
 LOADER_GM = {'GM_getValue', 'GM_setValue', 'GM_deleteValue', 'GM_registerMenuCommand'}
 FAILS = []
 
@@ -87,6 +94,10 @@ for name in sorted(stable | beta):
             check(tag + ' native look: no shadow root', 'attachShadow' not in body)
             behaviour = re.findall(r'class="[^"]*\b(ajax|btn-submit|btn-cancel|bootbox|dialogBoxForm|datepicker|popoverTarget)\b', body)
             check(tag + ' native look: no Halaxy behaviour classes on our elements', not behaviour, behaviour)
+            # Wording and look (CLAUDE.md): Halaxy's message boxes, not red-text paragraphs; no faded rows or version lines
+            # on pages; the same button words everywhere.
+            look = [w for w, rx in WORDING if rx.search(body)]
+            check(tag + ' wording and look', not look, look)
     if len(texts) == 2:
         vs = meta(header(texts['stable']) or '', 'version')
         vb = meta(header(texts['beta']) or '', 'version')

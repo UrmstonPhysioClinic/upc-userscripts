@@ -166,7 +166,7 @@ async def main():
         cards = await pg.evaluate(ROWS)
         need = cards[0][1] if cards else []
         names = [r[0] for r in need]
-        check('ongoing patients (seen before) missing mandatory details: soonest appointment first, then those seen recently', cards[0][0] == 'Ongoing patients: missing mandatory details (2)'
+        check('ongoing patients (seen before) missing mandatory details: soonest appointment first, then those seen recently', cards[0][0] == 'Ongoing patients (2)'
               and names == ['Patient B', 'Patient C'], cards)
         notyet = [r[0] for r in cards[1][1]] if len(cards) > 1 else []
         check('not seen yet (no appointment attended): a separate list, no chasing', len(cards) > 1 and cards[1][0] == 'Not seen yet (1)' and notyet == ['Patient H'], cards)
@@ -174,10 +174,11 @@ async def main():
         names = names + notyet
         check('what is missing, and the email as well where it is missing', by.get('Patient B', ['', ''])[1].startswith('date of birth, phone number') and by['Patient C'][1].startswith('address')
               and by['Patient H'][1].startswith('first name, last name'), need)
-        check('next appointment with the practitioner, or last seen', '18-Nov-2026 10:00 with Physio Two' in by.get('Patient B', ['', '', ''])[2] and by.get('Patient C', ['', '', ''])[2] == 'last seen 06-Nov-2026', need)
+        check('next appointment with the practitioner, and last seen', '18-Nov-2026 10:00 with Physio Two' in by.get('Patient B', ['', '', '', ''])[2] and by.get('Patient B', ['', '', '', ''])[3] == '27-Oct-2026'
+              and by.get('Patient C', ['', '', '', ''])[2] == '' and by.get('Patient C', ['', '', '', ''])[3] == '06-Nov-2026', need)
         check('only the email missing: a separate list, not counted', len(cards) == 3 and cards[2][0] == 'No email address (1)' and [r[0] for r in cards[2][1]] == ['Patient D'], cards)
         check('left out: complete, outside the window, Deleted, only a cancelled appointment', not any(n in names for n in ['Patient A', 'Patient E', 'Patient F', 'Patient G']), names)
-        link = await pg.evaluate("document.querySelector('[data-upc-missing-details] tbody tr td:nth-child(4) a').getAttribute('href')")
+        link = await pg.evaluate("document.querySelector('[data-upc-missing-details] tbody tr td:nth-child(5) a').getAttribute('href')")
         check('links to the Edit page', link == '/a/pr/555/patient/302/edit', link)
         badge = await pg.evaluate("(document.querySelector('a.upc-md-menu .upc-md-badge') || {}).textContent")
         check('menu item under Patients with the count: ongoing patients only (not those not seen yet, not email)', badge == '2', badge)
@@ -198,7 +199,7 @@ async def main():
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/302/clinical/category/note/id/9')
         await pg.wait_for_function(BANNER, timeout=20000)
         text = await pg.evaluate(BANNER)
-        check('banner on a note page: what to collect, and a link to the Edit page', 'Missing details: date of birth, phone number. Please collect these from the patient.' in text and 'Edit details' in text, text)
+        check('banner on a note page: what to collect, and a link to the Edit page', 'Missing details: date of birth, phone number.' in text and 'Edit details' in text, text)
         n302 = edits(302)
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/invoice/302/')
         await pg.wait_for_function(BANNER, timeout=20000)
@@ -207,7 +208,7 @@ async def main():
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/305')
         await pg.wait_for_function(BANNER, timeout=20000)
         text = await pg.evaluate(BANNER)
-        check('a patient outside the window, not booked: read when their page opens, banner shown', 'Missing details: phone number. Please collect this from the patient.' in text and edits(305) == 1, (text, edits(305)))
+        check('a patient outside the window, not booked: read when their page opens, banner shown', 'Missing details: phone number.' in text and edits(305) == 1, (text, edits(305)))
         for _ in range(40):
             if note_lines().get('305'):
                 break

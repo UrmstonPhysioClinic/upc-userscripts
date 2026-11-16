@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Insurer payments due (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.9
+// @version      0.1.10
 // @upc-was      funder-chaser.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/insurer-payments-due.user.js
@@ -31,7 +31,7 @@
   if (window.__hxFunderChaser) return;
   window.__hxFunderChaser = true;
 
-  const VERSION = '0.1.9';
+  const VERSION = '0.1.10';
   const ROUTE = 'upc-funder-chaser';
   const MENU_CLS = 'upc-fc-menu';
   const ALLOWED = () => rule('insurerPayments.people', ['Carl Healy']);
@@ -142,17 +142,16 @@
     .upc-fc .card-header h2 { margin: 0; }
     .upc-fc .upc-fc-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
     .upc-fc .upc-fc-bar .btn { margin: 0; }
-    .upc-fc tr.upc-off td, .upc-fc tr.upc-off a { color: var(--vs-viewData-label-color, #6c757d); }
     .upc-fc td.upc-fc-date { white-space: nowrap; }
   `;
   const state = { unmount: null, running: false, status: '', error: '' };
   let root = null;
 
-  function table(rows, off) {
+  function table(rows) {
     const base = U().base();
-    return '<table class="table ' + (off ? '' : 'table-striped ') + 'table-bordered w-100 m-0"><thead><tr><th>Funder</th><th>Invoice</th><th>Invoice date</th>' +
+    return '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th>Funder</th><th>Invoice</th><th>Invoice date</th>' +
       '<th class="number">Days</th><th class="number">Fees</th><th class="number">Amount</th><th class="number">Still to pay</th></tr></thead><tbody>' +
-      rows.map((r) => '<tr class="' + (off ? 'upc-off' : '') + '"><td>' + esc(r.funder) + '</td><td><a href="' + esc(base + '/invoice/' + r.id) + '" target="_blank" rel="noopener">' + esc(r.number) + '</a></td>' +
+      rows.map((r) => '<tr><td>' + esc(r.funder) + '</td><td><a href="' + esc(base + '/invoice/' + r.id) + '" target="_blank" rel="noopener">' + esc(r.number) + '</a></td>' +
         '<td class="upc-fc-date">' + esc(label(r.when)) + '</td><td class="number">' + r.days + '</td><td class="number">' + r.fees + '</td>' +
         '<td class="number">' + fmt(r.amount) + '</td><td class="number">' + (r.balance === null ? '' : fmt(r.balance)) + '</td></tr>').join('') +
       '</tbody></table>';
@@ -162,22 +161,21 @@
     if (!root) return;
     const r = store.get('result', null);
     let h = '<div class="upc-fc"><h1>Insurer payments due</h1><div class="upc-fc-bar">' +
-      '<button type="button" class="btn btn-outline-primary-light" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check again') + '</button>' +
+      '<button type="button" class="btn btn-outline-primary-light" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>' +
       (state.running ? U().ui.run.inline(state.status) : '<span class="text-muted">' + esc(r ? 'Checked at ' + new Date(r.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + label(r.at) + '.' : '') + '</span>') + '</div>';
-    if (state.error) h += '<p class="upc-err">' + esc(state.error) + '</p>';
+    if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     if (r) {
       const due = r.rows.filter((x) => x.issued), active = r.rows.filter((x) => !x.issued);
       const total = due.reduce((t, x) => t + (x.balance === null ? x.amount : x.balance), 0);
       h += '<div class="card"><div class="card-header"><h2>Unpaid after ' + OVERDUE_DAYS() + ' days (' + due.length + (due.length ? ', ' + fmt(total) : '') + ')</h2></div><div class="card-body p-0">' +
-        (due.length ? table(due, false) : '<p class="text-muted m-3">No insurer invoice marked Issued is unpaid after ' + OVERDUE_DAYS() + ' days.</p>') + '</div></div>';
+        (due.length ? table(due) : '<p class="text-muted m-3">None.</p>') + '</div></div>';
       if (active.length) {
         h += '<div class="card"><div class="card-header"><h2>Not marked Issued after ' + OVERDUE_DAYS() + ' days (' + active.length + ')</h2></div><div class="card-body p-0">' +
-          '<p class="text-muted m-3">Still Active, so perhaps never submitted. Not counted on the menu.</p>' + table(active, true) + '</div></div>';
+          table(active) + '</div></div>';
       }
-      h += '<p class="text-muted">Insurer invoices (billed to the funder itself) with something still to pay, ' + OVERDUE_DAYS() + ' days or more after their invoice date. ' +
-        'A remittance attached doesn\'t take an invoice off the list: only the payment, once recorded, does.</p>';
+      h += '<p class="text-muted">Insurer invoices unpaid ' + OVERDUE_DAYS() + ' days or more after their invoice date.</p>';
     }
-    h += '<div class="text-muted upc-version">Insurer payments due ' + VERSION + '</div></div>';
+    h += '</div>';
     root.innerHTML = h;
   }
 

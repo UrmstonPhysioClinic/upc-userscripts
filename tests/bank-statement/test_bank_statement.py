@@ -489,7 +489,7 @@ async def main():
         await pg.click('[data-upc-bank-statement] [data-a=all]')
         await pg.wait_for_selector('[data-upc-bank-confirm]', timeout=10000)
         conf = await pg.evaluate("document.querySelector('[data-upc-bank-confirm]').textContent")
-        check('confirm says what happens to each', 'Direct Deposit' in conf and 'add the deposit and apply it to UPC-0902 £ 80.00, UPC-0901 £ 40.00' in conf and 'AXA £ 75.00, 12-Oct-2026: add the deposit (applied when its remittance comes)' in conf, conf)
+        check('confirm says what happens to each', 'add the deposit and apply it to UPC-0902 £ 80.00, UPC-0901 £ 40.00' in conf and 'AXA £ 75.00, 12-Oct-2026: add the deposit' in conf, conf)
         await pg.click('[data-upc-bank-confirm] [data-c=no]')
         await pg.wait_for_timeout(500)
         check('cancel: nothing written (the scripts\' own shared notes aside)', not [x for x in S['log'] if x[0] == 'POST' and not x[1].startswith('/a/pr/555/communication-log/organisation/78842/')], S['log'])
@@ -532,7 +532,7 @@ async def main():
         check('opened again: every payment shown as added or applied, nothing to record', acts.count('Deposit applied') == 3 and acts.count('Deposit added') == 6
               and not await pg.evaluate("!!document.querySelector('[data-upc-bank-statement] [data-a=all]')"), acts)
         seen = await pg.evaluate("document.querySelector('[data-upc-bank-statement]').textContent")
-        check('the register says it was read before', 'This statement was read before (11-Nov-2026 by Carl Healy)' in seen, seen[:400])
+        check('the register says it was read before', 'Read before (11-Nov-2026 by Carl Healy)' in seen, seen[:400])
         check('nothing written on opening again', not S['added'] and not S['allocs'] and not [x for x in S['log'] if x[0] == 'POST'], [x for x in S['log'] if x[0] == 'POST'])
         # 10 days on, deposits still waiting get a task on their profile (once a day)
         # (a new day: this PC's and the shared note's record of today's check removed)
@@ -606,7 +606,7 @@ async def main():
         by = {r['cells'][1]: r for r in rows}
         av, sh = by.get('Aviva', {'cells': [''] * 6}), by.get('Simplyhealth', {'cells': [''] * 6})
         check('recorded by hand on the bank date: already in Halaxy, nothing to do', 'UPC-0931 £ 20.00' in av['cells'][4] and 'UPC-0932 £ 40.00' in av['cells'][4]
-              and 'Already in Halaxy' in av['cells'][5] and av['off'] and not av['rec'] and 'UPC-0933' not in av['cells'][4], av)
+              and 'Already in Halaxy' in av['cells'][5] and not av['rec'] and 'UPC-0933' not in av['cells'][4], av)
         check('recorded by hand 2 days before the bank date: already in Halaxy', 'UPC-0951 £ 33.00' in sh['cells'][4] and 'Already in Halaxy' in sh['cells'][5] and 'Direct Deposit, 27-Oct-2026' in sh['cells'][4], sh)
         others = [r['cells'][1] for r in rows if 'Already in Halaxy' in r['cells'][5]]
         check('nothing else counts as recorded', sorted(others) == ['Aviva', 'Simplyhealth'] and by['WPA']['radios'] + (1 if by['WPA']['rec'] else 0) >= 1, others)

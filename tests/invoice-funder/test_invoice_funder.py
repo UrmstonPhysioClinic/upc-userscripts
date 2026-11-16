@@ -271,12 +271,12 @@ async def main():
         by = {r['inv']: r for r in rows}
         check('suggests past, unbilled, same-claim fees in the last 6 months', sorted(by) == ['UPC-1001', 'UPC-1002', 'UPC-1003', 'UPC-1008', 'UPC-1009'], sorted(by))
         check('attended fees ticked', by['UPC-1001']['ticked'] and by['UPC-1003']['ticked'] and by['UPC-1009']['ticked'])
-        check('did-not-attend listed but not ticked, with its comment', not by['UPC-1002']['ticked'] and 'did not attend' in by['UPC-1002']['text'] and 'Late cancellation.' in by['UPC-1002']['text'] and 'Bill Bupa? Check policy first.' in by['UPC-1002']['text'], by['UPC-1002'])
+        check('did-not-attend listed but not ticked, with its comment', not by['UPC-1002']['ticked'] and 'Did not attend' in by['UPC-1002']['text'] and 'Late cancellation.' in by['UPC-1002']['text'] and 'Bill Bupa? Check policy first.' in by['UPC-1002']['text'], by['UPC-1002'])
         note_lines = await pg.evaluate("[...document.querySelectorAll('[data-upc-bill-funder] .upc-note')].map((n) => n.innerText)")
         check('comment keeps its line breaks', any(n.split('\n') == ['Late cancellation.', 'Bill Bupa? Check policy first.'] for n in note_lines), note_lines)
         reads = [c for c in S['calls_read'] if c[0] == 'appointment']
         check('details read only for cancelled or did-not-attend fees', reads == [('appointment', 3002)], reads)
-        check('£0 fee listed but not ticked', not by['UPC-1008']['ticked'] and '£0 fee' in by['UPC-1008']['text'])
+        check('£0 fee listed but not ticked', not by['UPC-1008']['ticked'] and '£ 0.00 fee' in by['UPC-1008']['text'])
         check('beyond the authorisation flagged', 'Appointment 6 of 5 authorised: beyond the authorisation' in by['UPC-1009']['text'], by['UPC-1009']['text'])
         note = await pg.evaluate(root + ".textContent")
         left = await pg.evaluate("[...document.querySelectorAll('[data-upc-bill-funder] .text-muted li')].map((li) => li.textContent)")
@@ -288,7 +288,7 @@ async def main():
         check('Issued invoice left out', 'UPC-1010' not in by and S['invoices'][1010]['status'] == 'issued')
         await pg.evaluate(root + ".querySelector('[data-a=next]').click()")
         conf = await pg.evaluate(root + ".querySelector('.upc-log').innerText")
-        check('confirm step explains what will happen', 'Merge 3 fees (£ 120.00)' in conf and 'new organisation invoice' in conf, conf)
+        check('confirm step explains what will happen', 'Merge 3 fees (£ 120.00)' in conf and 'on a new invoice' in conf, conf)
         await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
         await pg.wait_for_function(root + ".querySelector('.upc-ok') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60000)
         done = await pg.evaluate(root + ".textContent")
@@ -340,7 +340,7 @@ async def main():
         check('button says Bill funder when nothing needs merging', lbl == 'Bill funder', lbl)
         await pg.evaluate(root + ".querySelector('[data-a=next]').click()")
         conf = await pg.evaluate(root + ".querySelector('.upc-log').innerText")
-        check('confirmation says there is nothing to merge', 'Nothing to merge' in conf and 'already on UPC-1003' in conf, conf)
+        check('confirmation says there is nothing to merge', 'Merge' not in conf and 'from UPC-1003' in conf, conf)
         await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
         await pg.wait_for_function(root + ".querySelector('.upc-ok') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60000)
         check('billed without a merge', [c[0] for c in S['calls']] == ['bill', 'status', 'linedate', 'dates'], [c[0] for c in S['calls']])
@@ -352,7 +352,7 @@ async def main():
         # tick everything except the two did-not-attend fees, so 1009's attended fee can be the target
         await pg.evaluate("""(() => { for (let n = 0; n < 20; n++) {
             const c = [...document.querySelectorAll('[data-upc-bill-funder] tbody input[type=checkbox]')].find((b) => {
-              const t = b.closest('tr').textContent; const want = !/did not attend/.test(t) && !/£ 0\.00/.test(t); return b.checked !== want; });
+              const t = b.closest('tr').textContent; const want = !/did not attend/i.test(t) && !/£ 0\.00/.test(t); return b.checked !== want; });
             if (!c) return; c.click(); } })()""")
         await pg.evaluate(root + ".querySelector('[data-a=next]').click()")
         await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
@@ -387,7 +387,7 @@ async def main():
         ctx, pg, root, btn, errors = await open_panel(browser, 1003)
         await pg.evaluate("""(() => { for (let n = 0; n < 20; n++) {
             const c = [...document.querySelectorAll('[data-upc-bill-funder] tbody input[type=checkbox]')].find((b) => {
-              const t = b.closest('tr').textContent; const want = !/did not attend/.test(t) && !/£ 0\\.00/.test(t); return b.checked !== want; });
+              const t = b.closest('tr').textContent; const want = !/did not attend/i.test(t) && !/£ 0\\.00/.test(t); return b.checked !== want; });
             if (!c) return; c.click(); } })()""")
         await pg.evaluate(root + ".querySelector('[data-a=next]').click()")
         await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
@@ -465,8 +465,8 @@ async def main():
 
         # Scenario 4: a safety stop shows its own message and changes nothing
         S = fresh(broken_merge=True)
-        ctx, pg, root, btn, errors = await open_panel(browser, 1003, wait='p.upc-warn')
-        msg = await pg.evaluate(root + ".querySelector('p.upc-warn').textContent")
+        ctx, pg, root, btn, errors = await open_panel(browser, 1003, wait='.alert.upc-warn')
+        msg = await pg.evaluate(root + ".querySelector('.alert.upc-warn').textContent")
         check('safety stop shows its own message', "merge pop-up has changed" in msg and 'constructor' not in msg, msg)
         check('nothing changed after a safety stop', S['calls'] == [], S['calls'])
         check('safety stop offers Halaxy\'s own Invoice Funder', await pg.evaluate(root + ".querySelector('[data-a=native]') !== null"))

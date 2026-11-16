@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Look: HTML source for emails (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.5
+// @version      0.6
 // @upc-was      email-html-source.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/email-html.user.js
@@ -142,7 +142,7 @@
       '<textarea class="form-control" spellcheck="false" aria-label="HTML source"></textarea>' +
       '<iframe sandbox="" title="Email preview"></iframe>' +
       '<div class="hx-raw-bar">' +
-        '<span class="hx-raw-note text-muted">HTML mode: this HTML is saved or sent as written (Halaxy still filters some CSS).</span>' +
+        '<span class="hx-raw-note text-muted">HTML mode</span>' +
         '<button type="button" class="btn btn-outline-primary-light hx-raw-act" data-act="back">Back to editor</button>' +
         '<div class="hx-raw-warn"></div>' +
       '</div>' +

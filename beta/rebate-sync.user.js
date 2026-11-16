@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Rebate sync (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.3
+// @version      0.3.4
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/rebate-sync.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/rebate-sync.user.js
@@ -16,7 +16,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '0.3.3';
+  const VERSION = '0.3.4';
   const MONEY_FIELDS = ['form[amount]', 'form[rebate]', 'form[tax]', 'form[taxManual]'];
 
   const snapshots = {};      // lineId -> { fields: [[name, value]], at }
@@ -146,8 +146,7 @@
           <tr><td>Rebate on patient invoice ${esc(plan.patientNumber)}</td><td class="number">${money(plan.origRebate)} → <b>${money(plan.newRebate)}</b></td></tr>
           <tr><td>Line on funder invoice ${esc(plan.funderNumber)}</td><td class="number">${money(plan.origRebate)} → <b>${money(plan.newRebate)}</b></td></tr>
           <tr><td>${diff >= 0 ? 'Patient pays more' : 'Patient pays less'}</td><td class="number"><b>${money(Math.abs(diff))}</b></td></tr>
-        </table>
-        <div class="text-muted">Done with Halaxy's own steps: revert the funder line, change the rebate, re-bill to ${esc(plan.funderNumber)} (a £ 0.00 line if the rebate is £ 0.00), and put the fee's date back on the re-billed line.</div>`);
+        </table>`);
       d.buttons([['Cancel', () => { d.close(); resolve(false); }], ['Update both', () => { d.close(); resolve(true); }, true]]);
     });
   }
@@ -170,23 +169,24 @@
     try {
       const r = await U().rebate.apply(plan, (s) => { U().ui.run.step(prog, s); render(); });
       U().ui.run.end(prog);
-      render(`<p class="upc-ok upc-gap">Done. ${esc(plan.funderNumber)} total is now ${r.funderTotal !== null ? money(r.funderTotal) : 'updated'}${r.patientOutstanding !== null ? ', and ' + esc(plan.patientNumber) + ' shows ' + money(r.patientOutstanding) + ' outstanding' : ''}.</p>`);
+      render(`<div class="alert alert-success upc-ok upc-gap">Done. ${esc(plan.funderNumber)} total is now ${r.funderTotal !== null ? money(r.funderTotal) : 'updated'}${r.patientOutstanding !== null ? ', and ' + esc(plan.patientNumber) + ' shows ' + money(r.patientOutstanding) + ' outstanding' : ''}.</div>`);
       d.buttons([['Reload', () => location.reload(), true]]);
       setTimeout(() => location.reload(), 2500);
     } catch (e) {
       U().ui.run.end(prog);
-      render(`<p class="upc-err upc-gap">${esc(e.message || e)}</p>`);
+      render(`<div class="alert alert-danger upc-err upc-gap">${esc(e.message || e)}</div>`);
       d.buttons([['Reload', () => location.reload(), true]]);
-      // A task for Carl to look at why it failed (Carl, 12 Nov 2026). The core library has already put it back as it
-      // was if it could; the message says which.
+      // A task to look at why it failed (Carl, 12 Nov 2026), for whoever Clinic settings names. The core library has already
+      // put it back as it was if it could; the message says which.
+      const taskFor = U().settings && U().settings.def('rebateSync.taskFor') ? U().settings.get('rebateSync.taskFor') : 'Carl Healy';
       try {
         const d0 = new Date(), due = String(d0.getDate()).padStart(2, '0') + '-' + ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d0.getMonth()] + '-' + d0.getFullYear();
         await U().tasks.addToInvoice(plan.funderInvoiceId, {
-          title: 'Rebate sync stopped on ' + plan.funderNumber + ': please check', assignee: 'Carl Healy', priority: 3, due, by: 'Rebate sync',
+          title: 'Rebate sync stopped on ' + plan.funderNumber + ': please check', assignee: taskFor, priority: 3, due, by: 'Rebate sync',
           comment: ['Changing the ' + plan.date + ' fee from ' + money(plan.origRebate) + ' to ' + money(plan.newRebate) + ' (patient invoice ' + plan.patientNumber + ') stopped: ' + (e.message || e),
             e.undone === false ? 'It could NOT all be put back: check both invoices.' : 'Everything was put back as it was.'],
         });
-        render(`<p class="upc-err upc-gap">${esc(e.message || e)}</p><p class="text-muted">Task added for Carl Healy on ${esc(plan.funderNumber)}.</p>`);
+        render(`<div class="alert alert-danger upc-err upc-gap">${esc(e.message || e)}</div><p class="text-muted">Task added for ${esc(taskFor)} on ${esc(plan.funderNumber)}.</p>`);
       } catch (te) { /* the error is on screen */ }
     } finally {
       busy = false;
@@ -236,7 +236,7 @@
     } catch (err) {
       btn.disabled = false;
       busy = false;
-      message('Not saved', '<p>' + esc(err.message || err) + '</p><p class="text-muted">Nothing has been changed. Cancel the edit dialog or adjust it.</p>');
+      message('Not saved', '<p>' + esc(err.message || err) + '</p><p class="text-muted">Nothing has been changed.</p>');
       return;
     }
     btn.disabled = false;

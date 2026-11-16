@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Portal fill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.20
+// @version      0.1.21
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
@@ -48,7 +48,7 @@
   if (window.__hxPortalFill) return;
   window.__hxPortalFill = true;
 
-  const VERSION = '0.1.20';
+  const VERSION = '0.1.21';
   const KEY = 'portal-claim';
   const MAX_AGE = 4 * 3600e3;
   const PORTALS = {
@@ -103,7 +103,7 @@
       try {
         await U().tasks.addToInvoice(invId, {
           title: 'Portal fill stopped: ' + portalName + (number ? ', ' + number : ''), assignee: OWNER(), priority: 2, due: U().dayLabel(Date.now()),
-          by: 'Portal fill', comment: ['The ' + portalName + ' portal fill stopped (' + where + '): ' + reason, 'Submit the claim by hand, or run the fill again once the cause is fixed',
+          by: 'Portal fill', comment: ['The ' + portalName + ' portal fill stopped (' + where + '): ' + reason,
             'Portal fill ' + VERSION + (key ? ', ' + key : '')],
           key: key || undefined,
         });
@@ -351,10 +351,8 @@
       const s = settings();
       const row = (k, label, help) => '<div class="form-group"><label for="upc-pf-' + k + '">' + esc(label) + '</label>' + (clinicSet(k) ? '<div><strong>' + esc(s[k]) + '</strong></div>'
         : '<input class="form-control" id="upc-pf-' + k + '" data-k="' + k + '" value="' + esc(s[k]) + '">') + (help ? '<small class="text-muted">' + esc(help) + '</small>' : '') + '</div>';
-      const shared = Object.keys(CLINIC_KEYS).every(clinicSet);
-      dlg.body.innerHTML = '<p>The payee details AXA asks for on every invoice. ' + (shared ? 'They are clinic settings, the same on every PC: Carl changes them in Script settings &gt; Clinic settings.'
-        : 'Until they are set in Script settings &gt; Clinic settings (which applies them to every PC), boxes here are kept on this PC.') + '</p>' + row('payee', 'Name of payee') + row('providerCode', 'AXA provider code') +
-        row('email', 'Payee email address', 'For AXA\'s queries about the payment.') + row('phone', 'Payee phone number') +
+      dlg.body.innerHTML = row('payee', 'Name of payee') + row('providerCode', 'AXA provider code') +
+        row('email', 'Payee email address') + row('phone', 'Payee phone number') +
         '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-c="no">Cancel</button><button type="button" class="btn btn-primary" data-c="yes">Save</button></div>';
       dlg.body.addEventListener('click', (e) => {
         const b = e.target.closest('[data-c]');
@@ -496,7 +494,7 @@
           let c = null;
           try { c = await shared('get', KEY); } catch (e) { c = null; }
           if (c && c.at === claim.at && c.progress && (c.progress.form || c.progress.filled || c.status === 'submitted')) {
-            return say('AXA opened the invoice form in a new tab, and the fill carried on there. You can close this tab.', false, true);
+            return say('Carrying on in the new tab. You can close this one.', false, true);
           }
           if (!c || c.at !== claim.at) return say('The fill has finished or been stopped in the other tab. You can close this tab.', false, true);
         }
@@ -563,7 +561,7 @@
       if (submit) submit.scrollIntoView({ block: 'center' });
       say('Filled: ' + claim.lines.length + ' treatment line' + (claim.lines.length === 1 ? '' : 's') + ', £ ' + claim.total + '. Check everything, especially the condition (highlighted' +
         (claim.condition ? ', from the notes' : ', not found in the notes: please type it') + ')' +
-        (claim.patient.legalFound ? '' : ' and the patient\'s name (highlighted: their legal name wasn\'t found, so this may be the preferred name)') + ', then press Submit yourself.', false, true);
+        (claim.patient.legalFound ? '' : ' and the patient\'s name (highlighted: legal name not found)') + ', then press Submit yourself.', false, true);
       // AXA shows its "submitted" message in the same page: watch for it once (our own panel changing is ignored).
       const obs = new MutationObserver((list) => {
         if (list.every((m) => panel && panel.contains(m.target))) return;
@@ -752,7 +750,7 @@
     async function backToHalaxy() {
       try { const c = await shared('get', KEY); if (c && c.at === claim.at) { c.closeTabs = Date.now(); await shared('set', KEY, c); } } catch (e) { /* this tab still closes */ }
       window.close();
-      setTimeout(() => say('Close this tab to go back to Halaxy (the browser won\'t let a page close a tab it didn\'t open).', false, true), 700);
+      setTimeout(() => say('Close this tab to go back to Halaxy.', false, true), 700);
     }
     let closer = null;
     function closeWhenAsked() {

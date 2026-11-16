@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Open-ended patients (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.10
+// @version      0.1.11
 // @upc-was      check-ins.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/open-ended-patients.user.js
@@ -30,7 +30,7 @@
   if (window.__hxCheckIns) return;
   window.__hxCheckIns = true;
 
-  const VERSION = '0.1.10';
+  const VERSION = '0.1.11';
   const ROUTE = 'upc-check-ins';
   const MENU_CLS = 'upc-ci-menu';
   const ALLOWED = () => rule('openEnded.people', ['Carl Healy']);
@@ -193,9 +193,9 @@
     const r = store.get('result', null);
     const base = U().base();
     let h = '<div class="upc-ci"><h1>Open-ended patients</h1><div class="upc-ci-bar">' +
-      '<button type="button" class="btn btn-outline-primary-light" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check again') + '</button>' +
+      '<button type="button" class="btn btn-outline-primary-light" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>' +
       (state.running ? U().ui.run.inline(state.status) : '<span class="text-muted">' + esc(r ? 'Checked at ' + new Date(r.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + label(r.at) + '.' : '') + '</span>') + '</div>';
-    if (state.error) h += '<p class="upc-err">' + esc(state.error) + '</p>';
+    if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     if (r) {
       const ok = r.rows.filter((x) => !x.error), bad = r.rows.filter((x) => x.error);
       h += '<div class="card"><div class="card-header"><h2>Nothing booked (' + ok.length + ')</h2></div><div class="card-body p-0">' +
@@ -203,14 +203,13 @@
           ok.map((x) => '<tr><td><a href="' + esc(base + '/patient/' + x.id) + '" target="_blank" rel="noopener">' + esc(x.name) + '</a></td>' +
             '<td class="upc-ci-date">' + esc(label(x.lastSeen)) + '</td><td class="number">' + Math.round((today() - new Date(x.lastSeen).setHours(0, 0, 0, 0)) / DAY) + '</td>' +
             '<td>' + esc(x.found.join(', ')) + (x.noteId ? ' (<a href="' + esc(base + '/patient/' + x.id + '/clinical/category/note/id/' + x.noteId) + '" target="_blank" rel="noopener">note' + (x.noteDate ? ' ' + esc(label(x.noteDate)) : '') + '</a>)' : '') + '</td></tr>').join('') + '</tbody></table>'
-          : '<p class="text-muted m-3">Nobody left open-ended is due a check-in.</p>') + '</div></div>';
-      if (bad.length) h += '<p class="upc-err">Notes not read for ' + bad.map((x) => esc(x.name) + ' (' + esc(x.error) + ')').join(', ') + '.</p>';
+          : '<p class="text-muted m-3">None.</p>') + '</div></div>';
+      if (bad.length) h += '<div class="alert alert-danger upc-err">Notes not read for ' + bad.map((x) => esc(x.name) + ' (' + esc(x.error) + ')').join(', ') + '.</div>';
       const c = r.counts || {};
-      h += '<p class="text-muted">Patients last seen ' + AFTER_DAYS() + ' to ' + UP_TO_DAYS() + ' days ago, with nothing booked, whose latest note leaves treatment open-ended ' +
-        '("open return", "book again if needed", "see how things go", "come back if needed" and similar). Left out: ' + (c.recent || 0) + ' seen in the last ' + AFTER_DAYS() + ' days, ' +
-        (c.ended || 0) + ' whose last appointment was cancelled or missed, ' + (c.none || 0) + ' whose last note doesn\'t leave it open. Nothing is sent from here yet.</p>';
+      h += '<p class="text-muted">Last seen ' + AFTER_DAYS() + ' to ' + UP_TO_DAYS() + ' days ago, nothing booked, last note leaves treatment open. Left out: ' + (c.recent || 0) + ' seen in the last ' + AFTER_DAYS() + ' days, ' +
+        (c.ended || 0) + ' last appointment cancelled or missed, ' + (c.none || 0) + ' last note doesn\'t leave it open.</p>';
     }
-    h += '<div class="text-muted upc-version">Open-ended patients ' + VERSION + '</div></div>';
+    h += '</div>';
     root.innerHTML = h;
   }
 

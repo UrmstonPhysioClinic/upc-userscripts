@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Missing details (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.4
+// @version      0.2.5
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/missing-details.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/missing-details.user.js
@@ -44,7 +44,7 @@
   if (window.__hxMissingDetails) return;
   window.__hxMissingDetails = true;
 
-  const VERSION = '0.2.4';
+  const VERSION = '0.2.5';
   const ROUTE = 'upc-missing-details';
   const MENU_CLS = 'upc-md-menu';
   const ADMINS = () => rule('missingDetails.people', ['Carl Healy', 'Wendy Pritchard']);   // who sees the page (Carl, 15 Nov 2026: Carl and Wendy)
@@ -157,8 +157,7 @@
     let el = document.querySelector('.upc-md-banner');
     const r = id && known()[id];
     if (!id || !host || !r || !r.missing.length || SKIP_STATUS.test(r.status || '')) { if (el) el.remove(); return; }
-    const text = 'Missing details: ' + missingText(r) + '. Please collect ' + (r.missing.length === 1 ? 'this' : 'these') + ' from the patient' +
-      (r.email ? '' : ', and an email address if they use one') + '.';
+    const text = 'Missing details: ' + missingText(r) + (r.email ? '' : ', email') + '.';
     const html = '<strong>' + esc(text) + '</strong> <a href="' + esc(U().base() + '/patient/' + id + '/edit') + '">Edit details</a>';
     if (!el || el.parentNode !== host) {
       if (el) el.remove();
@@ -315,7 +314,6 @@
     .upc-md .upc-md-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
     .upc-md .upc-md-bar .btn { margin: 0; }
     .upc-md td.upc-md-date { white-space: nowrap; }
-    .upc-md tr.upc-off td { opacity: .6; }
   `;
   const state = { unmount: null, running: false, status: '', error: '' };
   let root = null;
@@ -324,26 +322,26 @@
     if (!root) return;
     const r = store.get('result', null);
     const base = U().base();
-    const when = (x) => x.next ? label(x.next) + ' ' + new Date(x.next).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + (x.prac ? ' with ' + x.prac : '') : (x.lastSeen ? 'last seen ' + label(x.lastSeen) : '');
-    const row = (x, off) => '<tr' + (off ? ' class="upc-off"' : '') + '><td><a href="' + esc(base + '/patient/' + x.id) + '" target="_blank" rel="noopener">' + esc(x.name || 'Patient') + '</a></td>' +
-      '<td>' + esc(x.missing.length ? missingText(x) : 'email (if they use one)') + (x.missing.length && !x.email ? '<span class="text-muted">, and email if they use one</span>' : '') + '</td>' +
-      '<td class="upc-md-date">' + esc(when(x)) + '</td><td><a href="' + esc(base + '/patient/' + x.id + '/edit') + '" target="_blank" rel="noopener">Edit details</a></td></tr>';
+    const next = (x) => x.next ? label(x.next) + ' ' + new Date(x.next).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + (x.prac ? ' with ' + x.prac : '') : '';
+    const row = (x) => '<tr><td><a href="' + esc(base + '/patient/' + x.id) + '" target="_blank" rel="noopener">' + esc(x.name || 'Patient') + '</a></td>' +
+      '<td>' + esc(x.missing.length ? missingText(x) + (x.email ? '' : ', email') : 'email') + '</td>' +
+      '<td class="upc-md-date">' + esc(next(x)) + '</td><td class="upc-md-date">' + esc(x.lastSeen ? label(x.lastSeen) : '') + '</td>' +
+      '<td><a href="' + esc(base + '/patient/' + x.id + '/edit') + '" target="_blank" rel="noopener">Edit details</a></td></tr>';
     let h = '<div class="upc-md"><h1>Missing details</h1><div class="upc-md-bar">' +
-      '<button type="button" class="btn btn-outline-primary-light" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check again') + '</button>' +
+      '<button type="button" class="btn btn-outline-primary-light" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>' +
       (state.running ? U().ui.run.inline(state.status) : '<span class="text-muted">' + esc(r ? 'Checked at ' + new Date(r.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + label(r.at) + '.' : '') + '</span>') + '</div>';
-    if (state.error) h += '<p class="upc-err">' + esc(state.error) + '</p>';
+    if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     if (r) {
       const seen = (x) => x.seen !== false;   // results from before the split: treated as ongoing
       const need = r.rows.filter((x) => x.missing.length && seen(x)), notYet = r.rows.filter((x) => x.missing.length && !seen(x)), email = r.rows.filter((x) => !x.missing.length);
-      const table = (rows, off) => '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th>Patient</th><th>Missing</th><th>Next appointment</th><th></th></tr></thead><tbody>' + rows.map((x) => row(x, off)).join('') + '</tbody></table>';
-      h += '<div class="card"><div class="card-header"><h2>Ongoing patients: missing mandatory details (' + need.length + ')</h2></div><div class="card-body p-0">' +
-        (need.length ? '<p class="text-muted m-3">Already seen: worth a call to get these.</p>' + table(need, false) : '<p class="text-muted m-3">Every ongoing patient booked in the next ' + AHEAD_DAYS() + ' days or seen in the last ' + BACK_DAYS() + ' has their mandatory details.</p>') + '</div></div>';
-      if (notYet.length) h += '<div class="card"><div class="card-header"><h2>Not seen yet (' + notYet.length + ')</h2></div><div class="card-body p-0"><p class="text-muted m-3">No appointment attended in the last ' + SEEN_MONTHS + ' months: they fill in the online form before their first visit, so no need to chase. Check at their first appointment.</p>' + table(notYet, true) + '</div></div>';
-      if (email.length) h += '<div class="card"><div class="card-header"><h2>No email address (' + email.length + ')</h2></div><div class="card-body p-0">' + table(email, true) + '</div></div>';
-      h += '<p class="text-muted">Patients booked in the next ' + AHEAD_DAYS() + ' days or seen in the last ' + BACK_DAYS() + ' days. Mandatory: first and last name, date of birth, an address with a postcode, and a phone number. ' +
-        'Everyone who opens a patient with gaps sees a banner, and their appointments are marked in the calendar (ongoing or not). The count by the menu item is ongoing patients only.' + (r.unchecked ? ' ' + r.unchecked + ' still to check (checked a few at a time).' : '') + '</p>';
+      const table = (rows) => '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th>Patient</th><th>Missing</th><th>Next appointment</th><th>Last seen</th><th></th></tr></thead><tbody>' + rows.map(row).join('') + '</tbody></table>';
+      h += '<div class="card"><div class="card-header"><h2>Ongoing patients (' + need.length + ')</h2></div><div class="card-body p-0">' +
+        (need.length ? table(need) : '<p class="text-muted m-3">None missing.</p>') + '</div></div>';
+      if (notYet.length) h += '<div class="card"><div class="card-header"><h2>Not seen yet (' + notYet.length + ')</h2></div><div class="card-body p-0">' + table(notYet) + '</div></div>';
+      if (email.length) h += '<div class="card"><div class="card-header"><h2>No email address (' + email.length + ')</h2></div><div class="card-body p-0">' + table(email) + '</div></div>';
+      h += '<p class="text-muted">Booked in the next ' + AHEAD_DAYS() + ' days or seen in the last ' + BACK_DAYS() + '.' + (r.unchecked ? ' ' + r.unchecked + ' still to check.' : '') + '</p>';
     }
-    h += '<div class="text-muted upc-version">Missing details ' + VERSION + '</div></div>';
+    h += '</div>';
     root.innerHTML = h;
   }
   async function run() {

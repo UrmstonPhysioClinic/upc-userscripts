@@ -1,5 +1,13 @@
 # Changelog
 
+## Wording and look, 16 Nov 2026 (beta; 17 scripts)
+- On-screen text no longer explains the clinic's processes or how a script works (Carl, 16 Nov 2026): list intros and long footers, step-by-step paragraphs in confirm pop-ups, explanatory brackets in Clinic settings labels and row notes are removed or shortened. Task comments give the facts only.
+- Look: errors, warnings and confirmations use Halaxy's own message boxes; no faded rows (each group has its own card); no version lines on pages (Script settings lists versions); "Check now" and "Checked at 12:30 on 16-Nov-2026." everywhere; the small progress bar instead of "Working...".
+- Missing details: columns Next appointment and Last seen; the banner lists what is missing, email included.
+- Forecourt lights: the settings pop-up shows only what isn't a clinic setting yet, plus the timer and the next two weeks.
+- Rebate sync: its "stopped" task goes to the person named in Clinic settings (new: Who gets tasks, Rebate sync stopped), Carl Healy by default.
+- tests/check_scripts.py checks beta for red-text paragraphs, faded rows, version lines, "Check again" and em dashes.
+
 ## Missing details 0.2.4, 16 Nov 2026 (beta)
 - Two groups (Carl, 16 Nov 2026): ongoing patients (an appointment attended in the last 18 months: worth a call) and not seen yet (they fill in the online form before their first visit: no chasing). The menu count is ongoing patients only; the banner and the calendar mark stay for everyone with gaps. The calendar is read 18 months back for this (still one request).
 

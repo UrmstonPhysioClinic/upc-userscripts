@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Bank statement (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.6
+// @version      0.2.7
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
@@ -50,7 +50,7 @@
   if (window.__hxBankStatement) return;
   window.__hxBankStatement = true;
 
-  const VERSION = '0.2.6';
+  const VERSION = '0.2.7';
   const ROUTE = 'upc-bank-statement';
   const MENU_CLS = 'upc-bank-menu';
   const ALLOWED = () => rule('bankStatement.people', ['Carl Healy']);
@@ -486,8 +486,8 @@
           else if (notMoved.length === 1) {
             const g = notMoved[0];
             r.how = 'the remittance with ' + g.key + ' paid this on ' + g.list.map((i) => i.number).join(', ') + ', but Halaxy still shows ' +
-              fmt(g.list.reduce((t, i) => t + i.balance, 0)) + ' on them: move the excess to the patient with Remittances, and it applies the deposit then';
-          } else r.how = 'no unpaid ' + c.insurer + ' invoices add up to it (has the remittance been through Remittances? An excess not yet moved to the patient leaves the invoice showing more than the insurer paid)';
+              fmt(g.list.reduce((t, i) => t + i.balance, 0)) + ' on them: move the excess in Remittances';
+          } else r.how = 'no unpaid ' + c.insurer + ' invoices add up to it';
         }
         if (setAside) r.how = setAside + (r.how || '');
       }
@@ -685,7 +685,6 @@
     .upc-bank td.upc-bank-date, .upc-bank td.number { white-space: nowrap; }
     .upc-bank .upc-bank-set { margin: 2px 0; }
     .upc-bank .upc-bank-set a { margin-right: 6px; white-space: nowrap; }
-    .upc-bank tr.upc-off td { color: var(--vs-viewData-label-color, #6c757d); }
   `;
   const state = { unmount: null, busy: false, status: '', error: '', warn: '', seen: '', statement: null, results: null, run: null, register: null };
   let root = null;
@@ -702,13 +701,12 @@
     // Laid out as Remittances (Carl, 13 Nov 2026): a "Read ..." card with what it does, the drop box, progress and notes.
     let h = '<div class="upc-bank"><h1>Bank statement</h1>' +
       '<div class="card"><div class="card-header"><h2>Read a bank statement</h2></div><div class="card-body">' +
-      '<div class="text-muted">Read the month\'s Starling statement and, once you confirm, add each insurer payment as a deposit on the insurer\'s profile (' + METHOD + ', dated the day it reached the bank). A deposit whose remittance has been through Remittances is applied to its invoices straight away; the rest are applied by Remittances when the remittance comes. Other money in and money out are not used. The statement is read on this computer; only a short register (dates, balances and the insurer payments) is kept on the Starling Bank profile, as an Admin Note.</div>' +
-      '<div class="upc-bank-drop" tabindex="0" role="button" data-a="choose">' + (state.busy ? 'Working...' : 'Drop a Starling statement PDF here, or click to choose one') + '<input type="file" accept="application/pdf" hidden></div>';
+      '<div class="upc-bank-drop" tabindex="0" role="button" data-a="choose">' + (state.busy ? 'Reading...' : 'Drop a Starling statement PDF here, or click to choose one') + '<input type="file" accept="application/pdf" hidden></div>';
     // While it works: a progress bar and the current step; the results once it has finished (Carl, 13 Nov 2026).
     if (state.run) h += U().ui.run.html(state.run);
     const working = state.busy && state.run && !state.run.finished;
-    if (state.error) h += '<p class="upc-err">' + esc(state.error) + '</p>';
-    if (state.warn) h += '<p class="upc-err">' + esc(state.warn) + '</p>';
+    if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
+    if (state.warn) h += '<div class="alert alert-danger upc-err">' + esc(state.warn) + '</div>';
     if (state.seen) h += '<p class="text-muted">' + esc(state.seen) + '</p>';
     // Not in the register yet, or its entry is out of date (Carl, 13 Nov 2026: reading old statements again should fill
     // the register in, even when there is nothing to record).
@@ -735,24 +733,23 @@
             const maybe = () => r.options.length ? '<div class="upc-bank-set">May be for: ' + r.options.map((o, j) => setHtml(r, j)).join(' <span class="text-muted">or</span> ') + '</div>' : '';
             if (r.state === 'recorded') { inv = linked() + '<div class="text-muted">' + esc(r.how) + '</div>'; act = '<span class="upc-ok">Already in Halaxy</span>'; }
             else if (r.state === 'applied') { inv = (r.invoices ? linked() : '') + '<div class="text-muted">Deposit on the ' + profile + ', applied' + (r.applied ? ' ' + esc(U().dayLabel(r.applied)) : '') + '</div>'; act = '<span class="upc-ok">Deposit applied</span>'; }
-            else if (r.state === 'waiting') { inv = maybe() + '<div class="text-muted">Deposit on the ' + profile + ', waiting for its remittance: Remittances applies it when the remittance is put through.</div>'; act = '<span class="upc-ok">Deposit added</span>'; }
-            else if (r.state === 'deposit') { inv = maybe() + '<div class="text-muted">' + esc(r.how || '') + '. Added as a deposit on the ' + profile + ' and applied when its remittance is put through Remittances.</div>'; act = btn('Add deposit'); }
+            else if (r.state === 'waiting') { inv = maybe() + '<div class="text-muted">Deposit on the ' + profile + ', waiting for the remittance</div>'; act = '<span class="upc-ok">Deposit added</span>'; }
+            else if (r.state === 'deposit') { inv = maybe() + '<div class="text-muted">' + esc(r.how || '') + '</div>'; act = btn('Add deposit'); }
             else if (r.state === 'matched' || r.state === 'apply') { inv = '<div class="upc-bank-set">' + setHtml(r, 0) + '</div><div class="text-muted">' + esc(r.how) + (r.deposit ? '; its deposit is on the ' + profile + ' already' : '') + '</div>'; act = btn(r.deposit ? 'Apply' : 'Record'); }
             else if (r.state === 'choose') {
               inv = '<div class="text-muted">' + esc(r.how) + ': choose one</div>' + r.options.map((o, j) => '<label class="upc-bank-set d-block"><input type="radio" name="upc-bank-' + k + '" data-pick="' + k + ':' + j + '"' + (r.pick === j ? ' checked' : '') + '> ' + setHtml(r, j) + (r.labels && r.labels[j] ? ' <span class="text-muted">(' + esc(r.labels[j]) + ')</span>' : '') + '</label>').join('');
               act = r.pick !== null ? btn(r.deposit ? 'Apply' : 'Record') : '';
             } else if (r.state === 'old') {
-              inv = (r.options.length ? (r.remit ? '<div class="upc-bank-set">' + setHtml(r, r.pick || 0) + '</div>' : maybe()) : '') + '<div class="upc-err">Before ' + esc(isoLabel(CHANGEOVER)) +
-                ' (when insurer payments became deposits), and not found in Halaxy as recorded: check it. Record it here only if it was never recorded.</div><div class="text-muted">' + esc(r.how || '') + '</div>';
+              inv = (r.options.length ? (r.remit ? '<div class="upc-bank-set">' + setHtml(r, r.pick || 0) + '</div>' : maybe()) : '') + '<div class="upc-err">Before ' + esc(isoLabel(CHANGEOVER)) + ' and not found in Halaxy: check before recording.</div><div class="text-muted">' + esc(r.how || '') + '</div>';
               act = btn(r.remit && r.pick !== null ? 'Record' : 'Add deposit');
             } else if (r.state === 'check' || r.state === 'noorg') { inv = '<span class="upc-err">' + esc(r.how) + '</span>'; act = r.tasked ? '<span class="text-muted">Task added</span>' : btn('Add task'); }
             else inv = '<span class="text-muted">Not matched: ' + esc(r.how || '') + '</span>';
             if (r.error) act += '<div class="upc-err">' + esc(r.error) + '</div>';
-            return '<tr class="' + (['recorded', 'applied', 'waiting', 'none'].includes(r.state) ? 'upc-off' : '') + '"><td class="upc-bank-date">' + esc(isoLabel(r.date)) + '</td><td>' + esc(r.insurer) + '</td><td>' + esc(r.ref) + '</td>' +
+            return '<tr><td class="upc-bank-date">' + esc(isoLabel(r.date)) + '</td><td>' + esc(r.insurer) + '</td><td>' + esc(r.ref) + '</td>' +
               '<td class="number">' + fmt(r.amount) + '</td><td>' + inv + '</td><td>' + act + '</td></tr>';
           }).join('') + '</tbody></table>' : '<p class="text-muted m-3">No insurer payments on this statement.</p>') + '</div></div>';
     }
-    h += '<div class="text-muted upc-version">Bank statement ' + VERSION + '</div></div>';
+    h += '</div>';
     root.innerHTML = h;
   }
 
@@ -773,9 +770,9 @@
         state.register = regs.find((d) => d.text.includes('Fingerprint ' + st.fp)) || null;
         const others = regs.filter((d) => d !== state.register);
         const first = state.register && firstRead(state.register.text);
-        state.seen = [state.register ? 'This statement was read before' + (first ? ' (' + first + ')' : '') + '. What is already in Halaxy is shown as such, so nothing is recorded twice.' : '',
-          others.length ? 'It overlaps ' + others.map((d) => d.title).join(', ') + ', read before: payments on both are checked against Halaxy, so none is recorded twice.' : ''].filter(Boolean).join(' ');
-      } catch (e) { state.regError = true; state.warn = 'Couldn\'t check the statement register on the Starling Bank profile (' + (e.message || e) + '). Payments already in Halaxy are still found.'; }
+        state.seen = [state.register ? 'Read before' + (first ? ' (' + first + ')' : '') + '.' : '',
+          others.length ? 'Overlaps ' + others.map((d) => d.title).join(', ') + '.' : ''].filter(Boolean).join(' ');
+      } catch (e) { state.regError = true; state.warn = 'Couldn\'t check the statement register on the Starling Bank profile (' + (e.message || e) + ').'; }
       state.results = await match(state.statement, (t) => { U().ui.run.step(run, t); render(); });
       U().ui.run.end(run);
     } catch (e) {
@@ -804,7 +801,7 @@
     if (needsTask(r)) return 'a task for ' + esc(TASK_FOR()) + ' to check it';
     if (r.deposit) return 'apply its deposit to ' + inv;
     if (r.remit && set) return 'add the deposit and apply it to ' + inv;
-    return 'add the deposit (applied when its remittance comes)';
+    return 'add the deposit';
   };
   // Whether this statement's register entry is missing or behind what the page now shows.
   function registerNeed() {
@@ -814,7 +811,7 @@
   }
   async function saveRegister() {
     if (state.busy || !registerNeed()) return;
-    if (!(await confirmDlg('Save to the register?', '<p>Keeps a short record of this statement on the Starling Bank profile: its dates, balances, number of lines, and each insurer payment with what has happened to it. No money is recorded and nothing else is changed.</p>', 'Save'))) return;
+    if (!(await confirmDlg('Save to the register?', '<p>Dates, balances and insurer payments, on the Starling Bank profile.</p>', 'Save'))) return;
     state.busy = true;
     const run = state.run = U().ui.run.start(1);
     U().ui.run.step(run, 'Saving the statement register...');
@@ -829,7 +826,7 @@
     const lines = list.map((r) => '<li>' + esc(r.insurer) + ' ' + fmt(r.amount) + ', ' + esc(isoLabel(r.date)) + ': ' + plan(r) + '</li>').join('');
     const pays = list.filter(actionable).length;
     if (!(await confirmDlg(pays ? 'Record payment' + (pays === 1 ? '' : 's') + '?' : 'Add task' + (list.length === 1 ? '' : 's') + '?',
-      (pays ? '<p>Deposits go on each insurer\'s profile as ' + METHOD + ', dated the day the money reached the bank.</p>' : '') + '<ul>' + lines + '</ul>', pays ? 'Record' : 'Add'))) return;
+      '<ul>' + lines + '</ul>', pays ? 'Record' : 'Add'))) return;
     state.busy = true;
     const run = state.run = U().ui.run.start(list.length);
     render();

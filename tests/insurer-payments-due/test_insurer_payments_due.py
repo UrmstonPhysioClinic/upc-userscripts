@@ -109,7 +109,7 @@ async def context(browser):
     return ctx
 
 
-ROWS = """[...document.querySelectorAll('[data-upc-funder-chaser] tbody tr')].map((tr) => ({ off: tr.classList.contains('upc-off'),
+ROWS = """[...document.querySelectorAll('[data-upc-funder-chaser] tbody tr')].map((tr) => ({ off: tr.closest('.card') !== document.querySelector('[data-upc-funder-chaser] .card'),
   cells: [...tr.cells].map((c) => c.textContent.trim()), link: tr.cells[1].querySelector('a').getAttribute('href') }))"""
 
 
@@ -131,7 +131,7 @@ async def main():
         check('part-paid: amount and what\'s still to pay', r802['cells'][2:] == ['11-Oct-2026', '31', '2', '£ 90.00', '£ 40.00'], r802)
         check('linked to the invoice', rows[0]['link'] == '/a/pr/555/invoice/801', rows[0])
         off = [r['cells'][1] for r in rows if r['off']]
-        check('Active after 30 days: greyed, separately', off == ['UPC-0804'], rows)
+        check('Active after 30 days: listed separately', off == ['UPC-0804'], rows)
         check('left out: under 30 days, the patient\'s own invoice, self-funded', not any(x in due + off for x in ['UPC-0803', 'UPC-0805', 'UPC-0806']), rows)
         head = await pg.evaluate("document.querySelector('[data-upc-funder-chaser] .card-header h2').textContent")
         check('heading with count and total still to pay', head == 'Unpaid after 30 days (3, £ 155.00)', head)
