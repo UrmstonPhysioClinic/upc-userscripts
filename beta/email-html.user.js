@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Look: HTML source for emails (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.6
+// @version      0.7
 // @upc-was      email-html-source.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/email-html.user.js
@@ -31,6 +31,36 @@
   // field name -> textarea, for every editor currently in HTML mode
   const actives = new Map();
 
+  // ---------- 0. Templates chosen in a send box (Carl, 16 Nov 2026) ----------
+  // GET /communication/template/render/:template/<invoice|...>/:id returns the template filled in (JSON; merge tags
+  // Halaxy fills on sending, such as [Payment Link], still as tags; capture 16 Nov 2026). If it has styling the
+  // editor would strip, the send box's editor opens it in HTML mode, so it is sent exactly as saved.
+  // Only what the editor strips: tables, and styles on paragraphs, divs and table cells. Letter-style templates (coloured
+  // spans, a resized figure) survive the editor and stay in it, so they can still be edited there.
+  const RICH = /<table\b|\sbgcolor\s*=|<(?:p|div|td|tr|th)\b[^>]*\sstyle\s*=/i;
+  let pending = null;            // { html, at }: the template just fetched
+  const onTemplate = new Set();  // per attached send-box editor
+  function htmlIn(json) {
+    let best = '';
+    const walk = (v, depth) => {
+      if (typeof v === 'string') { if (/<\w[^>]*>/.test(v) && v.length > best.length) best = v; }
+      else if (v && typeof v === 'object' && depth < 4) Object.values(v).forEach((x) => walk(x, depth + 1));
+    };
+    walk(json, 0);
+    return best;
+  }
+  function rendered(text) {
+    let json = null;
+    try { json = JSON.parse(text); } catch (e) { return; }
+    const html = htmlIn(json);
+    if (!html || !RICH.test(html)) { pending = null; return; }
+    pending = { html, at: Date.now() };
+    console.info(TAG, 'template fetched with styling (' + html.length + ' characters): opening it in HTML mode');
+    // Halaxy puts it into the editor in its own handler, straight after this one.
+    setTimeout(() => onTemplate.forEach((f) => f()), 150);
+  }
+  const fresh = () => pending && Date.now() - pending.at < 5000;
+
   // ---------- 1. Fallback: put the raw HTML into outgoing XHRs ----------
   // The main mechanism is the data.get override in attach(). This catches
   // any request that was serialised another way.
@@ -39,6 +69,11 @@
 
   XMLHttpRequest.prototype.open = function (method, url) {
     this._hxRaw = { method: String(method).toUpperCase(), url: String(url) };
+    // A template chosen in a send box: Halaxy fetches it filled in for this patient or invoice, then its editor strips
+    // the inline styles. Keep the version as fetched (added here, before Halaxy's own handler, so it is first).
+    if (/\/communication\/template\/render\//.test(String(url))) {
+      this.addEventListener('load', () => { try { rendered(this.responseText); } catch (e) { console.error(TAG, e); } });
+    }
     return origOpen.apply(this, arguments);
   };
 
@@ -182,14 +217,28 @@
       }
     });
 
-    // If Halaxy changes the body while in HTML mode (e.g. a template is picked),
-    // reload the source from the editor.
+    // If Halaxy changes the body while in HTML mode (e.g. a template is picked), reload the source: the template as
+    // fetched when it has styling, otherwise what the editor now holds.
     ed.model.document.on('change:data', () => {
-      if (raw) {
-        ta.value = tidy(origGet());
+      if (raw && !applying) {
+        ta.value = tidy(fresh() && field === 'form[body]' ? pending.html : origGet());
         preview();
       }
     });
+    // Send boxes: a template with styling opens in HTML mode, as fetched.
+    let applying = false;
+    const takeTemplate = () => {
+      if (!fresh() || !document.contains(ta)) return;
+      applying = true;
+      try {
+        if (raw) { ta.value = tidy(pending.html); preview(); } else enter(pending.html);
+        btn.title = 'Template as saved. Back to the editor';
+      } finally { applying = false; }
+    };
+    if (field === 'form[body]') {
+      onTemplate.add(takeTemplate);
+      ed.on('destroy', () => onTemplate.delete(takeTemplate));
+    }
 
     const setReadOnly = (on) => {
       if (ed.enableReadOnlyMode) {
@@ -199,9 +248,9 @@
       }
     };
 
-    function enter() {
+    function enter(html) {
       const current = origGet();
-      ta.value = tidy(useOriginal && current === loaded ? original : current);
+      ta.value = tidy(typeof html === 'string' ? html : useOriginal && current === loaded ? original : current);
       preview();
       main.style.display = 'none';
       panel.style.display = '';
