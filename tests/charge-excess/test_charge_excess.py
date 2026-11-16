@@ -31,7 +31,7 @@ def check(name, ok, detail=''):
 
 
 def fresh(**kw):
-    S = {'calls': [], 'card': True, 'scheduled': 0, 'email': 'patient@example.com', 'refuse_schedule': False, 'due': ''}
+    S = {'calls': [], 'card': True, 'scheduled': 0, 'scheduled_at': '', 'email': 'patient@example.com', 'refuse_schedule': False, 'due': ''}
     S.update(kw)
     return S
 
@@ -52,15 +52,18 @@ def invoice_html(iid):
     if iid == 3003:
         pay += "<tr><td></td><td>Funder Payment</td><td></td><td>£ 20.00</td><td><a class='ajax btn' data-modal-href='/a/pr/555/invoicefunctions/3003/claim/77/' id='invoiceFunderBtn'>Invoice Funder</a></td></tr>"
     if iid != 3002:
-        pay += ("<tr><td></td><td></td><td>Outstanding</td><td>£ 40.00</td><td><a class='ajax btn btn-outline-primary-light' href='/a/pr/555/invoicefunctions/%d/pay/securepay/1?bundle=prac'>Process Now</a>"
-                "<a class='ajax btn btn-outline-primary-light' href='/a/pr/555/invoicefunctions/%d/pay/offline'>Mark as Paid</a></td></tr>") % (iid, iid)
+        link = ("<a class='ajax link-text' data-modal-href='/a/pr/555/invoicefunctions/payment/scheduled/1866732/edit'>Scheduled (%s)</a>" % S['scheduled_at']) if S['scheduled_at'] \
+            else "<a class='ajax link-text' data-modal-href='/a/pr/555/invoicefunctions/payment/scheduled/new/invoice/%d'>Available</a>" % iid
+        pay += ("<tr><td></td><td>Stored Payment Method</td><td>" + link + "</td><td>£ 40.00</td>"
+                "<td><div class='btn-group'><a class='ajax btn btn-outline-primary-light' data-modal-href='/a/pr/555/invoicefunctions/%d/pay/securepay/1?bundle=prac'>Process Now</a><button class='btn dropdown-toggle'></button></div></td></tr>"
+                "<tr><td></td><td></td><td>Outstanding</td><td>£ 40.00</td><td><a class='ajax btn btn-outline-primary-light' data-modal-href='/a/pr/555/invoicefunctions/%d/pay/offline'>Mark as Paid</a></td></tr>") % (iid, iid)
     title = 'Receipt' if iid == 3002 else 'Invoice'
     return ("<html><head><title>%s UPC-%d | Halaxy</title></head><body><div id='mainMenu'></div><div id='pageContent'>"
             "<div id='card-invoice-view-patient'><a href='/a/pr/555/patient/500'>Patient Test</a></div>"
             "<div id='card-invoice-parts-claim-view'><a href='/a/pr/555/organisation/7364'>Bupa Healthcare</a></div>"
             "<table id='invoiceLines'><tbody>%s<tr><td>Total</td><td>£ 60.00</td></tr></tbody></table>"
             "<table id='invoicePayments'><tbody>%s</tbody></table>"
-            "<div id='btn-email-invoice'><a class='btn icon ajax' href='/a/pr/555/email/document/invoice/%d'>e</a></div></div></body></html>") % (title, iid, lines, pay, iid)
+            "<a id='btn-email-invoice' class='btn icon ajax' href='/a/pr/555/email/document/invoice/%d'>e</a></div></body></html>") % (title, iid, lines, pay, iid)
 
 
 def options_popup():
@@ -117,7 +120,8 @@ async def halaxy(route):
         S['calls'].append(('schedule', form))
         if S['refuse_schedule']:
             return await js({'status': 'FORM', 'message': schedule_popup().replace('</form>', "<div class='invalid-feedback'>The card was declined for scheduling.</div></form>")})
-        S['scheduled'] = float(form.get('form[amount]', ['0'])[0])
+        # As live: the invoice then shows "Scheduled (date time)"; the pop-up's scheduledAmtTotal stays 0.
+        S['scheduled_at'] = '%s %02d:%02d' % (form.get('form[scheduleDate][date]', [''])[0], int(form.get('form[scheduleDate][time][hour]', ['0'])[0]), int(form.get('form[scheduleDate][time][minute]', ['0'])[0]))
         return await js({'status': 'REFRESH'})
     if re.search(r'/email/document/invoice/\d+$', p):
         if req.method == 'GET':
@@ -170,18 +174,19 @@ async def main():
             ctx, pg, errors = await open_invoice(browser, iid)
             shown[iid] = await pg.evaluate("!!document.querySelector('.upc-charge-excess')")
             if iid == 3001:
-                place = await pg.evaluate("(() => { const b = document.querySelector('.upc-charge-excess'); return [b.className, b.previousElementSibling && b.previousElementSibling.textContent]; })()")
+                place = await pg.evaluate("(() => { const b = document.querySelector('.upc-charge-excess'); return [b.className, b.previousElementSibling && b.previousElementSibling.classList.contains('btn-group') && b.previousElementSibling.textContent, b.textContent]; })()")
             await ctx.close()
         check('button on a patient invoice billed to its funder with something outstanding', shown[3001], shown)
         check('no button when paid in full, still to bill, or on a funder invoice', not shown[3002] and not shown[3003] and not shown[3004], shown)
-        check('button next to Mark as Paid, in Halaxy\'s style', place[1] == 'Mark as Paid' and 'btn-outline-primary-light' in place[0], place)
+        check('"Schedule excess" next to Process Now (after its drop-down), in Halaxy\'s style', place[1] == 'Process Now' and place[2] == 'Schedule excess' and 'btn-outline-primary-light' in place[0], place)
 
         # Confirm, then the three steps in order
         S = fresh()
         ctx, pg, errors = await open_invoice(browser, 3001)
         text = await ask(pg)
-        check('confirm: amount, invoice, due date, card and time, subject and recipient',
-              'Charge the £ 40.00 excess on UPC-3001?' in text and DUE in text and 'Mastercard: Patient Test (**** 6429)' in text and '22:24' in text
+        now = datetime.datetime.now()
+        check('confirm: amount, invoice, due date, card and time now, subject and recipient',
+              'Schedule the £ 40.00 excess on UPC-3001?' in text and DUE in text and 'Mastercard: Patient Test (**** 6429)' in text and ' at %02d:' % now.hour in text
               and '[Action] Insurance Excess Due - Payment on ' + DUE in text and 'patient@example.com' in text and 'Exp:' not in text, text)
         check('nothing changed before confirming', S['calls'] == [], S['calls'])
         text = await finish(pg)
@@ -199,15 +204,16 @@ async def main():
         check('email: Halaxy\'s sender, recipient and copies as filled; no template chosen', e.get('form[fromEmail]') == 'admin@urmstonphysioclinic.com' and e.get('form[recipientType]') == 'LinkPaG'
               and e.get('form[toEmail]') == 'patient@example.com' and e.get('form[bccEmail]') == 'copies@example.com' and e.get('form[template]') == '' and e.get('form[_token]') == 'tok-e', e)
         s = S['calls'][2][1]
-        check('payment: one-off, the outstanding amount, the card, a week ahead at Halaxy\'s time',
+        check('payment: one-off, the outstanding amount, the card, exactly a week ahead (not Halaxy\'s 22:24)',
               s.get('form[paymentScheduled]') == ['', '0'] and s.get('form[amount]') == ['40.00'] and s.get('form[creditCard]') == ['667422']
-              and s.get('form[scheduleDate][date]') == [DUE] and s.get('form[scheduleDate][time][hour]') == ['22'] and s.get('form[scheduleDate][time][minute]') == ['24'], s)
+              and s.get('form[scheduleDate][date]') == [DUE] and s.get('form[scheduleDate][time][hour]') == [str(now.hour)] and abs(int(s.get('form[scheduleDate][time][minute]', ['-9'])[0]) - now.minute) <= 1, s)
         check('done: says what happened', 'Due date set to ' + DUE in text and 'Email sent to patient@example.com' in text and '£ 40.00 scheduled from' in text, text)
         check('no page errors', not errors, errors)
         await ctx.close()
 
         # Stops before changing anything
-        for name, kw, want in [('no card on file', {'card': False}, 'No card on file'), ('already scheduled', {'scheduled': 40}, 'already scheduled'), ('no email address', {'email': ''}, 'No email address')]:
+        for name, kw, want in [('no card on file', {'card': False}, 'No card on file'), ('already scheduled (pop-up)', {'scheduled': 40}, 'already scheduled'),
+                               ('already scheduled (on the invoice)', {'scheduled_at': DUE + ' 10:00'}, 'already scheduled on UPC-3001: Scheduled (' + DUE + ' 10:00)'), ('no email address', {'email': ''}, 'No email address')]:
             S = fresh(**kw)
             ctx, pg, errors = await open_invoice(browser, 3001)
             text = await ask(pg)

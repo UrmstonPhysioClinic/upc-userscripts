@@ -1,11 +1,11 @@
 // ==UserScript==
-// @name         UPC Billing: Charge excess (beta)
+// @name         UPC Billing: Schedule excess (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.0
+// @version      0.1.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/charge-excess.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/charge-excess.user.js
-// @description  A "Charge excess" button on patient invoices with an unpaid excess: sets the due date a week ahead, schedules the payment from the card on file for then, and emails the patient the "Insurance excess due" email. Asks first.
+// @description  A "Schedule excess" button on patient invoices with an unpaid excess: sets the due date a week ahead, schedules the payment from the card on file for then, and emails the patient the "Insurance excess due" email. Asks first.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
 // @grant        none
@@ -13,7 +13,7 @@
 // ==/UserScript==
 
 /*
- * Charge excess (Carl, 16 Nov 2026). On a patient invoice that has been billed to its funder and still has something
+ * Schedule excess (Carl, 16 Nov 2026; file name from its first name, Charge excess). On a patient invoice that has been billed to its funder and still has something
  * outstanding (the excess), one button, after a confirm:
  *
  *  1. Invoice settings (cogwheel, /invoice/options/:id): Due Date = a week from today (core UPC.invoice.setSettings).
@@ -23,8 +23,10 @@
  *     from its list). Halaxy fills [Payment Link] and [Patient First Name] when it sends (its own rendered template
  *     still carries [Payment Link], capture 16 Nov 2026); the due date is written in by us.
  *  3. Schedule Payment (/invoicefunctions/payment/scheduled/new/invoice/:id, form#newScheduledPaymentForm; capture
- *     16 Nov 2026): one-off, the outstanding amount, from the card Halaxy picks (form[creditCard]), Halaxy's own time
- *     of day and its date plus 7 days. Checked afterwards (the pop-up's scheduledAmtTotal).
+ *     16 Nov 2026): one-off, the outstanding amount, from the card Halaxy picks (form[creditCard]), exactly a week
+ *     from when the button is pressed (Halaxy fills a time an hour ahead). Checked on the invoice afterwards: its
+ *     "Available" link becomes "Scheduled (23-Nov-2026 22:57)", linking /invoicefunctions/payment/scheduled/:id/edit
+ *     (live, 16 Nov 2026; the pop-up's scheduledAmtTotal stays 0).
  *
  *  The email goes before the payment is scheduled: if scheduling fails, the patient has been told and nothing is
  *  charged; the message says to schedule it by hand. Stops before changing anything if there is no card on file, a
@@ -36,7 +38,7 @@
   if (window.__hxChargeExcess) return;
   window.__hxChargeExcess = true;
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.2';
   const U = () => window.UPC;
   if (!/^\/a\/pr\/\d+\//.test(location.pathname)) return;
   // A patient invoice: /invoice/{id} or /patient/invoice/{patient}/{id}; not the patient's Invoices tab.
@@ -84,20 +86,30 @@
     return { form, to: clean(form.querySelector('[name="form[toEmail]"]').value) };
   }
 
+  // The invoice's "Scheduled (23-Nov-2026 22:57)" link, if a payment is scheduled: its text, or ''.
+  function scheduledOn(doc) {
+    const a = [...doc.querySelectorAll('a[href*="/payment/scheduled/"], [data-modal-href*="/payment/scheduled/"]')]
+      .find((x) => /\/payment\/scheduled\/\d+\/edit/.test(x.getAttribute('href') || x.getAttribute('data-modal-href') || '') || /^scheduled\b/i.test(clean(x.textContent)));
+    return a ? clean(a.textContent) : '';
+  }
+
   async function plan() {
-    const inv = await U().invoice.fetch(invoiceId);
+    const page = await U().http.html('/invoice/' + invoiceId);
+    const inv = U().invoice.parse(page, invoiceId);
+    const onPage = scheduledOn(page);
+    if (onPage) throw new (U().Error)('A payment is already scheduled on ' + inv.number + ': ' + onPage + '.');
     if (!(inv.outstanding > 0)) throw new (U().Error)('Nothing is outstanding on ' + inv.number + '.');
     const s = await readSchedule();
     if (!s.card) throw new (U().Error)('No card on file for this patient. Use the "Chase - Excess Due (no card on file)" email instead.');
     if (s.already > 0) throw new (U().Error)('A payment of ' + U().money.fmt(Math.round(s.already * 100)) + ' is already scheduled on ' + inv.number + '.');
-    const start = U().parseDay(s.day);
-    if (!start) throw new (U().Error)('Could not read the date in the Schedule Payment pop-up. Nothing was changed.');
-    const d = new Date(start);
+    // Exactly a week from now, to the minute.
+    const now = new Date();
+    const d = new Date(now);
     d.setDate(d.getDate() + 7);
     const due = U().dayLabel(d.getTime());
     const e = await readSend();
     if (!e.to) throw new (U().Error)('No email address for this patient. Add one, then try again.');
-    return { inv, amount: inv.outstanding, card: s.card, due, time: String(s.hour).padStart(2, '0') + ':' + String(s.minute).padStart(2, '0'), to: e.to };
+    return { inv, amount: inv.outstanding, card: s.card, due, hour: now.getHours(), minute: now.getMinutes(), time: String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0'), to: e.to };
   }
 
   // ------------------------------------------------------------------ doing it
@@ -116,12 +128,13 @@
     const s = await readSchedule();
     if (s.already > 0) throw new (U().Error)('A payment is already scheduled on ' + p.inv.number + '.');
     // One-off (the radio; Halaxy's hidden empty field of the same name stays as it is), the outstanding amount, the date.
-    const set = { 'form[amount]': (p.amount / 100).toFixed(2), 'form[scheduleDate][date]': p.due };
+    const set = { 'form[amount]': (p.amount / 100).toFixed(2), 'form[scheduleDate][date]': p.due, 'form[scheduleDate][time][hour]': String(p.hour), 'form[scheduleDate][time][minute]': String(p.minute) };
     const pairs = U().http.serialize(s.form).map(([k, v]) => [k, k in set ? set[k] : (k === 'form[paymentScheduled]' && v === '1' ? '0' : v)]);
     const res = await U().http.postForm(SCHEDULE, pairs);
     if (res && res.status === 'FORM') U().http.expectRefresh(res, 'Scheduling the payment');
-    const after = await readSchedule();
-    if (Math.round(after.already * 100) < p.amount) throw new (U().Error)('Halaxy didn\'t show the payment as scheduled.');
+    const after = scheduledOn(await U().http.html('/invoice/' + invoiceId));
+    if (!after) throw new (U().Error)('Halaxy didn\'t show the payment as scheduled on the invoice.');
+    if (!after.includes(p.due)) throw new (U().Error)('The invoice shows "' + after + '", not ' + p.due + '.');
   }
 
   // ------------------------------------------------------------------ page furniture
@@ -131,18 +144,18 @@
   function ask() {
     if (busy) return;
     busy = true;
-    const dlg = U().ui.dialog({ title: 'Charge excess', key: 'charge-excess', canClose: () => !busy });
+    const dlg = U().ui.dialog({ title: 'Schedule excess', key: 'charge-excess', canClose: () => !busy });
     if (!dlg) { busy = false; return; }
     dlg.body.innerHTML = U().ui.run.inline('Reading the invoice');
     plan().then((p) => {
       busy = false;
-      dlg.body.innerHTML = '<p>Charge the ' + esc(U().money.fmt(p.amount)) + ' excess on ' + esc(p.inv.number) + '?</p>' +
+      dlg.body.innerHTML = '<p>Schedule the ' + esc(U().money.fmt(p.amount)) + ' excess on ' + esc(p.inv.number) + '?</p>' +
         '<table class="table table-striped table-bordered w-100"><tbody>' +
         '<tr><th>Due date</th><td>' + esc(p.due) + '</td></tr>' +
         '<tr><th>Payment</th><td>' + esc(U().money.fmt(p.amount)) + ' from ' + esc(p.card) + ' on ' + esc(p.due) + ' at ' + esc(p.time) + '</td></tr>' +
         '<tr><th>Email</th><td>' + esc(SUBJECT(p.due)) + '<br><span class="text-muted">to ' + esc(p.to) + '</span></td></tr>' +
         '</tbody></table>' +
-        '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-upc-close>Cancel</button><button type="button" class="btn btn-primary" data-a="go">Charge excess</button></div>';
+        '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-upc-close>Cancel</button><button type="button" class="btn btn-primary" data-a="go">Schedule excess</button></div>';
       dlg.body.querySelector('[data-a=go]').addEventListener('click', () => go(dlg, p));
     }).catch((e) => {
       busy = false;
@@ -189,17 +202,21 @@
     btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'btn btn-outline-primary-light upc-charge-excess';
-    btn.textContent = 'Charge excess';
+    btn.textContent = 'Schedule excess';
     btn.addEventListener('click', ask);
-    const paid = document.querySelector('#invoicePayments a[href*="/pay/offline"]');
-    if (paid) paid.insertAdjacentElement('afterend', btn);
+    // Next to Process Now (with its drop-down; live 16 Nov 2026 the buttons carry data-modal-href, not href), else
+    // next to Mark as Paid, else under the payments.
+    const by = (part) => document.querySelector('#invoicePayments [href*="' + part + '"], #invoicePayments [data-modal-href*="' + part + '"]') ||
+      document.querySelector('#pageContent a[href*="' + part + '"], #pageContent [data-modal-href*="' + part + '"]');
+    const process = by('/pay/securepay');
+    const at = process ? (process.closest('.btn-group') || process) : by('/pay/offline');
+    if (at) { at.insertAdjacentElement('afterend', btn); btn.style.marginLeft = '4px'; }
     else {
       const box = document.createElement('div');
       box.className = 'upc-native my-2';
       box.appendChild(btn);
       (document.querySelector('#invoicePayments') || document.querySelector('#invoiceLines')).insertAdjacentElement('afterend', box);
     }
-    if (paid) btn.style.marginLeft = '4px';
   }
 
   function start() {
