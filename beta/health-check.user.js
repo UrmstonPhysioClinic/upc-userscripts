@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.50
+// @version      1.1.51
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.50';
+  const VERSION = '1.1.51';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -43,7 +43,7 @@
     'block-reporting.user.js': 'Block reporting to Halaxy', 'block-error-reporting.user.js': 'Block reporting to Halaxy',
     // Billing
     'invoice-funder.user.js': 'Invoice Funder', 'ready-to-bill.user.js': 'Ready to bill', 'portal-fill.user.js': 'Portal fill', 'remittances.user.js': 'Remittances',
-    'rebate-sync.user.js': 'Rebate sync', 'bank-statement.user.js': 'Bank statement', 'insurer-payments-due.user.js': 'Insurer payments due', 'charge-excess.user.js': 'Charge excess',
+    'rebate-sync.user.js': 'Rebate sync', 'bank-statement.user.js': 'Bank statement', 'insurer-payments-due.user.js': 'Insurer payments due', 'charge-excess.user.js': 'Schedule excess',
     // Patients
     'patient-statuses.user.js': 'Patient statuses', 'open-ended-patients.user.js': 'Open-ended patients', 'missing-details.user.js': 'Missing details', 'review-requests.user.js': 'Review requests',
     'feedback-alerts.user.js': 'Feedback alerts',
@@ -184,14 +184,15 @@
     },
     {
       id: 'invoice-page', title: 'Invoice page layout',
-      scripts: ['Rebate sync', 'Remittances', 'Invoice Funder', 'Charge excess'],
+      scripts: ['Rebate sync', 'Remittances', 'Invoice Funder', 'Schedule excess'],
       // An invoice: /invoice/{id} or /patient/invoice/{patient}/{id}. Not /patient/invoice/{patient}/, the patient's Invoices tab (a list).
       applies: () => /\/invoice\/\d+\/?$/.test(location.pathname) && !/\/patient\/invoice\/\d+\/?$/.test(location.pathname) || /\/patient\/invoice\/\d+\/\d+\/?$/.test(location.pathname),
       test: () => missingEls(['#invoiceLines', '#invoicePayments'])
         // Invoice Funder reads the patient, claim and authorisation from patient invoices that can still be billed.
         .concat(document.getElementById('invoiceFunderBtn') ? missingEls(['#card-invoice-view-patient a[href*="/patient/"]', '#card-invoice-parts-claim-view', '#btn-group-outstanding-charges']) : [])
-        // Charge excess: Halaxy's Send button (its Send Invoice Email pop-up) and Mark as Paid, where its button goes.
-        .concat(document.querySelector('.upc-charge-excess') ? missingEls(['#btn-email-invoice a[href*="/email/document/invoice/"]', '#invoicePayments a[href*="/pay/offline"]']) : []),
+        // Schedule excess: Halaxy's Send button (its Send Invoice Email pop-up; the link is #btn-email-invoice itself) and
+        // Process Now, where its button goes (data-modal-href, live 16 Nov 2026).
+        .concat(document.querySelector('.upc-charge-excess') ? missingEls(['#btn-email-invoice', '[data-modal-href*="/pay/securepay"], a[href*="/pay/securepay"]']) : []),
     },
     {
       id: 'editor', title: "Halaxy's text editor",

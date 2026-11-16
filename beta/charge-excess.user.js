@@ -1,11 +1,11 @@
 // ==UserScript==
-// @name         UPC Billing: Charge excess (beta)
+// @name         UPC Billing: Schedule excess (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.0
+// @version      0.1.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/charge-excess.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/charge-excess.user.js
-// @description  A "Charge excess" button on patient invoices with an unpaid excess: sets the due date a week ahead, schedules the payment from the card on file for then, and emails the patient the "Insurance excess due" email. Asks first.
+// @description  A "Schedule excess" button on patient invoices with an unpaid excess: sets the due date a week ahead, schedules the payment from the card on file for then, and emails the patient the "Insurance excess due" email. Asks first.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
 // @grant        none
@@ -13,7 +13,7 @@
 // ==/UserScript==
 
 /*
- * Charge excess (Carl, 16 Nov 2026). On a patient invoice that has been billed to its funder and still has something
+ * Schedule excess (Carl, 16 Nov 2026; file name from its first name, Charge excess). On a patient invoice that has been billed to its funder and still has something
  * outstanding (the excess), one button, after a confirm:
  *
  *  1. Invoice settings (cogwheel, /invoice/options/:id): Due Date = a week from today (core UPC.invoice.setSettings).
@@ -36,7 +36,7 @@
   if (window.__hxChargeExcess) return;
   window.__hxChargeExcess = true;
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
   const U = () => window.UPC;
   if (!/^\/a\/pr\/\d+\//.test(location.pathname)) return;
   // A patient invoice: /invoice/{id} or /patient/invoice/{patient}/{id}; not the patient's Invoices tab.
@@ -131,18 +131,18 @@
   function ask() {
     if (busy) return;
     busy = true;
-    const dlg = U().ui.dialog({ title: 'Charge excess', key: 'charge-excess', canClose: () => !busy });
+    const dlg = U().ui.dialog({ title: 'Schedule excess', key: 'charge-excess', canClose: () => !busy });
     if (!dlg) { busy = false; return; }
     dlg.body.innerHTML = U().ui.run.inline('Reading the invoice');
     plan().then((p) => {
       busy = false;
-      dlg.body.innerHTML = '<p>Charge the ' + esc(U().money.fmt(p.amount)) + ' excess on ' + esc(p.inv.number) + '?</p>' +
+      dlg.body.innerHTML = '<p>Schedule the ' + esc(U().money.fmt(p.amount)) + ' excess on ' + esc(p.inv.number) + '?</p>' +
         '<table class="table table-striped table-bordered w-100"><tbody>' +
         '<tr><th>Due date</th><td>' + esc(p.due) + '</td></tr>' +
         '<tr><th>Payment</th><td>' + esc(U().money.fmt(p.amount)) + ' from ' + esc(p.card) + ' on ' + esc(p.due) + ' at ' + esc(p.time) + '</td></tr>' +
         '<tr><th>Email</th><td>' + esc(SUBJECT(p.due)) + '<br><span class="text-muted">to ' + esc(p.to) + '</span></td></tr>' +
         '</tbody></table>' +
-        '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-upc-close>Cancel</button><button type="button" class="btn btn-primary" data-a="go">Charge excess</button></div>';
+        '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-upc-close>Cancel</button><button type="button" class="btn btn-primary" data-a="go">Schedule excess</button></div>';
       dlg.body.querySelector('[data-a=go]').addEventListener('click', () => go(dlg, p));
     }).catch((e) => {
       busy = false;
@@ -189,17 +189,21 @@
     btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'btn btn-outline-primary-light upc-charge-excess';
-    btn.textContent = 'Charge excess';
+    btn.textContent = 'Schedule excess';
     btn.addEventListener('click', ask);
-    const paid = document.querySelector('#invoicePayments a[href*="/pay/offline"]');
-    if (paid) paid.insertAdjacentElement('afterend', btn);
+    // Next to Process Now (with its drop-down; live 16 Nov 2026 the buttons carry data-modal-href, not href), else
+    // next to Mark as Paid, else under the payments.
+    const by = (part) => document.querySelector('#invoicePayments [href*="' + part + '"], #invoicePayments [data-modal-href*="' + part + '"]') ||
+      document.querySelector('#pageContent a[href*="' + part + '"], #pageContent [data-modal-href*="' + part + '"]');
+    const process = by('/pay/securepay');
+    const at = process ? (process.closest('.btn-group') || process) : by('/pay/offline');
+    if (at) { at.insertAdjacentElement('afterend', btn); btn.style.marginLeft = '4px'; }
     else {
       const box = document.createElement('div');
       box.className = 'upc-native my-2';
       box.appendChild(btn);
       (document.querySelector('#invoicePayments') || document.querySelector('#invoiceLines')).insertAdjacentElement('afterend', box);
     }
-    if (paid) btn.style.marginLeft = '4px';
   }
 
   function start() {

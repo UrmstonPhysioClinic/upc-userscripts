@@ -52,15 +52,16 @@ def invoice_html(iid):
     if iid == 3003:
         pay += "<tr><td></td><td>Funder Payment</td><td></td><td>£ 20.00</td><td><a class='ajax btn' data-modal-href='/a/pr/555/invoicefunctions/3003/claim/77/' id='invoiceFunderBtn'>Invoice Funder</a></td></tr>"
     if iid != 3002:
-        pay += ("<tr><td></td><td></td><td>Outstanding</td><td>£ 40.00</td><td><a class='ajax btn btn-outline-primary-light' href='/a/pr/555/invoicefunctions/%d/pay/securepay/1?bundle=prac'>Process Now</a>"
-                "<a class='ajax btn btn-outline-primary-light' href='/a/pr/555/invoicefunctions/%d/pay/offline'>Mark as Paid</a></td></tr>") % (iid, iid)
+        pay += ("<tr><td></td><td>Stored Payment Method</td><td><a class='ajax link-text' data-modal-href='/a/pr/555/invoicefunctions/payment/scheduled/new/invoice/%d'>Available</a></td><td>£ 40.00</td>"
+                "<td><div class='btn-group'><a class='ajax btn btn-outline-primary-light' data-modal-href='/a/pr/555/invoicefunctions/%d/pay/securepay/1?bundle=prac'>Process Now</a><button class='btn dropdown-toggle'></button></div></td></tr>"
+                "<tr><td></td><td></td><td>Outstanding</td><td>£ 40.00</td><td><a class='ajax btn btn-outline-primary-light' data-modal-href='/a/pr/555/invoicefunctions/%d/pay/offline'>Mark as Paid</a></td></tr>") % (iid, iid, iid)
     title = 'Receipt' if iid == 3002 else 'Invoice'
     return ("<html><head><title>%s UPC-%d | Halaxy</title></head><body><div id='mainMenu'></div><div id='pageContent'>"
             "<div id='card-invoice-view-patient'><a href='/a/pr/555/patient/500'>Patient Test</a></div>"
             "<div id='card-invoice-parts-claim-view'><a href='/a/pr/555/organisation/7364'>Bupa Healthcare</a></div>"
             "<table id='invoiceLines'><tbody>%s<tr><td>Total</td><td>£ 60.00</td></tr></tbody></table>"
             "<table id='invoicePayments'><tbody>%s</tbody></table>"
-            "<div id='btn-email-invoice'><a class='btn icon ajax' href='/a/pr/555/email/document/invoice/%d'>e</a></div></div></body></html>") % (title, iid, lines, pay, iid)
+            "<a id='btn-email-invoice' class='btn icon ajax' href='/a/pr/555/email/document/invoice/%d'>e</a></div></body></html>") % (title, iid, lines, pay, iid)
 
 
 def options_popup():
@@ -170,18 +171,18 @@ async def main():
             ctx, pg, errors = await open_invoice(browser, iid)
             shown[iid] = await pg.evaluate("!!document.querySelector('.upc-charge-excess')")
             if iid == 3001:
-                place = await pg.evaluate("(() => { const b = document.querySelector('.upc-charge-excess'); return [b.className, b.previousElementSibling && b.previousElementSibling.textContent]; })()")
+                place = await pg.evaluate("(() => { const b = document.querySelector('.upc-charge-excess'); return [b.className, b.previousElementSibling && b.previousElementSibling.classList.contains('btn-group') && b.previousElementSibling.textContent, b.textContent]; })()")
             await ctx.close()
         check('button on a patient invoice billed to its funder with something outstanding', shown[3001], shown)
         check('no button when paid in full, still to bill, or on a funder invoice', not shown[3002] and not shown[3003] and not shown[3004], shown)
-        check('button next to Mark as Paid, in Halaxy\'s style', place[1] == 'Mark as Paid' and 'btn-outline-primary-light' in place[0], place)
+        check('"Schedule excess" next to Process Now (after its drop-down), in Halaxy\'s style', place[1] == 'Process Now' and place[2] == 'Schedule excess' and 'btn-outline-primary-light' in place[0], place)
 
         # Confirm, then the three steps in order
         S = fresh()
         ctx, pg, errors = await open_invoice(browser, 3001)
         text = await ask(pg)
         check('confirm: amount, invoice, due date, card and time, subject and recipient',
-              'Charge the £ 40.00 excess on UPC-3001?' in text and DUE in text and 'Mastercard: Patient Test (**** 6429)' in text and '22:24' in text
+              'Schedule the £ 40.00 excess on UPC-3001?' in text and DUE in text and 'Mastercard: Patient Test (**** 6429)' in text and '22:24' in text
               and '[Action] Insurance Excess Due - Payment on ' + DUE in text and 'patient@example.com' in text and 'Exp:' not in text, text)
         check('nothing changed before confirming', S['calls'] == [], S['calls'])
         text = await finish(pg)

@@ -1,5 +1,9 @@
 # Changelog
 
+## Schedule excess 0.1.1, 16 Nov 2026 (beta)
+- Charge excess renamed Schedule excess (Carl), and the button sits after Process Now and its drop-down. Halaxy's Process Now and Mark as Paid carry their address in data-modal-href, not href (live, 16 Nov 2026).
+- Health check 1.1.51: checks #btn-email-invoice itself (it is the Send link) and Process Now, found either way.
+
 ## HTML source for emails 0.7, 16 Nov 2026 (beta)
 - A template chosen from the list in a send box opens in HTML mode exactly as saved when it has styling the editor would strip (tables, styled paragraphs or cells), and is sent as written. Letter-style templates stay in the editor. Taken from Halaxy's own fetch of the template (/communication/template/render/...), so merge tags are kept for Halaxy to fill in.
 
