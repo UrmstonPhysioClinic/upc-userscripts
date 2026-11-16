@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Calendar: Calendar controls (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      2.15
+// @version      2.16
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/calendar-controls.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/calendar-controls.user.js
@@ -71,6 +71,10 @@
   // ---------- 0. Styles ----------
   const style = document.createElement('style');
   style.textContent = `
+    /* Just me / All practitioners: on their own line under the toolbar when the toolbar is too narrow */
+    #upc-prac-buttons { white-space: nowrap; }
+    #upc-prac-row { display: flex; justify-content: flex-end; width: 100%; flex: 0 0 100%; padding: 4px 15px 0; }
+    #upc-prac-row #upc-prac-buttons { margin-left: 0 !important; }
     /* Week view with practitioners: mark the start of each day after the first. Colour only,
        not border width, so Halaxy's column width calculations are unaffected. The grid border
        is 2px and the header border 1px, so the header gets an extra 1px inner shadow to match. */
@@ -1429,18 +1433,57 @@
       group.id = 'upc-prac-buttons';
       group.className = 'btn-group ml-2';
       group.innerHTML =
-        '<button type="button" id="upc-just-me" class="btn btn-sm btn-outline-primary" title="Show only my calendar">Just me</button>' +
-        '<button type="button" id="upc-all-pracs" class="btn btn-sm btn-outline-primary" title="Show all practitioners (not administrators)">All practitioners</button>';
+        '<button type="button" id="upc-just-me" class="btn btn-sm btn-outline-primary" title="Show only my calendar" data-long="Just me" data-short="Me">Just me</button>' +
+        '<button type="button" id="upc-all-pracs" class="btn btn-sm btn-outline-primary" title="Show all practitioners" data-long="All practitioners" data-short="All">All practitioners</button>';
       col.prepend(group);
       group.querySelector('#upc-just-me').addEventListener('click', () => { const m = me(); if (m) showPractitioners([m]); });
       group.querySelector('#upc-all-pracs').addEventListener('click', () => showPractitioners(clinicians()));
       updateButtons();
+      let t = 0, lastW = 0;
+      window.addEventListener('resize', () => {
+        if (window.innerWidth === lastW) return;
+        lastW = window.innerWidth;
+        clearTimeout(t); t = setTimeout(fitButtons, 150);
+      });
     });
   }
 
   function updateButtons() {
     const all = document.getElementById('upc-all-pracs');
     if (all) all.style.display = window.HkCalendar.calendarModel.get('mode') === 'month' ? 'none' : '';
+    setTimeout(fitButtons, 300);   // after Halaxy has redrawn the toolbar for the new view
+  }
+
+  // On a narrower screen the buttons would sit on top of Halaxy's Day / Week / Month (seen on a laptop,
+  // 16 Nov 2026): first the short labels, then a line of their own under the toolbar. Measured, so it
+  // works whatever the screen width or zoom. The mobile layout arranges the toolbar itself.
+  function fitButtons() {
+    const g = document.getElementById('upc-prac-buttons');
+    if (!g || document.documentElement.classList.contains('hxl')) return;
+    const home = document.querySelector('#calToolbar .loading')?.closest('.col')?.nextElementSibling;
+    const row = document.getElementById('upc-prac-row');
+    const label = (short) => g.querySelectorAll('[data-long]').forEach((b) => { b.textContent = short ? b.dataset.short : b.dataset.long; });
+    const clash = () => {
+      const r = g.getBoundingClientRect();
+      if (!r.width) return false;
+      return [...document.querySelectorAll('#calToolbar .btn, #calToolbar .DateLabel')].some((el) => {
+        if (g.contains(el)) return false;
+        const o = el.getBoundingClientRect();
+        return o.width && o.left < r.right - 1 && o.right > r.left + 1 && o.top < r.bottom - 1 && o.bottom > r.top + 1;
+      });
+    };
+    // Start from the full labels in the toolbar, then step down only as far as needed.
+    if (home && g.parentElement !== home) { home.prepend(g); if (row) row.remove(); }
+    label(false);
+    if (!clash()) return;
+    label(true);
+    if (!clash()) return;
+    label(false);
+    const top = (home && home.closest('.TopMenu')) || (home && home.closest('.row'));
+    if (!top) return;
+    const line = row || Object.assign(document.createElement('div'), { id: 'upc-prac-row' });
+    line.appendChild(g);
+    if (!line.isConnected) top.after(line);
   }
 
   // ---------- helpers ----------

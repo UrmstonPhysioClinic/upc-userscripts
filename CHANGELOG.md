@@ -1,5 +1,8 @@
 # Changelog
 
+## Calendar controls 2.16, 16 Nov 2026 (beta)
+- Just me / All practitioners no longer sit on top of Day / Week / Month on a narrower screen (Carl's laptop, 16 Nov 2026): they switch to "Me" / "All" when that is enough, otherwise move to a line of their own under the toolbar, and go back when there is room. Measured on the page, so it follows the window width and zoom.
+
 ## Wording and look, 16 Nov 2026 (beta; 17 scripts)
 - On-screen text no longer explains the clinic's processes or how a script works (Carl, 16 Nov 2026): list intros and long footers, step-by-step paragraphs in confirm pop-ups, explanatory brackets in Clinic settings labels and row notes are removed or shortened. Task comments give the facts only.
 - Look: errors, warnings and confirmations use Halaxy's own message boxes; no faded rows (each group has its own card); no version lines on pages (Script settings lists versions); "Check now" and "Checked at 12:30 on 16-Nov-2026." everywhere; the small progress bar instead of "Working...".
