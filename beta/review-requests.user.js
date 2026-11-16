@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Review requests (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.5.7
+// @version      0.5.9
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
@@ -21,7 +21,10 @@
  *    that visit, or 2 weeks have passed with nothing booked. Nobody last seen over 4 weeks ago.
  *    One calendar request for everyone.
  *  - Left out: anyone with a "Review Request" follow-up already (Tasks & Follow-Ups, one request),
- *    anyone labelled "No review request", under-16s, and anyone with an unpaid invoice of their own.
+ *    under-16s, anyone with an unpaid invoice of their own, and anyone marked "Don't ask this time" for this visit.
+ *  - "Don't ask this time" (Carl, 16 Nov 2026; replaces the "No review request" label, which is no longer read): kept in
+ *    the shared Admin Note "UPC shared checks: Review requests" as the patient and the last visit it applies to, so
+ *    they are suggested again after a new visit.
  *  - Feedback Request survey (11 Nov 2026): the latest response from this course of treatment (matched by name, checked
  *    against the date of birth): Excellent counts for, Below expected against.
  *  - Good outcome: the latest Progress Update form ("How have your symptoms changed ... -5 to 5":
@@ -44,7 +47,7 @@
   if (window.__hxReviewRequests) return;
   window.__hxReviewRequests = true;
 
-  const VERSION = '0.5.7';
+  const VERSION = '0.5.9';
   const ROUTE = 'upc-review-requests';
   const MENU_CLS = 'upc-rr-menu';
   const ALLOWED = () => rule('reviewRequests.people', ['Carl Healy']);   // Carl, 10 Nov 2026: just me for now
@@ -64,7 +67,6 @@
   }
   const whenLabel = (d) => ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d.getDay()] + ' ' + label(d.getTime()) + ' at ' +
     String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
-  const LABEL = 'No review request';
   const DAY = 86400e3;
   const SAID_DAYS = 1, QUIET_DAYS = () => rule('reviewRequests.quietDays', 14), MAX_DAYS = () => rule('reviewRequests.maxDays', 28), MIN_AGE = () => rule('reviewRequests.minAge', 16);
   const FINISHED = ['discharged', 'goals met', 'no further treatment', 'self-managing', 'see as needed'];   // phrase kinds that say treatment has finished
@@ -185,19 +187,35 @@
     }
     out.verdict = out.good.length && !out.bad.length ? 'ready' : (out.good.length || out.nice.length) ? 'maybe' : 'none';
     if (out.verdict === 'none') return out;
-    // Worth asking: check the label, age and money owed.
+    // Worth asking: check age and money owed.
     const d = await getDetails();
-    if (JSON.stringify(d.userLabels || []).toLowerCase().includes(LABEL.toLowerCase())) { out.verdict = 'left'; out.why = 'labelled ' + LABEL; return out; }
     const dob = U().parseDay(d.dob) !== null ? U().parseDay(d.dob) : Date.parse(d.dob);
     if (dob && !isNaN(dob) && Date.now() - dob < MIN_AGE() * 365.25 * DAY) { out.verdict = 'left'; out.why = 'under ' + MIN_AGE(); return out; }
+    // Owing money: the Unpaid Invoices report (one request for everyone) lists who might; only their invoices are read
+    // to be sure. Its Payer ID is the clinic's patient number (P-005365, live 16 Nov 2026), not the Halaxy id, so the
+    // match is by name, and a name match is checked on the patient's own invoices.
+    if (unpaidPayers && !unpaidPayers.has(U().clean(p.name).toLowerCase())) return out;
     const owes = (await U().patient.invoices(p.id)).some((r) => /not yet paid|part/i.test(String(r.status || '')) && Number(String(r.balance).replace(/[^\d.-]/g, '')) > 0);
     if (owes) { out.verdict = 'left'; out.why = 'has an unpaid invoice'; }
     return out;
   }
 
+  // "Don't ask this time": skip.<patient id> | when | the last visit's day (YYYY-MM-DD), for every PC.
+  const skips = () => (U() && U().shared ? U().shared('Review requests', { keep: 400 * DAY, file: 'review-requests.user.js' }) : null);
+  const dayOf = (ms) => { const d = new Date(ms); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+
+  let unpaidPayers = null;   // names of patients paying their own unpaid invoices (this check), or null if unknown
   async function check(say) {
     say = say || (() => {});
     const now = Date.now(), day0 = today();
+    unpaidPayers = null;
+    try {
+      const lines = await U().reports.unpaidLines(label(day0 - 3 * 366 * DAY));
+      unpaidPayers = new Set(lines.filter((l) => /^P-?\d+$/i.test(String(l.payerId || '').trim())).map((l) => U().clean(l.payer).toLowerCase()));
+    } catch (e) { tellHealthCheck(e); /* each patient's invoices are read instead */ }
+    let skipped = {};
+    try { const sk = skips(); if (sk) skipped = await sk.read(0); } catch (e) { /* none known: everyone is assessed */ }
+    Object.assign(skipped, store.get('skips', {}));   // this PC's own, in case the note couldn't be written
     const cache = store.get('cache', {});
     say('Reading the survey responses...');
     const responses = await U().surveys.list().catch((e) => { tellHealthCheck(e); return []; });
@@ -211,7 +229,7 @@
       if (!byPatient.has(id)) byPatient.set(id, []);
       byPatient.get(id).push(e);
     });
-    const counts = { asked: 0, left: 0, none: 0, ended: 0, soon: 0 };
+    const counts = { asked: 0, left: 0, none: 0, ended: 0, soon: 0, skipped: 0 };
     const rows = [];
     const fresh = (r) => r && now - r.at <= KEEP && r.links && r.rules === RULES;
     const toRead = [...byPatient.values()].filter((evs) => { const last = evs.filter((e) => startMs(e) < now && !e.appointmentStatus).map(startMs); return last.length && Math.max(...last) >= now - MAX_DAYS() * DAY; }).length;
@@ -225,6 +243,8 @@
       if (lastSeen > now - SAID_DAYS * DAY || lastSeen < now - MAX_DAYS() * DAY) continue;
       if (past[0] && past[0].appointmentStatus) { counts.ended++; continue; }   // finished on a cancellation or missed appointment
       if (asked.has(id)) { counts.asked++; continue; }
+      const sk = skipped['skip.' + id];
+      if (sk && (typeof sk === 'string' ? sk : sk.value) === dayOf(lastSeen)) { counts.skipped++; continue; }   // "Don't ask this time" for this visit
       const name = U().clean(U().htmlDoc(attended[0].title || '').body.textContent).replace(/^[\s*★]+/, '') || 'Patient';
       const p = { id, name, lastSeen, firstSeen: startMs(attended[attended.length - 1]) };
       const ck = id + '|' + lastSeen;
@@ -328,10 +348,10 @@
     const why = esc((r.good || []).concat(r.nice || []).join(', ')) + ((r.bad || []).length ? '<span class="upc-err">Against: ' + esc(r.bad.join(', ')) + '</span>' : '') +
       (r.verdict === 'error' ? '<span class="upc-err">Not read: ' + esc(r.why) + '</span>' : '');
     const acts = d && d.sent ? '<span class="upc-ok">Review request scheduled for ' + esc(d.sent) + (d.reminder ? ', reminder ' + esc(d.reminder) : '') + '</span>' +
-      (d.reminderError ? '<br><span class="upc-err">Reminder not added: ' + esc(d.reminderError) + '</span>' : '') : d === 'labelled' ? '<span class="upc-ok">Labelled ' + esc(LABEL) + '</span>' : d === 'busy' ? '<span class="text-muted">Working...</span>'
+      (d.reminderError ? '<br><span class="upc-err">Reminder not added: ' + esc(d.reminderError) + '</span>' : '') : d === 'skipped' ? '<span class="upc-ok">Not asking this time (suggested again after a new visit)</span>' : d === 'busy' ? '<span class="text-muted">Working...</span>'
       : (d && d.error ? '<span class="upc-err">' + esc(d.error) + '</span><br>' : '') +
         '<button type="button" class="btn btn-outline-primary-light" data-send="' + esc(r.id) + '">Send review request</button>' +
-        '<button type="button" class="btn btn-outline-primary" data-skip="' + esc(r.id) + '">Don\'t ask</button>';
+        '<button type="button" class="btn btn-outline-primary" data-skip="' + esc(r.id) + '">Don\'t ask this time</button>';
     return '<tr class="' + (r.verdict === 'ready' ? '' : 'upc-off') + '"><td><a href="' + esc(base + '/patient/' + r.id) + '" target="_blank" rel="noopener">' + esc(r.name) + '</a></td>' +
       '<td class="upc-rr-date">' + esc(label(r.lastSeen)) + '</td><td class="upc-rr-why">' + why + '</td><td class="upc-rr-links">' + linksHtml(r) + '</td><td class="upc-rr-acts">' + acts + '</td></tr>';
   }
@@ -352,7 +372,7 @@
       const c = r.counts;
       h += '<p class="text-muted">Patients with nothing booked, from the day after their last visit when the notes say treatment has finished (discharged, goals met, self-managing), ' +
         'otherwise once ' + QUIET_DAYS() + ' days have passed, and up to ' + MAX_DAYS() + ' days after their last visit. Left out: ' + c.asked + ' already sent a review request, ' +
-        c.left + ' labelled ' + esc(LABEL) + ', under ' + MIN_AGE() + ' or owing money, ' + c.ended + ' whose last appointment was cancelled or missed, ' +
+        c.left + ' under ' + MIN_AGE() + ' or owing money, ' + (c.skipped || 0) + ' marked Don\'t ask this time, ' + c.ended + ' whose last appointment was cancelled or missed, ' +
         (c.soon || 0) + ' seen in the last ' + QUIET_DAYS() + ' days whose notes don\'t say they\'ve finished, and ' + c.none + ' with no good-outcome signs in their last two notes or Progress Update form.</p>';
     }
     h += '<div class="text-muted upc-version">Review requests ' + VERSION + '</div></div>';
@@ -377,7 +397,8 @@
     const ok = kind === 'send'
       ? await confirm('Send review request?', '<p>Schedule the ' + esc(TEMPLATE) + ' email for ' + esc(r.name) + ' on ' + esc(whenLabel(when)) + '?</p><p class="text-muted">It\'s added through Halaxy\'s Add Follow-Up with your ' +
         esc(TEMPLATE) + ' email template and shows in Tasks &amp; Follow-Ups, where it can be changed or cancelled before it goes. If you\'ve set up a ' + esc(REMINDER) + ' email template in Halaxy, a reminder is added for a week later.</p>', 'Send review request')
-      : await confirm('Don\'t ask?', '<p>Add the label "' + esc(LABEL) + '" to ' + esc(r.name) + '?</p><p class="text-muted">It\'s added on their Edit page, with everything else left as it is, and they won\'t be suggested again.</p>', 'Add label');
+      : await confirm('Don\'t ask this time?', '<p>Don\'t suggest a review request for ' + esc(r.name) + ' for their visit on ' + esc(label(r.lastSeen)) + '?</p><p class="text-muted">Nothing is changed on their profile. ' +
+        'If they come again, they are suggested after their next visit. Noted for every PC.</p>', 'Don\'t ask this time');
     if (!ok) return;
     done.set(id, 'busy');
     render();
@@ -395,7 +416,13 @@
         }
         done.set(id, res);
       }
-      else { await U().patient.addLabel(id, LABEL); done.set(id, 'labelled'); }
+      else {
+        const mark = { ['skip.' + id]: dayOf(r.lastSeen) };
+        store.set('skips', Object.assign(store.get('skips', {}), mark));   // this PC's copy too
+        const sk = skips();
+        if (sk) await sk.write(mark);
+        done.set(id, 'skipped');
+      }
     } catch (e) {
       done.set(id, { error: e.message || String(e) });
       tellHealthCheck(e);

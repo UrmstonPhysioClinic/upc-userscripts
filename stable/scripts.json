@@ -8,7 +8,7 @@
     {
       "file": "core.user.js",
       "name": "UPC System: Core library",
-      "version": "0.1.43"
+      "version": "0.1.59"
     },
     {
       "file": "alerts.user.js",
@@ -55,6 +55,11 @@
       "was": "bill-funder.user.js"
     },
     {
+      "file": "missing-details.user.js",
+      "name": "UPC Patients: Missing details",
+      "version": "0.2.3"
+    },
+    {
       "file": "open-ended-patients.user.js",
       "name": "UPC Patients: Open-ended patients",
       "version": "0.1.7",
@@ -64,6 +69,11 @@
       "file": "outstanding-actions.user.js",
       "name": "UPC Calendar: Outstanding actions",
       "version": "0.5.5"
+    },
+    {
+      "file": "patient-statuses.user.js",
+      "name": "UPC Patients: Patient statuses",
+      "version": "0.2.7"
     },
     {
       "file": "ready-to-bill.user.js",

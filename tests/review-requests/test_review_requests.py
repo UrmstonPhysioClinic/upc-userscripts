@@ -4,7 +4,7 @@ Test for Review requests and core's notes, follow-ups and patient helpers, again
 Invented patients ("Patient A" ...), each built to hit one rule: good outcome (Progress Update +5 and
 "discharged, goals met, back to running"), mixed ("100% better" but "referred to GP"), nothing good,
 still booked, seen too recently, seen too long ago, already sent a review request, last appointment
-cancelled, labelled "No review request", under 16, owing money, "not 100% better" (negated), Progress
+cancelled, marked "Don't ask this time" for this visit (the old "No review request" label is ignored), under 16, owing money, "not 100% better" (negated), Progress
 Update +1.
 
 Checks: who is listed and where; what's left out and counted; the menu count; note text never kept;
@@ -34,7 +34,9 @@ S = {}
 
 def fresh():
     S.clear()
-    S.update({'patients': {}, 'events': [], 'followups': [], 'log': [], 'writes': [], 'user': 'Carl Healy', 'nextNote': 5000})
+    S.update({'patients': {}, 'events': [], 'followups': [], 'log': [], 'writes': [], 'user': 'Carl Healy', 'nextNote': 5000,
+              # "Don't ask this time" (shared note): Patient I for her last visit; Patient N for an earlier visit only (so asked now)
+              'notes': [{'id': 77000, 'html': '<p>UPC shared checks: Review requests</p><p>skip.109 | 2026-10-21 10:00 | %s</p><p>skip.114 | 2026-10-01 10:00 | 2026-09-30</p>' % at(-20).strftime('%Y-%m-%d')}]})
 
     def patient(pid, name, appts, notes=(), progress=None, labels=(), dob='01/01/1980', owes=False):
         items = []
@@ -119,6 +121,30 @@ async def halaxy(route):
     js = lambda o: route.fulfill(body=json.dumps(o), content_type='application/json')
     if p.endswith('/lookup/practitioner'):
         return await js([{'id': 11}, {'id': 12}])
+    # Unpaid Invoices report (columns as live, 16 Nov 2026: Payer ID is the clinic's patient number): Patient K owes money
+    # on her own invoice; an insurer-paid line for Patient A (Payer ID an insurer's number) doesn't count.
+    if p.endswith('/report/finance/0'):
+        S['reports'] = S.get('reports', 0) + 1
+        cols = ['Invoice / Deposit', 'Date', 'Due Date', 'Practitioner', 'Payer ID', 'Payer', 'Funder', 'Category', 'Fee', 'Quantity', 'Appointment Status', 'Invoice Status', 'Tax', 'Amount', 'Payments', 'Date', 'Method', 'Payments Inc. Fees', 'Balance']
+        rows = [("<a href='/a/pr/555/invoice/811'>UPC-0811</a>", '20-Oct-2026', '', 'Prac One', 'P-000111', 'Patient K', 'Self-Funded', 'Treatment', 'Follow-Up', '1', 'Attended', 'Issued', '£0.00', '£40.00', '', '', '', '', '£40.00'),
+                ("<a href='/a/pr/555/invoice/812'>UPC-0812</a>", '20-Oct-2026', '', 'Prac One', '7364', 'Bupa Healthcare / (Patient A)', 'Bupa', 'Treatment', 'Follow-Up', '1', 'Attended', 'Issued', '£0.00', '£40.00', '', '', '', '', '£40.00')]
+        h = ("<html><body><table class='table-report'><thead><tr><th colspan='13'>Fees &amp; Charges</th><th colspan='6'>Payments</th></tr><tr>%s</tr></thead><tbody>%s"
+             "<tr><td colspan='13'>Total</td><td>£80.00</td></tr></tbody></table></body></html>") % (''.join('<th>%s</th>' % c for c in cols), ''.join('<tr>%s</tr>' % ''.join('<td>%s</td>' % x for x in r) for r in rows))
+        return await route.fulfill(body=h, content_type='text/html')
+    # Admin Notes on UPC scripts (settings) (captures 14 and 15 Nov 2026)
+    if p.endswith('/communication-log/organisation/78842/list-data'):
+        return await js({'data': [{'id': n['id'], 'date': '2026-11-10 10:00:00', 'privacy': 'All', 'creator': 'Carl Healy', 'isImportant': False,
+                                   'content': '\n<p class="font-weight-bold">Log Notes</p>\n' + n['html'] + '\n<div class="form-row mt-4">\n    </div>\n'} for n in reversed(S['notes'])]})
+    m = re.search(r'/communication-log/organisation/78842/(new|(\d+)/edit)$', p)
+    if m:
+        if req.method == 'GET':
+            return await js({'status': 'FORM', 'message': "<form id='adminNoteForm'><input type='hidden' name='form[_token]' value='tn'><textarea name='form[logContent]'></textarea></form>"})
+        g = dict(urllib.parse.parse_qsl(req.post_data or '', keep_blank_values=True))
+        if m.group(2):
+            next(n for n in S['notes'] if str(n['id']) == m.group(2))['html'] = g['form[logContent]']
+        else:
+            S['notes'].append({'id': 77100 + len(S['notes']), 'html': g['form[logContent]']})
+        return await js({'status': 'CLOSE'})
     if p.endswith('/calendar/json'):
         q = urllib.parse.parse_qs(u.query)
         lo, hi = int(q['start'][0]), int(q['end'][0])
@@ -212,7 +238,7 @@ async def main():
         pg.on('pageerror', lambda e: errors.append(str(e)))
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/#upc-review-requests')
         await pg.wait_for_function(ROOT_JS + " && " + ROOT_JS + ".querySelector('table') && !" + ROOT_JS + ".querySelector('[data-a=refresh]').disabled", timeout=90000)
-        rows = await pg.evaluate(ROWS)
+        rows = rows0 = await pg.evaluate(ROWS)
         by = {r['who']: r for r in rows}
         check('good outcome: listed first, with the reasons', by.get('Patient A') and not by['Patient A']['off'] and [r['who'] for r in rows if not r['off']] == ['Patient N', 'Patient Q', 'Patient A']
               and 'Progress Update +5' in by['Patient A']['why'] and 'discharged' in by['Patient A']['why'] and 'goals met' in by['Patient A']['why'] and 'back to sport or work' in by['Patient A']['why'], rows)
@@ -229,12 +255,14 @@ async def main():
         check('a survey from someone with the same name but another date of birth is ignored', 'Patient C' not in by, sorted(by))
         check('discharged 2 days ago: asked straight away', by.get('Patient N', {}).get('off') is False and 'discharged' in by['Patient N']['why'], by.get('Patient N'))
         foot = await pg.evaluate(ROOT_JS + ".querySelector('.upc-rr > p.text-muted').textContent")
-        check('left out and counted: asked, labelled/under 16/owing, cancelled, no good signs', "Left out: 1 already sent a review request, 3 labelled No review request, under 16 or owing money, 1 whose last appointment was cancelled or missed, 1 seen in the last 14 days whose notes don't say they've finished, and 3 with no good-outcome signs" in foot, foot)
+        check('left out and counted: asked, under 16/owing, Don\'t ask this time (this visit only), cancelled, no good signs', "Left out: 1 already sent a review request, 2 under 16 or owing money, 1 marked Don't ask this time, 1 whose last appointment was cancelled or missed, 1 seen in the last 14 days whose notes don't say they've finished, and 3 with no good-outcome signs" in foot, foot)
         check('menu count', await pg.evaluate("(document.querySelector('a.upc-rr-menu .upc-rr-badge') || {}).textContent") == '3')
         menu = await pg.evaluate("[...document.querySelectorAll('#mainMenu a.mainmenu-sublink')].map(a => a.getAttribute('href'))")
         check('menu item under Patients, over the Patient List', '/a/pr/555/patient/#upc-review-requests' in menu, menu)
+        inv_read = sorted({x[1] for x in S['log'] if x[1].startswith('/patient/invoice/')})
+        check('owing money: the Unpaid Invoices report read once; only a patient it names has her invoices read', S.get('reports') == 1 and inv_read == ['/patient/invoice/111/list-data'], (S.get('reports'), inv_read))
         notes_read = sorted({x[1] for x in S['log'] if x[1].startswith('/note/menu/')})
-        check('notes read only for finished patients not yet asked', notes_read == ['/note/menu/linkPaG/%d/items' % i for i in (101, 102, 103, 109, 110, 111, 112, 113, 114, 115, 117, 118)], notes_read)
+        check('notes read only for finished patients not yet asked (nor marked Don\'t ask this time)', notes_read == ['/note/menu/linkPaG/%d/items' % i for i in (101, 102, 103, 110, 111, 112, 113, 114, 115, 117, 118)], notes_read)
         details = sorted({x[1] for x in S['log'] if '/note/sidebar/' in x[1] or '/patient/invoice/' in x[1]})
         check('labels, age and invoices read only for good-looking patients', all(re.search(r'/(101|102|103|109|110|111|114|115|117|118)(/|$)', x) for x in details) and len(details) >= 5, details)
         kept = await pg.evaluate("Object.keys(localStorage).filter(k => k.startsWith('upc-rr:')).map(k => localStorage.getItem(k)).join(' ')")
@@ -282,12 +310,11 @@ async def main():
         await pg.wait_for_selector('[data-upc-rr-confirm]')
         await pg.click('[data-upc-rr-confirm] [data-c=yes]')
         # (up to a minute: by now the check has used this minute's 45 requests, and the pacing waits its turn)
-        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-review-requests] tbody tr')].some(tr => tr.innerText.includes('Labelled No review request'))", timeout=90000)
-        w = [x for x in S['writes'] if x[0] == 'edit']
-        f = w[0][2] if w else {}
-        check('label added on the Edit page, everything else sent back as it was', len(w) == 1 and f.get('patientdetailmain[linkPaG][userLabels][]') == ['202']
-              and f.get('patientdetailmain[name][forename]') == ['Patient B'] and f.get('patientdetailmain[dob][day]') == ['1'] and f.get('patientdetailmain[linkPaG][note]') == ['Likes mornings']
-              and f.get('patientdetailmain[linkPaG][linkphonepas][0][phone][number]') == [S['patients'][102]['phone']] and f.get('patientdetailmain[_token]') == ['ET'] and f.get('save_patient') == ['1'], f)
+        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-review-requests] tbody tr')].some(tr => tr.innerText.includes('Not asking this time'))", timeout=90000)
+        lines = [re.sub(r'<[^>]+>', '', x) for x in S['notes'][0]['html'].split('</p>') if x.strip()]
+        lb = next((r['when'] for r in rows0 if r['who'] == 'Patient B'), None)
+        check('Don\'t ask this time: noted for every PC with the visit it applies to; nothing changed on the patient', any(l.startswith('skip.102 | ') and l.endswith(' | ' + datetime.datetime.strptime(lb, '%d-%b-%Y').strftime('%Y-%m-%d')) for l in lines)
+              and not [x for x in S['writes'] if x[0] == 'edit'], (lines, lb, [x[:2] for x in S['writes']]))
         check('no page errors', not errors, errors)
 
         # Check again: results kept, notes not read again

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.43
+// @version      0.1.59
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/stable/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.43';
+  const VERSION = '0.1.59';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -861,16 +861,58 @@
       if (!after || after.balance !== before.balance - total) throw new UPCError('Halaxy applied the deposit, but it now has ' + (after ? money.fmt(after.balance) : 'nothing') + ' left, not ' + money.fmt(before.balance - total) + '. Check the profile and the invoices.');
       return after;
     },
-    // Insurer profiles seen on invoices (their Bill To), kept on this PC so a bank line with no invoice to go by can
-    // still find its insurer's profile, and so the lingering check knows which profiles to look at.
-    orgs() { return storage('upc-funder-orgs:').get('list', {}); },
+    // Insurer profiles seen on invoices (their Bill To), so a bank line with no invoice to go by can still find its
+    // insurer's profile, and so the lingering check knows which profiles to look at. Kept on this PC and, for every PC,
+    // in the shared note "UPC shared checks: Insurer profiles" (org.<id> | when | insurer; Carl, 15 Nov 2026).
+    shared: () => shared('Insurer profiles', { keep: 400 * 86400e3 }),
+    orgs() {
+      const all = Object.assign({}, storage('upc-funder-orgs:').get('list', {}));
+      let recs = {};
+      try { recs = deposits.shared().cached(); } catch (e) { /* this PC's list still applies */ }
+      Object.keys(recs).forEach((k) => {
+        const m = /^org\.(\d+)$/.exec(k), r = recs[k];
+        if (m && r.at !== null && !all[m[1]]) all[m[1]] = { name: '', insurer: r.value === '-' ? '' : r.value };
+      });
+      return all;
+    },
     rememberOrg(orgId, name, insurer) {
       if (!orgId) return;
       const st = storage('upc-funder-orgs:'), all = st.get('list', {});
       const was = all[orgId] || {};
-      if (was.name === name && was.insurer === insurer) return;
-      all[orgId] = { name: name || was.name || '', insurer: insurer || was.insurer || '' };
-      st.set('list', all);
+      if (!(was.name === name && was.insurer === insurer)) {
+        all[orgId] = { name: name || was.name || '', insurer: insurer || was.insurer || '' };
+        st.set('list', all);
+      }
+      // For every PC: when the shared note doesn't have it, has a different insurer, or last noted it a month ago.
+      // Kept as pending here and written by flushOrgs (after a step the user confirmed, and on the daily check), so
+      // reading a statement or remittance writes nothing.
+      try {
+        const r = deposits.shared().cached()['org.' + orgId], ins = String(all[orgId].insurer || '').replace(/[^A-Za-z0-9 _.:,-]/g, '').trim() || '-';
+        if (!r || r.at === null || r.value !== ins || Date.now() - r.at > 30 * 86400e3) { const p = st.get('pending', {}); p['org.' + orgId] = ins; st.set('pending', p); }
+      } catch (e) { /* noted next time */ }
+    },
+    async flushOrgs() {
+      const st = storage('upc-funder-orgs:'), p = st.get('pending', {});
+      if (!Object.keys(p).length) return;
+      await deposits.shared().write(p);
+      const now = st.get('pending', {});
+      Object.keys(p).forEach((k) => { if (now[k] === p[k]) delete now[k]; });
+      st.set('pending', now);
+    },
+    // Once a day for the whole clinic (the shared note's lingerDay, claimed so two PCs don't both check); this PC's
+    // own day if the note can't be read. Returns true when this PC should check today.
+    async dailyTurn(sh, local) {
+      const today = dayLabel(Date.now());
+      if (sh) {
+        try {
+          const recs = await sh.read(0);
+          if (recs.lingerDay && recs.lingerDay.value === today) return false;
+          return (await sh.claim(['lingerDay'])).includes('lingerDay');
+        } catch (e) { /* this PC's own day */ }
+      }
+      if (local.get('lingerDay', '') === today) return false;
+      local.set('lingerDay', today);
+      return true;
     },
     // The profiles known for an insurer ('Bupa'), as ids.
     orgsFor(insurer) { return Object.entries(deposits.orgs()).filter(([, o]) => o.insurer === insurer).map(([id]) => id); },
@@ -879,9 +921,13 @@
     async lingering({ days, assignee, by }) {
       const st = storage('upc-funder-orgs:');
       const today = dayLabel(Date.now());
-      if (st.get('lingerDay', '') === today || http.pausedFor() > 0) return [];
-      st.set('lingerDay', today);
+      if (http.pausedFor() > 0) return [];
+      let sh = null;
+      try { sh = deposits.shared(); } catch (e) { sh = null; }
+      if (sh) await deposits.flushOrgs().catch(() => {});
+      if (!(await deposits.dailyTurn(sh, st))) return [];
       const out = [];
+      try {
       for (const [orgId, o] of Object.entries(deposits.orgs())) {
         for (const d of await deposits.list(orgId)) {
           const when = parseDay(d.day);
@@ -892,6 +938,9 @@
               'No remittance has been put through Remittances for it yet. Ask the insurer for the remittance, or apply the deposit by hand.'] });
           if (added) out.push(title);
         }
+      }
+      } finally {
+        if (sh) await sh.write({ lingerDay: today }).catch(() => {});
       }
       return out;
     },
@@ -910,6 +959,250 @@
     if (!stored || !stored.id) throw new UPCError('Halaxy did not accept the file' + (stored && stored.error ? ': ' + stored.error : '.'));
     return stored;
   }
+  // Admin Notes on a funder profile (organisation) or a patient (linkPaG), as Halaxy's Admin Notes tab keeps them
+  // (capture 14 Nov 2026): list-data gives every note with its whole text; Add and Edit are a small pop-up
+  // (form#adminNoteForm) that touches nothing else. Text is kept as one paragraph per line.
+  const adminNotes = {
+    path: (kind, id) => '/communication-log/' + (kind === 'patient' ? 'linkPaG' : 'organisation') + '/' + encodeURIComponent(id),
+    toText(html) {
+      const doc = htmlDoc('<div>' + String(html || '').replace(/<\/(p|div|li)>|<br\s*\/?>/gi, '\n') + '</div>');
+      return String(doc.body.textContent || '').split('\n').map((l) => l.replace(/ /g, ' ').replace(/[ \t]+/g, ' ').trim()).filter(Boolean).join('\n');
+    },
+    toHtml: (text) => String(text || '').split('\n').map((l) => '<p>' + esc(l) + '</p>').join(''),
+    // [{ id, date, creator, privacy, important, text }], newest first as Halaxy lists them.
+    // Asked afresh each time (a time in the address, no browser cache): right after saving, an earlier copy of the list
+    // was seen (live, 15 Nov 2026: the new note missing).
+    async list(kind, id) {
+      const res = await http.json(adminNotes.path(kind, id) + '/list-data?viewMode=ajax&_=' + Date.now(), { cache: 'no-store', headers: JSON_HEADERS });
+      if (!res || !Array.isArray(res.data)) throw new UPCError('Halaxy\'s Admin Notes list has changed, so the notes could not be read.');
+      return res.data.map((n) => ({ id: String(n.id), date: n.date || '', creator: clean(n.creator), privacy: clean(n.privacy), important: !!n.isImportant, text: adminNotes.toText(adminNotes.body(n.content)) }));
+    },
+    // A listed note's content as written: Halaxy's list puts a "Log Notes" heading (p.font-weight-bold) before it and an
+    // empty div.form-row after it (capture 15 Nov 2026), so the first line read was "Log Notes", not the note's own.
+    body(html) {
+      return String(html || '').replace(/^\s*<p\b[^>]*\bfont-weight-bold\b[^>]*>\s*Log Notes\s*<\/p>/i, '').replace(/<div\b[^>]*\bform-row\b[^>]*>\s*<\/div>\s*$/i, '');
+    },
+    async save(path, text, check) {
+      const { doc } = await http.popup(path);
+      const form = doc.querySelector('form#adminNoteForm');
+      if (!form || !form.querySelector('[name="form[logContent]"]') || !form.querySelector('[name="form[_token]"]')) throw new UPCError('Halaxy\'s Admin Note pop-up has changed, so the note was not saved.');
+      const pairs = serialize(form).filter(([k]) => k !== 'form[logContent]' && k !== 'form[isImportant]');
+      pairs.push(['form[logContent]', adminNotes.toHtml(text)]);
+      const res = await http.postForm(path, pairs);
+      if (res && res.status === 'FORM') throw new UPCError('Halaxy did not save the note' + (Array.isArray(res.errors) && res.errors.length ? ': ' + res.errors.join(' ') : '.'));
+      return check();
+    },
+    // Adds a note (Access left as Halaxy offers it: All) and returns it, as listed afterwards.
+    async add(kind, id, text) {
+      const before = (await adminNotes.list(kind, id)).map((n) => n.id);
+      const want = adminNotes.toText(adminNotes.toHtml(text));
+      return adminNotes.save(adminNotes.path(kind, id) + '/new', text, () => adminNotes.settle(kind, id, (notes) => {
+        const added = notes.filter((n) => !before.includes(n.id));
+        return added.length === 1 && added[0].text === want ? added[0] : null;
+      }, 'Halaxy accepted the note but does not list it as written. Check the Admin Notes.'));
+    },
+    // Reads the list until found(notes) gives the note (up to three looks, a second or two apart: Halaxy's list can lag
+    // just after a save), else fails with message.
+    async settle(kind, id, found, message) {
+      for (let i = 0; i < 3; i++) {
+        if (i) await sleep(1500 * i);
+        const n = found(await adminNotes.list(kind, id));
+        if (n) return n;
+      }
+      throw new UPCError(message);
+    },
+    // Deletes a note (capture 14 Nov 2026): GET .../:noteId/delete is Halaxy's "Delete Admin Note" pop-up, whose Delete
+    // button is a link to .../:noteId/delete/<hex>; opening that deletes it. Checked by listing afterwards. Only used for
+    // the scripts' own spare shared-check notes (Carl, 15 Nov 2026).
+    async remove(kind, id, noteId) {
+      const del = adminNotes.path(kind, id) + '/' + encodeURIComponent(noteId) + '/delete';
+      const { doc } = await http.popup(del);
+      const link = [...doc.querySelectorAll('a[href]')].find((a) => a.getAttribute('href').split('?')[0].replace(/^.*\/a\/pr\/\d+/, '').startsWith(del + '/'));
+      if (!link) throw new UPCError('Halaxy\'s Delete Admin Note pop-up has changed, so the note was not deleted.');
+      await http.json(link.getAttribute('href').replace(/^.*\/a\/pr\/\d+/, ''));
+      if ((await adminNotes.list(kind, id)).some((n) => n.id === String(noteId))) throw new UPCError('Halaxy still lists the note after deleting it.');
+    },
+    // Replaces a note's text (its date, owner and access stay as they are).
+    async update(kind, id, noteId, text) {
+      const want = adminNotes.toText(adminNotes.toHtml(text));
+      return adminNotes.save(adminNotes.path(kind, id) + '/' + encodeURIComponent(noteId) + '/edit', text, () => adminNotes.settle(kind, id,
+        (notes) => notes.find((x) => x.id === String(noteId) && x.text === want) || null, 'Halaxy does not show the note as changed. Check the Admin Notes.'));
+    },
+  };
+
+  // Checks shared between the PCs (Carl, 15 Nov 2026). One Admin Note per script on the "UPC scripts (settings)"
+  // organisation holds what each PC found, so the other PCs needn't check again, and claims ("checking"), so two PCs
+  // don't check the same thing at once. Ids and short codes only, never names. Lines:
+  //   <key> | <when found> | <what was found> [| checking <pc> until <time>]
+  // A line that can't be read is dropped when the note is next saved (and the health check is told); a note that has
+  // lost its first line is found again by its id and rewritten; a deleted note is made again by the next save.
+  const SHARED_ORG = '78842';
+  const SHARED_HEAD = 'UPC shared checks: ';
+  const SHARED_INFO = 'Kept by UPC scripts. Please do not edit: a line that is changed is dropped and checked again.';
+  function pcId() {
+    let id = null;
+    try { id = localStorage.getItem('upc-core:pc'); } catch (e) { /* storage blocked */ }
+    if (!/^[a-z0-9]{4}$/.test(id || '')) {
+      id = Math.random().toString(36).slice(2, 6).padEnd(4, '0');
+      try { localStorage.setItem('upc-core:pc', id); } catch (e) { /* storage blocked */ }
+    }
+    return id;
+  }
+  const SHARED_QUEUE = {};
+  function shared(name, opts) {
+    opts = opts || {};
+    const head = SHARED_HEAD + name;
+    const keep = opts.keep || 30 * 86400e3, claimFor = opts.claimFor || 5 * 60e3, max = opts.max || 1500;
+    const st = storage('upc-shared:' + name.toLowerCase().replace(/[^a-z0-9]+/g, '-') + ':');
+    const me = pcId();
+    const p2 = (n) => String(n).padStart(2, '0');
+    const stamp = (ms) => { const d = new Date(ms); return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes()); };
+    const unstamp = (s) => { const m = /^(\d{4})-(\d\d)-(\d\d) (\d\d):(\d\d)$/.exec(s || ''); return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]).getTime() : null; };
+    const KEY_RE = /^[A-Za-z0-9_.:-]{1,40}$/, VALUE_RE = /^[A-Za-z0-9 _.:,-]{1,200}$/;
+    // { recs: { key: { at, value, claim: { by, until } | null } }, bad: number of lines that couldn't be read }
+    function parse(text) {
+      const lines = String(text || '').split('\n');
+      const recs = {};
+      let bad = lines[0] === head ? 0 : 1;
+      lines.slice(1).forEach((l, i) => {
+        if (i === 0 && l === SHARED_INFO) return;
+        const f = l.split(' | ');
+        const at = f[1] === '-' ? null : unstamp(f[1]);
+        const claim = f[3] ? /^checking ([a-z0-9]{4}) until (\d{4}-\d\d-\d\d \d\d:\d\d)$/.exec(f[3]) : null;
+        const ok = f.length >= 3 && f.length <= 4 && KEY_RE.test(f[0]) && !recs[f[0]] && (f[1] === '-' ? f[2] === '-' : at !== null && VALUE_RE.test(f[2])) &&
+          (f.length === 3 ? f[1] !== '-' : !!claim);
+        if (!ok) { bad++; return; }
+        recs[f[0]] = { at, value: at === null ? null : f[2], claim: claim ? { by: claim[1], until: unstamp(claim[2]) } : null };
+      });
+      return { recs, bad };
+    }
+    function format(recs) {
+      const keys = Object.keys(recs).sort((a, b) => (recs[b].at || 0) - (recs[a].at || 0)).slice(0, max).sort();
+      return [head, SHARED_INFO].concat(keys.map((k) => {
+        const r = recs[k];
+        return [k, r.at === null ? '-' : stamp(r.at), r.at === null ? '-' : r.value].concat(r.claim ? ['checking ' + r.claim.by + ' until ' + stamp(r.claim.until)] : []).join(' | ');
+      })).join('\n');
+    }
+    // The note among the organisation's Admin Notes: the oldest whose first line is ours (so every PC settles on the same
+    // one, live 15 Nov 2026: three PCs made one each at the same moment), or the one this PC last used (if its first line
+    // was lost). Lines in any other copies are taken in (the newest check wins); those copies are deleted on the next save
+    // (Carl, 15 Nov 2026), or relabelled as spare if Halaxy won't delete them (and deleted on a later save).
+    const SPARE = 'Spare copy of ' + head + ' (two PCs started it at the same moment). It can be deleted.';
+    function pick(notes) {
+      const ours = notes.filter((n) => n.text.split('\n')[0] === head).sort((a, b) => Number(a.id) - Number(b.id));
+      const note = ours[0] || notes.find((n) => n.id === st.get('noteId', '')) || null;
+      const got = note ? parse(note.text) : { recs: {}, bad: 0 };
+      const spares = ours.slice(1).concat(notes.filter((n) => n.text === SPARE));
+      spares.forEach((n) => {
+        const more = parse(n.text).recs;
+        Object.keys(more).forEach((k) => {
+          const a = got.recs[k], b = more[k];
+          if (!a) { got.recs[k] = b; return; }
+          if (b.at !== null && (a.at === null || b.at > a.at)) { a.at = b.at; a.value = b.value; }
+          if (!a.claim && b.claim) a.claim = b.claim;
+        });
+      });
+      return Object.assign({ note, spares }, got);
+    }
+    async function retire(spares) {
+      for (const n of spares) {
+        try { await adminNotes.remove('organisation', SHARED_ORG, n.id); continue; } catch (e) { console.warn('[UPC shared]', e); }
+        if (n.text === SPARE) continue;
+        try { await adminNotes.update('organisation', SHARED_ORG, n.id, SPARE); } catch (e) { console.warn('[UPC shared]', e); }
+      }
+    }
+    function remember(got) {
+      if (got.note) st.set('noteId', got.note.id);
+      st.set('cache', { at: Date.now(), recs: got.recs });
+      return got.recs;
+    }
+    function tellRepaired(n) {
+      try {
+        document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: opts.file || 'core.user.js',
+          message: 'Its shared note on UPC scripts (settings) had ' + n + ' line' + (n === 1 ? '' : 's') + ' that could not be read, so the note was rewritten (those checks are simply done again).' }) }));
+      } catch (e) { /* ignore */ }
+    }
+    async function read(maxAge) {
+      const c = st.get('cache', null);
+      if (c && maxAge && Date.now() - c.at < maxAge) return c.recs;
+      return remember(pick(await adminNotes.list('organisation', SHARED_ORG)));
+    }
+    // Reads the note afresh, changes it and saves it (old outcomes and lapsed claims dropped), then returns what the
+    // note says afterwards. If another PC saved at the same moment, theirs may win: the caller sees that in the result.
+    // One save at a time per note on this page (two at once would each write over the other's change).
+    function save(change) {
+      const run = (SHARED_QUEUE[name] || Promise.resolve()).catch(() => {}).then(() => saveNow(change));
+      SHARED_QUEUE[name] = run;
+      return run;
+    }
+    async function saveNow(change) {
+      const got = pick(await adminNotes.list('organisation', SHARED_ORG));
+      const recs = got.recs, now = Date.now();
+      change(recs, now);
+      Object.keys(recs).forEach((k) => {
+        const r = recs[k];
+        if (r.claim && !(r.claim.until > now)) r.claim = null;
+        if (r.at !== null && now - r.at > keep) { r.at = null; r.value = null; }
+        if (r.at === null && !r.claim) delete recs[k];
+      });
+      const text = format(recs);
+      if (got.note && got.note.text === text) { await retire(got.spares); return remember(got); }
+      let saved = null;
+      try {
+        saved = got.note ? await adminNotes.update('organisation', SHARED_ORG, got.note.id, text) : await adminNotes.add('organisation', SHARED_ORG, text);
+      } catch (e) {
+        if (!/does not (list|show) the note as/.test(e.message || '')) throw e;
+      }
+      if (got.bad) tellRepaired(got.bad);
+      if (saved) await retire(got.spares);
+      if (saved) return remember({ note: saved, recs: parse(saved.text).recs });
+      return read(0);
+    }
+    return {
+      me,
+      // { key: { at, value, claim } }; maxAge: use this PC's last read if it is younger than that (ms).
+      read,
+      // This PC's last read, without asking Halaxy ({} if none).
+      cached: () => ((st.get('cache', null) || {}).recs || {}),
+      // Claims the keys nobody else is checking; returns those this PC now holds.
+      async claim(keys) {
+        if (!keys.length) return [];
+        const after = await save((recs, now) => keys.forEach((k) => {
+          if (!KEY_RE.test(String(k))) return;
+          const r = recs[k] || (recs[k] = { at: null, value: null, claim: null });
+          if (r.claim && r.claim.by !== me && r.claim.until > now) return;
+          r.claim = { by: me, until: now + claimFor };
+        }));
+        return keys.filter((k) => after[k] && after[k].claim && after[k].claim.by === me);
+      },
+      // Records outcomes { key: value } (found now) or { key: { value, at } } (found earlier, kept with its time; a newer
+      // line already in the note wins), and lets go of this PC's claims. Tried twice if another PC's save wins.
+      async write(outcomes) {
+        const norm = {};
+        Object.keys(outcomes).forEach((k) => {
+          const o = outcomes[k], value = String(o && typeof o === 'object' ? o.value : o), at = o && typeof o === 'object' && o.at ? o.at : null;
+          if (KEY_RE.test(k) && VALUE_RE.test(value) && (at === null || at > Date.now() - keep)) norm[k] = { value, at };
+        });
+        const keys = Object.keys(norm);
+        // This PC's copy of the note is changed first, so a save cut short (the page left) is noticed next time.
+        const c = st.get('cache', null);
+        if (c && keys.length) { keys.forEach((k) => { c.recs[k] = { at: norm[k].at || Date.now(), value: norm[k].value, claim: null }; }); st.set('cache', c); }
+        const change = (recs, now) => {
+          keys.forEach((k) => {
+            const at = norm[k].at || now, was = recs[k];
+            if (was && was.at !== null && was.at >= at - 60e3 && norm[k].at) return;   // the note already has this or newer
+            recs[k] = { at, value: norm[k].value, claim: was && was.claim && was.claim.by !== me ? was.claim : null };
+          });
+          Object.values(recs).forEach((r) => { if (r.claim && r.claim.by === me) r.claim = null; });
+        };
+        let after = await save(change);
+        if (keys.some((k) => !after[k] || after[k].at === null)) after = await save(change);
+        return after;
+      },
+      stamp, unstamp, parse, format,
+    };
+  }
+
   const orgFiles = {
     // The files on a funder profile, as its Attachments box lists them in the page (capture 13 Nov 2026): one
     // div.attachment-file-card per file (data-href its download link), followed by its menu, whose Edit item opens
@@ -1405,8 +1698,14 @@
       const after = await read();
       if (String(after.sel.value).toLowerCase() !== opt.value.toLowerCase()) throw new UPCError('Halaxy did not keep the new status. Change it on the patient\'s Edit page instead.');
       const now = serialize(after.form).filter(([k]) => k !== 'patientdetailmain[_token]' && k !== FIELD).map((x) => x.join('='));
-      const changed = was.map((x) => x.join('=')).filter((x) => !now.includes(x));
-      if (changed.length) throw new UPCError('The status was changed, but these details now read differently on the Edit page: ' + changed.map((x) => x.split('=')[0]).join(', ') + '. Please check the patient.');
+      // A Contact made a patient is given a patient number by Halaxy (14 Nov 2026): a number that was blank before is
+      // expected to fill in, not a sign of something else changing.
+      const changed = was.filter(([k, v]) => !(/\[patientNumber\]/.test(k) && !String(v || '').trim())).map((x) => x.join('=')).filter((x) => !now.includes(x));
+      if (changed.length) {
+        const err = new UPCError('The status was changed, but these details now read differently on the Edit page: ' + changed.map((x) => x.split('=')[0]).join(', ') + '. Please check the patient.');
+        err.statusChanged = true;
+        throw err;
+      }
       return true;
     },
   };
@@ -1511,6 +1810,8 @@
   // Never use Halaxy's behaviour classes, which its scripts act on: ajax, btn-submit, btn-cancel,
   // bootbox, bootbox-close-button, modal (on the outer layer), dialogBoxForm, datepicker,
   // popoverTarget, chosen.
+  // Our own progress bars, ticks and radio buttons are in the clinic's brand purple (#994DE6, Branding's --purple; Carl,
+  // 16 Nov 2026), not the browser's or Halaxy's blue.
   const NATIVE_CSS = `
     .upc-native .upc-gap { margin-top: 12px; }
     .upc-native .upc-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4.8px; margin-top: 16px; }
@@ -1529,6 +1830,9 @@
     .upc-native .upc-run { margin: 12px 0 16px; }
     .upc-native .upc-run .progress { height: 8px; background: var(--vs-card-header-bg-color, #e9ecef); border-radius: 4px; overflow: hidden; }
     .upc-native .upc-run .progress-bar { height: 100%; background-color: var(--vs-btn-primary-bg-color, var(--primary, #7c3fe4)); transition: width .3s ease; }
+    .upc-native .progress-bar, .upc-dialog .progress-bar { background-color: #994DE6 !important; }
+    .upc-native input[type=checkbox], .upc-native input[type=radio], .upc-dialog input[type=checkbox], .upc-dialog input[type=radio],
+      .upc-native input[type=range], .upc-dialog input[type=range], .upc-native progress, .upc-dialog progress { accent-color: #994DE6; }
     .upc-native .upc-run-now { margin-top: 4px; }
     .upc-native .upc-run-inline { display: inline-flex; align-items: center; gap: 8px; }
     .upc-native .upc-run-inline .progress { display: inline-block; width: 120px; height: 8px; background: var(--vs-card-header-bg-color, #e9ecef); border-radius: 4px; overflow: hidden; }
@@ -1910,8 +2214,322 @@
     openEnded(text) { return wording.find(text, wording.OPEN_ENDED); },
   };
 
+  // Lists shared by every PC (Carl, 16 Nov 2026): one PC works a list out and every PC shows it. One Admin Note per list
+  // on UPC scripts (settings), "UPC shared list: <name>", whose last line is "data <the result as JSON>" (patient names
+  // allowed: the note is inside Halaxy, Access All). Halaxy keeps at least 150,000 characters in a note (16 Nov 2026).
+  // Who refreshes is claimed in the "UPC shared checks: Lists" note, so two PCs don't work the same list out at once.
+  const LIST_HEAD = 'UPC shared list: ';
+  const LIST_INFO = 'Kept by UPC scripts. Please do not edit: the list is worked out again if it is changed.';
+  function sharedResult(name) {
+    const head = LIST_HEAD + name, slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const st = storage('upc-list:' + slug + ':');
+    const claims = () => shared('Lists', { keep: 7 * 86400e3, claimFor: 10 * 60e3 });
+    async function ours() {
+      return (await adminNotes.list('organisation', SHARED_ORG)).filter((n) => n.text.split('\n')[0] === head).sort((a, b) => Number(a.id) - Number(b.id));
+    }
+    const dataOf = (n) => {
+      const line = n ? n.text.split('\n').reverse().find((l) => l.startsWith('data ')) : null;
+      try { const d = line ? JSON.parse(line.slice(5)) : null; return d && typeof d === 'object' && d.at ? d : null; } catch (e) { return null; }
+    };
+    return {
+      // The shared result into this PC's store (key 'result') when it is newer than this PC's; returns it (or null).
+      // maxAge: use this PC's last read if younger (ms).
+      async pull(store, maxAge) {
+        let c = st.get('cache', null);
+        if (!c || !(Date.now() - c.at < (maxAge || 0))) {
+          // A note that can't be read counts as read (nothing), so the other tabs don't all ask again straight away.
+          let data = null;
+          try { data = dataOf((await ours())[0]); } catch (e) { st.set('cache', { at: Date.now(), data: c ? c.data : null }); throw e; }
+          c = { at: Date.now(), data };
+          st.set('cache', c);
+        }
+        const local = store.get('result', null);
+        if (c.data && (!local || !(local.at >= c.data.at))) store.set('result', c.data);
+        return c.data;
+      },
+      // True when this PC may work the list out now (nobody else is).
+      async claim() { return (await claims().claim(['list.' + slug])).includes('list.' + slug); },
+      // Shares the result with every PC and lets go of the claim.
+      async push(result) {
+        const text = [head, LIST_INFO, 'data ' + JSON.stringify(result)].join('\n');
+        const all = await ours();
+        if (!all.length) await adminNotes.add('organisation', SHARED_ORG, text);
+        else await adminNotes.update('organisation', SHARED_ORG, all[0].id, text);
+        for (const n of all.slice(1)) { try { await adminNotes.remove('organisation', SHARED_ORG, n.id); } catch (e) { /* tried again next time */ } }
+        st.set('cache', { at: Date.now(), data: result });
+        await claims().write({ ['list.' + slug]: 'done' }).catch(() => {});
+      },
+      release: () => claims().write({}).catch(() => {}),
+    };
+  }
+
+  // ------------------------------------------------------------------ clinic settings
+
+  // Settings shared by every PC (Carl, 15 Nov 2026): one Admin Note, "UPC clinic settings", on UPC scripts (settings),
+  // one "key = value" line each, changed only through Script settings > Clinic settings by CLINIC_EDITORS. Each PC reads it
+  // about hourly (visible tab, shared across tabs) and keeps a copy; a value missing, unreadable or outside its limits
+  // falls back to its default, and the health check lists it.
+  const CLINIC_HEAD = 'UPC clinic settings';
+  const CLINIC_INFO = 'Changed in Script settings > Clinic settings. Please do not edit here: a line that is changed by hand is ignored.';
+  const CLINIC_EDITORS = ['Carl Healy'];
+  const CLINIC_EVERY = 3600e3;
+  // { key, script, label, unit, def, min, max, type: 'number' (whole numbers) | 'time' ('HH:MM') | 'people' (names, at
+  // least one) | 'person' (one name) | 'order' (names in order, at least one) | 'weekdays' ('Mon'..'Sun', may be none) |
+  // 'dates' ('YYYY-MM-DD', may be none; '25-Dec-2026' and '25/12/2026' are read too) | 'words' (may be none) | 'text' (one
+  // line matching def.re, up to def.max characters) | 'audience' ('everyone', or names, may be none: who a per-person
+  // option is on for) | 'choice' (one of def.options' keys) }. Names are Halaxy users' full names, as signed in ('Carl Healy').
+  // An empty list is kept in the note as "none".
+  const CARL = 'Carl Healy', WENDY = 'Wendy Pritchard';
+  const CLINIC_SETTINGS = [
+    { key: 'readyToBill.maxExcess', script: 'Ready to bill', label: 'Highest believable excess (above it, taken as a slip)', unit: '£', def: 500, min: 50, max: 5000 },
+    { key: 'readyToBill.rollingDays', script: 'Ready to bill', label: 'Bill once the oldest unbilled fee is', unit: 'days old', def: 28, min: 7, max: 90 },
+    { key: 'readyToBill.soonDays', script: 'Ready to bill', label: 'Unless the next appointment is within', unit: 'days', def: 7, min: 0, max: 28 },
+    { key: 'readyToBill.quietDays', script: 'Ready to bill', label: 'Bill when nothing is booked and no visit for', unit: 'days', def: 14, min: 3, max: 90 },
+    { key: 'readyToBill.minFees', script: 'Ready to bill', label: 'With no excess known, hold a new claim until there are', unit: 'fees', def: 2, min: 1, max: 10 },
+    { key: 'readyToBill.oldMonths', script: 'Ready to bill', label: 'Bill fees older than', unit: 'months', def: 3, min: 1, max: 12 },
+    { key: 'readyToBill.windowMonths', script: 'Ready to bill', label: 'Leave out fees older than', unit: 'months', def: 6, min: 2, max: 24 },
+    { key: 'insurerPayments.overdueDays', script: 'Insurer payments due', label: 'An insurer invoice is overdue after', unit: 'days', def: 30, min: 7, max: 180 },
+    { key: 'openEnded.afterDays', script: 'Open-ended patients', label: 'List patients last seen at least', unit: 'days ago', def: 21, min: 7, max: 90 },
+    { key: 'openEnded.upToDays', script: 'Open-ended patients', label: 'and at most', unit: 'days ago', def: 91, min: 30, max: 365 },
+    { key: 'patientStatuses.gapDays', script: 'Patient statuses', label: 'Discharged when nothing is booked and no appointment for', unit: 'days', def: 42, min: 14, max: 365 },
+    { key: 'patientStatuses.maxChanges', script: 'Patient statuses', label: 'Most status changes in one run', unit: 'changes', def: 15, min: 1, max: 50 },
+    { key: 'reviewRequests.sendAt', script: 'Review requests', label: 'Send at (weekdays)', unit: '', def: '10:30', min: '07:00', max: '20:00', type: 'time' },
+    { key: 'reviewRequests.quietDays', script: 'Review requests', label: 'Ask once there has been no visit for', unit: 'days', def: 14, min: 1, max: 60 },
+    { key: 'reviewRequests.maxDays', script: 'Review requests', label: 'Stop asking after', unit: 'days since the last visit', def: 28, min: 7, max: 120 },
+    { key: 'reviewRequests.minAge', script: 'Review requests', label: 'Leave out patients under', unit: 'years old', def: 16, min: 0, max: 25 },
+    { key: 'missingDetails.aheadDays', script: 'Missing details', label: 'Check patients booked in the next', unit: 'days', def: 14, min: 1, max: 60 },
+    { key: 'missingDetails.backDays', script: 'Missing details', label: 'and those seen in the last', unit: 'days', def: 30, min: 0, max: 180 },
+    { key: 'bankStatement.lingerDays', script: 'Bank statement', label: 'Task when a deposit and its remittance are still not matched after', unit: 'days', def: 10, min: 3, max: 60 },
+    { key: 'bankStatement.dueFromDay', script: 'Bank statement', label: 'Remind about last month\'s statement from day', unit: 'of the month', def: 15, min: 1, max: 28 },
+    // People (stage 2, Carl 15 Nov 2026). A page's list also decides on whose sign-in its background checks run.
+    { key: 'readyToBill.people', script: 'Who sees what', label: 'Ready to bill', type: 'people', def: [CARL, WENDY] },
+    { key: 'missingDetails.people', script: 'Who sees what', label: 'Missing details list (everyone sees the banner)', type: 'people', def: [CARL, WENDY] },
+    { key: 'insurerPayments.people', script: 'Who sees what', label: 'Insurer payments due', type: 'people', def: [CARL] },
+    { key: 'openEnded.people', script: 'Who sees what', label: 'Open-ended patients', type: 'people', def: [CARL] },
+    { key: 'reviewRequests.people', script: 'Who sees what', label: 'Review requests', type: 'people', def: [CARL] },
+    { key: 'feedbackAlerts.people', script: 'Who sees what', label: 'Feedback alerts (checked while they are signed in)', type: 'people', def: [CARL] },
+    { key: 'patientStatuses.people', script: 'Who sees what', label: 'Patient statuses (kept up to date while they are signed in)', type: 'people', def: [CARL] },
+    { key: 'bankStatement.people', script: 'Who sees what', label: 'Bank statement', type: 'people', def: [CARL] },
+    { key: 'feedbackAlerts.taskFor', script: 'Who gets tasks', label: 'Feedback to look at', type: 'person', def: CARL },
+    { key: 'remittances.taskFor', script: 'Who gets tasks', label: 'Remittances (bill the excess, checks, stops)', type: 'person', def: CARL },
+    { key: 'bankStatement.taskFor', script: 'Who gets tasks', label: 'Bank statement (payments to check, deposits waiting)', type: 'person', def: CARL },
+    { key: 'portalFill.taskFor', script: 'Who gets tasks', label: 'Portal fill stopped', type: 'person', def: CARL },
+    { key: 'forecourtLights.staff', script: 'Forecourt lights', label: 'Who can be reminded', type: 'people', def: [CARL, 'Diana Satalova', 'Lottie Harold', 'Roxanna Healy', 'Stephen Sharples', WENDY] },
+    // Stage 3 (Carl, 15 Nov 2026). Forecourt lights: until these are saved here, each PC keeps the schedule it had.
+    { key: 'forecourtLights.days', script: 'Forecourt lights', label: 'Clinic evenings (lights needed)', type: 'weekdays', def: [] },
+    { key: 'forecourtLights.offTime', script: 'Forecourt lights', label: 'Lights off at', type: 'time', def: '20:45', min: '17:00', max: '23:45' },
+    { key: 'forecourtLights.offset', script: 'Forecourt lights', label: 'Lights on before sunset', unit: 'minutes', def: 30, min: 0, max: 120 },
+    { key: 'forecourtLights.noticeTime', script: 'Forecourt lights', label: 'Show the reminder from', type: 'time', def: '09:00', min: '06:00', max: '20:00' },
+    { key: 'forecourtLights.skip', script: 'Forecourt lights', label: 'Dates to skip (bank holidays, closures)', type: 'dates', def: [] },
+    { key: 'portalFill.payee', script: 'Portal fill (AXA payee details)', label: 'Name of payee', type: 'text', def: 'Urmston Physio Clinic', max: 60, re: /^[A-Za-z0-9][A-Za-z0-9 &'.,()-]*$/ },
+    { key: 'portalFill.providerCode', script: 'Portal fill (AXA payee details)', label: 'AXA provider code', type: 'text', def: 'ZZ03779', max: 20, re: /^[A-Za-z0-9]+$/ },
+    { key: 'portalFill.email', script: 'Portal fill (AXA payee details)', label: 'Payee email address (for AXA\'s queries)', type: 'text', def: 'admin@urmstonphysioclinic.com', max: 80, re: /^[^\s@,]+@[^\s@,]+\.[A-Za-z]{2,}$/ },
+    { key: 'portalFill.phone', script: 'Portal fill (AXA payee details)', label: 'Payee phone number', type: 'text', def: '01617484100', max: 20, re: /^\+?[0-9 ()]{6,20}$/ },
+    { key: 'calendar.order', script: 'Calendar', label: 'Column order for All practitioners (anyone else follows)', type: 'order', def: ['Roxanna Healy', CARL, 'Diana Satalova', 'Stephen Sharples'] },
+    { key: 'calendar.hideProfessions', script: 'Calendar', label: 'Professions left out of All practitioners', type: 'words', def: ['Administrator'] },
+    // Per person (Carl, 15 Nov 2026: settings follow the account, not the PC; only Carl changes them). Until saved here,
+    // each PC keeps its own switch.
+    { key: 'forecourtLights.remind', script: 'Per person', label: 'Forecourt lights reminders for', type: 'audience', def: [] },
+    { key: 'alerts.arrivalChime', script: 'Per person', label: 'Arrival chime for', type: 'audience', def: 'everyone' },
+    { key: 'alerts.chatAlarm', script: 'Per person', label: 'Chat alarm for', type: 'audience', def: 'everyone' },
+    { key: 'branding.on', script: 'Per person', label: 'Clinic branding for', type: 'audience', def: 'everyone' },
+    { key: 'branding.font', script: 'Per person', label: 'Branding font', type: 'choice', def: 'headings', options: { all: 'Website font everywhere', headings: 'Website font for headings only', halaxy: 'Halaxy\'s own font' } },
+    { key: 'blockReporting.userpilot', script: 'Per person', label: 'Halaxy\'s tours and announcements (Userpilot) shown to', type: 'audience', def: [] },
+  ];
+  const NAME_RE = /^[A-Za-z][A-Za-z' .-]{0,39}$/;
+  const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  // A typed date ('2026-12-25', '25-Dec-2026', '25/12/2026') as 'YYYY-MM-DD', or null.
+  function isoDay(text) {
+    const t = String(text || '').trim();
+    let y, m, d, x;
+    if ((x = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(t))) [y, m, d] = [+x[1], +x[2], +x[3]];
+    else if ((x = /^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/.exec(t))) [d, m, y] = [+x[1], +x[2], +x[3]];
+    else if ((x = /^(\d{1,2})[\s-]+([A-Za-z]{3})[A-Za-z]*[\s-]+(\d{4})$/.exec(t))) { m = MONTH_NAMES.findIndex((n) => n.toLowerCase() === x[2].toLowerCase()) + 1; [d, y] = [+x[1], +x[3]]; }
+    else return null;
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    return m >= 1 && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d ? dt.toISOString().slice(0, 10) : null;
+  }
+  const settings = {
+    defs: CLINIC_SETTINGS,
+    editors: CLINIC_EDITORS,
+    store: storage('upc-settings:'),
+    // The value as kept in the note, checked: a whole number within limits, or a time HH:MM within limits; else null.
+    check(def, raw) {
+      if (raw === null || raw === undefined) return null;
+      if (def.type === 'choice') { const c = String(raw).trim(); return Object.prototype.hasOwnProperty.call(def.options, c) ? c : null; }
+      if (def.type === 'audience') {
+        if (!Array.isArray(raw) && /^\s*everyone\s*$/i.test(String(raw))) return 'everyone';
+        const list = [...new Set((Array.isArray(raw) ? raw : /^\s*none\s*$/i.test(String(raw)) ? [] : String(raw).split(',')).map((x) => String(x).replace(/\s+/g, ' ').trim()).filter(Boolean))];
+        if (list.length === 1 && list[0].toLowerCase() === 'everyone') return 'everyone';
+        return list.length <= 30 && list.every((n) => NAME_RE.test(n)) ? list : null;
+      }
+      if (['order', 'weekdays', 'dates', 'words'].includes(def.type)) {
+        const items = (Array.isArray(raw) ? raw : /^\s*none\s*$/i.test(String(raw)) ? [] : String(raw).split(/[,\n]/)).map((x) => String(x).replace(/\s+/g, ' ').trim()).filter(Boolean);
+        let out;
+        if (def.type === 'weekdays') {
+          const idx = items.map((x) => WEEKDAYS.findIndex((w) => w.toLowerCase() === x.slice(0, 3).toLowerCase()));
+          if (idx.some((i) => i < 0)) return null;
+          out = [...new Set(idx)].sort((a, b) => a - b).map((i) => WEEKDAYS[i]);
+        } else if (def.type === 'dates') {
+          out = items.map(isoDay);
+          if (out.some((x) => !x) || out.length > 100) return null;
+          out = [...new Set(out)].sort();
+        } else {
+          out = [...new Set(items)];
+          const re = def.type === 'order' ? NAME_RE : /^[A-Za-z][A-Za-z &'-]{0,39}$/;
+          if (!out.every((x) => re.test(x)) || out.length > 20 || (def.type === 'order' && !out.length)) return null;
+        }
+        return out;
+      }
+      if (def.type === 'text') {
+        const t = String(raw).replace(/\s+/g, ' ').trim();
+        return t && t.length <= def.max && def.re.test(t) ? t : null;
+      }
+      if (def.type === 'people' || def.type === 'person') {
+        const list = [...new Set((Array.isArray(raw) ? raw : String(raw).split(',')).map((x) => String(x).replace(/\s+/g, ' ').trim()).filter(Boolean))];
+        if (!list.length || list.length > (def.type === 'person' ? 1 : 20) || !list.every((n) => NAME_RE.test(n))) return null;
+        return def.type === 'person' ? list[0] : list;
+      }
+      const s = String(raw).trim();
+      if (def.type === 'time') {
+        const m = /^(\d{1,2}):(\d\d)$/.exec(s);
+        if (!m || +m[1] > 23 || +m[2] > 59) return null;
+        const t = String(m[1]).padStart(2, '0') + ':' + m[2];
+        return t >= def.min && t <= def.max ? t : null;
+      }
+      if (!/^\d+$/.test(s)) return null;
+      const n = Number(s);
+      return n >= def.min && n <= def.max ? n : null;
+    },
+    def: (key) => CLINIC_SETTINGS.find((d) => d.key === key),
+    same: (a, b) => (Array.isArray(a) || Array.isArray(b) ? String(a) === String(b) : a === b),
+    text: (v) => (Array.isArray(v) ? (v.length ? v.join(', ') : 'none') : String(v)),   // 'everyone' stays as it is
+    // For an 'audience' setting: true when it is on for the signed-in person (or for `name`).
+    forMe(key, name) {
+      const v = settings.get(key), me = String(name || user.name([]) || '').toLowerCase();
+      return v === 'everyone' || (Array.isArray(v) && !!me && v.some((n) => n.toLowerCase() === me));
+    },
+    // What applies to whoever is signed in on this PC, kept for scripts that start before the page (and core) are
+    // ready: { user, values: { key: true/false or the choice } } for per-person settings saved in Clinic settings.
+    rememberMine() {
+      const me = user.name([]);
+      if (!me) return;
+      const out = {};
+      CLINIC_SETTINGS.filter((d) => (d.type === 'audience' || d.type === 'choice') && settings.isSet(d.key)).forEach((d) => { out[d.key] = d.type === 'choice' ? settings.get(d.key) : settings.forMe(d.key, me); });
+      try { localStorage.setItem('upc-settings:mine', JSON.stringify({ user: me, values: out })); } catch (e) { /* storage blocked */ }
+    },
+    // True when the clinic has saved a usable value (not just the default), for scripts that fall back to their own.
+    isSet(key) { const r = settings.all().find((x) => x.def.key === key); return !!r && r.raw !== null && !r.bad; },
+    isoDay,
+    // The value every script uses: the clinic's, or the default.
+    get(key) {
+      const def = settings.def(key);
+      if (!def) throw new UPCError('No clinic setting called ' + key + '.');
+      const v = settings.check(def, (settings.store.get('values', {}) || {})[key]);
+      return v === null ? def.def : v;
+    },
+    // [{ def, value, raw, bad, changed, fromPc }] for the Script settings page and the health check. A setting not yet
+    // saved for the clinic shows what this PC uses now, where its script offers it (fromPc), else the default.
+    all() {
+      const vals = settings.store.get('values', {}) || {};
+      return CLINIC_SETTINGS.map((def) => {
+        const raw = Object.prototype.hasOwnProperty.call(vals, def.key) ? vals[def.key] : null;
+        const v = settings.check(def, raw);
+        const offer = v === null ? settings.offered(def) : null;
+        const value = v !== null ? v : offer !== null ? offer : def.def;
+        return { def, raw, value, bad: raw !== null && v === null, changed: !settings.same(value, def.def), fromPc: offer !== null };
+      });
+    },
+    // What this PC uses for a setting not yet saved for the clinic, offered by its script (window.__upcSettingOffers), or null.
+    offered(def) {
+      try {
+        const f = (window.__upcSettingOffers || {})[def.key];
+        const v = typeof f === 'function' ? settings.check(def, f()) : null;
+        return v === null || v === undefined ? null : v;
+      } catch (e) { return null; }
+    },
+    // Lines the scripts couldn't read (not "key = value" or not a known key), from the last read.
+    problems: () => settings.store.get('problems', []),
+    readAt: () => settings.store.get('at', 0),
+    canEdit: () => user.is(CLINIC_EDITORS),
+    parse(text) {
+      const lines = String(text || '').split('\n');
+      const values = {}, problems = [];
+      lines.slice(1).forEach((l, i) => {
+        if (i === 0 && l === CLINIC_INFO) return;
+        const m = /^([A-Za-z]+\.[A-Za-z]+) = (.{1,400})$/.exec(l);
+        if (!m || !settings.def(m[1])) { problems.push(l.slice(0, 60)); return; }
+        values[m[1]] = m[2];
+      });
+      return { values, problems };
+    },
+    format(values) {
+      return [CLINIC_HEAD, CLINIC_INFO].concat(CLINIC_SETTINGS.filter((d) => values[d.key] !== undefined && values[d.key] !== null && values[d.key] !== '')
+        .map((d) => d.key + ' = ' + settings.text(values[d.key]))).join('\n');
+    },
+    // The newest settings note (the last save); any older copies are deleted on the next save.
+    notes: (notes) => notes.filter((n) => n.text.split('\n')[0].trim() === CLINIC_HEAD).sort((a, b) => Number(b.id) - Number(a.id)),
+    note: (notes) => settings.notes(notes)[0] || null,
+    // Reads the note (force: now; otherwise only when an hour has passed, in the visible tab, Halaxy not busy).
+    async refresh(force) {
+      if (!force && (document.visibilityState !== 'visible' || http.pausedFor() > 0 || !background.due(settings.store.get('tried', 0), CLINIC_EVERY))) return false;
+      settings.store.set('tried', Date.now());
+      const note = settings.note(await adminNotes.list('organisation', SHARED_ORG));
+      const got = note ? settings.parse(note.text) : { values: {}, problems: [] };
+      settings.store.set('values', got.values);
+      settings.store.set('problems', got.problems);
+      settings.store.set('at', Date.now());
+      settings.rememberMine();
+      try { document.dispatchEvent(new CustomEvent('upc-settings-changed')); } catch (e) { /* ignore */ }
+      return true;
+    },
+    // Saves the values ({ key: value }; empty means the default) to the note, for every PC. Only CLINIC_EDITORS.
+    async save(values) {
+      if (!settings.canEdit()) throw new UPCError('Only ' + CLINIC_EDITORS.join(' or ') + ' can change the clinic settings.');
+      const clean = {};
+      for (const def of CLINIC_SETTINGS) {
+        // Every setting is written (Carl, 16 Nov 2026), so after one save nothing falls back to a PC's own value: what was
+        // given; if not given, what is in use (the clinic's, else what this PC offers, else the default); empty: the default.
+        let raw = values[def.key];
+        if (raw === undefined) { const cur = settings.all().find((x) => x.def.key === def.key); raw = cur ? cur.value : def.def; }
+        if (raw === null || (!Array.isArray(raw) && String(raw).trim() === '')) raw = def.def;
+        const v = settings.check(def, raw);
+        if (v === null) {
+          throw new UPCError(def.script + ': "' + def.label + '" must be ' + (def.type === 'audience' ? 'everyone, or people ticked' : def.type === 'choice' ? 'one of the choices' : def.type === 'time' ? 'a time from ' + def.min + ' to ' + def.max : def.type === 'people' || def.type === 'order' ? 'at least one person'
+            : def.type === 'person' ? 'one person' : def.type === 'dates' ? 'dates such as 25-Dec-2026, one per line' : def.type === 'weekdays' ? 'days of the week'
+              : def.type === 'words' ? 'words separated by commas' : def.type === 'text' ? 'filled in as expected (up to ' + def.max + ' characters)' : 'a whole number from ' + def.min + ' to ' + def.max) + '.');
+        }
+        clean[def.key] = v;
+      }
+      const text = settings.format(clean);
+      const all = settings.notes(await adminNotes.list('organisation', SHARED_ORG));
+      const note = all[0] || null;
+      if (!note) await adminNotes.add('organisation', SHARED_ORG, text);
+      else if (note.text !== text) await adminNotes.update('organisation', SHARED_ORG, note.id, text);
+      for (const old of all.slice(1)) { try { await adminNotes.remove('organisation', SHARED_ORG, old.id); } catch (e) { console.warn('[UPC settings]', e); } }
+      await settings.refresh(true);
+      return clean;
+    },
+    // Names to offer for people settings: Halaxy's practitioner list, everyone named in a setting, and who is signed in.
+    async names() {
+      const out = new Set();
+      try { (await http.json('/lookup/practitioner?clinic=&include_id=&type=') || []).forEach((x) => { const n = clean(x.name); if (NAME_RE.test(n)) out.add(n); }); } catch (e) { /* the lists below still apply */ }
+      settings.all().forEach((r) => { if (['people', 'person', 'order', 'audience'].includes(r.def.type)) [].concat(r.def.def, r.value).forEach((n) => { if (n !== 'everyone') out.add(n); }); });
+      const me = user.name([]);
+      if (me && NAME_RE.test(me)) out.add(me);
+      return [...out].sort((a, b) => a.localeCompare(b));
+    },
+  };
+
+  // A read soon after the page opens, then about hourly (settings.refresh skips when not due).
+  setTimeout(() => { settings.refresh().catch(() => {}); }, 6000);
+  setTimeout(() => { settings.rememberMine(); }, 3000);   // who is signed in on this page, for the next page's early scripts
+  setInterval(() => { settings.refresh().catch(() => {}); }, 10 * 60e3);
+  window.addEventListener('storage', (e) => { if (e.key === 'upc-settings:values') { try { document.dispatchEvent(new CustomEvent('upc-settings-changed')); } catch (x) { /* ignore */ } } });
+
   window.UPC = Object.freeze({
-    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, forms, notes, followUps, patient, tasks, surveys, reports, dayLabel, parseDay, rebate, files, deposits, orgFiles, load, ui,
+    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, forms, notes, followUps, patient, tasks, surveys, reports, dayLabel, parseDay, rebate, files, deposits, orgFiles, adminNotes, shared, sharedResult, settings, load, ui,
     user, storage, calendar, wording, background,
   });
 })();

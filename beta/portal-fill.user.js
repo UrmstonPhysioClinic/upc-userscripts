@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Portal fill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.19
+// @version      0.1.20
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
@@ -25,8 +25,9 @@
  *     under "Subjective:" in the notes for that claim.
  *   - Passes it to the portal tab through the loader's storage on this PC (loader 1.2.0), only for that portal's
  *     site, and opens the portal. Cleared once done, or after 4 hours.
- *   - When the portal says the invoice was submitted, asks whether to mark the funder invoice Issued (only then:
- *     Carl, 10 Nov 2026).
+ *   - When the portal says the invoice was submitted ("submitted successfully"), the funder invoice is marked Issued
+ *     straight away by the Halaxy tab it was started from (Carl, 16 Nov 2026: no question needed once the insurer
+ *     has confirmed), and the portal offers "Back to Halaxy", which closes the portal tabs of this fill.
  *  On the portal, following Carl's steps (portal-fill.md):
  *   - AXA: membership number, "Submit invoice", then the form: Therapist; payee details (Script settings, Portal
  *     fill: settings); ICS code NA; one fee per treatment line, Outpatient, 1 unit; "add another treatment line"
@@ -47,7 +48,7 @@
   if (window.__hxPortalFill) return;
   window.__hxPortalFill = true;
 
-  const VERSION = '0.1.19';
+  const VERSION = '0.1.20';
   const KEY = 'portal-claim';
   const MAX_AGE = 4 * 3600e3;
   const PORTALS = {
@@ -280,7 +281,7 @@
         const back = await shared('get', KEY);
         if (!back || back.invoiceId !== invoiceId) throw new (U().Error)('The claim couldn\'t be passed to the portal (loader 1.2.0 needed: update it in Tampermonkey).');
         if (tab) tab.location.href = PORTALS[claim.kind].start; else window.open(PORTALS[claim.kind].start, '_blank');
-        note = 'Filling on the ' + PORTALS[claim.kind].name + ' portal. Check it there and submit. Once it\'s submitted, you\'ll be asked here whether to mark this invoice Issued.';
+        note = 'Filling on the ' + PORTALS[claim.kind].name + ' portal. Check it there and submit. Once it\'s submitted, this invoice is marked Issued here.';
         watch();
       } catch (e) {
         if (tab) tab.close();
@@ -318,15 +319,16 @@
         draw();
         return;
       }
-      if (c.status !== 'submitted' || document.visibilityState !== 'visible') return;
+      if (c.status !== 'submitted') return;
+      // The insurer has confirmed: marked Issued straight away (Carl, 16 Nov 2026), whether or not this tab is in front.
       asking = true;
       clearInterval(watching); watching = null;
-      const ok = await confirm('Mark Issued?', '<p>The ' + esc(PORTALS[c.kind].name) + ' portal says the invoice was submitted (' + esc(c.number) + ', £ ' + esc(c.total) + '). Mark this funder invoice Issued?</p>', 'Mark Issued');
-      if (ok) {
-        try { await U().invoice.setStatus(invoiceId, 'issued'); note = 'Submitted to ' + PORTALS[c.kind].name + ' and marked Issued.'; noteErr = false; }
-        catch (e) { note = 'Submitted, but not marked Issued: ' + (e.message || e) + ' Set it with the cogwheel.'; noteErr = true; tellHealthCheck(e); }
-      } else note = 'Submitted to ' + PORTALS[c.kind].name + '. Not marked Issued.';
-      await shared('del', KEY);
+      try { await U().invoice.setStatus(invoiceId, 'issued'); note = 'Submitted to ' + PORTALS[c.kind].name + ' (' + c.number + ', £ ' + c.total + ') and marked Issued.'; noteErr = false; }
+      catch (e) { note = 'Submitted to ' + PORTALS[c.kind].name + ', but not marked Issued: ' + (e.message || e) + ' Set it with the cogwheel.'; noteErr = true; tellHealthCheck(e); }
+      // Kept a minute longer so the portal's "Back to Halaxy" can still close its tabs.
+      c.status = 'issued'; c.issuedAt = Date.now();
+      await shared('set', KEY, c);
+      setTimeout(async () => { try { const now = await shared('get', KEY); if (now && now.at === c.at) await shared('del', KEY); } catch (e) { /* cleared next time */ } }, 60000);   // only this fill's (a new fill may have started)
       asking = false;
       draw();
     }
@@ -399,11 +401,12 @@
 
     // ---------------------------------------------------------------- the panel
     const PANEL_CSS = `
-      #upc-pf-panel { position: fixed; right: 16px; top: 16px; z-index: 2147483000; width: 340px; max-width: calc(100vw - 32px); background: #fff; color: #1d2433;
-        border: 1px solid #c9cfdc; border-left: 4px solid #7b3fe4; border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.2); font: 14px/1.4 Arial, sans-serif; padding: 12px 14px; }
+      #upc-pf-panel { position: fixed; right: 16px; top: 16px; z-index: 2147483000; width: 340px; max-width: calc(100vw - 32px); background: #fff; color: #2d2d35;
+        border: 1px solid #dcc5f9; border-left: 4px solid #994de6; border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.2); font: 14px/1.4 Arial, sans-serif; padding: 12px 14px; }
       #upc-pf-panel b { display: block; margin-bottom: 4px; }
       #upc-pf-panel .upc-pf-err { color: #b3261e; }
-      #upc-pf-panel button { margin-top: 8px; font: inherit; padding: 4px 10px; border: 1px solid #c9cfdc; border-radius: 4px; background: #fff; cursor: pointer; }
+      #upc-pf-panel button { margin-top: 8px; margin-right: 6px; font: inherit; padding: 4px 10px; border: 1px solid #994de6; border-radius: 4px; background: #fff; color: #7a38c0; cursor: pointer; }
+      #upc-pf-panel button.upc-pf-main { background: #994de6; color: #fff; }
       .upc-pf-check { outline: 3px solid #f0ad4e !important; outline-offset: 2px; }
       #upc-pf-cover { position: fixed; inset: 0; z-index: 2147482999; background: rgba(29,36,51,.35); cursor: wait; }
       #upc-pf-panel.upc-pf-busy { top: 50%; left: 50%; right: auto; transform: translate(-50%, -50%); width: 440px; font-size: 15px; padding: 18px 20px; }
@@ -436,11 +439,12 @@
         panel.id = 'upc-pf-panel';
         panel.addEventListener('click', async (e) => {
           if (e.target.closest('[data-a=stop]')) { if (claim) { claim.status = 'stopped'; await save(); } say('Stopped. Nothing more will be filled.', false, true); }
+          if (e.target.closest('[data-a=back]')) backToHalaxy();
         });
         document.body.appendChild(panel);
       }
       panel.innerHTML = '<b>Fill from Halaxy' + (claim ? ': ' + esc(claim.number) + ', ' + esc(claim.patient.name) : '') + '</b><div class="' + (error ? 'upc-pf-err' : '') + '">' + esc(message) + '</div>' +
-        (done ? '' : '<button type="button" data-a="stop">Stop</button>');
+        (done === 'back' ? '<button type="button" class="upc-pf-main" data-a="back">Back to Halaxy</button>' : done ? '' : '<button type="button" data-a="stop">Stop</button>');
     }
     // Anything unexpected: the fill stops and Halaxy sends Carl a task (Carl, 11 Nov 2026).
     const stop = async (message) => {
@@ -739,16 +743,33 @@
     }
 
     async function submitted() {
-      if (claim.status !== 'submitted') { claim.status = 'submitted'; claim.submittedAt = Date.now(); await save(); }
-      say('Submitted to ' + P.name + '. Back in Halaxy you\'ll be asked whether to mark ' + claim.number + ' Issued.', false, true);
+      if (claim.status !== 'submitted' && claim.status !== 'issued') { claim.status = 'submitted'; claim.submittedAt = Date.now(); await save(); }
+      say('Submitted to ' + P.name + '. ' + claim.number + ' is marked Issued in Halaxy.', false, 'back');
+      closeWhenAsked();
+    }
+    // "Back to Halaxy": every portal tab of this fill closes (the browser only lets a tab be closed by the page that
+    // opened it; one that can't be closed says so).
+    async function backToHalaxy() {
+      try { const c = await shared('get', KEY); if (c && c.at === claim.at) { c.closeTabs = Date.now(); await shared('set', KEY, c); } } catch (e) { /* this tab still closes */ }
+      window.close();
+      setTimeout(() => say('Close this tab to go back to Halaxy (the browser won\'t let a page close a tab it didn\'t open).', false, true), 700);
+    }
+    let closer = null;
+    function closeWhenAsked() {
+      if (closer) return;
+      closer = setInterval(async () => {
+        let c = null;
+        try { c = await shared('get', KEY); } catch (e) { return; }
+        if (c && c.at === claim.at && c.closeTabs) { clearInterval(closer); window.close(); }
+      }, 2000);
     }
 
     async function run() {
       if (acted) return;
       acted = true;
       claim = await shared('get', KEY);
-      if (!claim || claim.kind !== kind || Date.now() - claim.at > MAX_AGE || !/^(ready|filling|filled|submitted)$/.test(claim.status)) return;
-      if (claim.status === 'submitted') return say('Submitted to ' + P.name + '. Back in Halaxy you\'ll be asked whether to mark ' + claim.number + ' Issued.', false, true);
+      if (!claim || claim.kind !== kind || Date.now() - claim.at > MAX_AGE || !/^(ready|filling|filled|submitted|issued)$/.test(claim.status)) return;
+      if (claim.status === 'submitted' || claim.status === 'issued') { say('Submitted to ' + P.name + '. ' + claim.number + ' is marked Issued in Halaxy.', false, 'back'); closeWhenAsked(); return; }
       claim.progress = claim.progress || {};
       working('Filling this page from Halaxy. Please wait, and don\'t click or type until it says it has finished.');
       try { await (kind === 'axa' ? axa() : bupa()); } catch (e) { console.error('[UPC portal fill]', e); await stop('Something went wrong: ' + (e.message || e) + '.'); }
