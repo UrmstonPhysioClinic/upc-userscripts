@@ -1,5 +1,8 @@
 # Changelog
 
+## Missing details 0.2.4, 16 Nov 2026 (beta)
+- Two groups (Carl, 16 Nov 2026): ongoing patients (an appointment attended in the last 18 months: worth a call) and not seen yet (they fill in the online form before their first visit: no chasing). The menu count is ongoing patients only; the banner and the calendar mark stay for everyone with gaps. The calendar is read 18 months back for this (still one request).
+
 ## Portal fill 0.1.20, 16 Nov 2026 (beta); Missing details and Patient statuses to stable
 - Portal fill: once the insurer's site says the invoice was submitted, the Halaxy tab it was started from marks the funder invoice Issued straight away (Carl, 16 Nov 2026), and the portal offers "Back to Halaxy", which closes the portal tabs of that fill. The portal panel is in the clinic's brand colours.
 - Stable: Missing details 0.2.3, Patient statuses 0.2.7 and core 0.1.59 (Carl, 16 Nov 2026). Patient statuses needs core's fix for a patient number Halaxy fills in on save; Missing details' sharing between PCs needs it too. Each stable script's own tests from the last promotion pass on this core, except two that only object to its hourly clinic settings read (Forecourt lights, Review requests); Remittances 0.3.2's own test gives the same result on this core as on the previous stable core.

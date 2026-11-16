@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Missing details (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.3
+// @version      0.2.4
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/missing-details.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/missing-details.user.js
@@ -35,13 +35,16 @@
  *    clinic reads each patient once rather than once per PC. A PC notes a patient's outcome there when it differs from
  *    the note (details just saved, new gaps). Every PC reads the note every 30 minutes, so banners and calendar marks
  *    follow. If the note can't be read, each PC checks for itself as before.
+ *  - Two groups (Carl, 16 Nov 2026): "ongoing" (seen in the last 18 months: worth a call for the details) and "not seen
+ *    yet" (no attended appointment in that time: they fill in the online form before their first visit, so no chasing).
+ *    The menu count is the ongoing ones only; the banner and the calendar mark stay for everyone with gaps.
  */
 (() => {
   'use strict';
   if (window.__hxMissingDetails) return;
   window.__hxMissingDetails = true;
 
-  const VERSION = '0.2.3';
+  const VERSION = '0.2.4';
   const ROUTE = 'upc-missing-details';
   const MENU_CLS = 'upc-md-menu';
   const ADMINS = () => rule('missingDetails.people', ['Carl Healy', 'Wendy Pritchard']);   // who sees the page (Carl, 15 Nov 2026: Carl and Wendy)
@@ -53,6 +56,7 @@
   const SWEEP_EVERY = 3 * 3600e3, PER_RUN = 40;
   const SKIP_STATUS = /^(deleted|archived|deceased|off)$/i;
   const SHARE_EVERY = 30 * 60e3;
+  const SEEN_MONTHS = 18;   // an attended appointment in this time: an ongoing (or recent) patient
   const KEY = 'upc-md:';
 
   const U = () => window.UPC;
@@ -203,14 +207,16 @@
     say = say || (() => {});
     const now = Date.now(), day0 = today();
     say('Reading the calendar...');
-    const events = await U().calendar.appointments(day0 - BACK_DAYS() * DAY, day0 + (AHEAD_DAYS() + 1) * DAY);
+    // One request either way; the longer look back tells patients already seen from those not seen yet.
+    const events = await U().calendar.appointments(day0 - Math.max(BACK_DAYS(), SEEN_MONTHS * 31) * DAY, day0 + (AHEAD_DAYS() + 1) * DAY);
     const people = new Map();   // id -> { next, nextPrac, lastSeen, name }
     events.forEach((e) => {
       if (!e.linkPaGId || (e.type && e.type !== 'appointment')) return;
       const id = String(e.linkPaGId), t = startMs(e);
-      const p = people.get(id) || { id, next: null, nextPrac: null, lastSeen: null, name: clean(U().htmlDoc(e.title || '').body.textContent).replace(/^[\s*★⚠]+/, '') };
+      const p = people.get(id) || { id, next: null, nextPrac: null, lastSeen: null, seen: false, name: clean(U().htmlDoc(e.title || '').body.textContent).replace(/^[\s*★⚠]+/, '') };
       if (t >= now && t <= day0 + (AHEAD_DAYS() + 1) * DAY && live(e) && (p.next === null || t < p.next)) { p.next = t; p.nextPrac = e.practitionerID; }
       if (t < now && t >= day0 - BACK_DAYS() * DAY && !e.appointmentStatus && (p.lastSeen === null || t > p.lastSeen)) p.lastSeen = t;
+      if (t < now && !e.appointmentStatus) p.seen = true;   // attended (no exception) at some point in the last 18 months
       people.set(id, p);
     });
     const list = [...people.values()].filter((p) => p.next !== null || p.lastSeen !== null);
@@ -253,7 +259,7 @@
     const rows = list.map((p) => Object.assign({}, p, k[p.id] || {}, { id: p.id, name: (k[p.id] && k[p.id].name) || p.name, prac: pracs[String(p.nextPrac)] || '' }))
       .filter((p) => p.missing && !SKIP_STATUS.test(p.status || '') && (p.missing.length || !p.email))
       .sort((a, b) => (a.next || Infinity) - (b.next || Infinity) || (b.lastSeen || 0) - (a.lastSeen || 0));
-    const result = { at: Date.now(), by: VERSION, rows, unchecked: list.filter((p) => !k[p.id]).length, count: rows.filter((r) => r.missing.length).length };
+    const result = { at: Date.now(), by: VERSION, rows, unchecked: list.filter((p) => !k[p.id]).length, count: rows.filter((r) => r.missing.length && r.seen).length };
     store.set('result', result);
     return result;
   }
@@ -293,7 +299,7 @@
     if (!b) { b = document.createElement('span'); b.className = 'upc-md-badge'; a.appendChild(b); }
     const text = n > 99 ? '99+' : String(n);
     if (b.textContent !== text) b.textContent = text;
-    const title = n + ' patient' + (n === 1 ? '' : 's') + ' missing mandatory details';
+    const title = n + ' ongoing patient' + (n === 1 ? '' : 's') + ' missing mandatory details';
     if (b.title !== title) b.title = title;
   }
 
@@ -327,13 +333,15 @@
       (state.running ? U().ui.run.inline(state.status) : '<span class="text-muted">' + esc(r ? 'Checked at ' + new Date(r.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + label(r.at) + '.' : '') + '</span>') + '</div>';
     if (state.error) h += '<p class="upc-err">' + esc(state.error) + '</p>';
     if (r) {
-      const need = r.rows.filter((x) => x.missing.length), email = r.rows.filter((x) => !x.missing.length);
+      const seen = (x) => x.seen !== false;   // results from before the split: treated as ongoing
+      const need = r.rows.filter((x) => x.missing.length && seen(x)), notYet = r.rows.filter((x) => x.missing.length && !seen(x)), email = r.rows.filter((x) => !x.missing.length);
       const table = (rows, off) => '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th>Patient</th><th>Missing</th><th>Next appointment</th><th></th></tr></thead><tbody>' + rows.map((x) => row(x, off)).join('') + '</tbody></table>';
-      h += '<div class="card"><div class="card-header"><h2>Missing mandatory details (' + need.length + ')</h2></div><div class="card-body p-0">' +
-        (need.length ? table(need, false) : '<p class="text-muted m-3">Everyone booked in the next ' + AHEAD_DAYS() + ' days or seen in the last ' + BACK_DAYS() + ' has their mandatory details.</p>') + '</div></div>';
+      h += '<div class="card"><div class="card-header"><h2>Ongoing patients: missing mandatory details (' + need.length + ')</h2></div><div class="card-body p-0">' +
+        (need.length ? '<p class="text-muted m-3">Already seen: worth a call to get these.</p>' + table(need, false) : '<p class="text-muted m-3">Every ongoing patient booked in the next ' + AHEAD_DAYS() + ' days or seen in the last ' + BACK_DAYS() + ' has their mandatory details.</p>') + '</div></div>';
+      if (notYet.length) h += '<div class="card"><div class="card-header"><h2>Not seen yet (' + notYet.length + ')</h2></div><div class="card-body p-0"><p class="text-muted m-3">No appointment attended in the last ' + SEEN_MONTHS + ' months: they fill in the online form before their first visit, so no need to chase. Check at their first appointment.</p>' + table(notYet, true) + '</div></div>';
       if (email.length) h += '<div class="card"><div class="card-header"><h2>No email address (' + email.length + ')</h2></div><div class="card-body p-0">' + table(email, true) + '</div></div>';
       h += '<p class="text-muted">Patients booked in the next ' + AHEAD_DAYS() + ' days or seen in the last ' + BACK_DAYS() + ' days. Mandatory: first and last name, date of birth, an address with a postcode, and a phone number. ' +
-        'Everyone who opens a patient with gaps sees a banner, and their appointments are marked in the calendar.' + (r.unchecked ? ' ' + r.unchecked + ' still to check (checked a few at a time).' : '') + '</p>';
+        'Everyone who opens a patient with gaps sees a banner, and their appointments are marked in the calendar (ongoing or not). The count by the menu item is ongoing patients only.' + (r.unchecked ? ' ' + r.unchecked + ' still to check (checked a few at a time).' : '') + '</p>';
     }
     h += '<div class="text-muted upc-version">Missing details ' + VERSION + '</div></div>';
     root.innerHTML = h;

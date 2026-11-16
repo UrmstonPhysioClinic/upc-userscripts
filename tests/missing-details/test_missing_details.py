@@ -166,17 +166,21 @@ async def main():
         cards = await pg.evaluate(ROWS)
         need = cards[0][1] if cards else []
         names = [r[0] for r in need]
-        check('missing mandatory details: soonest appointment first, then those seen recently', names == ['Patient B', 'Patient H', 'Patient C'], cards)
-        by = {r[0]: r for r in need}
+        check('ongoing patients (seen before) missing mandatory details: soonest appointment first, then those seen recently', cards[0][0] == 'Ongoing patients: missing mandatory details (2)'
+              and names == ['Patient B', 'Patient C'], cards)
+        notyet = [r[0] for r in cards[1][1]] if len(cards) > 1 else []
+        check('not seen yet (no appointment attended): a separate list, no chasing', len(cards) > 1 and cards[1][0] == 'Not seen yet (1)' and notyet == ['Patient H'], cards)
+        by = {r[0]: r for r in need + (cards[1][1] if len(cards) > 1 else [])}
+        names = names + notyet
         check('what is missing, and the email as well where it is missing', by.get('Patient B', ['', ''])[1].startswith('date of birth, phone number') and by['Patient C'][1].startswith('address')
               and by['Patient H'][1].startswith('first name, last name'), need)
         check('next appointment with the practitioner, or last seen', '18-Nov-2026 10:00 with Physio Two' in by.get('Patient B', ['', '', ''])[2] and by.get('Patient C', ['', '', ''])[2] == 'last seen 06-Nov-2026', need)
-        check('only the email missing: a separate list, not counted', len(cards) == 2 and cards[1][0] == 'No email address (1)' and [r[0] for r in cards[1][1]] == ['Patient D'], cards)
+        check('only the email missing: a separate list, not counted', len(cards) == 3 and cards[2][0] == 'No email address (1)' and [r[0] for r in cards[2][1]] == ['Patient D'], cards)
         check('left out: complete, outside the window, Deleted, only a cancelled appointment', not any(n in names for n in ['Patient A', 'Patient E', 'Patient F', 'Patient G']), names)
         link = await pg.evaluate("document.querySelector('[data-upc-missing-details] tbody tr td:nth-child(4) a').getAttribute('href')")
         check('links to the Edit page', link == '/a/pr/555/patient/302/edit', link)
         badge = await pg.evaluate("(document.querySelector('a.upc-md-menu .upc-md-badge') || {}).textContent")
-        check('menu item under Patients with the count (not email)', badge == '3', badge)
+        check('menu item under Patients with the count: ongoing patients only (not those not seen yet, not email)', badge == '2', badge)
         read = sorted({int(x[1].split('/')[2]) for x in S['log'] if x[1].endswith('/edit') and x[1].startswith('/patient/')})
         check('Edit pages read only for patients in the window', read == [301, 302, 303, 304, 306, 308], read)
         posts = [x for x in S['log'] if x[0] == 'POST']
@@ -256,7 +260,7 @@ async def main():
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/#upc-missing-details')
         await pg.wait_for_function("document.querySelector('[data-upc-missing-details] .card') && !document.querySelector('[data-upc-missing-details] [data-a=refresh]').disabled", timeout=90000)
         cards = await pg.evaluate(ROWS)
-        names = [r[0] for r in (cards[0][1] if cards else [])]
+        names = [r[0] for c in cards if c[0] != 'No email address (1)' for r in c[1]]
         read = sorted({int(x[1].split('/')[2]) for x in S['log'] if x[1].endswith('/edit') and x[0] == 'GET' and x[1].startswith('/patient/')})
         check('second PC: takes what the first found, no Edit pages read, same list (names from the calendar)', read == [] and names == ['Patient B', 'Patient H'], (read, cards))
         check('second PC: leaves alone a patient another PC is checking', edits(303) == 0 and note_lines().get('303') == ['-', 'checking zzzz until 2026-11-16 09:30'], note_text())
