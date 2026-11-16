@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Calendar: Forecourt lights (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.1
+// @version      0.3.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/forecourt-lights.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/forecourt-lights.user.js
@@ -43,7 +43,7 @@
   if (window.__hxForecourtLights) return;
   window.__hxForecourtLights = true;
 
-  const VERSION = '0.3.1';
+  const VERSION = '0.3.2';
   const LAT = 53.45, LON = -2.35, TZ = 'Europe/London';
   const STEP = 15;                      // the timer's segments, minutes
   const SNOOZE = 60 * 60e3;
@@ -95,6 +95,15 @@
     });
     return st;
   }
+  // What this PC uses now, offered to Clinic settings for settings not yet saved there (core's settings.offered).
+  const offer = (key, fn) => { window.__upcSettingOffers = window.__upcSettingOffers || {}; window.__upcSettingOffers[key] = fn; };
+  const minePc = () => Object.assign({}, DEFAULTS, get('settings', {}));
+  offer('forecourtLights.days', () => DAYS.filter((_, i) => minePc().days[i]));
+  offer('forecourtLights.offTime', () => minePc().offTime);
+  offer('forecourtLights.offset', () => minePc().offset);
+  offer('forecourtLights.noticeTime', () => minePc().noticeTime);
+  offer('forecourtLights.skip', () => minePc().skip || []);
+  offer('forecourtLights.remind', () => { const m = minePc(); return m.enabled ? ((m.who || []).length ? m.who : 'everyone') : []; });
   // Notes it for every PC (this PC's copy is kept too). Kept as pending until written, so a page left straight after
   // Done (which stops the save) is written on the next page.
   function share(outcomes) {

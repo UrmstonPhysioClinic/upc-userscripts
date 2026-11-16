@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Block reporting to Halaxy (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.1
+// @version      0.2.2
 // @upc-was      block-error-reporting.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/block-reporting.user.js
@@ -36,7 +36,7 @@
 (function () {
   'use strict';
   if (window.__upcBlockReporting) return;
-  const VERSION = '0.2.1';
+  const VERSION = '0.2.2';
   const blocked = { scripts: 0, requests: 0 };
   window.__upcBlockReporting = { version: VERSION, blocked };
 
@@ -54,6 +54,9 @@
   };
   const canStore = typeof GM_getValue === 'function' && typeof GM_setValue === 'function';
   const pUserpilot = personal('blockReporting.userpilot');
+  // What this PC uses now, offered to Clinic settings for settings not yet saved there (core's settings.offered).
+  const offer = (key, fn) => { window.__upcSettingOffers = window.__upcSettingOffers || {}; window.__upcSettingOffers[key] = fn; };
+  offer('blockReporting.userpilot', () => (canStore && GM_getValue('allowUserpilot', false) ? 'everyone' : []));
   const allowUserpilot = pUserpilot !== undefined ? !!pUserpilot : canStore ? GM_getValue('allowUserpilot', false) : false;
   if (pUserpilot === undefined && canStore && typeof GM_registerMenuCommand === 'function') {
     GM_registerMenuCommand('Halaxy\'s tours and announcements (Userpilot): ' + (allowUserpilot ? 'shown (click to block)' : 'blocked (click to show)'), () => {

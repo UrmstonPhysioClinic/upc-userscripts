@@ -118,8 +118,11 @@ async def main():
         check('no note: the defaults', got == {'readyToBill.maxExcess': 500, 'readyToBill.rollingDays': 28, 'reviewRequests.sendAt': '10:30', 'missingDetails.aheadDays': 14}, got)
         check('read from the settings organisation once, nothing saved', [x for x in S['log'] if 'communication-log' in x[1]] == [('GET', '/communication-log/organisation/78842/list-data')], S['log'])
 
-        # Carl: Script settings > Clinic settings
+        # Carl: Script settings > Clinic settings (this PC's own value for a setting not yet saved is offered by its script)
+        await pg.evaluate("window.__upcSettingOffers = { 'portalFill.payee': () => 'Urmston Physio Clinic Ltd' }")
         await open_clinic(pg)
+        pc = await pg.evaluate("[document.querySelector(\"input[data-key='portalFill.payee']\").value, document.querySelector(\"input[data-key='portalFill.payee']\").closest('tr').textContent]")
+        check('not yet saved: this PC\'s value shown, marked "from this PC"', pc[0] == 'Urmston Physio Clinic Ltd' and 'from this PC' in pc[1], pc)
         boxes = await pg.evaluate("[...document.querySelectorAll('.upc-ss-clinic input[type=number][data-key], .upc-ss-clinic input[type=time][data-key]')].map((i) => [i.dataset.key, i.value, i.placeholder])")
         check('Carl: a box per number or time, empty (default shown)', len(boxes) >= 20 and all(v == '' for _, v, _ in boxes) and dict((k, ph) for k, _, ph in boxes)['readyToBill.maxExcess'] == '500', boxes[:3])
         await pg.wait_for_function("document.querySelectorAll('[data-people=\"forecourtLights.staff\"] input').length >= 6", timeout=10000)
@@ -129,8 +132,8 @@ async def main():
         # A value outside its limits: refused, nothing saved
         await pg.fill("input[data-key='readyToBill.rollingDays']", '500')
         await pg.click("[data-a=save]")
-        await pg.wait_for_function("document.querySelector('.upc-ss-clinic .upc-err')", timeout=10000)
-        err = await pg.evaluate("document.querySelector('.upc-ss-clinic .upc-err').textContent")
+        await pg.wait_for_function("document.querySelector('.upc-ss-clinic .upc-err[data-msg]')", timeout=10000)
+        err = await pg.evaluate("document.querySelector('.upc-ss-clinic .upc-err[data-msg]').textContent")
         check('a value outside its limits: refused, saying the limits, nothing saved', 'whole number from 7 to 90' in err and not S['notes'].get(78842), err)
         # Valid values (Halaxy's list lags once just after the note is made)
         S['lag'] = True
@@ -140,8 +143,12 @@ async def main():
         await pg.click("[data-a=save]")
         await pg.wait_for_function("document.querySelector('.upc-ss-clinic .upc-ok')", timeout=15000)
         lines = note_lines()
-        check('saved to the note: heading, then only what differs from the default', lines == ['UPC clinic settings', 'Changed in Script settings > Clinic settings. Please do not edit here: a line that is changed by hand is ignored.',
-              'readyToBill.maxExcess = 300', 'reviewRequests.sendAt = 09:15'], lines)
+        ndefs = await pg.evaluate("UPC.settings.defs.length")
+        check('saved to the note: heading, then every setting (so no PC falls back to its own)', lines[:2] == ['UPC clinic settings', 'Changed in Script settings > Clinic settings. Please do not edit here: a line that is changed by hand is ignored.']
+              and len(lines) == 2 + ndefs and 'readyToBill.maxExcess = 300' in lines and 'reviewRequests.sendAt = 09:15' in lines and 'readyToBill.rollingDays = 28' in lines, lines)
+        check('and saved with the rest', 'portalFill.payee = Urmston Physio Clinic Ltd' in lines, lines)
+        unsaved = await pg.evaluate("[...document.querySelectorAll('.upc-ss-clinic .upc-err')].map((x) => x.textContent).join(' ')")
+        check('after saving: no "not yet saved" notice', 'not yet saved' not in unsaved, unsaved)
         got = await pg.evaluate(GET)
         check('used straight away on this PC', got['readyToBill.maxExcess'] == 300 and got['reviewRequests.sendAt'] == '09:15', got)
         rule = await pg.evaluate("(() => { const m = %s.match(/const MAX_EXCESS = \\(\\) => ([^;]+);/); const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d); return eval(m[1]); })()" % json.dumps(RTB))
@@ -150,7 +157,7 @@ async def main():
         await pg.fill("input[data-key='readyToBill.maxExcess']", '')
         await pg.click("[data-a=save]")
         await pg.wait_for_function("document.querySelector('.upc-ss-clinic .upc-ok')", timeout=15000)
-        check('an empty box: back to the default (line removed)', note_lines()[2:] == ['reviewRequests.sendAt = 09:15'] and await pg.evaluate("UPC.settings.get('readyToBill.maxExcess')") == 500, note_lines())
+        check('an empty box: back to the default', 'readyToBill.maxExcess = 500' in note_lines() and 'reviewRequests.sendAt = 09:15' in note_lines() and await pg.evaluate("UPC.settings.get('readyToBill.maxExcess')") == 500, note_lines())
         check('one note only, although Halaxy\'s list lagged after it was made', len(S['notes'][78842]) == 1, S['notes'])
         S['lag'] = False
         lists = [x for x in S['log'] if x[1].endswith('/list-data')]
@@ -168,16 +175,16 @@ async def main():
         for n in ['Carl Healy']:
             await pg.uncheck("[data-people='openEnded.people'] input[value='%s']" % n)
         await pg.click("[data-a=save]")
-        await pg.wait_for_function("document.querySelector('.upc-ss-clinic .upc-err')", timeout=10000)
-        err = await pg.evaluate("document.querySelector('.upc-ss-clinic .upc-err').textContent")
+        await pg.wait_for_function("document.querySelector('.upc-ss-clinic .upc-err[data-msg]')", timeout=10000)
+        err = await pg.evaluate("document.querySelector('.upc-ss-clinic .upc-err[data-msg]').textContent")
         kept = await pg.evaluate("[document.querySelector(\"[data-people='readyToBill.people'] input[value='Physio One']\").checked, document.querySelector(\"select[data-key='remittances.taskFor']\").value]")
         check('a refused save keeps the changes on screen', kept == [True, 'Physio One'], kept)
-        check('nobody ticked: refused, nothing saved', 'Open-ended patients" must be at least one person' in err and not any('people' in l for l in note_lines()), err)
+        check('nobody ticked: refused, nothing saved', 'Open-ended patients" must be at least one person' in err and 'readyToBill.people = Carl Healy, Wendy Pritchard' in note_lines(), err)
         await pg.check("[data-people='openEnded.people'] input[value='Carl Healy']")
         await pg.click("[data-a=save]")
         await pg.wait_for_function("document.querySelector('.upc-ss-clinic .upc-ok')", timeout=15000)
         lines = note_lines()[2:]
-        check('people saved: names only where they differ from the default', lines == ['reviewRequests.sendAt = 09:15', 'readyToBill.people = Carl Healy, Physio One', 'remittances.taskFor = Physio One'], lines)
+        check('people saved as names', 'readyToBill.people = Carl Healy, Physio One' in lines and 'remittances.taskFor = Physio One' in lines and 'openEnded.people = Carl Healy' in lines, lines)
         got = await pg.evaluate("[UPC.settings.get('readyToBill.people'), UPC.settings.get('remittances.taskFor'), UPC.settings.get('openEnded.people')]")
         check('read back as lists and names', got == [['Carl Healy', 'Physio One'], 'Physio One', ['Carl Healy']], got)
         allowed = await pg.evaluate("(() => { const m = %s.match(/const ALLOWED = \(\) => ([^;]+);/); const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d); return eval(m[1]); })()" % json.dumps(RTB))
@@ -189,13 +196,13 @@ async def main():
         await pg.fill("[data-lines='forecourtLights.skip']", '25-Dec-2026\nnot a date')
         await pg.fill("input[data-key='portalFill.email']", 'admin@urmstonphysioclinic.com')
         await pg.click("[data-a=save]")
-        await pg.wait_for_function("document.querySelector('.upc-ss-clinic .upc-err')", timeout=10000)
-        err = await pg.evaluate("document.querySelector('.upc-ss-clinic .upc-err').textContent")
+        await pg.wait_for_function("document.querySelector('.upc-ss-clinic .upc-err[data-msg]')", timeout=10000)
+        err = await pg.evaluate("document.querySelector('.upc-ss-clinic .upc-err[data-msg]').textContent")
         check('a date that can\'t be read: refused, saying how to write one', 'dates such as 25-Dec-2026' in err, err)
         await pg.fill("[data-lines='forecourtLights.skip']", '25-Dec-2026\n01/01/2027')
         await pg.fill("input[data-key='portalFill.email']", 'not an email')
         await pg.click("[data-a=save]")
-        await pg.wait_for_function("document.querySelector('.upc-ss-clinic .upc-err') && /email/.test(document.querySelector('.upc-ss-clinic .upc-err').textContent)", timeout=10000)
+        await pg.wait_for_function("document.querySelector('.upc-ss-clinic .upc-err[data-msg]') && /email/.test(document.querySelector('.upc-ss-clinic .upc-err[data-msg]').textContent)", timeout=10000)
         check('an email that isn\'t one: refused', True)
         await pg.fill("input[data-key='portalFill.email']", 'office@urmstonphysioclinic.com')
         await pg.fill("input[data-key='calendar.hideProfessions']", 'Administrator, Receptionist')
@@ -222,10 +229,10 @@ async def main():
         await pg.wait_for_function("document.querySelector('.upc-ss-clinic .upc-ok')", timeout=15000)
         lines = note_lines()
         check('per person saved: names (Carl left out of the chime), the choice', any(l.startswith('alerts.arrivalChime = ') and 'Carl Healy' not in l and 'Wendy Pritchard' in l for l in lines)
-              and 'forecourtLights.remind = Carl Healy' in lines and 'branding.font = halaxy' in lines and not any(l.startswith('alerts.chatAlarm') for l in lines), lines)
+              and 'forecourtLights.remind = Carl Healy' in lines and 'branding.font = halaxy' in lines and 'alerts.chatAlarm = everyone' in lines, lines)
         mine = await pg.evaluate("[UPC.settings.forMe('alerts.arrivalChime'), UPC.settings.forMe('alerts.chatAlarm'), UPC.settings.forMe('forecourtLights.remind'), JSON.parse(localStorage.getItem('upc-settings:mine'))]")
         check('for whoever is signed in (Carl): chime off, chat alarm on, forecourt on; kept for early scripts', mine[:3] == [False, True, True] and mine[3]['user'] == 'Carl Healy'
-              and mine[3]['values'] == {'forecourtLights.remind': True, 'alerts.arrivalChime': False, 'branding.font': 'halaxy'}, mine)
+              and mine[3]['values'] == {'forecourtLights.remind': True, 'alerts.arrivalChime': False, 'alerts.chatAlarm': True, 'branding.on': True, 'branding.font': 'halaxy', 'blockReporting.userpilot': False}, mine)
         # A script saving one value leaves the others as they are
         res = await pg.evaluate("UPC.settings.save({ 'readyToBill.maxExcess': 400 }).then(() => [UPC.settings.get('readyToBill.maxExcess'), UPC.settings.get('forecourtLights.days'), UPC.settings.get('readyToBill.people')], (e) => e.message)")
         check('saving one value keeps the rest', res == [400, ['Tue', 'Thu'], ['Carl Healy', 'Physio One']], res)

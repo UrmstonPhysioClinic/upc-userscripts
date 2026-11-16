@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Portal fill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.18
+// @version      0.1.19
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
@@ -47,7 +47,7 @@
   if (window.__hxPortalFill) return;
   window.__hxPortalFill = true;
 
-  const VERSION = '0.1.18';
+  const VERSION = '0.1.19';
   const KEY = 'portal-claim';
   const MAX_AGE = 4 * 3600e3;
   const PORTALS = {
@@ -116,6 +116,8 @@
     // The payee details: the clinic's (Script settings > Clinic settings) where set; until then this PC's own, or the defaults.
     const CLINIC_KEYS = { payee: 'portalFill.payee', providerCode: 'portalFill.providerCode', email: 'portalFill.email', phone: 'portalFill.phone' };
     const clinicSet = (k) => !!(U() && U().settings && U().settings.isSet && U().settings.def(CLINIC_KEYS[k]) && U().settings.isSet(CLINIC_KEYS[k]));
+    window.__upcSettingOffers = window.__upcSettingOffers || {};
+    Object.keys(CLINIC_KEYS).forEach((k) => { window.__upcSettingOffers[CLINIC_KEYS[k]] = () => Object.assign({}, DEFAULTS, GM_getValue('settings', {}))[k]; });   // this PC's, offered to Clinic settings
     const settings = () => {
       const s = Object.assign({}, DEFAULTS, GM_getValue('settings', {}));
       Object.keys(CLINIC_KEYS).forEach((k) => { if (clinicSet(k)) s[k] = U().settings.get(CLINIC_KEYS[k]); });

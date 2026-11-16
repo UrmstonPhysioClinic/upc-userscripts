@@ -1,5 +1,10 @@
 # Changelog
 
+## Clinic settings: every value written, 16 Nov 2026 (beta)
+- Core 0.1.57: saving Clinic settings writes every setting (not only those changed), so after one save no PC falls back to its own values. A setting not yet saved shows what this PC uses now, offered by its script (Forecourt lights schedule and who it reminds, AXA payee details, arrival chime, chat alarm, branding, Userpilot).
+- Script settings 0.2.5: says how many settings are not yet saved for every PC, and marks values "from this PC".
+- Alerts 1.0.3, Block reporting 0.2.2, Branding 2.9.5, Forecourt lights 0.3.2, Portal fill 0.1.19: offer their current per-PC values.
+
 ## Per-person settings, 15 Nov 2026 (beta)
 - Core 0.1.56: per-person clinic settings ("Everyone", or people ticked) and choices: Forecourt lights reminders, arrival chime, chat alarm, clinic branding, branding font, Halaxy's tours (Userpilot). They follow whoever is signed in, on any PC; only Carl changes them (Script settings > Clinic settings). Core keeps what applies to this PC's last sign-in for scripts that start before the page is ready.
 - Alerts 1.0.2, Block reporting 0.2.1, Branding 2.9.4: use them once set; until then the PC's own switch (and the Tampermonkey menu switch is only offered until then).
