@@ -427,7 +427,7 @@ async def main():
         check('AXA: submitted noted', (S['gm'].get('shared:portal-claim') or {}).get('status') in ('submitted', 'issued'))
         check('AXA: "Back to Halaxy" offered', await portal.evaluate("!!document.querySelector('#upc-pf-panel [data-a=back]')"))
         mpanel = await member_tab.evaluate("(document.getElementById('upc-pf-panel') || {}).textContent || ''")
-        check('AXA: the membership tab left behind steps aside (no failure, no cover, no task)', 'carried on there' in mpanel and 'stopped' not in mpanel
+        check('AXA: the membership tab left behind steps aside (no failure, no cover, no task)', 'Carrying on in the new tab' in mpanel and 'stopped' not in mpanel
               and await member_tab.evaluate("!document.getElementById('upc-pf-cover')") and not S['tasks'].get(9001), (mpanel, S['tasks'].get(9001)))
         await member_tab.close()
         await pg.wait_for_function("/and marked Issued/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=30000)
