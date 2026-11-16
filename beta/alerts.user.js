@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Calendar: Alerts (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.0.2
+// @version      1.0.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/alerts.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/alerts.user.js
@@ -28,7 +28,7 @@
   if (window.__hxAlerts) return;
   window.__hxAlerts = true;
 
-  const VERSION = '1.0.2';
+  const VERSION = '1.0.3';
   const CHAT_BADGE_ID = 'btn-chat-popover-open';
   const REPEAT_EVERY_SECONDS = (window.__hxAlertsTest && window.__hxAlertsTest.repeatSeconds) || 15;   // chat alarm repeat
   const MAX_REPEATS = 10;            // set to 0 to sound once only
@@ -66,6 +66,10 @@
       });
     }
   }
+  // What this PC uses now, offered to Clinic settings for settings not yet saved there (core's settings.offered).
+  const offer = (key, fn) => { window.__upcSettingOffers = window.__upcSettingOffers || {}; window.__upcSettingOffers[key] = fn; };
+  offer('alerts.arrivalChime', () => (canStore && GM_getValue('arrivalChime', true) ? 'everyone' : []));
+  offer('alerts.chatAlarm', () => (canStore && GM_getValue('chatAlarm', true) ? 'everyone' : []));
   if (!arrivalOn && !chatOn) return;
 
   // ---- Turn a rendered sound into a playable audio clip ----

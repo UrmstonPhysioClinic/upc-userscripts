@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Script settings (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.4
+// @version      0.2.5
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/script-settings.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/script-settings.user.js
@@ -31,7 +31,7 @@
   if (window.__hxScriptSettings) return;
   window.__hxScriptSettings = true;
 
-  const VERSION = '0.2.4';
+  const VERSION = '0.2.5';
   const U = () => window.UPC;
   const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const STATUS = { running: 'running on this page', next: 'starts on next page', off: 'switched off', unused: 'not used on this page' };
@@ -157,19 +157,21 @@
     const rows = S.all();
     let h = '<div class="upc-ss-section upc-ss-clinic"><p class="text-muted">These apply on every PC. ' + (edit ? 'Leave a box empty for the default. ' : 'Only ' + esc(S.editors.join(' or ')) + ' can change them. ') +
       'Each PC uses a change within the hour.</p>';
+    const unsaved = rows.filter((r) => r.raw === null).length;
+    if (unsaved && edit) h += '<p class="upc-err">' + unsaved + ' setting' + (unsaved === 1 ? ' is' : 's are') + ' not yet saved for every PC (until then, each PC uses its own). Those marked "from this PC" show what this PC uses now. Check them and press Save for every PC to save them all.</p>';
     let script = '';
     h += '<table class="table table-striped table-bordered w-100"><colgroup><col class="upc-ss-c1"><col class="upc-ss-c2"><col class="upc-ss-c3"></colgroup><tbody>';
     rows.forEach((r) => {
       const d = r.def;
       if (d.script !== script) { script = d.script; h += '<tr class="upc-ss-grp"><th colspan="2">' + esc(script) + '</th><th class="text-muted">Default</th></tr>'; }
-      h += '<tr><td>' + esc(d.label) + '</td><td>' + (edit ? field(r) : '<strong>' + esc(shown(d, r.value)) + '</strong>') +
+      h += '<tr><td>' + esc(d.label) + (r.fromPc && r.raw === null ? ' <span class="text-muted">(from this PC)</span>' : '') + '</td><td>' + (edit ? field(r) : '<strong>' + esc(shown(d, r.value)) + '</strong>') +
         (r.bad ? ' <span class="upc-err">(saved value ' + esc(r.raw) + (d.min === undefined ? ' can\'t be used' : ' is outside ' + esc(d.min) + ' to ' + esc(d.max)) + ': default used)</span>' : '') + '</td>' +
         '<td class="upc-ss-def text-muted">' + esc(shown(d, d.def)) + '</td></tr>';
     });
     h += '</tbody></table>';
     const probs = S.problems();
     if (probs.length) h += '<p class="upc-err">Lines in the settings note that could not be read (ignored): ' + probs.map(esc).join('; ') + '</p>';
-    if (clinicErr) h += '<p class="upc-err">' + esc(clinicErr) + '</p>';
+    if (clinicErr) h += '<p class="upc-err" data-msg>' + esc(clinicErr) + '</p>';
     if (clinicMsg) h += '<p class="upc-ok">' + esc(clinicMsg) + '</p>';
     const at = S.readAt();
     h += '<div class="text-muted">' + (at ? 'Read from Halaxy at ' + new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + esc(U().dayLabel(at)) + '.' : 'Not read from Halaxy yet on this PC: defaults shown.') + '</div></div>';

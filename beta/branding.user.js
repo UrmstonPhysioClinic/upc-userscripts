@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Look: Branding (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      2.9.4
+// @version      2.9.5
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/branding.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/branding.user.js
@@ -463,6 +463,10 @@ ${S} .mainmenu-collapsed #logoWrapper { height: 2.34rem !important; }
     return undefined;
   };
   const pOn = personal('branding.on'), pFont = personal('branding.font');
+  // What this PC uses now, offered to Clinic settings for settings not yet saved there (core's settings.offered).
+  const offer = (key, fn) => { window.__upcSettingOffers = window.__upcSettingOffers || {}; window.__upcSettingOffers[key] = fn; };
+  offer('branding.on', () => (GM_getValue('enabled', true) ? 'everyone' : []));
+  offer('branding.font', () => GM_getValue('fontMode') || 'headings');
   const enabled = pOn !== undefined ? !!pOn : GM_getValue('enabled', true);
 
   if (pOn === undefined) {

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.56
+// @version      0.1.57
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.56';
+  const VERSION = '0.1.57';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -2375,14 +2375,25 @@
       const v = settings.check(def, (settings.store.get('values', {}) || {})[key]);
       return v === null ? def.def : v;
     },
-    // [{ def, value, raw, bad }] for the Script settings page and the health check.
+    // [{ def, value, raw, bad, changed, fromPc }] for the Script settings page and the health check. A setting not yet
+    // saved for the clinic shows what this PC uses now, where its script offers it (fromPc), else the default.
     all() {
       const vals = settings.store.get('values', {}) || {};
       return CLINIC_SETTINGS.map((def) => {
         const raw = Object.prototype.hasOwnProperty.call(vals, def.key) ? vals[def.key] : null;
         const v = settings.check(def, raw);
-        return { def, raw, value: v === null ? def.def : v, bad: raw !== null && v === null, changed: v !== null && !settings.same(v, def.def) };
+        const offer = v === null ? settings.offered(def) : null;
+        const value = v !== null ? v : offer !== null ? offer : def.def;
+        return { def, raw, value, bad: raw !== null && v === null, changed: !settings.same(value, def.def), fromPc: offer !== null };
       });
+    },
+    // What this PC uses for a setting not yet saved for the clinic, offered by its script (window.__upcSettingOffers), or null.
+    offered(def) {
+      try {
+        const f = (window.__upcSettingOffers || {})[def.key];
+        const v = typeof f === 'function' ? settings.check(def, f()) : null;
+        return v === null || v === undefined ? null : v;
+      } catch (e) { return null; }
     },
     // Lines the scripts couldn't read (not "key = value" or not a known key), from the last read.
     problems: () => settings.store.get('problems', []),
@@ -2424,16 +2435,18 @@
       if (!settings.canEdit()) throw new UPCError('Only ' + CLINIC_EDITORS.join(' or ') + ' can change the clinic settings.');
       const clean = {};
       for (const def of CLINIC_SETTINGS) {
+        // Every setting is written (Carl, 16 Nov 2026), so after one save nothing falls back to a PC's own value: what was
+        // given; if not given, what is in use (the clinic's, else what this PC offers, else the default); empty: the default.
         let raw = values[def.key];
-        if (raw === undefined) { const cur = settings.all().find((x) => x.def.key === def.key); if (cur && cur.raw !== null && !cur.bad) raw = cur.value; }   // not given: kept as it is
-        if (raw === undefined || raw === null || (!Array.isArray(raw) && String(raw).trim() === '')) continue;   // empty: the default (no ticks at all is refused below)
+        if (raw === undefined) { const cur = settings.all().find((x) => x.def.key === def.key); raw = cur ? cur.value : def.def; }
+        if (raw === null || (!Array.isArray(raw) && String(raw).trim() === '')) raw = def.def;
         const v = settings.check(def, raw);
         if (v === null) {
           throw new UPCError(def.script + ': "' + def.label + '" must be ' + (def.type === 'audience' ? 'everyone, or people ticked' : def.type === 'choice' ? 'one of the choices' : def.type === 'time' ? 'a time from ' + def.min + ' to ' + def.max : def.type === 'people' || def.type === 'order' ? 'at least one person'
             : def.type === 'person' ? 'one person' : def.type === 'dates' ? 'dates such as 25-Dec-2026, one per line' : def.type === 'weekdays' ? 'days of the week'
               : def.type === 'words' ? 'words separated by commas' : def.type === 'text' ? 'filled in as expected (up to ' + def.max + ' characters)' : 'a whole number from ' + def.min + ' to ' + def.max) + '.');
         }
-        if (!settings.same(v, def.def)) clean[def.key] = v;
+        clean[def.key] = v;
       }
       const text = settings.format(clean);
       const all = settings.notes(await adminNotes.list('organisation', SHARED_ORG));
