@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Schedule excess (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.2
+// @version      0.1.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/charge-excess.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/charge-excess.user.js
@@ -38,7 +38,7 @@
   if (window.__hxChargeExcess) return;
   window.__hxChargeExcess = true;
 
-  const VERSION = '0.1.2';
+  const VERSION = '0.1.3';
   const U = () => window.UPC;
   if (!/^\/a\/pr\/\d+\//.test(location.pathname)) return;
   // A patient invoice: /invoice/{id} or /patient/invoice/{patient}/{id}; not the patient's Invoices tab.
@@ -86,10 +86,11 @@
     return { form, to: clean(form.querySelector('[name="form[toEmail]"]').value) };
   }
 
-  // The invoice's "Scheduled (23-Nov-2026 22:57)" link, if a payment is scheduled: its text, or ''.
+  // The invoice's "Scheduled (23-Nov-2026 22:57)" link, if a payment is scheduled: its text, or ''. A cancelled one
+  // keeps its link, reading "Scheduled payment cancelled" (live, 16 Nov 2026), and doesn't count.
   function scheduledOn(doc) {
     const a = [...doc.querySelectorAll('a[href*="/payment/scheduled/"], [data-modal-href*="/payment/scheduled/"]')]
-      .find((x) => /\/payment\/scheduled\/\d+\/edit/.test(x.getAttribute('href') || x.getAttribute('data-modal-href') || '') || /^scheduled\b/i.test(clean(x.textContent)));
+      .find((x) => /^scheduled\s*\(/i.test(clean(x.textContent)));
     return a ? clean(a.textContent) : '';
   }
 

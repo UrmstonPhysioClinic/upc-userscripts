@@ -52,7 +52,7 @@ def invoice_html(iid):
     if iid == 3003:
         pay += "<tr><td></td><td>Funder Payment</td><td></td><td>£ 20.00</td><td><a class='ajax btn' data-modal-href='/a/pr/555/invoicefunctions/3003/claim/77/' id='invoiceFunderBtn'>Invoice Funder</a></td></tr>"
     if iid != 3002:
-        link = ("<a class='ajax link-text' data-modal-href='/a/pr/555/invoicefunctions/payment/scheduled/1866732/edit'>Scheduled (%s)</a>" % S['scheduled_at']) if S['scheduled_at'] \
+        link = ("<a class='ajax link-text' data-modal-href='/a/pr/555/invoicefunctions/payment/scheduled/1866732/edit'>%s</a>" % ('Scheduled payment cancelled' if S['scheduled_at'] == 'cancelled' else 'Scheduled (%s)' % S['scheduled_at'])) if S['scheduled_at'] \
             else "<a class='ajax link-text' data-modal-href='/a/pr/555/invoicefunctions/payment/scheduled/new/invoice/%d'>Available</a>" % iid
         pay += ("<tr><td></td><td>Stored Payment Method</td><td>" + link + "</td><td>£ 40.00</td>"
                 "<td><div class='btn-group'><a class='ajax btn btn-outline-primary-light' data-modal-href='/a/pr/555/invoicefunctions/%d/pay/securepay/1?bundle=prac'>Process Now</a><button class='btn dropdown-toggle'></button></div></td></tr>"
@@ -219,6 +219,15 @@ async def main():
             text = await ask(pg)
             check(name + ': says so, changes nothing', want in text and S['calls'] == [] and not await pg.evaluate(DLG + ".querySelector('[data-a=go]')"), (text, S['calls']))
             await ctx.close()
+
+        # A cancelled scheduled payment (Halaxy keeps the link, "Scheduled payment cancelled"): schedules again
+        S = fresh(scheduled_at='cancelled')
+        ctx, pg, errors = await open_invoice(browser, 3001)
+        text = await ask(pg)
+        check('after a cancelled schedule: asks as normal', 'Schedule the £ 40.00 excess on UPC-3001?' in text, text)
+        text = await finish(pg)
+        check('after a cancelled schedule: schedules and finds it', [c[0] for c in S['calls']] == ['options', 'email', 'schedule'] and '£ 40.00 scheduled from' in text, (text, [c[0] for c in S['calls']]))
+        await ctx.close()
 
         # Scheduling refused after the email went
         S = fresh(refuse_schedule=True)
