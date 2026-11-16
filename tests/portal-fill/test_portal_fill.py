@@ -424,20 +424,24 @@ async def main():
         check('AXA: the page is uncovered once filled, for checking', await portal.evaluate("!document.getElementById('upc-pf-cover') && !document.getElementById('upc-pf-panel').classList.contains('upc-pf-busy')"))
         await portal.click('button[type=submit]')
         await portal.wait_for_function("document.getElementById('upc-pf-panel') && /Submitted to AXA/.test(document.getElementById('upc-pf-panel').textContent)", timeout=30000)
-        check('AXA: submitted noted', (S['gm'].get('shared:portal-claim') or {}).get('status') == 'submitted')
+        check('AXA: submitted noted', (S['gm'].get('shared:portal-claim') or {}).get('status') in ('submitted', 'issued'))
+        check('AXA: "Back to Halaxy" offered', await portal.evaluate("!!document.querySelector('#upc-pf-panel [data-a=back]')"))
         mpanel = await member_tab.evaluate("(document.getElementById('upc-pf-panel') || {}).textContent || ''")
         check('AXA: the membership tab left behind steps aside (no failure, no cover, no task)', 'carried on there' in mpanel and 'stopped' not in mpanel
               and await member_tab.evaluate("!document.getElementById('upc-pf-cover')") and not S['tasks'].get(9001), (mpanel, S['tasks'].get(9001)))
         await member_tab.close()
-        await pg.bring_to_front()
-        await pg.wait_for_selector('[data-upc-pf-confirm]', timeout=30000)
-        txt = await pg.evaluate("document.querySelector('[data-upc-pf-confirm]').innerText")
-        check('Halaxy asks before marking Issued', 'The AXA portal says the invoice was submitted (UPC-1111, £ 100.00). Mark this funder invoice Issued?' in txt and S['status'][9001] == '', txt)
-        await pg.click('[data-upc-pf-confirm] [data-c=yes]')
-        await pg.wait_for_function("/marked Issued/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=30000)
-        check('marked Issued, and the claim cleared from the PC', S['status'][9001] == 'issued' and 'shared:portal-claim' not in S['gm'], (S['status'], list(S['gm'])))
+        await pg.wait_for_function("/and marked Issued/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=30000)
+        txt = await pg.evaluate("document.querySelector('[data-upc-portal-fill]').textContent")
+        check('the insurer confirmed: marked Issued straight away, no question (Halaxy tab in the background)', S['status'][9001] == 'issued' and 'Submitted to AXA (UPC-1111, £ 100.00) and marked Issued' in txt
+              and not await pg.evaluate("!!document.querySelector('[data-upc-pf-confirm]')"), (S['status'], txt))
+        closed = []
+        portal.on('close', lambda p: closed.append(1))
+        await portal.click('#upc-pf-panel [data-a=back]')
+        await pg.wait_for_timeout(1500)
+        check('"Back to Halaxy" closes the portal tab (or says to close it)', closed or 'Close this tab' in (await portal.evaluate("document.getElementById('upc-pf-panel').textContent") if not portal.is_closed() else ''), closed)
         check('no page errors (Halaxy, AXA)', not errors and not perr, errors + perr)
-        await portal.close()
+        if not portal.is_closed():
+            await portal.close()
 
         # Bupa
         pg2, errors2 = await open_halaxy(ctx, 9002)
@@ -476,11 +480,8 @@ async def main():
         await portal.check('#confirmation')
         await portal.click('#btn_next')
         await portal.wait_for_function("document.getElementById('upc-pf-panel') && /Submitted to Bupa/.test(document.getElementById('upc-pf-panel').textContent)", timeout=30000)
-        await pg2.bring_to_front()
-        await pg2.wait_for_selector('[data-upc-pf-confirm]', timeout=30000)
-        await pg2.click('[data-upc-pf-confirm] [data-c=no]')
-        await pg2.wait_for_function("/Not marked Issued/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=30000)
-        check('Bupa: "Not now" leaves the invoice Active', S['status'][9002] == '')
+        await pg2.wait_for_function("/and marked Issued/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=30000)
+        check('Bupa: marked Issued once Bupa confirmed', S['status'][9002] == 'issued', S['status'])
         check('no page errors (Bupa)', not errors2 and not perr, errors2 + perr)
         await portal.close()
 

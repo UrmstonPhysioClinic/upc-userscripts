@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.58
+// @version      0.1.59
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.58';
+  const VERSION = '0.1.59';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -1810,6 +1810,8 @@
   // Never use Halaxy's behaviour classes, which its scripts act on: ajax, btn-submit, btn-cancel,
   // bootbox, bootbox-close-button, modal (on the outer layer), dialogBoxForm, datepicker,
   // popoverTarget, chosen.
+  // Our own progress bars, ticks and radio buttons are in the clinic's brand purple (#994DE6, Branding's --purple; Carl,
+  // 16 Nov 2026), not the browser's or Halaxy's blue.
   const NATIVE_CSS = `
     .upc-native .upc-gap { margin-top: 12px; }
     .upc-native .upc-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4.8px; margin-top: 16px; }
@@ -1828,6 +1830,9 @@
     .upc-native .upc-run { margin: 12px 0 16px; }
     .upc-native .upc-run .progress { height: 8px; background: var(--vs-card-header-bg-color, #e9ecef); border-radius: 4px; overflow: hidden; }
     .upc-native .upc-run .progress-bar { height: 100%; background-color: var(--vs-btn-primary-bg-color, var(--primary, #7c3fe4)); transition: width .3s ease; }
+    .upc-native .progress-bar, .upc-dialog .progress-bar { background-color: #994DE6 !important; }
+    .upc-native input[type=checkbox], .upc-native input[type=radio], .upc-dialog input[type=checkbox], .upc-dialog input[type=radio],
+      .upc-native input[type=range], .upc-dialog input[type=range], .upc-native progress, .upc-dialog progress { accent-color: #994DE6; }
     .upc-native .upc-run-now { margin-top: 4px; }
     .upc-native .upc-run-inline { display: inline-flex; align-items: center; gap: 8px; }
     .upc-native .upc-run-inline .progress { display: inline-block; width: 120px; height: 8px; background: var(--vs-card-header-bg-color, #e9ecef); border-radius: 4px; overflow: hidden; }
