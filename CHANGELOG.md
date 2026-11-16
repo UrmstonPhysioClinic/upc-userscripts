@@ -2,7 +2,8 @@
 
 ## Portal fill 0.1.20, 16 Nov 2026 (beta); Missing details and Patient statuses to stable
 - Portal fill: once the insurer's site says the invoice was submitted, the Halaxy tab it was started from marks the funder invoice Issued straight away (Carl, 16 Nov 2026), and the portal offers "Back to Halaxy", which closes the portal tabs of that fill. The portal panel is in the clinic's brand colours.
-- Stable: Missing details 0.2.3 and Patient statuses 0.2.7 (Carl, 16 Nov 2026), with core 0.1.59 (Patient statuses needs its fix for a patient number Halaxy fills in on save; Missing details' sharing between PCs needs it too). Every stable script's test passes on this core.
+- Stable: Missing details 0.2.3, Patient statuses 0.2.7 and core 0.1.59 (Carl, 16 Nov 2026). Patient statuses needs core's fix for a patient number Halaxy fills in on save; Missing details' sharing between PCs needs it too. Each stable script's own tests from the last promotion pass on this core, except two that only object to its hourly clinic settings read (Forecourt lights, Review requests); Remittances 0.3.2's own test gives the same result on this core as on the previous stable core.
+- Review requests 0.5.9: owing money is read from the Unpaid Invoices report (one request; its Payer ID is the clinic's patient number, P-005365, so matched by name); only a patient it names has their own invoices read to be sure.
 
 ## Review requests 0.5.8, core 0.1.59, health check 1.1.48, 16 Nov 2026 (beta)
 - Review requests: the "No review request" label is no longer read (Carl will remove it from patients). "Don't ask this time" replaces "Don't ask": it notes the patient and the visit it applies to in the shared Admin Note "UPC shared checks: Review requests" (nothing changes on the patient), so they are suggested again after a new visit; their notes aren't read meanwhile.

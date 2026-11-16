@@ -8,7 +8,7 @@
     {
       "file": "core.user.js",
       "name": "UPC System: Core library",
-      "version": "0.1.43"
+      "version": "0.1.59"
     },
     {
       "file": "alerts.user.js",

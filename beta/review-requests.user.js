@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Review requests (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.5.8
+// @version      0.5.9
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
@@ -47,7 +47,7 @@
   if (window.__hxReviewRequests) return;
   window.__hxReviewRequests = true;
 
-  const VERSION = '0.5.8';
+  const VERSION = '0.5.9';
   const ROUTE = 'upc-review-requests';
   const MENU_CLS = 'upc-rr-menu';
   const ALLOWED = () => rule('reviewRequests.people', ['Carl Healy']);   // Carl, 10 Nov 2026: just me for now
@@ -191,6 +191,10 @@
     const d = await getDetails();
     const dob = U().parseDay(d.dob) !== null ? U().parseDay(d.dob) : Date.parse(d.dob);
     if (dob && !isNaN(dob) && Date.now() - dob < MIN_AGE() * 365.25 * DAY) { out.verdict = 'left'; out.why = 'under ' + MIN_AGE(); return out; }
+    // Owing money: the Unpaid Invoices report (one request for everyone) lists who might; only their invoices are read
+    // to be sure. Its Payer ID is the clinic's patient number (P-005365, live 16 Nov 2026), not the Halaxy id, so the
+    // match is by name, and a name match is checked on the patient's own invoices.
+    if (unpaidPayers && !unpaidPayers.has(U().clean(p.name).toLowerCase())) return out;
     const owes = (await U().patient.invoices(p.id)).some((r) => /not yet paid|part/i.test(String(r.status || '')) && Number(String(r.balance).replace(/[^\d.-]/g, '')) > 0);
     if (owes) { out.verdict = 'left'; out.why = 'has an unpaid invoice'; }
     return out;
@@ -200,9 +204,15 @@
   const skips = () => (U() && U().shared ? U().shared('Review requests', { keep: 400 * DAY, file: 'review-requests.user.js' }) : null);
   const dayOf = (ms) => { const d = new Date(ms); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
 
+  let unpaidPayers = null;   // names of patients paying their own unpaid invoices (this check), or null if unknown
   async function check(say) {
     say = say || (() => {});
     const now = Date.now(), day0 = today();
+    unpaidPayers = null;
+    try {
+      const lines = await U().reports.unpaidLines(label(day0 - 3 * 366 * DAY));
+      unpaidPayers = new Set(lines.filter((l) => /^P-?\d+$/i.test(String(l.payerId || '').trim())).map((l) => U().clean(l.payer).toLowerCase()));
+    } catch (e) { tellHealthCheck(e); /* each patient's invoices are read instead */ }
     let skipped = {};
     try { const sk = skips(); if (sk) skipped = await sk.read(0); } catch (e) { /* none known: everyone is assessed */ }
     Object.assign(skipped, store.get('skips', {}));   // this PC's own, in case the note couldn't be written

@@ -121,6 +121,16 @@ async def halaxy(route):
     js = lambda o: route.fulfill(body=json.dumps(o), content_type='application/json')
     if p.endswith('/lookup/practitioner'):
         return await js([{'id': 11}, {'id': 12}])
+    # Unpaid Invoices report (columns as live, 16 Nov 2026: Payer ID is the clinic's patient number): Patient K owes money
+    # on her own invoice; an insurer-paid line for Patient A (Payer ID an insurer's number) doesn't count.
+    if p.endswith('/report/finance/0'):
+        S['reports'] = S.get('reports', 0) + 1
+        cols = ['Invoice / Deposit', 'Date', 'Due Date', 'Practitioner', 'Payer ID', 'Payer', 'Funder', 'Category', 'Fee', 'Quantity', 'Appointment Status', 'Invoice Status', 'Tax', 'Amount', 'Payments', 'Date', 'Method', 'Payments Inc. Fees', 'Balance']
+        rows = [("<a href='/a/pr/555/invoice/811'>UPC-0811</a>", '20-Oct-2026', '', 'Prac One', 'P-000111', 'Patient K', 'Self-Funded', 'Treatment', 'Follow-Up', '1', 'Attended', 'Issued', '£0.00', '£40.00', '', '', '', '', '£40.00'),
+                ("<a href='/a/pr/555/invoice/812'>UPC-0812</a>", '20-Oct-2026', '', 'Prac One', '7364', 'Bupa Healthcare / (Patient A)', 'Bupa', 'Treatment', 'Follow-Up', '1', 'Attended', 'Issued', '£0.00', '£40.00', '', '', '', '', '£40.00')]
+        h = ("<html><body><table class='table-report'><thead><tr><th colspan='13'>Fees &amp; Charges</th><th colspan='6'>Payments</th></tr><tr>%s</tr></thead><tbody>%s"
+             "<tr><td colspan='13'>Total</td><td>£80.00</td></tr></tbody></table></body></html>") % (''.join('<th>%s</th>' % c for c in cols), ''.join('<tr>%s</tr>' % ''.join('<td>%s</td>' % x for x in r) for r in rows))
+        return await route.fulfill(body=h, content_type='text/html')
     # Admin Notes on UPC scripts (settings) (captures 14 and 15 Nov 2026)
     if p.endswith('/communication-log/organisation/78842/list-data'):
         return await js({'data': [{'id': n['id'], 'date': '2026-11-10 10:00:00', 'privacy': 'All', 'creator': 'Carl Healy', 'isImportant': False,
@@ -249,6 +259,8 @@ async def main():
         check('menu count', await pg.evaluate("(document.querySelector('a.upc-rr-menu .upc-rr-badge') || {}).textContent") == '3')
         menu = await pg.evaluate("[...document.querySelectorAll('#mainMenu a.mainmenu-sublink')].map(a => a.getAttribute('href'))")
         check('menu item under Patients, over the Patient List', '/a/pr/555/patient/#upc-review-requests' in menu, menu)
+        inv_read = sorted({x[1] for x in S['log'] if x[1].startswith('/patient/invoice/')})
+        check('owing money: the Unpaid Invoices report read once; only a patient it names has her invoices read', S.get('reports') == 1 and inv_read == ['/patient/invoice/111/list-data'], (S.get('reports'), inv_read))
         notes_read = sorted({x[1] for x in S['log'] if x[1].startswith('/note/menu/')})
         check('notes read only for finished patients not yet asked (nor marked Don\'t ask this time)', notes_read == ['/note/menu/linkPaG/%d/items' % i for i in (101, 102, 103, 110, 111, 112, 113, 114, 115, 117, 118)], notes_read)
         details = sorted({x[1] for x in S['log'] if '/note/sidebar/' in x[1] or '/patient/invoice/' in x[1]})

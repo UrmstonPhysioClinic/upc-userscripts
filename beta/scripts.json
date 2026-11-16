@@ -115,7 +115,7 @@
     {
       "file": "review-requests.user.js",
       "name": "UPC Patients: Review requests (beta)",
-      "version": "0.5.8"
+      "version": "0.5.9"
     },
     {
       "file": "script-settings.user.js",
