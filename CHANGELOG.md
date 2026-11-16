@@ -1,5 +1,8 @@
 # Changelog
 
+## HTML source for emails 0.7, 16 Nov 2026 (beta)
+- A template chosen from the list in a send box opens in HTML mode exactly as saved when it has styling the editor would strip (tables, styled paragraphs or cells), and is sent as written. Letter-style templates stay in the editor. Taken from Halaxy's own fetch of the template (/communication/template/render/...), so merge tags are kept for Halaxy to fill in.
+
 ## Charge excess 0.1.0, 16 Nov 2026 (beta, new)
 - A "Charge excess" button next to Mark as Paid on a patient invoice billed to its funder with something outstanding. After a confirm: Due Date a week from today, the "Insurance excess due" email sent through Halaxy's Send Invoice Email (our HTML as the message, styles kept, [Payment Link] and [Patient First Name] filled by Halaxy), then a one-off payment of the outstanding amount scheduled from the card on file for the same date. Stops first with no card, a payment already scheduled or no email address.
 - Health check 1.1.50: knows Charge excess and checks the Send button and Mark as Paid on invoice pages where it shows.
