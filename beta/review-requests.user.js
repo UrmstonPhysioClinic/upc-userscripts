@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Review requests (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.5.6
+// @version      0.5.7
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
@@ -44,7 +44,7 @@
   if (window.__hxReviewRequests) return;
   window.__hxReviewRequests = true;
 
-  const VERSION = '0.5.6';
+  const VERSION = '0.5.7';
   const ROUTE = 'upc-review-requests';
   const MENU_CLS = 'upc-rr-menu';
   const ALLOWED = () => rule('reviewRequests.people', ['Carl Healy']);   // Carl, 10 Nov 2026: just me for now
@@ -74,6 +74,13 @@
   const U = () => window.UPC;
   const esc = (s) => U().esc(s);
   const store = { get: (k, d) => U().storage(KEY).get(k, d), set: (k, v) => U().storage(KEY).set(k, v), del: (k) => U().storage(KEY).del(k) };   // core's per-PC storage
+
+  // Shared with every PC (Carl, 16 Nov 2026; core's UPC.sharedResult): one PC works the list out and every PC
+  // shows it, so the list (and its count) is the same everywhere and Halaxy is read once for the clinic.
+  const sharedList = () => (U() && U().sharedResult ? U().sharedResult('Review requests') : null);
+  async function pullShared(maxAge) { const sl = sharedList(); if (!sl) return; try { await sl.pull(store, maxAge); } catch (e) { /* this PC's own list */ } }
+  function pushShared(result) { const sl = sharedList(); if (sl) sl.push(result).catch((e) => console.warn('[UPC review requests] shared list', e)); }
+  async function myTurn() { const sl = sharedList(); if (!sl) return true; try { return await sl.claim(); } catch (e) { return true; } }
 
   const label = (ms) => U().dayLabel(ms);
   const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
@@ -240,6 +247,7 @@
     rows.sort((a, b) => order[a.verdict] - order[b.verdict] || b.lastSeen - a.lastSeen);
     const result = { at: Date.now(), by: VERSION, ready: rows.filter((x) => x.verdict === 'ready').length, rows, counts };
     store.set('result', result);
+    pushShared(result);
     return result;
   }
 
@@ -261,8 +269,10 @@
   }
   async function refreshCount() {
     if (!allowed() || !U() || !U().background.ok() || locked()) return;   // visible tab, clinic hours, someone at the PC
+    await pullShared(10 * 60e3);   // what another PC has worked out (read at most every 10 minutes)
     const last = store.get('result', null);
-    if (last && !U().background.due(last.at, REFRESH_EVERY)) return;
+    if (last && !U().background.due(last.at, REFRESH_EVERY)) { paintBadge(); return; }
+    if (!(await myTurn())) return;   // another PC is working it out now
     try { await checkLocked(); } catch (e) { console.warn('[UPC review requests]', e); tellHealthCheck(e); }
     paintBadge();
   }
@@ -446,7 +456,11 @@
     state.unmount = U().ui.mountPage('Review requests', root, MENU_CLS);
     render();
     const r = store.get('result', null);
-    if (!r || Date.now() - r.at > PAGE_FRESH || r.by !== VERSION) run();
+    pullShared(0).then(() => {
+      render(); paintBadge();
+      const r2 = store.get('result', null);
+      if (!r2 || Date.now() - r2.at > PAGE_FRESH || r2.by !== VERSION) run();
+    });
   }
   function unmount() {
     if (!state.unmount) return;

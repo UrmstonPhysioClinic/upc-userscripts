@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.57
+// @version      0.1.58
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.57';
+  const VERSION = '0.1.58';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -2209,6 +2209,55 @@
     openEnded(text) { return wording.find(text, wording.OPEN_ENDED); },
   };
 
+  // Lists shared by every PC (Carl, 16 Nov 2026): one PC works a list out and every PC shows it. One Admin Note per list
+  // on UPC scripts (settings), "UPC shared list: <name>", whose last line is "data <the result as JSON>" (patient names
+  // allowed: the note is inside Halaxy, Access All). Halaxy keeps at least 150,000 characters in a note (16 Nov 2026).
+  // Who refreshes is claimed in the "UPC shared checks: Lists" note, so two PCs don't work the same list out at once.
+  const LIST_HEAD = 'UPC shared list: ';
+  const LIST_INFO = 'Kept by UPC scripts. Please do not edit: the list is worked out again if it is changed.';
+  function sharedResult(name) {
+    const head = LIST_HEAD + name, slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+    const st = storage('upc-list:' + slug + ':');
+    const claims = () => shared('Lists', { keep: 7 * 86400e3, claimFor: 10 * 60e3 });
+    async function ours() {
+      return (await adminNotes.list('organisation', SHARED_ORG)).filter((n) => n.text.split('\n')[0] === head).sort((a, b) => Number(a.id) - Number(b.id));
+    }
+    const dataOf = (n) => {
+      const line = n ? n.text.split('\n').reverse().find((l) => l.startsWith('data ')) : null;
+      try { const d = line ? JSON.parse(line.slice(5)) : null; return d && typeof d === 'object' && d.at ? d : null; } catch (e) { return null; }
+    };
+    return {
+      // The shared result into this PC's store (key 'result') when it is newer than this PC's; returns it (or null).
+      // maxAge: use this PC's last read if younger (ms).
+      async pull(store, maxAge) {
+        let c = st.get('cache', null);
+        if (!c || !(Date.now() - c.at < (maxAge || 0))) {
+          // A note that can't be read counts as read (nothing), so the other tabs don't all ask again straight away.
+          let data = null;
+          try { data = dataOf((await ours())[0]); } catch (e) { st.set('cache', { at: Date.now(), data: c ? c.data : null }); throw e; }
+          c = { at: Date.now(), data };
+          st.set('cache', c);
+        }
+        const local = store.get('result', null);
+        if (c.data && (!local || !(local.at >= c.data.at))) store.set('result', c.data);
+        return c.data;
+      },
+      // True when this PC may work the list out now (nobody else is).
+      async claim() { return (await claims().claim(['list.' + slug])).includes('list.' + slug); },
+      // Shares the result with every PC and lets go of the claim.
+      async push(result) {
+        const text = [head, LIST_INFO, 'data ' + JSON.stringify(result)].join('\n');
+        const all = await ours();
+        if (!all.length) await adminNotes.add('organisation', SHARED_ORG, text);
+        else await adminNotes.update('organisation', SHARED_ORG, all[0].id, text);
+        for (const n of all.slice(1)) { try { await adminNotes.remove('organisation', SHARED_ORG, n.id); } catch (e) { /* tried again next time */ } }
+        st.set('cache', { at: Date.now(), data: result });
+        await claims().write({ ['list.' + slug]: 'done' }).catch(() => {});
+      },
+      release: () => claims().write({}).catch(() => {}),
+    };
+  }
+
   // ------------------------------------------------------------------ clinic settings
 
   // Settings shared by every PC (Carl, 15 Nov 2026): one Admin Note, "UPC clinic settings", on UPC scripts (settings),
@@ -2475,7 +2524,7 @@
   window.addEventListener('storage', (e) => { if (e.key === 'upc-settings:values') { try { document.dispatchEvent(new CustomEvent('upc-settings-changed')); } catch (x) { /* ignore */ } } });
 
   window.UPC = Object.freeze({
-    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, forms, notes, followUps, patient, tasks, surveys, reports, dayLabel, parseDay, rebate, files, deposits, orgFiles, adminNotes, shared, settings, load, ui,
+    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, forms, notes, followUps, patient, tasks, surveys, reports, dayLabel, parseDay, rebate, files, deposits, orgFiles, adminNotes, shared, sharedResult, settings, load, ui,
     user, storage, calendar, wording, background,
   });
 })();

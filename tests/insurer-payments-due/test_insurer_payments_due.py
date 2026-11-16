@@ -8,7 +8,7 @@ counted; the menu count; Carl only; a changed report is an error passed to the h
 
 Run:  python3 tests/insurer-payments-due/test_insurer_payments_due.py
 """
-import asyncio, datetime, json, sys, urllib.parse
+import asyncio, datetime, html, json, re, sys, urllib.parse
 from pathlib import Path
 from playwright.async_api import async_playwright
 
@@ -78,6 +78,22 @@ async def halaxy(route):
     if p.endswith('/report/finance/0'):
         S['reportStart'] = urllib.parse.parse_qs(urllib.parse.urlparse(req.url).query).get('start')
         return await route.fulfill(body=report_html(), content_type='text/html')
+    # Admin Notes on UPC scripts (settings) (captures 14 and 15 Nov 2026): the shared list and the claims
+    js = lambda o: route.fulfill(body=json.dumps(o), content_type='application/json')
+    notes = S.setdefault('notes', [])
+    if p.endswith('/communication-log/organisation/78842/list-data'):
+        return await js({'data': [{'id': n['id'], 'date': '2026-11-11 12:00:00', 'privacy': 'All', 'creator': 'Carl Healy', 'isImportant': False,
+                                   'content': '\n<p class="font-weight-bold">Log Notes</p>\n' + n['html'] + '\n<div class="form-row mt-4">\n    </div>\n'} for n in reversed(notes)]})
+    m = re.search(r'/communication-log/organisation/78842/(new|(\d+)/edit)$', p)
+    if m:
+        if req.method == 'GET':
+            return await js({'status': 'FORM', 'message': "<form id='adminNoteForm'><input type='hidden' name='form[_token]' value='tn'><textarea name='form[logContent]'></textarea></form>"})
+        g = dict(urllib.parse.parse_qsl(req.post_data or '', keep_blank_values=True))
+        if m.group(2):
+            next(n for n in notes if str(n['id']) == m.group(2))['html'] = g['form[logContent]']
+        else:
+            notes.append({'id': 91000 + len(notes), 'html': g['form[logContent]']})
+        return await js({'status': 'CLOSE'})
     if p.startswith('/a/pr/555/'):
         return await route.fulfill(body=page_html(S['user']), content_type='text/html')
     await route.fulfill(status=404, body='not mocked')
@@ -125,7 +141,25 @@ async def main():
         native = await pg.evaluate("document.querySelector('[data-upc-funder-chaser]').classList.contains('upc-native') && !!document.querySelector('[data-upc-funder-chaser] table.table.table-bordered')")
         check('native look', native)
         check('no page errors', not errors, errors)
+        for _ in range(40):
+            if any('UPC shared list: Insurer payments due' in n['html'] for n in S.get('notes', [])):
+                break
+            await pg.wait_for_timeout(250)
+        listed = [html.unescape(re.sub(r'<[^>]+>', '\n', n['html'])) for n in S.get('notes', []) if 'UPC shared list: Insurer payments due' in n['html']]
+        check('the list shared with every PC (a note on UPC scripts (settings))', len(listed) == 1 and 'UPC-0801' in listed[0] and '"data' not in listed[0][:40], listed)
         await ctx.close()
+
+        # Another PC (its own storage): the list from the note, without reading the report again
+        S['log'] = []
+        ctx = await context(browser)
+        pg = await ctx.new_page()
+        await pg.goto('https://eu.halaxy.com/a/pr/555/invoice/#upc-funder-chaser')
+        await pg.wait_for_function("document.querySelectorAll('[data-upc-funder-chaser] tbody tr').length >= 3", timeout=30000)
+        await pg.wait_for_timeout(1500)
+        due2 = [r['cells'][1] for r in await pg.evaluate(ROWS) if not r['off']]
+        check('another PC: the same list straight away, the report not read again', due2 == ['UPC-0801', 'UPC-0802', 'UPC-0807'] and not [x for x in S['log'] if x[1].endswith('/report/finance/0')], (due2, S['log']))
+        await ctx.close()
+        S['notes'] = []
 
         # Halaxy fills in who's signed in late (live, 11 Nov 2026): the menu item still appears
         S.update({'log': [], 'user': 'Carl Healy', 'lateUser': 3000})
