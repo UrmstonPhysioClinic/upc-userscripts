@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.60
+// @version      0.1.61
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.60';
+  const VERSION = '0.1.61';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -2321,6 +2321,7 @@
     { key: 'forecourtLights.offset', script: 'Forecourt lights', label: 'Lights on before sunset', unit: 'minutes', def: 30, min: 0, max: 120 },
     { key: 'forecourtLights.noticeTime', script: 'Forecourt lights', label: 'Show the reminder from', type: 'time', def: '09:00', min: '06:00', max: '20:00' },
     { key: 'forecourtLights.skip', script: 'Forecourt lights', label: 'Dates to skip (bank holidays, closures)', type: 'dates', def: [] },
+    { key: 'scheduleExcess.template', script: 'Schedule excess', label: 'Email template', type: 'text', def: 'Chase - Excess Due', max: 80, re: /^[^<>\[\]]+$/ },
     { key: 'portalFill.payee', script: 'Portal fill (AXA payee details)', label: 'Name of payee', type: 'text', def: 'Urmston Physio Clinic', max: 60, re: /^[A-Za-z0-9][A-Za-z0-9 &'.,()-]*$/ },
     { key: 'portalFill.providerCode', script: 'Portal fill (AXA payee details)', label: 'AXA provider code', type: 'text', def: 'ZZ03779', max: 20, re: /^[A-Za-z0-9]+$/ },
     { key: 'portalFill.email', script: 'Portal fill (AXA payee details)', label: 'Payee email address', type: 'text', def: 'admin@urmstonphysioclinic.com', max: 80, re: /^[^\s@,]+@[^\s@,]+\.[A-Za-z]{2,}$/ },

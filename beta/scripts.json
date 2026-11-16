@@ -14,7 +14,7 @@
     {
       "file": "core.user.js",
       "name": "UPC System: Core library (beta)",
-      "version": "0.1.60"
+      "version": "0.1.61"
     },
     {
       "file": "alerts.user.js",
@@ -39,7 +39,7 @@
     {
       "file": "charge-excess.user.js",
       "name": "UPC Billing: Schedule excess (beta)",
-      "version": "0.1.3"
+      "version": "0.2.0"
     },
     {
       "file": "email-html.user.js",

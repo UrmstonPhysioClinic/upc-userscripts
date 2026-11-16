@@ -1,5 +1,9 @@
 # Changelog
 
+## Schedule excess 0.2.0, core 0.1.61, 16 Nov 2026 (beta)
+- The email is Halaxy's own "Chase - Excess Due" template (Carl edits it in Halaxy), loaded for the invoice as the Send box does once the due date is set, and sent with its styling. No HTML kept in the script. Stops first if the template isn't there.
+- Clinic settings: Schedule excess, Email template (default "Chase - Excess Due").
+
 ## Schedule excess 0.1.3, 16 Nov 2026 (beta)
 - A cancelled scheduled payment no longer counts as scheduled: Halaxy keeps its link, reading "Scheduled payment cancelled" (live, 16 Nov 2026). Only "Scheduled (date time)" counts.
 
