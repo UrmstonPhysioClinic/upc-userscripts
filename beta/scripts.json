@@ -8,18 +8,18 @@
     {
       "file": "block-reporting.user.js",
       "name": "UPC System: Block reporting to Halaxy (beta)",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "was": "block-error-reporting.user.js"
     },
     {
       "file": "core.user.js",
       "name": "UPC System: Core library (beta)",
-      "version": "0.1.55"
+      "version": "0.1.56"
     },
     {
       "file": "alerts.user.js",
       "name": "UPC Calendar: Alerts (beta)",
-      "version": "1.0.1"
+      "version": "1.0.2"
     },
     {
       "file": "bank-statement.user.js",
@@ -29,7 +29,7 @@
     {
       "file": "branding.user.js",
       "name": "UPC Look: Branding (beta)",
-      "version": "2.9.3"
+      "version": "2.9.4"
     },
     {
       "file": "calendar-controls.user.js",
@@ -51,7 +51,7 @@
     {
       "file": "forecourt-lights.user.js",
       "name": "UPC Calendar: Forecourt lights (beta)",
-      "version": "0.3.0"
+      "version": "0.3.1"
     },
     {
       "file": "insurer-payments-due.user.js",
@@ -120,7 +120,7 @@
     {
       "file": "script-settings.user.js",
       "name": "UPC System: Script settings (beta)",
-      "version": "0.2.3"
+      "version": "0.2.4"
     },
     {
       "file": "task-stamps.user.js",

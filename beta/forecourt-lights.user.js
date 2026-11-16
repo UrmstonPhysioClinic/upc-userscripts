@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Calendar: Forecourt lights (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.0
+// @version      0.3.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/forecourt-lights.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/forecourt-lights.user.js
@@ -34,14 +34,16 @@
  *    dates to skip are clinic settings (Script settings > Clinic settings; until saved there, each PC keeps its own).
  *    What's been done and what the timer is set to are kept in the Admin Note "UPC shared checks: Forecourt lights"
  *    (core's UPC.shared), so Done on one PC clears the reminder on the others: a PC reads the note (at most every
- *    5 minutes) only while a reminder is due or showing. Whether reminders show here, and for whom, stay per PC.
+ *    5 minutes) only while a reminder is due or showing.
+ *  - Who gets the reminders is per person (Clinic settings, "Forecourt lights reminders for"): they follow the person
+ *    signed in on any PC, and "Remind me later" follows the person too. Until set there, each PC's own switch and ticks.
  */
 (() => {
   'use strict';
   if (window.__hxForecourtLights) return;
   window.__hxForecourtLights = true;
 
-  const VERSION = '0.3.0';
+  const VERSION = '0.3.1';
   const LAT = 53.45, LON = -2.35, TZ = 'Europe/London';
   const STEP = 15;                      // the timer's segments, minutes
   const SNOOZE = 60 * 60e3;
@@ -60,6 +62,9 @@
   const SHARED_EVERY = 5 * 60e3;
   const shared = () => (U() && U().shared ? U().shared('Forecourt lights', { keep: 120 * DAY, file: 'forecourt-lights.user.js' }) : null);
   const sharedRecs = () => { const sh = shared(); try { return sh && sh.cached ? sh.cached() : {}; } catch (e) { return {}; } };
+  const remindSet = () => !!(U() && U().settings && U().settings.def('forecourtLights.remind') && U().settings.isSet('forecourtLights.remind'));
+  const remindFor = () => { const v = U().settings.get('forecourtLights.remind'); return v === 'everyone' ? [] : v.length ? v : ['(nobody)']; };
+  const personKey = (name) => 'snooze.' + String(name || 'anyone').replace(/[^A-Za-z]/g, '').slice(0, 30);
   const clinicSet = (k) => !!(U() && U().settings && U().settings.isSet && U().settings.def('forecourtLights.' + k) && U().settings.isSet('forecourtLights.' + k));
   // This PC's settings, with the clinic's schedule where it has been set, and what the timer is set to from the shared note.
   function settings() {
@@ -70,6 +75,8 @@
     if (clinicSet('offset')) s.offset = S.get('forecourtLights.offset');
     if (clinicSet('noticeTime')) s.noticeTime = S.get('forecourtLights.noticeTime');
     if (clinicSet('skip')) s.skip = S.get('forecourtLights.skip');
+    // Who is reminded: the clinic's per-person setting once saved (then it decides, on any PC).
+    if (remindSet()) { s.enabled = true; s.who = remindFor(); }
     const t = sharedRecs().timerOn;
     if (t && t.at !== null) s.timerOn = t.value === 'none' ? null : t.value;
     return s;
@@ -293,7 +300,9 @@
       r = due(Date.now(), s, st, userName());
     }
     if (open && (!r || r.key !== open.key)) { const o = open; open = null; o.dialog.close(); }   // done in another tab
-    if (!r || open || Date.now() < st.snoozeUntil) return;
+    const theirs = sharedRecs()[personKey(userName())];   // "Remind me later" pressed by this person on any PC
+    const snoozed = Math.max(st.snoozeUntil || 0, theirs && theirs.at !== null && /^\d+$/.test(theirs.value) ? Number(theirs.value) : 0);
+    if (!r || open || Date.now() < snoozed) return;
     styles();
     const d = U().ui.dialog({ title: 'Forecourt lights', key: 'upc-forecourt-lights', small: true, onClose: () => { if (open && open.dialog === d) { open = null; snooze(); } } });
     if (!d) return;
@@ -311,7 +320,10 @@
       d.close();
     });
   }
-  function snooze() { const st = state(); st.snoozeUntil = Date.now() + SNOOZE; set('state', st); }
+  function snooze() {
+    const st = state(); st.snoozeUntil = Date.now() + SNOOZE; set('state', st);
+    if (remindSet()) share({ [personKey(userName())]: String(st.snoozeUntil) });
+  }
 
   function showSettings() {
     if (!U()) return;
@@ -331,10 +343,12 @@
     }
     d.body.innerHTML =
       '<div class="upc-fl-grid">' +
-      '<label for="upc-fl-on">Reminders on this PC</label><div><label class="mb-0"><input type="checkbox" id="upc-fl-on"' + (s.enabled ? ' checked' : '') + '> Show forecourt light reminders here</label></div>' +
+      (remindSet() ? '<span>Reminders for</span><div><strong>' + esc(U().settings.text(U().settings.get('forecourtLights.remind')).replace(/^everyone$/, 'Everyone')) + '</strong>' +
+          '<div class="text-muted">Whoever is signed in, on any PC: a clinic setting.</div></div>'
+        : '<label for="upc-fl-on">Reminders on this PC</label><div><label class="mb-0"><input type="checkbox" id="upc-fl-on"' + (s.enabled ? ' checked' : '') + '> Show forecourt light reminders here</label></div>' +
       '<span>Remind</span><div class="upc-fl-days">' + [...new Set([...STAFF(), ...(s.who || []), userName()].filter(Boolean))].map((n) =>
         '<label><input type="checkbox" data-who="' + esc(n) + '"' + ((s.who || []).includes(n) ? ' checked' : '') + '> ' + esc(n) + '</label>').join('') +
-        '<div class="text-muted w-100">Whoever is signed in to Halaxy on this PC. None ticked: anyone.</div></div>' +
+        '<div class="text-muted w-100">Whoever is signed in to Halaxy on this PC. None ticked: anyone.</div></div>') +
       '<span>Clinic evenings</span>' + (clinicSet('days') ? '<div><strong>' + esc(DAYS.filter((_, i) => s.days[i]).join(', ') || 'None') + '</strong></div>'
         : '<div class="upc-fl-days">' + DAYS.map((n, i) => '<label><input type="checkbox" data-day="' + i + '"' + (s.days[i] ? ' checked' : '') + '> ' + n + '</label>').join('') + '</div>') +
       '<label for="upc-fl-off">Lights off at</label>' + (clinicSet('offTime') ? '<div><strong>' + esc(s.offTime) + '</strong></div>' : '<input class="form-control" id="upc-fl-off" type="time" step="900" value="' + esc(s.offTime) + '">') +
@@ -367,9 +381,9 @@
       if (bad.length) { d.body.querySelector('[data-err]').textContent = bad.join(' '); return; }
       const timerOn = q('upc-fl-timer').value || null;
       if (timerOn !== s.timerOn) share({ timerOn: timerOn || 'none' });
-      set('settings', { enabled: q('upc-fl-on').checked, days: DAYS.map((_, i) => { const b = d.body.querySelector('[data-day="' + i + '"]'); return b ? b.checked : !!mine.days[i]; }), offTime: off, offset, noticeTime: notice,
+      set('settings', { enabled: q('upc-fl-on') ? q('upc-fl-on').checked : mine.enabled, days: DAYS.map((_, i) => { const b = d.body.querySelector('[data-day="' + i + '"]'); return b ? b.checked : !!mine.days[i]; }), offTime: off, offset, noticeTime: notice,
         skip: [...new Set(skip)].sort(), timerOn,
-        who: [...d.body.querySelectorAll('[data-who]')].filter((x) => x.checked).map((x) => x.dataset.who) });
+        who: d.body.querySelector('[data-who]') ? [...d.body.querySelectorAll('[data-who]')].filter((x) => x.checked).map((x) => x.dataset.who) : mine.who });
       const st = state(); st.snoozeUntil = 0; set('state', st);
       d.close();
       setTimeout(showReminder, 300);
@@ -383,6 +397,7 @@
     setTimeout(showReminder, 2000);   // after Halaxy has settled
     setTimeout(() => { if (Object.keys(get('pending', {})).length) share({}); }, 4000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) showReminder(); });
+    document.addEventListener('upc-settings-changed', () => setTimeout(showReminder, 500));   // the clinic settings just read
     setInterval(showReminder, 5 * 60e3);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });

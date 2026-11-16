@@ -211,6 +211,21 @@ async def main():
         check('in the note as plain lines', 'forecourtLights.days = Tue, Thu' in lines and 'forecourtLights.skip = 2026-12-25, 2027-01-01' in lines, lines)
         shownv = await pg.evaluate("document.querySelector(\"[data-lines='forecourtLights.skip']\").value")
         check('dates shown as Halaxy writes them', shownv == '25-Dec-2026\n01-Jan-2027', shownv)
+        # Per person: Everyone, or people ticked; a choice
+        evr = await pg.evaluate("[document.querySelector(\"[data-audience='alerts.arrivalChime'] [data-everyone]\").checked, document.querySelector(\"[data-audience='alerts.arrivalChime'] input[value='Carl Healy']\").disabled]")
+        check('per person: Everyone ticked by default, names then fixed', evr == [True, True], evr)
+        await pg.uncheck("[data-audience='alerts.arrivalChime'] [data-everyone]")
+        await pg.uncheck("[data-audience='alerts.arrivalChime'] input[value='Carl Healy']")
+        await pg.check("[data-audience='forecourtLights.remind'] input[value='Carl Healy']")
+        await pg.select_option("select[data-key='branding.font']", 'halaxy')
+        await pg.click("[data-a=save]")
+        await pg.wait_for_function("document.querySelector('.upc-ss-clinic .upc-ok')", timeout=15000)
+        lines = note_lines()
+        check('per person saved: names (Carl left out of the chime), the choice', any(l.startswith('alerts.arrivalChime = ') and 'Carl Healy' not in l and 'Wendy Pritchard' in l for l in lines)
+              and 'forecourtLights.remind = Carl Healy' in lines and 'branding.font = halaxy' in lines and not any(l.startswith('alerts.chatAlarm') for l in lines), lines)
+        mine = await pg.evaluate("[UPC.settings.forMe('alerts.arrivalChime'), UPC.settings.forMe('alerts.chatAlarm'), UPC.settings.forMe('forecourtLights.remind'), JSON.parse(localStorage.getItem('upc-settings:mine'))]")
+        check('for whoever is signed in (Carl): chime off, chat alarm on, forecourt on; kept for early scripts', mine[:3] == [False, True, True] and mine[3]['user'] == 'Carl Healy'
+              and mine[3]['values'] == {'forecourtLights.remind': True, 'alerts.arrivalChime': False, 'branding.font': 'halaxy'}, mine)
         # A script saving one value leaves the others as they are
         res = await pg.evaluate("UPC.settings.save({ 'readyToBill.maxExcess': 400 }).then(() => [UPC.settings.get('readyToBill.maxExcess'), UPC.settings.get('forecourtLights.days'), UPC.settings.get('readyToBill.people')], (e) => e.message)")
         check('saving one value keeps the rest', res == [400, ['Tue', 'Thu'], ['Carl Healy', 'Physio One']], res)
