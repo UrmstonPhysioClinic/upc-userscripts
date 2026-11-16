@@ -219,7 +219,7 @@ def check(name, ok, detail=''):
 
 
 ROOT_JS = "document.querySelector('[data-upc-review-requests]')"
-ROWS = """[...document.querySelectorAll('[data-upc-review-requests] tbody tr')].map((tr) => ({ who: tr.cells[0].textContent, off: tr.classList.contains('upc-off'),
+ROWS = """[...document.querySelectorAll('[data-upc-review-requests] tbody tr')].map((tr) => ({ who: tr.cells[0].textContent, off: tr.closest('.card') !== document.querySelector('[data-upc-review-requests] .card'),
   when: tr.cells[1].textContent, why: tr.cells[2].innerText, acts: tr.cells[4].innerText,
   links: [...tr.cells[3].querySelectorAll('a')].map((a) => a.textContent + ' ' + a.getAttribute('href') + ' ' + a.target) }))"""
 
@@ -255,7 +255,7 @@ async def main():
         check('a survey from someone with the same name but another date of birth is ignored', 'Patient C' not in by, sorted(by))
         check('discharged 2 days ago: asked straight away', by.get('Patient N', {}).get('off') is False and 'discharged' in by['Patient N']['why'], by.get('Patient N'))
         foot = await pg.evaluate(ROOT_JS + ".querySelector('.upc-rr > p.text-muted').textContent")
-        check('left out and counted: asked, under 16/owing, Don\'t ask this time (this visit only), cancelled, no good signs', "Left out: 1 already sent a review request, 2 under 16 or owing money, 1 marked Don't ask this time, 1 whose last appointment was cancelled or missed, 1 seen in the last 14 days whose notes don't say they've finished, and 3 with no good-outcome signs" in foot, foot)
+        check('left out and counted: asked, under 16/owing, Don\'t ask this time (this visit only), cancelled, no good signs', "Left out: 1 already asked, 2 under 16 or owing money, 1 not asking this time, 1 last appointment cancelled or missed, 1 seen recently and not finished, 3 no good-outcome signs" in foot, foot)
         check('menu count', await pg.evaluate("(document.querySelector('a.upc-rr-menu .upc-rr-badge') || {}).textContent") == '3')
         menu = await pg.evaluate("[...document.querySelectorAll('#mainMenu a.mainmenu-sublink')].map(a => a.getAttribute('href'))")
         check('menu item under Patients, over the Patient List', '/a/pr/555/patient/#upc-review-requests' in menu, menu)

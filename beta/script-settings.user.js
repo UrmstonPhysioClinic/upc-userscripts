@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Script settings (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.5
+// @version      0.2.6
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/script-settings.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/script-settings.user.js
@@ -31,7 +31,7 @@
   if (window.__hxScriptSettings) return;
   window.__hxScriptSettings = true;
 
-  const VERSION = '0.2.5';
+  const VERSION = '0.2.6';
   const U = () => window.UPC;
   const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const STATUS = { running: 'running on this page', next: 'starts on next page', off: 'switched off', unused: 'not used on this page' };
@@ -141,7 +141,7 @@
         '<button type="button" class="btn btn-outline-primary-light" data-a="up" title="Move up">&uarr;</button><button type="button" class="btn btn-outline-primary-light" data-a="down" title="Move down">&darr;</button></div>';
       const others = (names || []).filter((n) => !r.value.includes(n));
       return '<div data-order="' + esc(d.key) + '">' + r.value.map(row).join('') +
-        '<div class="text-muted upc-ss-ord-rest" data-rest>Below here: not in the order (they follow in the order they joined Halaxy).</div>' + others.map(row).join('') + '</div>';
+        '<div class="text-muted upc-ss-ord-rest" data-rest>Not in the order</div>' + others.map(row).join('') + '</div>';
     }
     if (d.type === 'person') {
       const list = [...new Set((names || []).concat([r.value]))];
@@ -155,10 +155,9 @@
     const S = U().settings;
     const edit = S.canEdit();
     const rows = S.all();
-    let h = '<div class="upc-ss-section upc-ss-clinic"><p class="text-muted">These apply on every PC. ' + (edit ? 'Leave a box empty for the default. ' : 'Only ' + esc(S.editors.join(' or ')) + ' can change them. ') +
-      'Each PC uses a change within the hour.</p>';
+    let h = '<div class="upc-ss-section upc-ss-clinic"><p class="text-muted">' + (edit ? 'Leave a box empty for the default.' : 'Only ' + esc(S.editors.join(' or ')) + ' can change these.') + '</p>';
     const unsaved = rows.filter((r) => r.raw === null).length;
-    if (unsaved && edit) h += '<p class="upc-err">' + unsaved + ' setting' + (unsaved === 1 ? ' is' : 's are') + ' not yet saved for every PC (until then, each PC uses its own). Those marked "from this PC" show what this PC uses now. Check them and press Save for every PC to save them all.</p>';
+    if (unsaved && edit) h += '<div class="alert alert-warning upc-warn">' + unsaved + ' setting' + (unsaved === 1 ? '' : 's') + ' not saved yet. Check those marked "from this PC", then save.</div>';
     let script = '';
     h += '<table class="table table-striped table-bordered w-100"><colgroup><col class="upc-ss-c1"><col class="upc-ss-c2"><col class="upc-ss-c3"></colgroup><tbody>';
     rows.forEach((r) => {
@@ -170,9 +169,9 @@
     });
     h += '</tbody></table>';
     const probs = S.problems();
-    if (probs.length) h += '<p class="upc-err">Lines in the settings note that could not be read (ignored): ' + probs.map(esc).join('; ') + '</p>';
-    if (clinicErr) h += '<p class="upc-err" data-msg>' + esc(clinicErr) + '</p>';
-    if (clinicMsg) h += '<p class="upc-ok">' + esc(clinicMsg) + '</p>';
+    if (probs.length) h += '<div class="alert alert-danger upc-err">Lines in the settings note that could not be read (ignored): ' + probs.map(esc).join('; ') + '</div>';
+    if (clinicErr) h += '<div class="alert alert-danger upc-err" data-msg>' + esc(clinicErr) + '</div>';
+    if (clinicMsg) h += '<div class="alert alert-success upc-ok">' + esc(clinicMsg) + '</div>';
     const at = S.readAt();
     h += '<div class="text-muted">' + (at ? 'Read from Halaxy at ' + new Date(at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + esc(U().dayLabel(at)) + '.' : 'Not read from Halaxy yet on this PC: defaults shown.') + '</div></div>';
     h += '<div class="upc-ss-actions"><button type="button" class="btn btn-outline-primary" data-a="back">Back</button>' +
@@ -204,7 +203,7 @@
       dlg.body.querySelectorAll('input[type=text][data-key]').forEach((el) => { const d = U().settings.def(el.dataset.key); if (d && d.type === 'words') values[el.dataset.key] = el.value.trim() ? el.value : []; });
       draft = values;
       busy = 'Saving...'; renderClinic();
-      try { await S.save(values); draft = null; clinicMsg = 'Saved. Every PC uses these within the hour.'; } catch (e) { clinicErr = 'Not saved: ' + (e.message || e); }
+      try { await S.save(values); draft = null; clinicMsg = 'Saved.'; } catch (e) { clinicErr = 'Not saved: ' + (e.message || e); }
     }
     busy = '';
     renderClinic();
@@ -225,7 +224,7 @@
     (st ? st.scripts : []).forEach((x) => { fullNames[x.file] = x.name; });
     const ordered = sortGrouped(groups, (g) => fullNames[g.script] || g.script).map((o) => o.x);
     let h = '';
-    if (U().settings) h += '<div class="upc-ss-section"><h5>Clinic settings</h5><p class="text-muted">Rules every PC shares (billing, reminders, lists).</p>' +
+    if (U().settings) h += '<div class="upc-ss-section"><h5>Clinic settings</h5>' +
       '<button type="button" class="btn btn-outline-primary-light" data-a="clinic">Clinic settings</button></div>';
     h += '<div class="upc-ss-section"><h5>Options</h5>';
     h += ordered.length ? ordered.map((g) => '<div class="upc-ss-group"><div class="text-muted">' + esc(names[g.script] || g.script.replace(/\.user\.js$/, '')) + '</div><div class="upc-ss-items">' +
@@ -233,7 +232,7 @@
       : '<p class="text-muted">No script has options on this page.</p>';
     h += '</div><div class="upc-ss-section"><h5>Scripts on this PC</h5>';
     if (!st) {
-      h += '<p class="text-muted">This PC\'s script loader doesn\'t answer yet, so its settings are in the Tampermonkey menu (UPC scripts: settings and updates). It updates itself within a day; Tampermonkey\'s "Check for userscript updates" does it now.</p>';
+      h += '<p class="text-muted">This PC\'s loader is out of date: its settings are in the Tampermonkey menu until it updates.</p>';
     } else {
       h += '<div class="upc-ss-chan">' + ['stable', 'beta'].map((c) => '<label><input type="radio" name="upc-ss-chan" value="' + c + '"' + (st.chosen === c ? ' checked' : '') + '> ' +
         (c === 'stable' ? 'Stable (clinic PCs)' : 'Beta (testing new changes)') + '</label>').join('') + '</div>';
@@ -243,8 +242,8 @@
         '<tr><td><label><input type="checkbox" data-file="' + esc(x.file) + '"' + (x.on ? ' checked' : '') + '> ' + esc(shortName(x.name)) + '</label></td>' +
         '<td class="upc-ss-ver text-muted">' + esc(x.version) + ' · ' + esc(STATUS[x.status] || x.status) + '</td></tr>').join('') + '</tbody></table>'
         : '<p class="text-muted">No scripts saved yet. Check for updates to fetch them.</p>';
-      h += (st.problems || []).map((p) => '<p class="upc-err">' + esc(p) + '</p>').join('');
-      if (needRefresh) h += '<p class="upc-warn">Refresh Halaxy to apply these changes.</p>';
+      h += (st.problems || []).map((p) => '<div class="alert alert-danger upc-err">' + esc(p) + '</div>').join('');
+      if (needRefresh) h += '<div class="alert alert-warning upc-warn">Refresh Halaxy to apply these changes.</div>';
       if (notice) h += '<p class="text-muted">' + esc(notice) + '</p>';
       const when = st.lastCheck ? new Date(st.lastCheck).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'never';
       h += '<div class="text-muted">Loader ' + esc(st.version) + '. Last checked for updates: ' + esc(when) + '. Script settings ' + VERSION + '.</div>';

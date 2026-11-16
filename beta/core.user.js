@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.59
+// @version      0.1.60
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.59';
+  const VERSION = '0.1.60';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -1816,14 +1816,13 @@
     .upc-native .upc-gap { margin-top: 12px; }
     .upc-native .upc-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 4.8px; margin-top: 16px; }
     .upc-native .upc-actions .btn { margin: 0; }
-    .upc-native .upc-version { margin-top: 8px; font-size: .86em; }
-    .upc-native .upc-actions .upc-version { margin: 0 auto 0 8px; }
-    .upc-native .upc-actions > .upc-version:first-child { margin-left: 0; }
     .upc-native .upc-note { white-space: pre-line; background: var(--vs-card-standout-bg-color, #f0f0f5); border-radius: 4.8px; padding: 2px 8px; margin-top: 3px; }
     .upc-native .upc-box { background: var(--vs-card-header-bg-color, #f0f0f5); border: 1px solid var(--vs-card-border-color, #ced4da); border-radius: 4.8px; padding: 8px 12px; margin-top: 12px; }
-    .upc-native .upc-ok { color: var(--success, #28a745); font-weight: 600; }
-    .upc-native .upc-warn, .upc-native .upc-err { color: var(--vs-balance-negative-color, #ec6b65); }
-    .upc-native tr.upc-off td { color: var(--vs-viewData-label-color, #6c757d); }
+    .upc-native .upc-ok:not(.alert) { color: var(--success, #28a745); font-weight: 600; }
+    .upc-native .upc-warn:not(.alert), .upc-native .upc-err:not(.alert) { color: var(--vs-balance-negative-color, #ec6b65); }
+    .upc-native .alert { margin: 0 0 12px; }
+    .upc-native .alert.upc-gap { margin-top: 12px; }
+    .upc-native .upc-actions .upc-spacer { margin-left: auto; }
     .upc-native td.number, .upc-native th.number { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
     .upc-native table.table { margin: 12px 0 0; }
     .upc-native table.table td { vertical-align: top; }
@@ -2281,7 +2280,7 @@
   // An empty list is kept in the note as "none".
   const CARL = 'Carl Healy', WENDY = 'Wendy Pritchard';
   const CLINIC_SETTINGS = [
-    { key: 'readyToBill.maxExcess', script: 'Ready to bill', label: 'Highest believable excess (above it, taken as a slip)', unit: '£', def: 500, min: 50, max: 5000 },
+    { key: 'readyToBill.maxExcess', script: 'Ready to bill', label: 'Highest excess to believe', unit: '£', def: 500, min: 50, max: 5000 },
     { key: 'readyToBill.rollingDays', script: 'Ready to bill', label: 'Bill once the oldest unbilled fee is', unit: 'days old', def: 28, min: 7, max: 90 },
     { key: 'readyToBill.soonDays', script: 'Ready to bill', label: 'Unless the next appointment is within', unit: 'days', def: 7, min: 0, max: 28 },
     { key: 'readyToBill.quietDays', script: 'Ready to bill', label: 'Bill when nothing is booked and no visit for', unit: 'days', def: 14, min: 3, max: 90 },
@@ -2303,29 +2302,30 @@
     { key: 'bankStatement.dueFromDay', script: 'Bank statement', label: 'Remind about last month\'s statement from day', unit: 'of the month', def: 15, min: 1, max: 28 },
     // People (stage 2, Carl 15 Nov 2026). A page's list also decides on whose sign-in its background checks run.
     { key: 'readyToBill.people', script: 'Who sees what', label: 'Ready to bill', type: 'people', def: [CARL, WENDY] },
-    { key: 'missingDetails.people', script: 'Who sees what', label: 'Missing details list (everyone sees the banner)', type: 'people', def: [CARL, WENDY] },
+    { key: 'missingDetails.people', script: 'Who sees what', label: 'Missing details list', type: 'people', def: [CARL, WENDY] },
     { key: 'insurerPayments.people', script: 'Who sees what', label: 'Insurer payments due', type: 'people', def: [CARL] },
     { key: 'openEnded.people', script: 'Who sees what', label: 'Open-ended patients', type: 'people', def: [CARL] },
     { key: 'reviewRequests.people', script: 'Who sees what', label: 'Review requests', type: 'people', def: [CARL] },
-    { key: 'feedbackAlerts.people', script: 'Who sees what', label: 'Feedback alerts (checked while they are signed in)', type: 'people', def: [CARL] },
-    { key: 'patientStatuses.people', script: 'Who sees what', label: 'Patient statuses (kept up to date while they are signed in)', type: 'people', def: [CARL] },
+    { key: 'feedbackAlerts.people', script: 'Who sees what', label: 'Feedback alerts', type: 'people', def: [CARL] },
+    { key: 'patientStatuses.people', script: 'Who sees what', label: 'Patient statuses', type: 'people', def: [CARL] },
     { key: 'bankStatement.people', script: 'Who sees what', label: 'Bank statement', type: 'people', def: [CARL] },
     { key: 'feedbackAlerts.taskFor', script: 'Who gets tasks', label: 'Feedback to look at', type: 'person', def: CARL },
-    { key: 'remittances.taskFor', script: 'Who gets tasks', label: 'Remittances (bill the excess, checks, stops)', type: 'person', def: CARL },
-    { key: 'bankStatement.taskFor', script: 'Who gets tasks', label: 'Bank statement (payments to check, deposits waiting)', type: 'person', def: CARL },
+    { key: 'remittances.taskFor', script: 'Who gets tasks', label: 'Remittances', type: 'person', def: CARL },
+    { key: 'bankStatement.taskFor', script: 'Who gets tasks', label: 'Bank statement', type: 'person', def: CARL },
     { key: 'portalFill.taskFor', script: 'Who gets tasks', label: 'Portal fill stopped', type: 'person', def: CARL },
+    { key: 'rebateSync.taskFor', script: 'Who gets tasks', label: 'Rebate sync stopped', type: 'person', def: CARL },
     { key: 'forecourtLights.staff', script: 'Forecourt lights', label: 'Who can be reminded', type: 'people', def: [CARL, 'Diana Satalova', 'Lottie Harold', 'Roxanna Healy', 'Stephen Sharples', WENDY] },
     // Stage 3 (Carl, 15 Nov 2026). Forecourt lights: until these are saved here, each PC keeps the schedule it had.
-    { key: 'forecourtLights.days', script: 'Forecourt lights', label: 'Clinic evenings (lights needed)', type: 'weekdays', def: [] },
+    { key: 'forecourtLights.days', script: 'Forecourt lights', label: 'Clinic evenings', type: 'weekdays', def: [] },
     { key: 'forecourtLights.offTime', script: 'Forecourt lights', label: 'Lights off at', type: 'time', def: '20:45', min: '17:00', max: '23:45' },
     { key: 'forecourtLights.offset', script: 'Forecourt lights', label: 'Lights on before sunset', unit: 'minutes', def: 30, min: 0, max: 120 },
     { key: 'forecourtLights.noticeTime', script: 'Forecourt lights', label: 'Show the reminder from', type: 'time', def: '09:00', min: '06:00', max: '20:00' },
     { key: 'forecourtLights.skip', script: 'Forecourt lights', label: 'Dates to skip (bank holidays, closures)', type: 'dates', def: [] },
     { key: 'portalFill.payee', script: 'Portal fill (AXA payee details)', label: 'Name of payee', type: 'text', def: 'Urmston Physio Clinic', max: 60, re: /^[A-Za-z0-9][A-Za-z0-9 &'.,()-]*$/ },
     { key: 'portalFill.providerCode', script: 'Portal fill (AXA payee details)', label: 'AXA provider code', type: 'text', def: 'ZZ03779', max: 20, re: /^[A-Za-z0-9]+$/ },
-    { key: 'portalFill.email', script: 'Portal fill (AXA payee details)', label: 'Payee email address (for AXA\'s queries)', type: 'text', def: 'admin@urmstonphysioclinic.com', max: 80, re: /^[^\s@,]+@[^\s@,]+\.[A-Za-z]{2,}$/ },
+    { key: 'portalFill.email', script: 'Portal fill (AXA payee details)', label: 'Payee email address', type: 'text', def: 'admin@urmstonphysioclinic.com', max: 80, re: /^[^\s@,]+@[^\s@,]+\.[A-Za-z]{2,}$/ },
     { key: 'portalFill.phone', script: 'Portal fill (AXA payee details)', label: 'Payee phone number', type: 'text', def: '01617484100', max: 20, re: /^\+?[0-9 ()]{6,20}$/ },
-    { key: 'calendar.order', script: 'Calendar', label: 'Column order for All practitioners (anyone else follows)', type: 'order', def: ['Roxanna Healy', CARL, 'Diana Satalova', 'Stephen Sharples'] },
+    { key: 'calendar.order', script: 'Calendar', label: 'Column order for All practitioners', type: 'order', def: ['Roxanna Healy', CARL, 'Diana Satalova', 'Stephen Sharples'] },
     { key: 'calendar.hideProfessions', script: 'Calendar', label: 'Professions left out of All practitioners', type: 'words', def: ['Administrator'] },
     // Per person (Carl, 15 Nov 2026: settings follow the account, not the PC; only Carl changes them). Until saved here,
     // each PC keeps its own switch.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Patient statuses (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.7
+// @version      0.2.8
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
@@ -41,7 +41,7 @@
   if (window.__hxPatientStatuses) return;
   window.__hxPatientStatuses = true;
 
-  const VERSION = '0.2.7';
+  const VERSION = '0.2.8';
   const ALLOWED = () => rule('patientStatuses.people', ['Carl Healy']);
   const DAY = 86400e3;
   // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
@@ -207,7 +207,7 @@
     Object.keys(latest).forEach((k) => { if (!byPatient.has(k) && !byPatient.has(Number(k))) delete latest[k]; });   // patients no longer in the window
     store.set('latest', latest);
     const order = { discharged: 0, claimant: 1, current: 2, '': 3 };
-    rows.forEach((r) => { if (r.from === 'contact' && r.to) r.why = 'Contact with an appointment (not found in searches). ' + r.why; });
+    rows.forEach((r) => { if (r.from === 'contact' && r.to) r.why = 'Contact with an appointment. ' + r.why; });
     rows.sort((a, b) => order[a.to] - order[b.to] || a.name.localeCompare(b.name));
     const result = { at: Date.now(), by: VERSION, rows, counts, suggested: rows.filter((r) => r.to).length };
     store.set('result', result);
@@ -273,14 +273,13 @@
     const base = U().base();
     const l = store.get('log', []), last = store.get('lastRun', null);
     const when = (ms) => label(ms) + ' ' + new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    const atLabel = (ms) => new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + label(ms);
     dlg.root.setAttribute('data-upc-ps-log', '');
-    dlg.body.innerHTML = '<p class="text-muted">Statuses are kept up to date by themselves while ' + esc(ALLOWED()[0]) + ' is signed in, every 3 hours. ' +
-      (last ? 'Last checked ' + esc(when(last.at)) + (last.error ? ': <span class="upc-err">' + esc(last.error) + '</span>' : ', ' + (last.changed || 0) + ' changed.') : 'Not checked yet.') + '</p>' +
+    dlg.body.innerHTML = '<p class="text-muted">' + (last ? 'Checked at ' + esc(atLabel(last.at)) + (last.error ? ': <span class="upc-err">' + esc(last.error) + '</span>' : ', ' + (last.changed || 0) + ' changed.') : 'Not checked yet.') + '</p>' +
       (l.length ? '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th>When</th><th>Patient</th><th>Change</th><th>Why</th></tr></thead><tbody>' +
         l.map((x) => '<tr><td>' + esc(when(x.at)) + '</td><td><a href="' + esc(base + '/patient/' + x.id) + '" target="_blank" rel="noopener">' + esc(x.name) + '</a></td>' +
           '<td>' + (x.to ? esc(NAME[x.from] || x.from) + ' to <b>' + esc(NAME[x.to]) + '</b>' : '') + (x.error ? ' <span class="upc-err">Not changed: ' + esc(x.error) + '</span>' : '') + (x.check ? ' <span class="upc-err">Changed, but please check: ' + esc(String(x.check).replace(/^The status was changed, but t/, 'T')) + '</span>' : '') + '</td>' +
-          '<td>' + esc(x.why || '') + '</td></tr>').join('') + '</tbody></table>' : '<p>No changes yet.</p>') +
-      '<p class="text-muted">Review and statuses other than Current, Claimant, Discharged and Contact are never changed. Patient statuses ' + VERSION + '.</p>';
+          '<td>' + esc(x.why || '') + '</td></tr>').join('') + '</tbody></table>' : '<p>No changes yet.</p>');
   }
 
   function start() {

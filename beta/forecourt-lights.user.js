@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Calendar: Forecourt lights (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.2
+// @version      0.3.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/forecourt-lights.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/forecourt-lights.user.js
@@ -43,7 +43,7 @@
   if (window.__hxForecourtLights) return;
   window.__hxForecourtLights = true;
 
-  const VERSION = '0.3.2';
+  const VERSION = '0.3.3';
   const LAT = 53.45, LON = -2.35, TZ = 'Europe/London';
   const STEP = 15;                      // the timer's segments, minutes
   const SNOOZE = 60 * 60e3;
@@ -225,8 +225,8 @@
         if (st.summerSaid) return null;   // said once: no reminders until the lights are needed again
         const back = nextNeeded(today, s);
         return { kind: 'summer', key: today + ':summer', day: today,
-          lines: ['The forecourt lights aren\'t needed this evening: sunset is ' + hhmm(p.sunset) + ', so the on time (' + hhmm(p.on) + ') would be after the ' + s.offTime + ' off time.',
-            'Leave the timer off. ' + (back ? 'They\'re next needed from ' + longLabel(back) + '; reminders start again then.' : '')] };
+          lines: ['The forecourt lights aren\'t needed this evening (sunset ' + hhmm(p.sunset) + '). Leave the timer off.',
+            back ? 'Next needed from ' + longLabel(back) + '.' : ''] };
       }
       if (st.done[today + ':on']) return null;
       const lines = ['<b>Turn the forecourt lights timer ON today.</b> Lights on ' + hhmm(p.on) + ' to ' + esc(s.offTime) + '.'];
@@ -240,7 +240,7 @@
       const nc = nextChange(today);
       let nextClinic = null;
       for (let i = 1; i <= 14 && !nextClinic; i++) if (isClinic(addDays(today, i), s)) nextClinic = addDays(today, i);
-      if (nc && nc.day <= (nextClinic || addDays(today, 7))) lines.push('Heads-up: the clocks go ' + nc.dir + ' 1 hour on ' + longLabel(nc.day) + ', so the timer\'s clock will need changing at the next clinic evening.');
+      if (nc && nc.day <= (nextClinic || addDays(today, 7))) lines.push('The clocks go ' + nc.dir + ' 1 hour on ' + longLabel(nc.day) + '.');
       return { kind: 'on', key: today + ':on', day: today, on: p.on, offset: now.offset, lines };
     }
     // Not a clinic evening: the last clinic evening in the past week, if its lights were on and not yet turned off.
@@ -316,7 +316,7 @@
     const d = U().ui.dialog({ title: 'Forecourt lights', key: 'upc-forecourt-lights', small: true, onClose: () => { if (open && open.dialog === d) { open = null; snooze(); } } });
     if (!d) return;
     d.root.classList.add('upc-fl');
-    d.body.innerHTML = r.lines.map((l) => '<p>' + l + '</p>').join('') +
+    d.body.innerHTML = r.lines.filter(Boolean).map((l) => '<p>' + l + '</p>').join('') +
       '<div class="upc-fl-actions"><button type="button" class="btn btn-outline-primary" data-a="later">Remind me later</button>' +
       '<button type="button" class="btn btn-primary" data-a="done">' + (r.kind === 'summer' ? 'OK' : 'Done') + '</button></div>';
     open = { dialog: d, key: r.key };
@@ -350,27 +350,21 @@
       rows.push('<tr><td>' + esc(DAYS[weekday(day)] + ' ' + label(day)) + '</td><td>' + hhmm(p.sunset) + '</td><td>' + (p.needed ? hhmm(p.on) : 'Not needed') + '</td><td>' +
         (isClinic(day, s) ? 'Yes' : (s.skip || []).includes(day) ? 'Skipped' : '') + '</td></tr>');
     }
+    // Clinic settings are changed in Script settings > Clinic settings, so only what isn't set there yet is shown here.
     d.body.innerHTML =
       '<div class="upc-fl-grid">' +
-      (remindSet() ? '<span>Reminders for</span><div><strong>' + esc(U().settings.text(U().settings.get('forecourtLights.remind')).replace(/^everyone$/, 'Everyone')) + '</strong>' +
-          '<div class="text-muted">Whoever is signed in, on any PC: a clinic setting.</div></div>'
-        : '<label for="upc-fl-on">Reminders on this PC</label><div><label class="mb-0"><input type="checkbox" id="upc-fl-on"' + (s.enabled ? ' checked' : '') + '> Show forecourt light reminders here</label></div>' +
+      (remindSet() ? '' : '<label for="upc-fl-on">Reminders on this PC</label><div><label class="mb-0"><input type="checkbox" id="upc-fl-on"' + (s.enabled ? ' checked' : '') + '> Show forecourt light reminders here</label></div>' +
       '<span>Remind</span><div class="upc-fl-days">' + [...new Set([...STAFF(), ...(s.who || []), userName()].filter(Boolean))].map((n) =>
         '<label><input type="checkbox" data-who="' + esc(n) + '"' + ((s.who || []).includes(n) ? ' checked' : '') + '> ' + esc(n) + '</label>').join('') +
-        '<div class="text-muted w-100">Whoever is signed in to Halaxy on this PC. None ticked: anyone.</div></div>') +
-      '<span>Clinic evenings</span>' + (clinicSet('days') ? '<div><strong>' + esc(DAYS.filter((_, i) => s.days[i]).join(', ') || 'None') + '</strong></div>'
-        : '<div class="upc-fl-days">' + DAYS.map((n, i) => '<label><input type="checkbox" data-day="' + i + '"' + (s.days[i] ? ' checked' : '') + '> ' + n + '</label>').join('') + '</div>') +
-      '<label for="upc-fl-off">Lights off at</label>' + (clinicSet('offTime') ? '<div><strong>' + esc(s.offTime) + '</strong></div>' : '<input class="form-control" id="upc-fl-off" type="time" step="900" value="' + esc(s.offTime) + '">') +
-      '<label for="upc-fl-offset">Lights on, minutes before sunset</label>' + (clinicSet('offset') ? '<div><strong>' + esc(s.offset) + '</strong></div>' : '<input class="form-control" id="upc-fl-offset" type="number" min="0" max="120" step="5" value="' + esc(s.offset) + '">') +
-      '<label for="upc-fl-notice">Show the reminder from</label>' + (clinicSet('noticeTime') ? '<div><strong>' + esc(s.noticeTime) + '</strong></div>' : '<input class="form-control" id="upc-fl-notice" type="time" value="' + esc(s.noticeTime) + '">') +
+        '<div class="text-muted w-100">None ticked: anyone.</div></div>') +
+      (clinicSet('days') ? '' : '<span>Clinic evenings</span><div class="upc-fl-days">' + DAYS.map((n, i) => '<label><input type="checkbox" data-day="' + i + '"' + (s.days[i] ? ' checked' : '') + '> ' + n + '</label>').join('') + '</div>') +
+      (clinicSet('offTime') ? '' : '<label for="upc-fl-off">Lights off at</label><input class="form-control" id="upc-fl-off" type="time" step="900" value="' + esc(s.offTime) + '">') +
+      (clinicSet('offset') ? '' : '<label for="upc-fl-offset">Lights on, minutes before sunset</label><input class="form-control" id="upc-fl-offset" type="number" min="0" max="120" step="5" value="' + esc(s.offset) + '">') +
+      (clinicSet('noticeTime') ? '' : '<label for="upc-fl-notice">Show the reminder from</label><input class="form-control" id="upc-fl-notice" type="time" value="' + esc(s.noticeTime) + '">') +
       '<label for="upc-fl-timer">The timer\'s on time is set to</label><select class="form-control" id="upc-fl-timer">' + times.join('') + '</select>' +
-      '<label for="upc-fl-skip">Dates to skip (bank holidays, closures)' + (clinicSet('skip') ? '' : ', one per line, e.g. 25-Dec-2026') + '</label>' + (clinicSet('skip') ? '<div><strong>' + esc((s.skip || []).map(label).join(', ') || 'None') + '</strong></div>'
-        : '<textarea class="form-control" id="upc-fl-skip">' + esc((s.skip || []).map(label).join('\n')) + '</textarea>') +
-      '</div><p class="text-muted mt-2">' + (['days', 'offTime', 'offset', 'noticeTime', 'skip'].some(clinicSet) ? 'Values in bold are clinic settings, the same on every PC: Carl changes them in Script settings &gt; Clinic settings. '
-        : 'Clinic evenings, times and dates to skip apply to this PC only until they are set in Script settings &gt; Clinic settings, which applies them to every PC. ') +
-        'What the timer is set to and what has been done are shared by every PC.</p><p class="upc-err" data-err></p>' +
+      (clinicSet('skip') ? '' : '<label for="upc-fl-skip">Dates to skip, one per line, e.g. 25-Dec-2026</label><textarea class="form-control" id="upc-fl-skip">' + esc((s.skip || []).map(label).join('\n')) + '</textarea>') +
+      '</div><div class="alert alert-danger upc-err mt-2" data-err hidden></div>' +
       '<h6 class="mt-3">The next two weeks</h6><table class="table table-striped table-bordered w-100"><thead><tr><th>Date</th><th>Sunset</th><th>Lights on</th><th>Clinic evening</th></tr></thead><tbody>' + rows.join('') + '</tbody></table>' +
-      '<div class="text-muted">Sunset for Urmston, worked out on this PC. Lights on is rounded down to the timer\'s 15-minute steps. Forecourt lights ' + VERSION + '</div>' +
       '<div class="upc-fl-actions"><button type="button" class="btn btn-outline-primary" data-upc-close>Cancel</button><button type="button" class="btn btn-primary" data-a="save">Save</button></div>';
     d.body.querySelector('[data-a=save]').addEventListener('click', () => {
       const q = (id) => d.body.querySelector('#' + id);
@@ -387,7 +381,7 @@
         if (day === null) bad.push('"' + x + '" isn\'t a date (use e.g. 25-Dec-2026).');
         else skip.push(day);
       });
-      if (bad.length) { d.body.querySelector('[data-err]').textContent = bad.join(' '); return; }
+      if (bad.length) { const e = d.body.querySelector('[data-err]'); e.textContent = bad.join(' '); e.hidden = false; return; }
       const timerOn = q('upc-fl-timer').value || null;
       if (timerOn !== s.timerOn) share({ timerOn: timerOn || 'none' });
       set('settings', { enabled: q('upc-fl-on') ? q('upc-fl-on').checked : mine.enabled, days: DAYS.map((_, i) => { const b = d.body.querySelector('[data-day="' + i + '"]'); return b ? b.checked : !!mine.days[i]; }), offTime: off, offset, noticeTime: notice,

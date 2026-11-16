@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.3
+// @version      0.4.4
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -36,7 +36,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.4.3';
+  const VERSION = '0.4.4';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -68,9 +68,9 @@
   const MONEY_RE = /^£?-?\d{1,6}\.\d{2}$/;
   const cents = (t) => Math.round(parseFloat(String(t).replace(/[£,]/g, '')) * 100);
   const fmt = (c) => UPC.money.fmt(c);   // £ 40.00, as Halaxy
-  // OCR reads UPC-37536 as 'UPC=37536', 'UPC-375 36', 'UPC—37536' and so on.
+  // OCR reads UPC-37536 as 'UPC=37536', 'UPC-375 36', 'UPC' then a long dash, and so on.
   // Text recognition sometimes reads the C as G, O or "GC" (live, 13 Nov 2026: "UPGC-37070" on an AXA remittance).
-  const UPC_RE = /U\s*P\s*(?:GC|[CGO(])\s*[-=+–—_.:~]?\s*(\d{3,6})/i;
+  const UPC_RE = /U\s*P\s*(?:GC|[CGO(])\s*[-=+\u2013\u2014_.:~]?\s*(\d{3,6})/i;
 
   // Splits a text item into words, sharing its width out by character count.
   function splitItem(str, x, y, w, h, page) {
@@ -553,7 +553,7 @@
       if (waiting.length) {
         res.status = 'resume';
         res.resume = waiting;
-        res.message = 'Stopped part way last time: ' + waiting.map((w) => fmt(w.amount) + ' is waiting on ' + w.number).join(', ') + ' to go back on ' + funder.number + '. Apply finishes it, then checks this invoice again.';
+        res.message = 'Stopped part way last time: ' + waiting.map((w) => fmt(w.amount) + ' is waiting on ' + w.number).join(', ') + ' to go back on ' + funder.number + '.';
         return res;
       }
       // Moved already (an earlier upload, or by hand), however it was split over the fees: the invoice now asks the
@@ -637,7 +637,6 @@
     const fixes = state.results.filter((x) => x.status === 'fix');
     let html = '<div class="upc-rem"><h1>Remittances</h1>' +
       '<div class="card"><div class="card-header"><h2>Read a remittance</h2></div><div class="card-body">' +
-      '<div class="text-muted">Read a remittance, check it against Halaxy, and move excesses to the patient. Money is never added here: it comes from the bank statement, as a deposit on the insurer\'s profile, and is applied to the invoices once everything agrees and you confirm. Remittances are read on this computer and not uploaded anywhere, except as an attachment to the invoices they cover and one copy on the insurer\'s profile.</div>' +
       '<div class="upc-rem-drop" tabindex="0" role="button">Drop a remittance PDF here, or click to choose one<input type="file" accept="application/pdf" hidden></div>' +
       '<div class="upc-rem-status" aria-live="polite"></div>';
     if (r) {
@@ -694,7 +693,7 @@
       html += '<div class="upc-rem-apply"><button type="button" class="btn btn-primary" data-act="apply" ' + (can ? '' : 'disabled') + '>' + label + '</button>' +
         '<label><input type="checkbox" data-act="attach" ' + (state.attach !== false ? 'checked' : '') + '> Attach the remittance to each matched invoice</label></div></div></div>';
     }
-    html += '<div class="text-muted upc-version">Remittances ' + VERSION + '</div></div>';
+    html += '</div>';
     sh.innerHTML = html;
   }
 
@@ -792,8 +791,7 @@
       const total = sum(list.map((x) => x.shortfall));
       const dlg = UPC.ui.dialog({ title: 'Apply ' + list.length + ' excess fix' + (list.length === 1 ? '' : 'es') + '?', small: true, onClose: () => done(false) });
       dlg.root.setAttribute('data-upc-remit-confirm', '');
-      dlg.body.innerHTML = '<p>For each invoice below, the funder line is reverted to the patient invoice, the rebate is lowered, and the rest is re-billed to the same organisation invoice. ' +
-        'Patients will owe ' + fmt(total) + ' in total. No payments are recorded.</p><ul>' +
+      dlg.body.innerHTML = '<p>Patients will owe ' + fmt(total) + ' in total.</p><ul>' +
         list.map((x) => '<li>' + esc(x.item.invoice) + ': ' + x.changes.map((c) => esc(c.date) + ' ' + fmt(c.from) + ' to ' + fmt(c.to)).join(', ') + '</li>').join('') +
         '</ul>' + (state.attach !== false ? '<p class="text-muted">The remittance will also be attached to each matched invoice.</p>' : '') +
         '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-a="no">Cancel</button><button type="button" class="btn btn-primary" data-a="yes">Apply</button></div>';
@@ -820,7 +818,7 @@
   // Apply after that, as usual.
   async function finishResumes(list) {
     const lines = list.map((x) => '<li>' + esc(x.item.invoice) + ': ' + x.resume.map((w) => 'bill ' + fmt(w.amount) + ' (the ' + esc(w.date) + ' fee) on ' + esc(w.number) + ' back to it').join(', ') + '</li>').join('');
-    if (!(await confirmSimple('Finish ' + list.length + ' invoice' + (list.length === 1 ? '' : 's') + ' left part-way?', '<p>These were stopped part way last time. Each fee waiting on the patient invoice is billed back to its funder invoice (set back to Active for the change if it is Issued, then Issued again) and given its own date. Nothing else is changed.</p><ul>' + lines + '</ul>'))) return;
+    if (!(await confirmSimple('Finish ' + list.length + ' invoice' + (list.length === 1 ? '' : 's') + ' left part-way?', '<ul>' + lines + '</ul>'))) return;
     state.busy = true;
     const run = state.run = UPC.ui.run.start(list.length);
     const say = (t, err) => { UPC.ui.run.step(run, t, err); render(); };
@@ -940,7 +938,7 @@
     const byRef = state.remit.reference ? fits.filter((d) => d.note.includes('ref ' + state.remit.reference)) : [];
     const pick = byRef.length === 1 ? byRef : fits;
     if (!pick.length) {
-      say('No ' + fmt(total) + ' deposit from the bank on the ' + who + ' profile yet: Bank statement applies it when the money is in.');
+      say('No ' + fmt(total) + ' deposit from the bank on the ' + who + ' profile yet.');
       const w = remStore().get('awaiting', {});
       w[identity()] = { org: orgId, invoiceId: list[0].invoiceId, number: list[0].item.invoice, since: remitMs || Date.now() };
       remStore().set('awaiting', w);
@@ -953,9 +951,9 @@
       return;
     }
     const dep = pick[0];
-    const ok = await confirmSimple('Apply the payment?', '<p>The ' + esc(who) + ' payment of ' + fmt(total) + ' reached the bank on ' + esc(dep.date) + ' and is on the profile as a deposit. Apply it to:</p><ul>' +
+    const ok = await confirmSimple('Apply the payment?', '<p>Apply the ' + esc(who) + ' deposit of ' + fmt(total) + ' (bank ' + esc(dep.date) + ') to:</p><ul>' +
       list.map((x) => '<li>' + esc(x.item.invoice) + ' ' + fmt(paidOn(x)) + '</li>').join('') + '</ul>', 'Apply');
-    if (!ok) { say('The deposit was not applied (cancelled). Bank statement or the next run of this remittance can apply it.'); return; }
+    if (!ok) { say('The deposit was not applied.'); return; }
     say('Applying the ' + fmt(total) + ' deposit (bank ' + dep.date + ')...');
     try { await UPC.deposits.apply(orgId, dep.id, list.map((x) => x.invoiceId), total); }
     catch (e) {
@@ -1043,7 +1041,7 @@
           try {
             const added = await UPC.tasks.addToInvoice(id, {
               title: 'Bill excess: ' + m.number + ' (' + remit + ')', assignee: TASK_FOR(), priority: 2, due: todayLabel(),
-              by: 'Remittances', comment: [(m.owes !== null ? 'Patient owes ' + fmt(m.owes) + ' on ' + m.number : ''), 'Moved to the patient: ' + m.lines.join(', '), 'From the ' + remit, 'Bill the patient for the excess'],
+              by: 'Remittances', comment: [(m.owes !== null ? 'Patient owes ' + fmt(m.owes) + ' on ' + m.number : ''), 'Moved to the patient: ' + m.lines.join(', '), 'From the ' + remit],
             });
             say('  ' + (added ? 'Task added for ' + TASK_FOR() + ' to bill the patient on ' + m.number + '.' : 'A task to bill the patient is already on ' + m.number + '.'));
           } catch (e) {

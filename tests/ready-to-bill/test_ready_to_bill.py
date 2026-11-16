@@ -259,7 +259,7 @@ async def open_page(ctx, path='/a/pr/555/invoice/#upc-ready-to-bill'):
 
 ROOT_JS = "document.querySelector('[data-upc-ready-to-bill]')"
 ROWS_JS = """[...document.querySelectorAll('[data-upc-ready-to-bill] tbody tr')].map((tr) => ({
-  off: tr.classList.contains('upc-off'), who: tr.cells[0].textContent, funder: tr.cells[1].textContent, unbilled: tr.cells[2].textContent,
+  off: tr.closest('.card') !== document.querySelector('[data-upc-ready-to-bill] .card'), who: tr.cells[0].textContent, funder: tr.cells[1].textContent, unbilled: tr.cells[2].textContent,
   why: tr.cells[4].textContent, invs: [...tr.cells[5].querySelectorAll('a')].map((a) => a.getAttribute('href')),
   btn: tr.cells[6] && tr.cells[6].querySelector('a') ? tr.cells[6].querySelector('a').getAttribute('href') : null,
   btnCls: tr.cells[6] && tr.cells[6].querySelector('a') ? tr.cells[6].querySelector('a').className : null,
@@ -283,15 +283,15 @@ async def main():
         check('due: authorisation used up, 14 days quiet, old fees, 4 weeks old, quiet ends the excess hold', sorted(due) == ['Patient A', 'Patient B', 'Patient D', 'Patient O', 'Patient S', 'Patient U', 'Patient V'], rows)
         check('Discharged with nothing booked: due now, not held for the excess', by.get('Patient V', {}).get('why', '').startswith('Discharged, nothing booked') and 'Held' not in by['Patient V']['why'], by.get('Patient V'))
         check('4 weeks old: due, saying so', 'Fees from ' in by.get('Patient S', {}).get('why', '') and 'over 4 weeks old' in by['Patient S']['why'], by.get('Patient S'))
-        check('4 weeks old but a visit within a week: waits for it', by.get('Patient T', {}).get('off') and 'billed after the visit on' in by['Patient T']['why'], by.get('Patient T'))
+        check('4 weeks old but a visit within a week: waits for it', by.get('Patient T', {}).get('off') and 'After the visit on' in by['Patient T']['why'], by.get('Patient T'))
         check('held for the excess, but nothing booked for 14 days: due, not held', 'Held' not in by.get('Patient U', {}).get('why', 'Held') and 'No visit for 14 days' in by['Patient U']['why'], by.get('Patient U'))
         check('authorisation reason', 'Authorisation used up (5 of 5)' in by.get('Patient A', {}).get('why', ''), by.get('Patient A'))
         check('quiet reason names the last visit', 'No visit for 14 days (last 21-Oct-2026), nothing booked' in by.get('Patient B', {}).get('why', ''), by.get('Patient B'))
         check('old fees reason', 'Fees from 02-Aug-2026, over 3 months old' in by.get('Patient D', {}).get('why', ''), by.get('Patient D'))
-        check('3rd Party Funded: old fees are not due, billed at the end', by.get('Patient M', {}).get('off') and 'Billed at the end of treatment (3rd Party Funded' in by['Patient M']['why'], by.get('Patient M'))
+        check('3rd Party Funded: old fees are not due, billed at the end', by.get('Patient M', {}).get('off') and by['Patient M']['why'].startswith('End of treatment'), by.get('Patient M'))
         check('3rd Party Funded: no excess hold on a new claim', by.get('Patient N', {}).get('off') and 'Held' not in by['Patient N']['why'], by.get('Patient N'))
         check('Aviva: old fees are due', not by.get('Patient O', {}).get('off', True) and 'over 3 months old' in by['Patient O']['why'], by.get('Patient O'))
-        check('Aviva: new claim held for the excess', by.get('Patient P', {}).get('off') and 'Held for the excess' in by['Patient P']['why'], by.get('Patient P'))
+        check('Aviva: new claim held for the excess', by.get('Patient P', {}).get('off') and by['Patient P']['why'].startswith('Held: new claim'), by.get('Patient P'))
         check('no month-end reason any more', not any('Last working day' in r['why'] for r in rows), rows)
         check('fees from both of a patient\'s invoices are counted', by.get('Patient A', {}).get('unbilled') == '3 fees£ 120.00', by.get('Patient A'))
         check('Invoice Funder button opens the latest invoice with Invoice Funder', by.get('Patient A', {}).get('btn') == '/a/pr/555/invoice/502#upc-invoice-funder', by.get('Patient A'))
@@ -300,15 +300,15 @@ async def main():
         check('patient name links to the patient', by.get('Patient A', {}).get('patient') == '/a/pr/555/patient/301', by.get('Patient A'))
         off = [r['who'] for r in rows if r['off']]
         check('greyed at the bottom: did-not-attend only, held, not due yet', off[:4] == ['Patient F', 'Patient R', 'Patient C', 'Patient P'] and set(off) == {'Patient F', 'Patient C', 'Patient P', 'Patient R', 'Patient M', 'Patient L', 'Patient N', 'Patient Q', 'Patient E', 'Patient T', 'Patient W'} and rows[-11:] == [by[w] for w in off] == [by[w] for w in off], [r['who'] for r in rows])
-        check('held for the excess, explained', 'Held for the excess' in by.get('Patient C', {}).get('why', ''), by.get('Patient C'))
+        check('held for the excess, explained', by.get('Patient C', {}).get('why', '').startswith('Held'), by.get('Patient C'))
         check('greyed rows link to their invoices but have no button', by.get('Patient C', {}).get('invs') == ['/a/pr/555/invoice/521'] and not by.get('Patient C', {}).get('btn'), by.get('Patient C'))
         check('not due yet shows the next booking', 'next booked 17-Nov-2026' in by.get('Patient E', {}).get('why', ''), by.get('Patient E'))
         check('excess from the intake form: holds until the fees cover it', by.get('Patient R', {}).get('off') and
-              'patient-reported excess £ 250.00 (unconfirmed), fees so far £ 80.00' in by['Patient R']['why'], by.get('Patient R'))
+              'Held: excess £ 250.00, fees so far £ 80.00' == by['Patient R']['why'], by.get('Patient R'))
         check('excess over £ 500 on the form taken as a slip: the 2-fee rule, not held', 'Held' not in by.get('Patient W', {}).get('why', 'Held') and by['Patient W'].get('off'), by.get('Patient W'))
         check('excess "None" on the form: not held', 'Held' not in by.get('Patient Q', {}).get('why', 'Held'), by.get('Patient Q'))
-        check('no intake form: falls back to 2 fees', 'excess not found on the intake form, so waiting for 2 fees' in by.get('Patient C', {}).get('why', ''), by.get('Patient C'))
-        check('Aviva: its form doesn\'t ask, so 2 fees', 'Aviva\'s form doesn\'t ask for the excess' in by.get('Patient P', {}).get('why', ''), by.get('Patient P'))
+        check('no intake form: falls back to 2 fees', 'Held: new claim, 1 of 2 fees' == by.get('Patient C', {}).get('why', ''), by.get('Patient C'))
+        check('Aviva: its form doesn\'t ask, so 2 fees', by.get('Patient P', {}).get('why', '') == 'Held: new claim, 1 of 2 fees', by.get('Patient P'))
         reads = S.get('formReads', [])
         check('forms read only for Bupa and AXA new claims, one form each', sorted(x for x in reads if x[0] == 'form') == [('form', 9001), ('form', 9002), ('form', 9005)]
               and sorted(x[1] for x in reads if x[0] == 'menu') == [303, 317, 318, 323], reads)

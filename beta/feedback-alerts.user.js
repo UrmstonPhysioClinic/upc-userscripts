@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Feedback alerts (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.6
+// @version      0.1.7
 // @upc-was      survey-feedback.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/feedback-alerts.user.js
@@ -36,7 +36,7 @@
   if (window.__hxSurveyFeedback) return;
   window.__hxSurveyFeedback = true;
 
-  const VERSION = '0.1.6';
+  const VERSION = '0.1.7';
   // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
   const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
   const ALLOWED = () => rule('feedbackAlerts.people', ['Carl Healy']);   // Carl, 11 Nov 2026
@@ -146,7 +146,7 @@
     const n = allowed() ? unmatched().length : 0;
     let b = a.querySelector('.upc-fb-badge');
     if (!n) { if (b) b.remove(); return; }
-    if (!b) { b = document.createElement('span'); b.className = 'upc-fb-badge'; b.title = 'Survey responses to look at by hand (Script settings, Feedback alerts)'; a.appendChild(b); }
+    if (!b) { b = document.createElement('span'); b.className = 'upc-fb-badge'; b.title = 'Survey responses to look at'; a.appendChild(b); }
     if (b.textContent !== String(n)) b.textContent = String(n);
   }
 
@@ -185,10 +185,9 @@
       const last = store.get('last', 0), err = store.get('lastError', null);
       const base = U().base();
       let h = '<div class="upc-fb-bar"><button type="button" class="btn btn-outline-primary-light" data-a="check"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Checking...' : 'Check now') + '</button>' +
-        (busy ? U().ui.run.inline(status) : '<span class="text-muted">' + esc(last ? 'Checked ' + time(last) + '.' : 'Not checked yet.') + '</span>') + '</div>';
-      if (err && err.at >= last - 60e3) h += '<p class="upc-err">Last check: ' + esc(err.message) + '</p>';
-      h += '<p>Responses in the last 14 days: ' + counts.excellent + ' Excellent, ' + counts.satisfactory + ' Satisfactory, ' + counts.below + ' Below expected. ' +
-        'Below expected, and Satisfactory with a comment, become a task for you on the patient\'s profile.</p>';
+        (busy ? U().ui.run.inline(status) : '<span class="text-muted">' + esc(last ? 'Checked at ' + new Date(last).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + label(last) + '.' : 'Not checked yet.') + '</span>') + '</div>';
+      if (err && err.at >= last - 60e3) h += '<div class="alert alert-danger upc-err">Last check: ' + esc(err.message) + '</div>';
+      h += '<p>Responses in the last 14 days: ' + counts.excellent + ' Excellent, ' + counts.satisfactory + ' Satisfactory, ' + counts.below + ' Below expected.</p>';
       if (!shown.length) h += '<p class="text-muted">No responses have needed a task.</p>';
       else {
         h += '<table class="table table-striped table-bordered w-100"><thead><tr><th>Answered</th><th>Patient</th><th>Score</th><th>Task</th></tr></thead><tbody>' + shown.map(([id, v]) => {
@@ -198,7 +197,6 @@
           return '<tr><td>' + esc(time(v.at)) + '</td><td>' + who + '</td><td>' + esc(BAND[v.band] + ' (' + v.total + ' of ' + MAX_SCORE + ')') + '</td><td>' + task + '</td></tr>';
         }).join('') + '</tbody></table>';
       }
-      h += '<div class="text-muted upc-version">Feedback alerts ' + VERSION + '</div>';
       box.innerHTML = h;
     };
     const loadNames = async () => {   // names come from Halaxy each time, never kept

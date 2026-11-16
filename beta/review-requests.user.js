@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Review requests (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.5.9
+// @version      0.5.10
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
@@ -47,7 +47,7 @@
   if (window.__hxReviewRequests) return;
   window.__hxReviewRequests = true;
 
-  const VERSION = '0.5.9';
+  const VERSION = '0.5.10';
   const ROUTE = 'upc-review-requests';
   const MENU_CLS = 'upc-rr-menu';
   const ALLOWED = () => rule('reviewRequests.people', ['Carl Healy']);   // Carl, 10 Nov 2026: just me for now
@@ -323,7 +323,6 @@
     .upc-rr td.upc-rr-acts .upc-err { display: inline-block; white-space: normal; max-width: 340px; }
     .upc-rr td.upc-rr-acts .btn + .btn { margin-left: 6px; }
     .upc-rr td.upc-rr-date, .upc-rr td.upc-rr-links { white-space: nowrap; }
-    .upc-rr tr.upc-off td, .upc-rr tr.upc-off a { color: var(--vs-viewData-label-color, #6c757d); }
     .upc-rr .upc-rr-why .upc-err { display: block; }
   `;
   const state = { unmount: null, running: false, status: '', error: '' };
@@ -348,11 +347,11 @@
     const why = esc((r.good || []).concat(r.nice || []).join(', ')) + ((r.bad || []).length ? '<span class="upc-err">Against: ' + esc(r.bad.join(', ')) + '</span>' : '') +
       (r.verdict === 'error' ? '<span class="upc-err">Not read: ' + esc(r.why) + '</span>' : '');
     const acts = d && d.sent ? '<span class="upc-ok">Review request scheduled for ' + esc(d.sent) + (d.reminder ? ', reminder ' + esc(d.reminder) : '') + '</span>' +
-      (d.reminderError ? '<br><span class="upc-err">Reminder not added: ' + esc(d.reminderError) + '</span>' : '') : d === 'skipped' ? '<span class="upc-ok">Not asking this time (suggested again after a new visit)</span>' : d === 'busy' ? '<span class="text-muted">Working...</span>'
+      (d.reminderError ? '<br><span class="upc-err">Reminder not added: ' + esc(d.reminderError) + '</span>' : '') : d === 'skipped' ? '<span class="upc-ok">Not asking this time</span>' : d === 'busy' ? U().ui.run.inline('')
       : (d && d.error ? '<span class="upc-err">' + esc(d.error) + '</span><br>' : '') +
         '<button type="button" class="btn btn-outline-primary-light" data-send="' + esc(r.id) + '">Send review request</button>' +
         '<button type="button" class="btn btn-outline-primary" data-skip="' + esc(r.id) + '">Don\'t ask this time</button>';
-    return '<tr class="' + (r.verdict === 'ready' ? '' : 'upc-off') + '"><td><a href="' + esc(base + '/patient/' + r.id) + '" target="_blank" rel="noopener">' + esc(r.name) + '</a></td>' +
+    return '<tr><td><a href="' + esc(base + '/patient/' + r.id) + '" target="_blank" rel="noopener">' + esc(r.name) + '</a></td>' +
       '<td class="upc-rr-date">' + esc(label(r.lastSeen)) + '</td><td class="upc-rr-why">' + why + '</td><td class="upc-rr-links">' + linksHtml(r) + '</td><td class="upc-rr-acts">' + acts + '</td></tr>';
   }
 
@@ -361,21 +360,20 @@
     const r = store.get('result', null);
     const head = '<thead><tr><th>Patient</th><th>Last visit</th><th>Why</th><th>Check first</th><th></th></tr></thead>';
     let h = '<div class="upc-rr"><h1>Review requests</h1><div class="upc-rr-bar">' +
-      '<button type="button" class="btn btn-outline-primary-light" data-a="refresh"' + (state.running ? ' disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check again') + '</button>' +
+      '<button type="button" class="btn btn-outline-primary-light" data-a="refresh"' + (state.running ? ' disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>' +
       (state.running ? U().ui.run.inline(state.status) : '<span class="text-muted">' + esc(r ? 'Checked at ' + new Date(r.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + label(r.at) + '.' : '') + '</span>') + '</div>';
-    if (state.error) h += '<p class="upc-err">' + esc(state.error) + '</p>';
+    if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     if (r) {
       const ready = r.rows.filter((x) => x.verdict === 'ready'), rest = r.rows.filter((x) => x.verdict !== 'ready');
       h += '<div class="card"><div class="card-header"><h2>Good outcome (' + ready.length + ')</h2></div><div class="card-body p-0">' +
-        (ready.length ? '<table class="table table-striped table-bordered w-100 m-0">' + head + '<tbody>' + ready.map(rowHtml).join('') + '</tbody></table>' : '<p class="text-muted m-3">Nobody to ask at the moment.</p>') + '</div></div>';
-      if (rest.length) h += '<div class="card"><div class="card-header"><h2>Worth a look (' + rest.length + ')</h2></div><div class="card-body p-0"><table class="table table-bordered w-100 m-0">' + head + '<tbody>' + rest.map(rowHtml).join('') + '</tbody></table></div></div>';
+        (ready.length ? '<table class="table table-striped table-bordered w-100 m-0">' + head + '<tbody>' + ready.map(rowHtml).join('') + '</tbody></table>' : '<p class="text-muted m-3">None.</p>') + '</div></div>';
+      if (rest.length) h += '<div class="card"><div class="card-header"><h2>Worth a look (' + rest.length + ')</h2></div><div class="card-body p-0"><table class="table table-striped table-bordered w-100 m-0">' + head + '<tbody>' + rest.map(rowHtml).join('') + '</tbody></table></div></div>';
       const c = r.counts;
-      h += '<p class="text-muted">Patients with nothing booked, from the day after their last visit when the notes say treatment has finished (discharged, goals met, self-managing), ' +
-        'otherwise once ' + QUIET_DAYS() + ' days have passed, and up to ' + MAX_DAYS() + ' days after their last visit. Left out: ' + c.asked + ' already sent a review request, ' +
-        c.left + ' under ' + MIN_AGE() + ' or owing money, ' + (c.skipped || 0) + ' marked Don\'t ask this time, ' + c.ended + ' whose last appointment was cancelled or missed, ' +
-        (c.soon || 0) + ' seen in the last ' + QUIET_DAYS() + ' days whose notes don\'t say they\'ve finished, and ' + c.none + ' with no good-outcome signs in their last two notes or Progress Update form.</p>';
+      h += '<p class="text-muted">Nothing booked, last visit up to ' + MAX_DAYS() + ' days ago. Left out: ' + c.asked + ' already asked, ' +
+        c.left + ' under ' + MIN_AGE() + ' or owing money, ' + (c.skipped || 0) + ' not asking this time, ' + c.ended + ' last appointment cancelled or missed, ' +
+        (c.soon || 0) + ' seen recently and not finished, ' + c.none + ' no good-outcome signs.</p>';
     }
-    h += '<div class="text-muted upc-version">Review requests ' + VERSION + '</div></div>';
+    h += '</div>';
     root.innerHTML = h;
   }
 
@@ -395,10 +393,8 @@
     if (!r || done.get(id) === 'busy') return;
     const when = sendTime();
     const ok = kind === 'send'
-      ? await confirm('Send review request?', '<p>Schedule the ' + esc(TEMPLATE) + ' email for ' + esc(r.name) + ' on ' + esc(whenLabel(when)) + '?</p><p class="text-muted">It\'s added through Halaxy\'s Add Follow-Up with your ' +
-        esc(TEMPLATE) + ' email template and shows in Tasks &amp; Follow-Ups, where it can be changed or cancelled before it goes. If you\'ve set up a ' + esc(REMINDER) + ' email template in Halaxy, a reminder is added for a week later.</p>', 'Send review request')
-      : await confirm('Don\'t ask this time?', '<p>Don\'t suggest a review request for ' + esc(r.name) + ' for their visit on ' + esc(label(r.lastSeen)) + '?</p><p class="text-muted">Nothing is changed on their profile. ' +
-        'If they come again, they are suggested after their next visit. Noted for every PC.</p>', 'Don\'t ask this time');
+      ? await confirm('Send review request?', '<p>Schedule the ' + esc(TEMPLATE) + ' email for ' + esc(r.name) + ' on ' + esc(whenLabel(when)) + '?</p>', 'Send review request')
+      : await confirm('Don\'t ask this time?', '<p>Don\'t suggest a review request for ' + esc(r.name) + ' for their visit on ' + esc(label(r.lastSeen)) + '?</p>', 'Don\'t ask this time');
     if (!ok) return;
     done.set(id, 'busy');
     render();
