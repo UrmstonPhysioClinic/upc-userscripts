@@ -1,5 +1,9 @@
 # Changelog
 
+## Charge excess 0.1.0, 16 Nov 2026 (beta, new)
+- A "Charge excess" button next to Mark as Paid on a patient invoice billed to its funder with something outstanding. After a confirm: Due Date a week from today, the "Insurance excess due" email sent through Halaxy's Send Invoice Email (our HTML as the message, styles kept, [Payment Link] and [Patient First Name] filled by Halaxy), then a one-off payment of the outstanding amount scheduled from the card on file for the same date. Stops first with no card, a payment already scheduled or no email address.
+- Health check 1.1.50: knows Charge excess and checks the Send button and Mark as Paid on invoice pages where it shows.
+
 ## Calendar controls 2.16, 16 Nov 2026 (beta)
 - Just me / All practitioners no longer sit on top of Day / Week / Month on a narrower screen (Carl's laptop, 16 Nov 2026): they switch to "Me" / "All" when that is enough, otherwise move to a line of their own under the toolbar, and go back when there is room. Measured on the page, so it follows the window width and zoom.
 
