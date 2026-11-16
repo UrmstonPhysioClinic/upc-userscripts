@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Ready to bill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.4
+// @version      0.4.5
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
@@ -46,7 +46,7 @@
   if (window.__hxReadyToBill) return;
   window.__hxReadyToBill = true;
 
-  const VERSION = '0.4.4';
+  const VERSION = '0.4.5';
   const ROUTE = 'upc-ready-to-bill';
   const MENU_CLS = 'upc-rtb-menu';
   const ALLOWED = () => rule('readyToBill.people', ['Carl Healy', 'Wendy Pritchard']);   // Carl, 7 Nov 2026: only the two of them
@@ -66,6 +66,13 @@
   const U = () => window.UPC;
   const esc = (s) => U().esc(s);
   const store = { get: (k, d) => U().storage(KEY).get(k, d), set: (k, v) => U().storage(KEY).set(k, v), del: (k) => U().storage(KEY).del(k) };   // core's per-PC storage
+
+  // Shared with every PC (Carl, 16 Nov 2026; core's UPC.sharedResult): one PC works the list out and every PC
+  // shows it, so the list (and its count) is the same everywhere and Halaxy is read once for the clinic.
+  const sharedList = () => (U() && U().sharedResult ? U().sharedResult('Ready to bill') : null);
+  async function pullShared(maxAge) { const sl = sharedList(); if (!sl) return; try { await sl.pull(store, maxAge); } catch (e) { /* this PC's own list */ } }
+  function pushShared(result) { const sl = sharedList(); if (sl) sl.push(result).catch((e) => console.warn('[UPC ready to bill] shared list', e)); }
+  async function myTurn() { const sl = sharedList(); if (!sl) return true; try { return await sl.claim(); } catch (e) { return true; } }
 
   const fmt = (c) => U().money.fmt(c);
   const label = (ms) => U().dayLabel(ms);
@@ -255,6 +262,7 @@
       })),
     };
     store.set('result', result);
+    pushShared(result);
     return result;
   }
 
@@ -263,9 +271,11 @@
   // Shared by all tabs: one refresh at a time, at most every 2 hours, in the visible tab only.
   async function refreshCount() {
     if (!allowed() || !U() || !U().background.ok()) return;   // visible tab, clinic hours, someone at the PC, Halaxy not busy
+    await pullShared(10 * 60e3);   // what another PC has worked out (read at most every 10 minutes)
     const last = store.get('result', null);
-    if (last && !U().background.due(last.at, REFRESH_EVERY)) return;
+    if (last && !U().background.due(last.at, REFRESH_EVERY)) { paintBadge(); return; }
     if (locked()) return;
+    if (!(await myTurn())) return;   // another PC is working it out now
     try { await checkLocked(); } catch (e) { console.warn('[UPC ready to bill]', e); store.set('lastError', { at: Date.now(), message: e.message || String(e) }); tellHealthCheck(e); }
     paintBadge();
   }
@@ -489,8 +499,12 @@
     state.unmount = U().ui.mountPage('Ready to bill', root, MENU_CLS);
     render();
     const r = store.get('result', null);
-    if (!r || Date.now() - r.at > PAGE_FRESH || r.by !== VERSION) run();
-    else loadDetails();
+    pullShared(0).then(() => {
+      render(); paintBadge();
+      const r2 = store.get('result', null);
+      if (!r2 || Date.now() - r2.at > PAGE_FRESH || r2.by !== VERSION) run();
+      else loadDetails();
+    });
   }
   function unmount() {
     if (!state.unmount) return;

@@ -1,5 +1,9 @@
 # Changelog
 
+## Shared lists, 16 Nov 2026 (beta)
+- Core 0.1.58: `UPC.sharedResult(name)`: one PC works a list out and every PC shows it, from the Admin Note "UPC shared list: <name>" on UPC scripts (settings) (the result as JSON on its last line; Halaxy keeps at least 150,000 characters in a note, live 16 Nov 2026). Who works it out is claimed in "UPC shared checks: Lists".
+- Insurer payments due 0.1.9, Open-ended patients 0.1.10, Review requests 0.5.7, Ready to bill 0.4.5: their lists and counts are shared. A PC reads the shared list at most every 10 minutes in the background, and when the page opens; it works the list out only when it is due and no other PC is doing so.
+
 ## Clinic settings: every value written, 16 Nov 2026 (beta)
 - Core 0.1.57: saving Clinic settings writes every setting (not only those changed), so after one save no PC falls back to its own values. A setting not yet saved shows what this PC uses now, offered by its script (Forecourt lights schedule and who it reminds, AXA payee details, arrival chime, chat alarm, branding, Userpilot).
 - Script settings 0.2.5: says how many settings are not yet saved for every PC, and marks values "from this PC".
