@@ -1,5 +1,8 @@
 # Changelog
 
+## Patient forms 0.1.1, 17 Nov 2026 (beta)
+- Sending and reminders held: 0.1.0 couldn't read the Send Patient form history on live Halaxy and sent Progress Updates the 05:00 campaign had already sent (4 patients). The page still lists appointments.
+
 ## Patient forms 0.1.0, core 0.1.62, health check 1.1.52, 17 Nov 2026 (beta)
 - New script. Bookings made after 05:00 the day before (which Halaxy's campaigns miss) get their form through Send Patient form, sent at once: Initial Assessment Form by insurer (Bupa, AXA Health, Aviva, else Standard) for IA fees; Progress Update for FU fees, or the Follow-up Form for the last funded appointment (invoice "10th of 10"). Sender is the treating practitioner; their first name and the appointment ("Wednesday 18-Nov-2026 10:00") are written in, as Halaxy fills these from the signed-in user. Not sent if the template has a practitioner or appointment tag the script can't fill. No fee yet (2a/2b): waits for one.
 - Reminders at 18:00 the day before for any form not filled in (campaign or ours): the same template, "Reminder: " before the subject, the original link. Cancelled if the form is filled in first. None for a form sent less than 6 hours before.

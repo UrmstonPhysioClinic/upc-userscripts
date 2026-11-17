@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Patient forms (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.0
+// @version      0.1.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-forms.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-forms.user.js
@@ -51,7 +51,10 @@
   if (window.__hxPatientForms) return;
   window.__hxPatientForms = true;
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
+  // 0.1.1: sending and reminders held. 0.1.0 couldn't read the form history on live Halaxy (17 Nov 2026) and sent
+  // Progress Updates the campaign had already sent. Held until the history is read correctly.
+  const HOLD = true;
   const U = () => window.UPC;
   const ROUTE = 'upc-patient-forms';
   const MENU_CLS = 'upc-pf-menu';
@@ -289,7 +292,7 @@
       let done = 0;
 
       // Forms: late bookings (the send time has passed), or every booking up to the day after tomorrow.
-      if (mode !== 'off') {
+      if (mode !== 'off' && !HOLD) {
         const due = list.filter((a) => {
           const v = val('a.' + a.id);
           if (/^(had|sent|sched|none|skip)/.test(v)) return false;
@@ -304,7 +307,7 @@
       }
 
       // Reminders: tomorrow's appointments, before the reminder time.
-      if (CHASE()) {
+      if (CHASE() && !HOLD) {
         const tomorrow = list.filter((a) => dayBefore(a.start) === day0.getTime() && now < chaseTime(a.start) - 5 * MIN);
         const toSchedule = tomorrow.filter((a) => {
           const v = val('r.' + a.id);
@@ -355,7 +358,7 @@
   }
 
   function background() {
-    if (!U() || !U().background || MODE() === 'off' && !CHASE()) return;
+    if (HOLD || !U() || !U().background || MODE() === 'off' && !CHASE()) return;
     if (!U().background.ok()) return;
     const last = store().get('ran', 0);
     if (!U().background.due(last, EVERY)) return;

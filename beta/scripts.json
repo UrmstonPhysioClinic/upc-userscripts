@@ -95,7 +95,7 @@
     {
       "file": "patient-forms.user.js",
       "name": "UPC Patients: Patient forms (beta)",
-      "version": "0.1.0"
+      "version": "0.1.1"
     },
     {
       "file": "patient-statuses.user.js",
