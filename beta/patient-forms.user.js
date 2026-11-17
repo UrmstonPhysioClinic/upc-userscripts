@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Patient forms (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.3
+// @version      0.1.4
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-forms.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-forms.user.js
@@ -51,7 +51,7 @@
   if (window.__hxPatientForms) return;
   window.__hxPatientForms = true;
 
-  const VERSION = '0.1.3';
+  const VERSION = '0.1.4';
   // Sending and reminders held (0.1.1): 0.1.0 read the form history as a table, but Halaxy lays it out in divs (live,
   // 17 Nov 2026), so it saw no forms and sent Progress Updates the campaign had already sent. 0.1.2 reads the divs and
   // stops if any sent form can't be read. While held, Check now works out what would happen (reads only).
@@ -402,6 +402,12 @@
 
   let root = null, unmount = null, busy = false, error = '';
   const CSS = `
+    .upc-pf { max-width: 1100px; }
+    .upc-pf h1 { margin: 0 0 16px; }
+    .upc-pf .card { margin-bottom: 24px; }
+    .upc-pf .card-header h2 { margin: 0; }
+    .upc-pf .upc-pf-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .upc-pf .upc-pf-bar .btn { margin: 0; }
     .upc-pf td.upc-pf-when { white-space: nowrap; }
   `;
 
@@ -443,9 +449,9 @@
     if (!root) return;
     const last = store().get('last', null);
     const recs = shared().cached();
-    let h = '<div class="d-flex align-items-center mb-3"><h1 class="mb-0 mr-auto">Patient forms</h1>' +
-      '<button type="button" class="btn btn-outline-primary" data-a="refresh"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Checking...' : 'Check now') + '</button></div>';
-    if (busy) h += U().ui.run.inline('');
+    let h = '<h1>Patient forms</h1><div class="upc-pf-bar">' +
+      '<button type="button" class="btn btn-outline-primary-light" data-a="refresh"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Checking...' : 'Check now') + '</button>' +
+      (busy ? U().ui.run.inline('') : '<span class="text-muted">' + (last ? esc('Checked at ' + hhmm(last.at) + ' on ' + U().dayLabel(last.at) + '.') : '') + '</span>') + '</div>';
     if (error) h += '<div class="alert alert-danger upc-err">' + esc(error) + '</div>';
     if (HOLD) h += '<div class="alert alert-warning upc-warn">Sending is paused. Forms and reminders show what would happen.</div>';
     if (last) {
@@ -463,7 +469,6 @@
                 '<td>' + (canSkip ? '<button type="button" class="btn btn-sm btn-outline-primary-light" data-a="skip" data-id="' + esc(a.id) + '">Don\'t send</button>' : '') + '</td></tr>';
             }).join('') + '</tbody></table>' : '<p class="text-muted m-3">None.</p>') + '</div></div>';
       });
-      h += '<p class="text-muted">Checked at ' + esc(hhmm(last.at) + ' on ' + U().dayLabel(last.at)) + '.</p>';
     }
     root.innerHTML = h;
   }
