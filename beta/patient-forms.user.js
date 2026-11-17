@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Patient forms (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.1
+// @version      0.1.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-forms.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-forms.user.js
@@ -51,9 +51,10 @@
   if (window.__hxPatientForms) return;
   window.__hxPatientForms = true;
 
-  const VERSION = '0.1.1';
-  // 0.1.1: sending and reminders held. 0.1.0 couldn't read the form history on live Halaxy (17 Nov 2026) and sent
-  // Progress Updates the campaign had already sent. Held until the history is read correctly.
+  const VERSION = '0.1.2';
+  // Sending and reminders held (0.1.1): 0.1.0 read the form history as a table, but Halaxy lays it out in divs (live,
+  // 17 Nov 2026), so it saw no forms and sent Progress Updates the campaign had already sent. 0.1.2 reads the divs and
+  // stops if any sent form can't be read. While held, Check now works out what would happen (reads only).
   const HOLD = true;
   const U = () => window.UPC;
   const ROUTE = 'upc-patient-forms';
@@ -121,11 +122,17 @@
     const missing = need.filter((k) => !form || !form.querySelector('[name="' + k + '"]'));
     if (missing.length) throw new (U().Error)('The Send Patient form pop-up has changed (' + missing.join(', ') + ' not found).');
     const options = (name) => [...form.querySelectorAll('select[name="' + name + '"] option')].filter((o) => o.value).map((o) => ({ value: o.value, text: clean(o.textContent) }));
-    const history = [...doc.querySelectorAll('tr')].filter((tr) => /via (email|sms)/i.test(tr.textContent)).map((tr) => {
-      const td = tr.querySelectorAll('td');
-      const link = tr.querySelector('a[href*="/online/form/"]');
-      return { form: clean(td[0] && td[0].textContent), sent: parseWhen(td[1] && td[1].textContent), completed: parseWhen(td[2] && td[2].textContent), link: link ? link.getAttribute('href') : '' };
-    }).filter((h) => h.form && h.sent);
+    // History card (live, 17 Nov 2026): #card-prac-group-patient-form-invite-history, rows div.div-table-row of four div.col-3
+    // (form, "17-Nov-2026 16:59 via email", completed date or "No (Access unique link)", expiry). Every sent form
+    // must be read: if any "via email" isn't, stop rather than send again.
+    const rowsOf = (el) => [...el.querySelectorAll('.div-table-row, tr')].filter((r) => /via (email|sms)/i.test(r.textContent) && !r.querySelector('.div-table-row, tr'));
+    const history = rowsOf(doc).map((r) => {
+      const c = [...r.children].filter((x) => /^(DIV|TD)$/.test(x.tagName));
+      const link = r.querySelector('a[href*="/online/form/"]');
+      return { form: clean(c[0] && c[0].textContent), sent: parseWhen(c[1] && c[1].textContent), completed: parseWhen(c[2] && c[2].textContent), link: link ? link.getAttribute('href') : '' };
+    });
+    const seen = (doc.body.textContent.match(/via (email|sms)/gi) || []).length;
+    if (history.length !== seen || history.some((h) => !h.form || !h.sent)) throw new (U().Error)('The Send Patient form history has changed, so forms already sent can\'t be seen. Nothing was sent.');
     return { path, form, forms: options('form[intakeForm]'), senders: options('form[link_pr_g]'), templates: options('form[template]'), to: clean((form.querySelector('[name="form[toEmail]"]') || {}).value), history };
   }
 
@@ -196,7 +203,7 @@
   const pick = (list, text) => { const o = list.find((x) => x.text.toLowerCase() === String(text).toLowerCase()); return o ? o.value : null; };
 
   // Sends (or schedules) the form for one appointment; returns the outcome to record.
-  async function sendOne(a, now) {
+  async function sendOne(a, now, dry) {
     if (!a.invoiceId) return 'wait ' + now;   // no fee yet: nothing else is read
     const sf = await sendForm(a.patient);
     const had = sentFor(a, sf.history);
@@ -220,22 +227,27 @@
       'form[scheduleDetails][scheduleTime][hour]': later ? String(new Date(due).getHours()) : '0',
       'form[scheduleDetails][scheduleTime][minute]': later ? String(new Date(due).getMinutes()) : '0',
     };
+    if (dry) return 'would ' + c.form;
     const pairs = U().http.serialize(sf.form).map(([k, v]) => [k, k in set ? set[k] : v]);
     Object.keys(set).forEach((k) => { if (!pairs.some(([x]) => x === k)) pairs.push([k, set[k]]); });
     const res = await U().http.postForm(sf.path, pairs);
     if (!res || !['REFRESH', 'OK', 'POPUP'].includes(res.status)) U().http.expectRefresh(res, 'Sending ' + c.form);
-    if (later) {
-      const s = (await scheduledEmails(a.patient)).find((m) => m.at === due && m.subject === set['form[subject]']);
-      if (!s) throw new (U().Error)('Halaxy accepted ' + c.form + ' for ' + a.name + ', but it isn\'t in their scheduled emails.');
-      return 'sched ' + due + ' ' + c.form;
-    }
-    const after = (await sendForm(a.patient)).history.find((h) => h.form === c.form && h.sent >= now - 10 * MIN);
-    if (!after) throw new (U().Error)('Halaxy accepted ' + c.form + ' for ' + a.name + ', but it isn\'t in their form history.');
-    return 'sent ' + after.sent + ' ' + c.form;
+    // Accepted by Halaxy: from here it is never sent again, even if it can't be seen afterwards.
+    try {
+      if (later) {
+        const s = (await scheduledEmails(a.patient)).find((m) => m.at === due && m.subject === set['form[subject]']);
+        if (s) return 'sched ' + due + ' ' + c.form;
+      } else {
+        const after = (await sendForm(a.patient)).history.find((h) => h.form === c.form && h.sent >= now - 10 * MIN);
+        if (after) return 'sent ' + after.sent + ' ' + c.form;
+      }
+    } catch (e) { /* reported below */ }
+    report(a.name + ': Halaxy accepted ' + c.form + ', but it can\'t be seen in Halaxy. Check their forms.');
+    return 'check ' + now + ' ' + c.form;
   }
 
   // Schedules the reminder for one appointment's form; returns the outcome to record.
-  async function remindOne(a, now) {
+  async function remindOne(a, now, dry) {
     const sf = await sendForm(a.patient);
     const h = sentFor(a, sf.history);
     if (!h) return null;                       // nothing sent yet: try again later
@@ -251,6 +263,7 @@
     const subject = 'Reminder: ' + fill(t.subject, a, pracName, false);
     const body = fill(t.body, a, pracName, true).replace(/(<span class="dynamicterm">)?\[Online Form Link\](<\/span>)?/g, '<a href="' + esc(link) + '" style="color:#7a33c7;">Open your form</a>');
     if (!/\/online\/form\//.test(body)) throw new (U().Error)('The "' + TEMPLATE_FOR(h.form) + '" template has no [Online Form Link], so the reminder would have no link.');
+    if (dry) return 'would';
     const path = '/email/compose/patient/' + encodeURIComponent(a.patient);
     const { doc } = await U().http.popup(path);
     const form = doc.querySelector('form#composeEmailForm');
@@ -261,9 +274,10 @@
     Object.keys(set).forEach((k) => { if (!pairs.some(([x]) => x === k)) pairs.push([k, set[k]]); });
     const res = await U().http.postForm(path, pairs);
     if (!res || !['REFRESH', 'OK', 'POPUP'].includes(res.status)) U().http.expectRefresh(res, 'Scheduling the reminder');
-    const s = (await scheduledEmails(a.patient)).find((m) => m.at === due && m.subject === subject);
-    if (!s) throw new (U().Error)('Halaxy accepted the reminder for ' + a.name + ', but it isn\'t in their scheduled emails.');
-    return 'sched ' + s.id + ' 0';
+    const s = await scheduledEmails(a.patient).then((l) => l.find((m) => m.at === due && m.subject === subject)).catch(() => null);
+    if (s) return 'sched ' + s.id + ' 0';
+    report(a.name + ': Halaxy accepted the reminder, but it isn\'t in their scheduled emails. Check their emails.');
+    return 'check ' + now;
   }
 
   // Cancels a scheduled reminder (Halaxy's own cancel link from the scheduled list).
@@ -291,11 +305,29 @@
       const outcomes = {};
       let done = 0;
 
+      // Held: what would happen, worked out by reading only, kept on this PC for the page.
+      if (HOLD) {
+        if (!force) return {};
+        const preview = {};
+        const forms = mode === 'off' ? [] : list.filter((a) => !/^(had|sent|sched|none|skip|check)/.test(val('a.' + a.id)) && (mode === 'all' || sendTime(a.start) <= now));
+        for (const a of forms.slice(0, 40)) {
+          try { preview['a.' + a.id] = await sendOne(a, now, true); } catch (e) { preview['a.' + a.id] = 'error ' + (e.message || e); }
+        }
+        const rem = CHASE() ? list.filter((a) => dayBefore(a.start) === day0.getTime() && !val('r.' + a.id)) : [];
+        for (const a of rem.slice(0, 40)) {
+          try { preview['r.' + a.id] = (await remindOne(a, now, true)) || ''; } catch (e) { preview['r.' + a.id] = 'error ' + (e.message || e); }
+        }
+        store().set('preview', { at: now, values: preview });
+        const pr = (await lookups().catch(() => null)) || { pracs: new Map() };
+        store().set('last', { at: now, list: list.map((a) => ({ id: a.id, start: a.start, name: a.name, patient: a.patient, prac: pr.pracs.get(a.pracId) || '' })) });
+        return preview;
+      }
+
       // Forms: late bookings (the send time has passed), or every booking up to the day after tomorrow.
       if (mode !== 'off' && !HOLD) {
         const due = list.filter((a) => {
           const v = val('a.' + a.id);
-          if (/^(had|sent|sched|none|skip)/.test(v)) return false;
+          if (/^(had|sent|sched|none|skip|check)/.test(v)) return false;
           if (/^(wait|fail) (\d+)/.test(v) && now - Number(v.split(' ')[1]) < (v.startsWith('fail') ? 60 : 30) * MIN) return false;
           return mode === 'all' || sendTime(a.start) <= now;
         });
@@ -311,7 +343,7 @@
         const tomorrow = list.filter((a) => dayBefore(a.start) === day0.getTime() && now < chaseTime(a.start) - 5 * MIN);
         const toSchedule = tomorrow.filter((a) => {
           const v = val('r.' + a.id);
-          if (/^(sched|done|nolink|late|cancelled)/.test(v)) return false;
+          if (/^(sched|done|nolink|late|cancelled|check)/.test(v)) return false;
           if (/^fail (\d+)/.test(v) && now - Number(v.split(' ')[1]) < 60 * MIN) return false;
           return now >= sendTime(a.start) + 15 * MIN;   // the form has had time to go
         }).slice(0, Math.max(0, PER_RUN - done));
@@ -373,13 +405,17 @@
     .upc-pf td.upc-pf-when { white-space: nowrap; }
   `;
 
+  const previewOf = (k) => { const p = HOLD && store().get('preview', null); return (p && p.values && p.values[k]) || ''; };
   function statusOf(a, recs) {
-    const v = (recs['a.' + a.id] || {}).value || '';
+    const v = (recs['a.' + a.id] || {}).value || previewOf('a.' + a.id);
     const w = v.split(' ');
     const rest = w.slice(2).join(' ');
     if (/^had /.test(v)) return 'Sent ' + when(Number(w[1])) + (rest ? ': ' + rest : '');
     if (/^sent /.test(v)) return 'Sent ' + when(Number(w[1])) + (rest ? ': ' + rest : '');
     if (/^sched /.test(v)) return 'Scheduled for ' + when(Number(w[1])) + (rest ? ': ' + rest : '');
+    if (/^check /.test(v)) return 'Check in Halaxy: ' + rest;
+    if (/^would /.test(v)) return 'Would send: ' + v.slice(6);
+    if (/^error /.test(v)) return v.slice(6);
     if (/^wait/.test(v)) return 'Waiting for a fee';
     if (v === 'none') return 'No form for this fee';
     if (v === 'skip') return 'Not sending';
@@ -388,12 +424,15 @@
     return due > Date.now() ? 'Due ' + when(due) + (MODE() === 'late' ? ' (campaign)' : '') : '';
   }
   function reminderOf(a, recs) {
-    const v = (recs['r.' + a.id] || {}).value || '';
+    const v = (recs['r.' + a.id] || {}).value || previewOf('r.' + a.id);
     if (/^sched /.test(v)) return 'Reminder ' + hhmm(chaseTime(a.start));
     if (v === 'done') return 'Filled in';
     if (v === 'cancelled') return 'Reminder cancelled';
     if (v === 'nolink') return 'No link to send';
     if (v === 'late') return 'No reminder';
+    if (/^check/.test(v)) return 'Check in Halaxy';
+    if (v === 'would') return 'Would remind at ' + hhmm(chaseTime(a.start));
+    if (/^error /.test(v)) return v.slice(6);
     return '';
   }
 
@@ -405,6 +444,7 @@
       '<button type="button" class="btn btn-outline-primary" data-a="refresh"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Checking...' : 'Check now') + '</button></div>';
     if (busy) h += U().ui.run.inline('');
     if (error) h += '<div class="alert alert-danger upc-err">' + esc(error) + '</div>';
+    if (HOLD) h += '<div class="alert alert-warning upc-warn">Sending is paused. Forms and reminders show what would happen.</div>';
     if (last) {
       const day0 = new Date(); day0.setHours(0, 0, 0, 0);
       const groups = [['Today', day0.getTime()], ['Tomorrow', day0.getTime() + DAY]];
@@ -414,7 +454,7 @@
           (rows.length ? '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th>Appointment</th><th>Patient</th><th>Practitioner</th><th>Form</th><th>Reminder</th><th></th></tr></thead><tbody>' +
             rows.map((a) => {
               const v = (recs['a.' + a.id] || {}).value || '';
-              const canSkip = !/^(had|sent|sched|skip|none)/.test(v) && MODE() !== 'off';
+              const canSkip = !/^(had|sent|sched|skip|none|check)/.test(v) && MODE() !== 'off';
               return '<tr><td class="upc-pf-when">' + esc(hhmm(a.start)) + '</td><td><a href="' + esc(U().base() + '/patient/' + a.patient) + '" target="_blank" rel="noopener">' + esc(a.name) + '</a></td>' +
                 '<td>' + esc(a.prac || '') + '</td><td>' + esc(statusOf(a, recs)) + '</td><td>' + esc(reminderOf(a, recs)) + '</td>' +
                 '<td>' + (canSkip ? '<button type="button" class="btn btn-sm btn-outline-primary-light" data-a="skip" data-id="' + esc(a.id) + '">Don\'t send</button>' : '') + '</td></tr>';

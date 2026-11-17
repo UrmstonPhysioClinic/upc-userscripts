@@ -22,7 +22,8 @@ from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
 CORE = (ROOT / 'beta' / 'core.user.js').read_text().replace('perMinute: 45,', 'perMinute: 100000,')
-SCRIPT = (ROOT / 'beta' / 'patient-forms.user.js').read_text().replace('const HOLD = true;', 'const HOLD = false;')   # tests the sending held in 0.1.1
+HELD = (ROOT / 'beta' / 'patient-forms.user.js').read_text()
+SCRIPT = HELD.replace('const HOLD = true;', 'const HOLD = false;')   # sending is held on beta; tested both ways
 NOW = datetime.datetime(2026, 11, 17, 14, 0, tzinfo=datetime.timezone.utc)   # Tuesday; UK is UTC in November
 FAILS = []
 S = {}
@@ -81,9 +82,16 @@ def compose(pid, patient_form):
     mins = ''.join("<option value='%d'>%02d</option>" % (m, m) for m in range(60))
     hist = ''
     if patient_form:
-        rows = ''.join("<tr><td>%s</td><td>%s via email</td><td>%s</td><td>01-Dec-2026 12:59</td></tr>" % (f, sent, (done + (" (<a href='%s'>Access unique link</a>)" % link if link else '')) if done == 'No' else done)
+        # As live (17 Nov 2026): divs, not a table.
+        rows = ''.join('<div class="row p-2 div-table-row"> <div class="col-3"> %s </div> <div class="col-3"> %s via email </div> <div class="col-3"> %s </div> <div class="col-3">01-Dec-2026 12:59</div> </div>'
+                       % (f if done == 'No' else '<a class="ajax" href="/a/pr/555/setting/patient/intake/1">%s</a>' % f, sent, ('No (<a href="%s" target="_blank">Access unique link</a>)' % link if link else 'No') if done == 'No' else done)
                        for f, sent, done, link in S['history'].get(pid, []))
-        hist = "<div class='tab-pane' id='history'><table><thead><tr><th>Form</th><th>Sent</th><th>Completed</th><th>Expiry</th></tr></thead><tbody>%s</tbody></table></div>" % rows
+        hist = ('<div class="card mb-2" id="card-prac-group-patient-form-invite-history"><div class="card-header"><h2>History</h2></div><div id="card-invite-history" class="collapse"><div class="card-body p-0">'
+                '<div class="col-12 div-table"><div class="row p-2 div-table-row-header font-weight-bold"><div class="col-3">Form</div><div class="col-3">Sent</div><div class="col-3">Completed</div><div class="col-3">Expiry</div></div>'
+                '<div class="div-table-body">%s</div></div></div></div></div>') % rows
+        if S.get('odd_history') and pid in S['odd_history']:
+            hist += '<ul><li>Progress Update, 17-Nov-2026 05:04 via email</li></ul>'
+
     top = (sel('form[intakeForm]', FORMS) + "<input name='form[expiry]' value='01-Dec-2026'>" + sel('form[link_pr_g]', SENDERS, 313949)) if patient_form else ''
     return ("<form id='composeEmailForm' method='post'>%s<input name='form[fromName]' value='Urmston Physio Clinic'>%s<textarea name='form[subject]'></textarea>"
             "<select name='form[recipientType]'><option value='LinkPaG' selected>Patient</option></select><select name='form[toLinkPaGPaG]'><option value=''>Please select one</option></select>"
@@ -145,7 +153,7 @@ async def halaxy(route):
             at = '%s %02d:%02d' % (when, int(form['form[scheduleDetails][scheduleTime][hour]']), int(form['form[scheduleDetails][scheduleTime][minute]']))
             S['scheduled'].setdefault(pid, []).append({'entityId': 70000 + len(S['posts']), 'sentDateLocal': at, 'subject': form['form[subject]'], 'emailStatus': 'Scheduled',
                                                        'emailCancelUrl': '/a/pr/555/email/cancel/%d' % (70000 + len(S['posts']))})
-        elif pf:
+        elif pf and not S.get('hide_new'):
             name = next(t for v, t in FORMS if str(v) == form['form[intakeForm]'])
             S['history'].setdefault(pid, []).append((name, '17-Nov-2026 14:00', 'No', 'https://eu.halaxy.com/a/online/form/%d/NewLinkNewLinkNewLinkNewLink' % pid))
         return await js({'status': 'REFRESH'})
@@ -281,6 +289,52 @@ async def main():
         await pg.wait_for_timeout(300)
         await pg.evaluate("window.upcPatientForms.run(true)")
         check('template with [Practitioner Title]: not sent, recorded to try again', not [x for x in S['posts'] if x[0] == 'form'] and note_values().get('a.9005', '').startswith('fail '), (S['posts'], note_values()))
+        await ctx.close()
+
+        async def only(ids, script=SCRIPT, path='/a/pr/555/patient/'):
+            ctx = await browser.new_context(timezone_id='Europe/London')
+            await ctx.clock.install(time=NOW.isoformat())
+            await ctx.route('https://eu.halaxy.com/**', halaxy)
+            await ctx.add_init_script(CORE)
+            await ctx.add_init_script("document.addEventListener('DOMContentLoaded', function () {\n" + script + "\n});")
+            pg = await ctx.new_page()
+            await pg.goto('https://eu.halaxy.com' + path)
+            await pg.wait_for_timeout(300)
+            return ctx, pg
+
+        # A sent form the script can't read in the history: nothing sent
+        setup()
+        S['events'] = [e for e in S['events'] if e['id'] in (9003, 9005)]
+        S['odd_history'] = {505}
+        ctx, pg = await only(None)
+        await pg.evaluate("window.upcPatientForms.run(true)")
+        check('a history entry it can\'t read: nothing sent', not [x for x in S['posts'] if x[0] == 'form'] and note_values().get('a.9005', '').startswith('fail '), (S['posts'], note_values()))
+        await ctx.close()
+
+        # Halaxy accepts the form but it doesn't show in the history: recorded, never sent again
+        setup()
+        S['events'] = [e for e in S['events'] if e['id'] == 9005]
+        S['hide_new'] = True
+        ctx, pg = await only(None)
+        await pg.evaluate("window.upcPatientForms.run(true)")
+        await ctx.clock.set_system_time((NOW + datetime.timedelta(minutes=90)).isoformat())
+        await pg.evaluate("window.upcPatientForms.run(true)")
+        n = len([x for x in S['posts'] if x[0] == 'form'])
+        check('accepted but not in the history: sent once, not again', n == 1 and note_values().get('a.9005', '').startswith('check '), (n, note_values()))
+        await ctx.close()
+
+        # Held (as on beta): Check now shows what would happen and sends nothing
+        setup()
+        ctx, pg = await only(None, HELD, '/a/pr/555/patient/#upc-patient-forms')
+        await pg.wait_for_selector('[data-upc-patient-forms] table', timeout=20000)
+        await pg.wait_for_function("!document.querySelector('[data-upc-patient-forms] [data-a=refresh]').disabled", timeout=60000)
+        rows = await pg.evaluate("[...document.querySelectorAll('[data-upc-patient-forms] tbody tr')].map((tr) => [...tr.cells].map((x) => x.textContent.trim()))")
+        r = dict((x[1], x) for x in rows)
+        await pg.evaluate("window.upcPatientForms.run(false)")
+        check('held: nothing sent or scheduled, even by the background run', not S['posts'], S['posts'])
+        check('held: the page says what would happen', r.get('Patient One', [''] * 5)[3] == 'Would send: Initial Assessment Form - Bupa' and r.get('Patient Three', [''] * 5)[3].startswith('Sent 17-Nov-2026 05:04')
+              and r.get('Patient Three', [''] * 5)[4] == 'Would remind at 18:00' and r.get('Patient Eight', [''] * 5)[4] == 'Filled in'
+              and await pg.evaluate("!!document.querySelector('[data-upc-patient-forms] .alert-warning')"), rows)
         await ctx.close()
         await browser.close()
     print('\n' + ('All passed' if not FAILS else '%d failed' % len(FAILS)))
