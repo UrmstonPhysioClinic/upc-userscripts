@@ -33,11 +33,13 @@ def check(name, ok, detail=''):
 
 PAGE = """<!doctype html><html><head></head><body><div id="pageContent">
 <form id="composeEmailForm"><textarea name="form[subject]">Subject</textarea>
-<textarea name="form[body]" class="form-control d-none">&lt;p&gt;Hi Patient, here's your receipt&lt;/p&gt;</textarea></form></div></body></html>"""
+<textarea name="form[body]" class="form-control d-none">&lt;p&gt;Hi Patient, here's your receipt&lt;/p&gt;</textarea></form>
+<form id="frmPreferenceBookingProfile"><textarea name="form[booking][bookingEmailText]" class="d-none">&lt;p&gt;Booked&lt;/p&gt;</textarea>
+<textarea name="form[booking][bookingNotes]" class="d-none">&lt;p&gt;Notes&lt;/p&gt;</textarea><textarea name="form[booking][otherThing]" class="d-none">&lt;p&gt;x&lt;/p&gt;</textarea></form></div></body></html>"""
 
 FAKE_EDITOR = r"""
-window.makeEditor = function () {
-  const ta = document.querySelector('textarea[name="form[body]"]');
+window.makeEditor = function (name) {
+  const ta = document.querySelector('textarea[name="' + (name || 'form[body]') + '"]');
   const root = document.createElement('div');
   root.className = 'ck ck-editor';
   root.innerHTML = '<div class="ck-toolbar"><div class="ck-toolbar__items"></div></div><div class="ck-editor__main"><div class="ck-editor__editable"></div></div>';
@@ -50,7 +52,7 @@ window.makeEditor = function () {
     data: { get: () => data }, model: { document: { on: (ev, f) => changes.push(f) } },
     setData(h) { data = strip(h); changes.forEach((f) => f()); }, on() {}, enableReadOnlyMode() {}, disableReadOnlyMode() {} };
   root.querySelector('.ck-editor__editable').ckeditorInstance = ed;
-  window.ed = ed;
+  if (!name) window.ed = ed;
 };
 // Halaxy choosing a template: fetch it filled in, then put it into the editor in its own handler.
 window.chooseTemplate = (id) => new Promise((done) => {
@@ -99,7 +101,11 @@ async def main():
         await pg.evaluate(FAKE_EDITOR)
         await pg.evaluate('makeEditor()')
         await pg.wait_for_timeout(500)
-        check('<> button added to the send box editor', await pg.evaluate("!!document.querySelector('.hx-raw-btn')"))
+        check('<> button added to the send box editor', await pg.evaluate("!!document.querySelector('#composeEmailForm .hx-raw-btn')"))
+        await pg.evaluate("makeEditor('form[booking][bookingEmailText]'); makeEditor('form[booking][bookingNotes]'); makeEditor('form[booking][otherThing]')")
+        await pg.wait_for_timeout(500)
+        n = await pg.evaluate("document.querySelectorAll('#frmPreferenceBookingProfile .hx-raw-btn').length")
+        check('online booking preferences: <> on the booking email and page text, not on other boxes', n == 2, n)
 
         await pg.evaluate('chooseTemplate(2)')
         await pg.wait_for_timeout(500)
