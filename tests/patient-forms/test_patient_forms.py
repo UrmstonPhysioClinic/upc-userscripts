@@ -22,7 +22,7 @@ from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
 CORE = (ROOT / 'beta' / 'core.user.js').read_text().replace('perMinute: 45,', 'perMinute: 100000,')
-SCRIPT = (ROOT / 'beta' / 'patient-forms.user.js').read_text()
+SCRIPT = (ROOT / 'beta' / 'patient-forms.user.js').read_text().replace('const HOLD = true;', 'const HOLD = false;')   # tests the sending held in 0.1.1
 NOW = datetime.datetime(2026, 11, 17, 14, 0, tzinfo=datetime.timezone.utc)   # Tuesday; UK is UTC in November
 FAILS = []
 S = {}
