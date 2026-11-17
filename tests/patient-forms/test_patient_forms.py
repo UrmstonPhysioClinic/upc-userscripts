@@ -325,11 +325,14 @@ async def main():
 
         # Held (as on beta): Check now shows what would happen and sends nothing
         setup()
+        S['notes'][78842] = [{'id': 32999, 'html': '<p>UPC shared checks: Patient forms</p><p>Kept by UPC scripts. Please do not edit: a line that is changed is dropped and checked again.</p><p>a.9001 | 2026-11-17 13:00 | fail 1794920400000</p>'}]   # left by 0.1.0
         ctx, pg = await only(None, HELD, '/a/pr/555/patient/#upc-patient-forms')
         await pg.wait_for_selector('[data-upc-patient-forms] table', timeout=20000)
         await pg.wait_for_function("!document.querySelector('[data-upc-patient-forms] [data-a=refresh]').disabled", timeout=60000)
         rows = await pg.evaluate("[...document.querySelectorAll('[data-upc-patient-forms] tbody tr')].map((tr) => [...tr.cells].map((x) => x.textContent.trim()))")
         r = dict((x[1], x) for x in rows)
+        old = await pg.evaluate("((UPC.shared('Patient forms').cached() || {})['a.9001'] || {}).value || ''")
+        check('held: the failed record from 0.1.0 was read (so the preview is shown over it)', old.startswith('fail '), old)
         await pg.evaluate("window.upcPatientForms.run(false)")
         check('held: nothing sent or scheduled, even by the background run', not S['posts'], S['posts'])
         check('held: the page says what would happen', r.get('Patient One', [''] * 5)[3] == 'Would send: Initial Assessment Form - Bupa' and r.get('Patient Three', [''] * 5)[3].startswith('Sent 17-Nov-2026 05:04')

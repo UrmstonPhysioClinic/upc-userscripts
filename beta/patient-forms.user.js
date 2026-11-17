@@ -313,7 +313,7 @@
         for (const a of forms.slice(0, 40)) {
           try { preview['a.' + a.id] = await sendOne(a, now, true); } catch (e) { preview['a.' + a.id] = 'error ' + (e.message || e); }
         }
-        const rem = CHASE() ? list.filter((a) => dayBefore(a.start) === day0.getTime() && !val('r.' + a.id)) : [];
+        const rem = CHASE() ? list.filter((a) => dayBefore(a.start) === day0.getTime() && !/^(sched|done|nolink|late|cancelled|check)/.test(val('r.' + a.id))) : [];
         for (const a of rem.slice(0, 40)) {
           try { preview['r.' + a.id] = (await remindOne(a, now, true)) || ''; } catch (e) { preview['r.' + a.id] = 'error ' + (e.message || e); }
         }
@@ -407,7 +407,8 @@
 
   const previewOf = (k) => { const p = HOLD && store().get('preview', null); return (p && p.values && p.values[k]) || ''; };
   function statusOf(a, recs) {
-    const v = (recs['a.' + a.id] || {}).value || previewOf('a.' + a.id);
+    const rec = (recs['a.' + a.id] || {}).value || '';
+    const v = (!rec || /^(fail|wait)/.test(rec)) && previewOf('a.' + a.id) || rec;   // held: what the history shows now
     const w = v.split(' ');
     const rest = w.slice(2).join(' ');
     if (/^had /.test(v)) return 'Sent ' + when(Number(w[1])) + (rest ? ': ' + rest : '');
@@ -424,7 +425,8 @@
     return due > Date.now() ? 'Due ' + when(due) + (MODE() === 'late' ? ' (campaign)' : '') : '';
   }
   function reminderOf(a, recs) {
-    const v = (recs['r.' + a.id] || {}).value || previewOf('r.' + a.id);
+    const rec = (recs['r.' + a.id] || {}).value || '';
+    const v = (!rec || /^fail/.test(rec)) && previewOf('r.' + a.id) || rec;
     if (/^sched /.test(v)) return 'Reminder ' + hhmm(chaseTime(a.start));
     if (v === 'done') return 'Filled in';
     if (v === 'cancelled') return 'Reminder cancelled';

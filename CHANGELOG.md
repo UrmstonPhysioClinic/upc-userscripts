@@ -3,7 +3,7 @@
 ## Patient forms 0.1.2, 17 Nov 2026 (beta)
 - Reads the Send Patient form history as Halaxy lays it out (rows of divs, live 17 Nov 2026; 0.1.0 looked for a table, saw no forms and sent Progress Updates the campaign had already sent). If any sent form in the history can't be read, nothing is sent.
 - A form or reminder Halaxy accepted is never sent again, even if it then can't be seen ("Check in Halaxy" on the page, and the health check is told).
-- Still held. Check now on Patients > Patient forms shows what would be sent and reminded, reading only.
+- Still held. Check now on Patients > Patient forms shows what would be sent and reminded, reading only, in place of "Not sent yet" left by 0.1.0.
 
 ## Patient forms 0.1.1, 17 Nov 2026 (beta)
 - Sending and reminders held: 0.1.0 couldn't read the Send Patient form history on live Halaxy and sent Progress Updates the 05:00 campaign had already sent (4 patients). The page still lists appointments.
