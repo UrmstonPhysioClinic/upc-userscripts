@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.51
+// @version      1.1.52
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.51';
+  const VERSION = '1.1.52';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -45,7 +45,7 @@
     'invoice-funder.user.js': 'Invoice Funder', 'ready-to-bill.user.js': 'Ready to bill', 'portal-fill.user.js': 'Portal fill', 'remittances.user.js': 'Remittances',
     'rebate-sync.user.js': 'Rebate sync', 'bank-statement.user.js': 'Bank statement', 'insurer-payments-due.user.js': 'Insurer payments due', 'charge-excess.user.js': 'Schedule excess',
     // Patients
-    'patient-statuses.user.js': 'Patient statuses', 'open-ended-patients.user.js': 'Open-ended patients', 'missing-details.user.js': 'Missing details', 'review-requests.user.js': 'Review requests',
+    'patient-statuses.user.js': 'Patient statuses', 'open-ended-patients.user.js': 'Open-ended patients', 'missing-details.user.js': 'Missing details', 'patient-forms.user.js': 'Patient forms', 'review-requests.user.js': 'Review requests',
     'feedback-alerts.user.js': 'Feedback alerts',
     // Calendar
     'calendar-controls.user.js': 'Calendar controls', 'outstanding-actions.user.js': 'Outstanding actions', 'task-stamps.user.js': 'Task stamps',
