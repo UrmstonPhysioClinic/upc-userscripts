@@ -1,5 +1,8 @@
 # Changelog
 
+## HTML source for emails 0.8, 17 Nov 2026 (beta)
+- The <> HTML view on the online booking preferences page: the booking email (form[booking][bookingEmailText]) and the booking page's notes and terms.
+
 ## Schedule excess 0.2.0, core 0.1.61, 16 Nov 2026 (beta)
 - The email is Halaxy's own "Chase - Excess Due" template (Carl edits it in Halaxy), loaded for the invoice as the Send box does once the due date is set, and sent with its styling. No HTML kept in the script. Stops first if the template isn't there.
 - Clinic settings: Schedule excess, Email template (default "Chase - Excess Due").

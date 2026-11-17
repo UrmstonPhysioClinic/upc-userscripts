@@ -44,7 +44,7 @@
     {
       "file": "email-html.user.js",
       "name": "UPC Look: HTML source for emails (beta)",
-      "version": "0.7",
+      "version": "0.8",
       "was": "email-html-source.user.js"
     },
     {

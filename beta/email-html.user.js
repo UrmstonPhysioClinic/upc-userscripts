@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Look: HTML source for emails (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.7
+// @version      0.8
 // @upc-was      email-html-source.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/email-html.user.js
@@ -21,12 +21,15 @@
   //   form[body]                     email compose pop-up
   //   form[emailNewAppointment] etc. Settings > Reminders
   //   form[contentForFormHandler]    Edit Email Communication Template
+  //   form[booking][bookingEmailText] Online booking preferences: the booking email (capture 17 Nov 2026)
+  //   form[booking][bookingNotes|bookingTerms]  the same page: text on the online booking page
   // Other editors are logged to the console as "editor skipped: <field>",
   // so a new page only needs its field name adding here.
   const isEmailBodyField = (name) =>
     name === 'form[body]' ||
     name === 'form[contentForFormHandler]' ||
-    /^form\[email[A-Za-z]*\]$/.test(name);
+    /^form\[email[A-Za-z]*\]$/.test(name) ||
+    /^form\[booking\]\[booking(?:EmailText|Notes|Terms)\]$/.test(name);
 
   // field name -> textarea, for every editor currently in HTML mode
   const actives = new Map();
