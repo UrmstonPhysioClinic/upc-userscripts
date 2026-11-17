@@ -1,5 +1,8 @@
 # Changelog
 
+## Patient forms 0.1.4, 17 Nov 2026 (beta)
+- Page laid out as the other lists: Check now and the progress bar (or "Checked at ...") under the heading, space between the cards.
+
 ## Patient forms 0.1.3, 17 Nov 2026 (beta)
 - Sending and reminders back on (Carl), after the held preview matched the live form history.
 - "Don't send" no longer shows where a form has already gone.
