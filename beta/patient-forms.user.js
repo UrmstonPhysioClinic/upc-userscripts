@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Patient forms (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.2
+// @version      0.1.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-forms.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-forms.user.js
@@ -51,11 +51,11 @@
   if (window.__hxPatientForms) return;
   window.__hxPatientForms = true;
 
-  const VERSION = '0.1.2';
+  const VERSION = '0.1.3';
   // Sending and reminders held (0.1.1): 0.1.0 read the form history as a table, but Halaxy lays it out in divs (live,
   // 17 Nov 2026), so it saw no forms and sent Progress Updates the campaign had already sent. 0.1.2 reads the divs and
   // stops if any sent form can't be read. While held, Check now works out what would happen (reads only).
-  const HOLD = true;
+  const HOLD = false;   // lifted 17 Nov 2026 (Carl) after the held preview matched the live history
   const U = () => window.UPC;
   const ROUTE = 'upc-patient-forms';
   const MENU_CLS = 'upc-pf-menu';
@@ -406,9 +406,10 @@
   `;
 
   const previewOf = (k) => { const p = HOLD && store().get('preview', null); return (p && p.values && p.values[k]) || ''; };
+  // The form's record; while held, what the history shows now in place of an empty, waiting or failed one.
+  const formRec = (a, recs) => { const rec = (recs['a.' + a.id] || {}).value || ''; return (!rec || /^(fail|wait)/.test(rec)) && previewOf('a.' + a.id) || rec; };
   function statusOf(a, recs) {
-    const rec = (recs['a.' + a.id] || {}).value || '';
-    const v = (!rec || /^(fail|wait)/.test(rec)) && previewOf('a.' + a.id) || rec;   // held: what the history shows now
+    const v = formRec(a, recs);
     const w = v.split(' ');
     const rest = w.slice(2).join(' ');
     if (/^had /.test(v)) return 'Sent ' + when(Number(w[1])) + (rest ? ': ' + rest : '');
@@ -455,7 +456,7 @@
         h += '<div class="card"><div class="card-header"><h2>' + title + ' (' + rows.length + ')</h2></div><div class="card-body p-0">' +
           (rows.length ? '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th>Appointment</th><th>Patient</th><th>Practitioner</th><th>Form</th><th>Reminder</th><th></th></tr></thead><tbody>' +
             rows.map((a) => {
-              const v = (recs['a.' + a.id] || {}).value || '';
+              const v = formRec(a, recs);
               const canSkip = !/^(had|sent|sched|skip|none|check)/.test(v) && MODE() !== 'off';
               return '<tr><td class="upc-pf-when">' + esc(hhmm(a.start)) + '</td><td><a href="' + esc(U().base() + '/patient/' + a.patient) + '" target="_blank" rel="noopener">' + esc(a.name) + '</a></td>' +
                 '<td>' + esc(a.prac || '') + '</td><td>' + esc(statusOf(a, recs)) + '</td><td>' + esc(reminderOf(a, recs)) + '</td>' +

@@ -22,8 +22,9 @@ from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
 CORE = (ROOT / 'beta' / 'core.user.js').read_text().replace('perMinute: 45,', 'perMinute: 100000,')
-HELD = (ROOT / 'beta' / 'patient-forms.user.js').read_text()
-SCRIPT = HELD.replace('const HOLD = true;', 'const HOLD = false;')   # sending is held on beta; tested both ways
+SCRIPT = (ROOT / 'beta' / 'patient-forms.user.js').read_text()
+HELD = re.sub(r'const HOLD = false;', 'const HOLD = true;', SCRIPT)   # the held preview, as used on 17 Nov 2026
+assert HELD != SCRIPT
 NOW = datetime.datetime(2026, 11, 17, 14, 0, tzinfo=datetime.timezone.utc)   # Tuesday; UK is UTC in November
 FAILS = []
 S = {}
@@ -338,6 +339,7 @@ async def main():
         check('held: the page says what would happen', r.get('Patient One', [''] * 5)[3] == 'Would send: Initial Assessment Form - Bupa' and r.get('Patient Three', [''] * 5)[3].startswith('Sent 17-Nov-2026 05:04')
               and r.get('Patient Three', [''] * 5)[4] == 'Would remind at 18:00' and r.get('Patient Eight', [''] * 5)[4] == 'Filled in'
               and await pg.evaluate("!!document.querySelector('[data-upc-patient-forms] .alert-warning')"), rows)
+        check('held: no "Don\'t send" where a form has gone', r.get('Patient Three', [''] * 6)[5] == '' and r.get('Patient One', [''] * 6)[5] == "Don't send", rows)
         await ctx.close()
         await browser.close()
     print('\n' + ('All passed' if not FAILS else '%d failed' % len(FAILS)))
