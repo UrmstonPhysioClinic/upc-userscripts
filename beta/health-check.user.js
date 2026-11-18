@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.52
+// @version      1.1.53
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.52';
+  const VERSION = '1.1.53';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -89,10 +89,13 @@
     const btn = document.getElementById('activeUser');
     return btn ? btn.textContent.replace(/\s+/g, ' ').trim() : '';
   }
+  // Shown only to the people named. Nobody signed in (the log-in page), or the name not read yet: hidden. Only if a
+  // signed-in page (side menu) still has no readable name 20 s after loading is it shown, as Halaxy may have changed.
+  const LOADED = Date.now();
   function shown() {
     const who = signedInAs().toLowerCase();
-    if (!who) return true;   // the sign-in can't be read: Halaxy may have changed, so show rather than hide
-    return SHOW_TO.some((n) => who.includes(n.toLowerCase()));
+    if (who) return SHOW_TO.some((n) => who.includes(n.toLowerCase()));
+    return !!document.getElementById('mainMenu') && Date.now() - LOADED > 20000;
   }
   const when = (t) => (t ? new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : 'never');
 
@@ -698,7 +701,7 @@
   const start = () => setTimeout(() => runAll(false), (window.__hxHealthTest && window.__hxHealthTest.delay) || 3000);
   if (document.readyState === 'complete') start();
   else window.addEventListener('load', start, { once: true });
-  const ready = () => { render(); addMenu(); };
+  const ready = () => { render(); addMenu(); setTimeout(() => { render(); addMenu(); }, 21000); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', ready, { once: true });
   else ready();
 

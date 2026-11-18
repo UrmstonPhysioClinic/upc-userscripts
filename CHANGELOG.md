@@ -1,5 +1,8 @@
 # Changelog
 
+## Health check 1.1.53, 18 Nov 2026 (beta)
+- The notice no longer shows on the log-in page or before the signed-in name is read; it shows only to the people named (Carl). Only a signed-in page whose name still can't be read after 20 seconds shows it, in case Halaxy has changed.
+
 ## Patient forms 0.1.4, 17 Nov 2026 (beta)
 - Page laid out as the other lists: Check now and the progress bar (or "Checked at ...") under the heading, space between the cards.
 
