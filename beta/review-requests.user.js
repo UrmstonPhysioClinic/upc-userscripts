@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Review requests (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.5.10
+// @version      0.5.11
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
@@ -47,7 +47,7 @@
   if (window.__hxReviewRequests) return;
   window.__hxReviewRequests = true;
 
-  const VERSION = '0.5.10';
+  const VERSION = '0.5.11';
   const ROUTE = 'upc-review-requests';
   const MENU_CLS = 'upc-rr-menu';
   const ALLOWED = () => rule('reviewRequests.people', ['Carl Healy']);   // Carl, 10 Nov 2026: just me for now
@@ -109,7 +109,7 @@
   ];
   // Against: only what says this course went badly or isn't over. Notes describe symptoms all the time
   // ("worse on stairs", "no need for a scan"), so plain mentions don't count (live list, 10 Nov 2026).
-  const RULES = 4;   // bump when the phrase lists or other signs change, so patients are read again
+  const RULES = 5;   // bump when the phrase lists or other signs change, so patients are read again
   const BAD = [
     ['not fully better', /\bnot (yet )?(100\s*%|fully|completely|quite)\s*(better|recovered|resolved|right|there|improved|pain[- ]?free)\b|\bno (better|improvement)\b|\bslow progress\b|\bminimal (change|improvement)\b/i],
     ['worse or flare-up', /\b(getting|feeling|feels|felt|been|is|was|now|much|slightly) worse\b|\b(has|have) (got|gotten|become) worse\b|\bworsen(ed|ing)\b|\b(had|having|has had|another) (a )?flare[- ]?up\b|\bflared( up)?\b|\bstill (painful|sore|struggling|symptomatic)\b|\bdeteriorat/i],
@@ -129,7 +129,17 @@
     });
     scan(good(), found.good, true);
     scan(NICE, found.nice, true);
-    scan(BAD, found.bad, true);
+    // Advice for later isn't a sign against: "Return if symptoms deteriorate" ends most discharge plans (Heidi, 18 Nov 2026).
+    const conditional = (m) => /\b(if|should|in case|when|unless)\b[^.\n]{0,30}$/i.test(text.slice(Math.max(0, m.index - 40), m.index));
+    BAD.forEach(([name, re]) => {
+      const g = new RegExp(re.source, 'gi');
+      let m;
+      while ((m = g.exec(text))) {
+        if (U().wording.NEGATION.test(text.slice(Math.max(0, m.index - 30), m.index)) || conditional(m)) continue;
+        if (!found.bad.includes(name)) found.bad.push(name);
+        break;
+      }
+    });
     return found;
   }
   const scoreFrom = (answer) => { const m = /^\s*([+-]?\d+)/.exec(String(answer || '')); return m ? +m[1] : null; };

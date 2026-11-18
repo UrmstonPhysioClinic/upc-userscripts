@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Open-ended patients (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.0
+// @version      0.3.1
 // @upc-was      check-ins.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/open-ended-patients.user.js
@@ -41,7 +41,7 @@
   if (window.__hxCheckIns) return;
   window.__hxCheckIns = true;
 
-  const VERSION = '0.3.0';
+  const VERSION = '0.3.1';
   const ROUTE = 'upc-check-ins';
   const MENU_CLS = 'upc-ci-menu';
   const ALLOWED = () => rule('openEnded.people', ['Carl Healy']);
@@ -52,7 +52,7 @@
   const UP_TO_DAYS = () => rule('openEnded.upToDays', 91);    // not further back than about 3 months
   const REFRESH_EVERY = 12 * 3600e3, PAGE_FRESH = 30 * 60e3, KEEP = 7 * DAY;
   const KEY = 'upc-ci:';
-  const RULES = 3;   // bump when the wording list changes, so patients are read again
+  const RULES = 4;   // bump when the wording list changes, so patients are read again
 
   const U = () => window.UPC;
   const esc = (s) => U().esc(s);
@@ -189,6 +189,7 @@
         if (r.finished) { counts.finished = (counts.finished || 0) + 1; continue; }
         if (await owes(p)) { counts.owing = (counts.owing || 0) + 1; continue; }
       } else if (!r.found.length) { counts.none++; continue; }
+      else if (r.finished) { counts.done = (counts.done || 0) + 1; continue; }   // "Discharge ... return if symptoms recur": finished
       rows.push(Object.assign({}, p, { found: r.found, noteId: r.noteId, noteDate: r.noteDate }));
     }
     Object.keys(cache).forEach((k) => { if (now - cache[k].at > KEEP) delete cache[k]; });
@@ -290,7 +291,7 @@
       if (bad.length) h += '<div class="alert alert-danger upc-err">Notes not read for ' + bad.map((x) => esc(x.name) + ' (' + esc(x.error) + ')').join(', ') + '.</div>';
       const c = r.counts || {};
       h += '<p class="text-muted">Last seen ' + AFTER_DAYS() + ' to ' + UP_TO_DAYS() + ' days ago, nothing booked. Left out: ' + (c.recent || 0) + ' seen in the last ' + AFTER_DAYS() + ' days, ' +
-        (c.ended || 0) + ' last appointment declined or rescheduled, ' + (c.none || 0) + ' not open-ended, ' + (c.finished || 0) + ' cancelled after finishing treatment, ' +
+        (c.ended || 0) + ' last appointment declined or rescheduled, ' + (c.none || 0) + ' not open-ended, ' + (c.done || 0) + ' finished, ' + (c.finished || 0) + ' cancelled after finishing treatment, ' +
         (c.owing || 0) + ' cancelled and owing money, ' + skipped + ' not sending.</p>';
     }
     h += '</div>';

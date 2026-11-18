@@ -1,5 +1,14 @@
 # Changelog
 
+## Note wording tuned on the clinic's notes: core 0.1.64, Open-ended patients 0.3.1, Patient statuses 0.2.9, Review requests 0.5.11, 18 Nov 2026 (beta)
+- Six months of the clinic's notes (Heidi layout) read for how a course of treatment ends; the shared wording changed to match (project doc clinical-notes-structure.md).
+- How treatment ends is read from the Assessment / Plan part only: past history ("discharged from orthopaedics", "nasal discharge", "self-management: gel") no longer counts.
+- PRN / SOS count as open-ended only next to a follow-up, review or return, not medication ("paracetamol PRN").
+- Added: "Return if symptoms recur / worsen / deteriorate / persist / not settling", "RTC PRN", "Follow-up if symptoms persist", "F/U available if needed"; "No further physio appointments required", "Final session today", "dc from physio". Anything put off "until" something doesn't count.
+- Open-ended patients: a note that also discharges ("Discharge from physiotherapy ... return if symptoms recur") is finished, not open-ended. Notes are read again.
+- Review requests: advice for later ("return if symptoms deteriorate") is no longer a sign against.
+- Patient statuses: notes read again with the new wording.
+
 ## Open-ended patients 0.3.0, 18 Nov 2026 (beta)
 - New card "Cancelled, not rebooked": last visit 3 weeks to 3 months ago, the booking after it cancelled or missed, nothing booked since. Same recall email. Left out when the last note says treatment finished, or they have an unpaid invoice of their own.
 - "Don't send" on each patient: off the list for this visit, on every PC (counted as "not sending" under the list).

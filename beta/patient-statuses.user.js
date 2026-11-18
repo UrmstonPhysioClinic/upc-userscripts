@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Patient statuses (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.8
+// @version      0.2.9
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
@@ -41,7 +41,7 @@
   if (window.__hxPatientStatuses) return;
   window.__hxPatientStatuses = true;
 
-  const VERSION = '0.2.8';
+  const VERSION = '0.2.9';
   const ALLOWED = () => rule('patientStatuses.people', ['Carl Healy']);
   const DAY = 86400e3;
   // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
@@ -85,7 +85,7 @@
     say = say || (() => {});
     const now = Date.now();
     const funded = store.get('funded2', {});     // invoice id -> true (funded) / false (self-funded)
-    const finished = store.get('finished2', {});  // note id -> kind of wording found ('' if none)
+    const finished = store.get('finished3', {});   // finished3: wording tuned on the clinic's notes (18 Nov 2026), so notes are read again  // note id -> kind of wording found ('' if none)
     const latest = store.get('latest', {});      // patient -> { key: last appointment and note status, note: { noteId, date } }
     const events = await calendar(now - BACK_DAYS * DAY, now + AHEAD_DAYS * DAY, say);
     const startMs = (e) => (typeof e.start === 'number' ? e.start * 1000 : Date.parse(e.start));
@@ -185,7 +185,7 @@
             }
             let said = '';
             if (note) {
-              if (!(note.noteId in finished)) { finished[note.noteId] = saysFinished(await U().notes.text(note.noteId)); store.set('finished2', finished); }
+              if (!(note.noteId in finished)) { finished[note.noteId] = saysFinished(await U().notes.text(note.noteId)); store.set('finished3', finished); }
               said = finished[note.noteId];
             }
             if (said) { to = 'discharged'; why = 'Last note (' + label(note.date || startMs(last)) + ') says "' + said + '", nothing booked'; }
