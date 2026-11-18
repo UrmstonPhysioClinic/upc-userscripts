@@ -1,5 +1,14 @@
 # Changelog
 
+## Open-ended patients 0.3.0, 18 Nov 2026 (beta)
+- New card "Cancelled, not rebooked": last visit 3 weeks to 3 months ago, the booking after it cancelled or missed, nothing booked since. Same recall email. Left out when the last note says treatment finished, or they have an unpaid invoice of their own.
+- "Don't send" on each patient: off the list for this visit, on every PC (counted as "not sending" under the list).
+- Cards: Open-ended, Cancelled, not rebooked, Recalled. Column "Why": the wording found, or "Cancelled 22-Oct-2026" / "Missed ...".
+
+## Open-ended patients 0.2.1, 18 Nov 2026 (beta)
+- A list worked out by a PC still on an older version no longer replaces this PC's own (the Practitioner column was blank until every PC had updated).
+- Line under the list shortened: "Last seen 21 to 91 days ago, nothing booked. Left out: ... not open-ended."
+
 ## Open-ended patients 0.2.0, core 0.1.63, 18 Nov 2026 (beta)
 - Open-ended recalls: "Send recall" on each patient, after confirming, schedules the Halaxy template "Recall - Open-ended" through Email patient for the next weekday at 10:30, once per episode. The practitioner of the last visit is written in; Halaxy fills the patient's name (subject and body). Recorded in the shared note "Open-ended recalls", so every PC shows it under "Recalled" and it isn't offered again for that visit. Not sent if the template has a practitioner or appointment tag the script can't fill, or the patient has no email address.
 - Practitioner column; the menu count is those still to recall.

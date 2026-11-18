@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Open-ended patients (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.0
+// @version      0.3.0
 // @upc-was      check-ins.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/open-ended-patients.user.js
@@ -31,13 +31,17 @@
  *    "Open-ended recalls" (p.<patient> = sched <time> <last visit day>) so every PC knows, and checked in the patient's
  *    scheduled emails. A send Halaxy accepted is never repeated, even if it can't be seen afterwards.
  *    No opt-out field yet (Carl, 18 Nov 2026: later).
+ *  - Cancelled, not rebooked (0.3.0, Carl, 18 Nov 2026): last visit 3 weeks to 3 months ago, the booking after it
+ *    cancelled or missed, nothing booked since; its own card, same recall email. Left out: last note says treatment
+ *    finished, or an unpaid invoice of their own (chasing payment comes first; the Unpaid Invoices report finds who
+ *    might owe, their own invoices confirm). Don't send: p.<patient> = skip 0 <last visit day>, for every PC.
  */
 (() => {
   'use strict';
   if (window.__hxCheckIns) return;
   window.__hxCheckIns = true;
 
-  const VERSION = '0.2.0';
+  const VERSION = '0.3.0';
   const ROUTE = 'upc-check-ins';
   const MENU_CLS = 'upc-ci-menu';
   const ALLOWED = () => rule('openEnded.people', ['Carl Healy']);
@@ -48,7 +52,7 @@
   const UP_TO_DAYS = () => rule('openEnded.upToDays', 91);    // not further back than about 3 months
   const REFRESH_EVERY = 12 * 3600e3, PAGE_FRESH = 30 * 60e3, KEEP = 7 * DAY;
   const KEY = 'upc-ci:';
-  const RULES = 2;   // bump when the wording list changes, so patients are read again
+  const RULES = 3;   // bump when the wording list changes, so patients are read again
 
   const U = () => window.UPC;
   const esc = (s) => U().esc(s);
@@ -57,7 +61,15 @@
   // Shared with every PC (Carl, 16 Nov 2026; core's UPC.sharedResult): one PC works the list out and every PC
   // shows it, so the list (and its count) is the same everywhere and Halaxy is read once for the clinic.
   const sharedList = () => (U() && U().sharedResult ? U().sharedResult('Open-ended patients') : null);
-  async function pullShared(maxAge) { const sl = sharedList(); if (!sl) return; try { await sl.pull(store, maxAge); } catch (e) { /* this PC's own list */ } }
+  // A list worked out by an older version on another PC (before every PC has updated) doesn't replace this PC's own:
+  // it lacks what this version adds (0.2.0: the practitioner, so Send recall couldn't name them).
+  async function pullShared(maxAge) {
+    const sl = sharedList(); if (!sl) return;
+    const mine = store.get('result', null);
+    try { await sl.pull(store, maxAge); } catch (e) { /* this PC's own list */ }
+    const now = store.get('result', null);
+    if (now && now.by !== VERSION && mine && mine.by === VERSION) store.set('result', mine);
+  }
   function pushShared(result) { const sl = sharedList(); if (sl) sl.push(result).catch((e) => console.warn('[UPC open-ended patients] shared list', e)); }
   async function myTurn() { const sl = sharedList(); if (!sl) return true; try { return await sl.claim(); } catch (e) { return true; } }
 
@@ -80,7 +92,7 @@
     const r = recs['p.' + row.id];
     if (!r || !r.value) return null;
     const f = r.value.split(' ');
-    return f[2] === dayOf(row.lastSeen) ? { kind: f[0], at: Number(f[1]) } : null;
+    return f[2] === dayOf(row.lastSeen) ? { kind: f[0], at: Number(f[1]) } : null;   // sched, check or skip
   }
   const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
 
@@ -104,7 +116,22 @@
   }
 
 
+  // Owing money: the Unpaid Invoices report (one request for everyone) names who might; only their own invoices are read
+  // to be sure (as Review requests). Its Payer ID is the clinic's patient number, so the match is by name.
+  let unpaid = null;
+  async function owes(p) {
+    if (unpaid === null) {
+      try {
+        const lines = await U().reports.unpaidLines(label(today() - 3 * 366 * DAY));
+        unpaid = new Set(lines.filter((l) => /^P-?\d+$/i.test(String(l.payerId || '').trim())).map((l) => U().clean(l.payer).toLowerCase()));
+      } catch (e) { unpaid = false; tellHealthCheck(e); }
+    }
+    if (unpaid && !unpaid.has(U().clean(p.name).toLowerCase())) return false;
+    return (await U().patient.invoices(p.id)).some((x) => /not yet paid|part/i.test(String(x.status || '')) && Number(String(x.balance).replace(/[^\d.-]/g, '')) > 0);
+  }
+
   async function check(say) {
+    unpaid = null;
     say = say || (() => {});
     const now = Date.now(), day0 = today();
     const cache = store.get('cache', {});
@@ -126,9 +153,13 @@
       const lastSeen = startMs(attended[0]);
       if (lastSeen < now - UP_TO_DAYS() * DAY) continue;
       if (lastSeen > now - AFTER_DAYS() * DAY) { counts.recent++; continue; }
-      if (past[0] && past[0].appointmentStatus && startMs(past[0]) > lastSeen) { counts.ended++; continue; }   // last one cancelled or missed
+      // The booking after the last visit cancelled or missed, nothing since: "Cancelled, not rebooked".
+      const after = past.find((e) => startMs(e) > lastSeen && /cancel|did-not-attend/i.test(e.appointmentStatus || ''));
+      if (past[0] && past[0].appointmentStatus && startMs(past[0]) > lastSeen && !after) { counts.ended++; continue; }
       const name = U().clean(U().htmlDoc(attended[0].title || '').body.textContent).replace(/^[\s*★]+/, '') || 'Patient';
-      candidates.push({ id, name, lastSeen, pracId: String(attended[0].practitionerID || '') });
+      const c = { id, name, lastSeen, pracId: String(attended[0].practitionerID || '') };
+      if (after) { c.kind = 'cancelled'; c.missedOn = startMs(after); c.missed = /did-not-attend/i.test(after.appointmentStatus || '') ? 'Missed' : 'Cancelled'; }
+      candidates.push(c);
     }
     const pracs = new Map();
     try { (await U().http.json('/lookup/practitioner?clinic=&include_id=&type=') || []).forEach((x) => pracs.set(String(x.id), U().clean(x.name))); } catch (e) { /* names left blank */ }
@@ -144,7 +175,8 @@
         try {
           const items = await U().notes.items(p.id);
           const last = items.find((x) => x.noteId && x.entity === 'note' && (x.category === 'appointment' || x.category === 'note'));
-          r = { at: now, rules: RULES, noteId: last ? last.noteId : null, noteDate: last ? last.date : null, found: last ? wording(await U().notes.text(last.noteId)) : [] };
+          const text = last ? await U().notes.text(last.noteId) : '';
+          r = { at: now, rules: RULES, noteId: last ? last.noteId : null, noteDate: last ? last.date : null, found: last ? wording(text) : [], finished: last ? U().wording.finished(text).length > 0 : false };
           cache[ck] = r;
           store.set('cache', cache);
         } catch (e) {
@@ -153,7 +185,10 @@
         }
       }
       if (r.error) { counts.error++; rows.push(Object.assign({}, p, { error: r.error, found: [] })); continue; }
-      if (!r.found.length) { counts.none++; continue; }
+      if (p.kind === 'cancelled') {
+        if (r.finished) { counts.finished = (counts.finished || 0) + 1; continue; }
+        if (await owes(p)) { counts.owing = (counts.owing || 0) + 1; continue; }
+      } else if (!r.found.length) { counts.none++; continue; }
       rows.push(Object.assign({}, p, { found: r.found, noteId: r.noteId, noteDate: r.noteDate }));
     }
     Object.keys(cache).forEach((k) => { if (now - cache[k].at > KEEP) delete cache[k]; });
@@ -233,25 +268,30 @@
     if (r) {
       const recs = (() => { try { return recalls().cached(); } catch (e) { return {}; } })();
       const ok = r.rows.filter((x) => !x.error), bad = r.rows.filter((x) => x.error);
-      const todo = ok.filter((x) => !recallFor(x, recs)), done = ok.filter((x) => recallFor(x, recs));
-      const head = '<thead><tr><th>Patient</th><th>Last seen</th><th class="number">Days</th><th>Practitioner</th><th>Last note says</th><th></th></tr></thead>';
+      const todo = ok.filter((x) => !recallFor(x, recs)), done = ok.filter((x) => { const k = recallFor(x, recs); return k && k.kind !== 'skip'; });
+      const skipped = ok.filter((x) => { const k = recallFor(x, recs); return k && k.kind === 'skip'; }).length;
+      const open = todo.filter((x) => x.kind !== 'cancelled'), cancelled = todo.filter((x) => x.kind === 'cancelled');
+      const head = '<thead><tr><th>Patient</th><th>Last seen</th><th class="number">Days</th><th>Practitioner</th><th>Why</th><th></th></tr></thead>';
       const row = (x) => {
         const rc = recallFor(x, recs);
         const act = rc ? esc(rc.kind === 'sched' ? (rc.at > Date.now() ? 'Scheduled for ' : 'Sent ') + label(rc.at) + ' ' + two(new Date(rc.at).getHours()) + ':' + two(new Date(rc.at).getMinutes()) : 'Check in Halaxy')
-          : state.busy === x.id ? U().ui.run.inline('') : '<button type="button" class="btn btn-outline-primary" data-a="recall" data-id="' + esc(x.id) + '"' + (state.busy ? ' disabled' : '') + '>Send recall</button>';
+          : state.busy === x.id ? U().ui.run.inline('') : '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-a="recall" data-id="' + esc(x.id) + '"' + (state.busy ? ' disabled' : '') + '>Send recall</button>' +
+            '<button type="button" class="btn btn-outline-primary-light" data-a="skip" data-id="' + esc(x.id) + '"' + (state.busy ? ' disabled' : '') + '>Don\'t send</button></div>';
         return '<tr><td><a href="' + esc(base + '/patient/' + x.id) + '" target="_blank" rel="noopener">' + esc(x.name) + '</a></td>' +
           '<td class="upc-ci-date">' + esc(label(x.lastSeen)) + '</td><td class="number">' + Math.round((today() - new Date(x.lastSeen).setHours(0, 0, 0, 0)) / DAY) + '</td>' +
           '<td>' + esc(x.prac || '') + '</td>' +
-          '<td>' + esc(x.found.join(', ')) + (x.noteId ? ' (<a href="' + esc(base + '/patient/' + x.id + '/clinical/category/note/id/' + x.noteId) + '" target="_blank" rel="noopener">note' + (x.noteDate ? ' ' + esc(label(x.noteDate)) : '') + '</a>)' : '') + '</td>' +
+          '<td>' + esc(x.kind === 'cancelled' ? x.missed + ' ' + label(x.missedOn) : x.found.join(', ')) + (x.noteId ? ' (<a href="' + esc(base + '/patient/' + x.id + '/clinical/category/note/id/' + x.noteId) + '" target="_blank" rel="noopener">note' + (x.noteDate ? ' ' + esc(label(x.noteDate)) : '') + '</a>)' : '') + '</td>' +
           '<td class="upc-ci-act">' + act + '</td></tr>';
       };
-      h += '<div class="card"><div class="card-header"><h2>To recall (' + todo.length + ')</h2></div><div class="card-body p-0">' +
-        (todo.length ? '<table class="table table-striped table-bordered w-100 m-0">' + head + '<tbody>' + todo.map(row).join('') + '</tbody></table>' : '<p class="text-muted m-3">None.</p>') + '</div></div>';
+      const card = (title, list) => '<div class="card"><div class="card-header"><h2>' + title + ' (' + list.length + ')</h2></div><div class="card-body p-0">' +
+        (list.length ? '<table class="table table-striped table-bordered w-100 m-0">' + head + '<tbody>' + list.map(row).join('') + '</tbody></table>' : '<p class="text-muted m-3">None.</p>') + '</div></div>';
+      h += card('Open-ended', open) + card('Cancelled, not rebooked', cancelled);
       if (done.length) h += '<div class="card"><div class="card-header"><h2>Recalled (' + done.length + ')</h2></div><div class="card-body p-0"><table class="table table-striped table-bordered w-100 m-0">' + head + '<tbody>' + done.map(row).join('') + '</tbody></table></div></div>';
       if (bad.length) h += '<div class="alert alert-danger upc-err">Notes not read for ' + bad.map((x) => esc(x.name) + ' (' + esc(x.error) + ')').join(', ') + '.</div>';
       const c = r.counts || {};
-      h += '<p class="text-muted">Last seen ' + AFTER_DAYS() + ' to ' + UP_TO_DAYS() + ' days ago, nothing booked, last note leaves treatment open. Left out: ' + (c.recent || 0) + ' seen in the last ' + AFTER_DAYS() + ' days, ' +
-        (c.ended || 0) + ' last appointment cancelled or missed, ' + (c.none || 0) + ' last note doesn\'t leave it open.</p>';
+      h += '<p class="text-muted">Last seen ' + AFTER_DAYS() + ' to ' + UP_TO_DAYS() + ' days ago, nothing booked. Left out: ' + (c.recent || 0) + ' seen in the last ' + AFTER_DAYS() + ' days, ' +
+        (c.ended || 0) + ' last appointment declined or rescheduled, ' + (c.none || 0) + ' not open-ended, ' + (c.finished || 0) + ' cancelled after finishing treatment, ' +
+        (c.owing || 0) + ' cancelled and owing money, ' + skipped + ' not sending.</p>';
     }
     h += '</div>';
     root.innerHTML = h;
@@ -319,6 +359,19 @@
     // Accepted by Halaxy: from here it is never sent again, even if it can't be seen afterwards.
     const seen = await scheduledEmails(x.id).then((l) => l.some((m) => !before.has(m.id) && m.at === due)).catch(() => false);
     return seen ? 'sched' : 'check';
+  }
+
+  async function skip(id) {
+    const r = store.get('result', null);
+    const x = r && r.rows.find((y) => y.id === id && !y.error);
+    if (!x || state.busy) return;
+    state.sendError = '';
+    if (!(await confirmBox('Don\'t send a recall?', '<p>Take ' + esc(x.name) + ' off the list for their visit on ' + esc(label(x.lastSeen)) + '?</p>', 'Don\'t send'))) return;
+    state.busy = id;
+    render();
+    try { await recalls().write({ ['p.' + id]: 'skip 0 ' + dayOf(x.lastSeen) }); }
+    catch (e) { state.sendError = 'Not changed: ' + x.name + ' (' + (e.message || e) + ')'; }
+    finally { state.busy = null; render(); paintBadge(); }
   }
 
   async function recall(id) {
@@ -390,6 +443,8 @@
       if (e.target.closest('[data-a=refresh]')) { U().calendar.forget(); run(); }
       const b = e.target.closest('[data-a=recall]');
       if (b) recall(b.dataset.id);
+      const k = e.target.closest('[data-a=skip]');
+      if (k) skip(k.dataset.id);
     });
     state.unmount = U().ui.mountPage('Open-ended patients', root, MENU_CLS);
     render();
@@ -430,5 +485,5 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', begin, { once: true });
   else begin();
 
-  window.upcCheckIns = { version: VERSION, wording, check, allowed, sendTime, fill };
+  window.upcCheckIns = { version: VERSION, wording, check, allowed, sendTime, fill, pullShared };
 })();

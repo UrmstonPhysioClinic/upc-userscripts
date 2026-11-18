@@ -59,6 +59,10 @@ def setup():
     patient(210, 'Patient J', [(-30, '')], [(-30, 'No need to book again if needed is not the plan; discharged.')])  # negated
     patient(211, 'Patient K', [(-45, ''), (-28, '')], [(-45, 'Open appointment.'), (-28, 'Next session booked for review.')])  # only the latest note
     patient(212, 'Patient L', [(-26, '')], [(-26, 'SOS. See as needed.')])
+    patient(213, 'Patient M', [(-35, ''), (-20, 'cancelled')], [(-35, 'Progressing well, next appt in 2 weeks.')])   # cancelled mid-treatment
+    patient(214, 'Patient N', [(-35, ''), (-20, 'cancelled')], [(-35, 'Goals met, discharged.')])                    # cancelled after finishing
+    patient(215, 'Patient O', [(-35, ''), (-20, 'did-not-attend')], [(-35, 'Continue exercises.')])                  # missed, owes the fee
+    S['invoices'] = {215: [{'id': 1, 'total': '£ 40.00', 'balance': '£ 40.00', 'status': 'Not yet paid'}]}
     S['followups'].append({'id': 1, 'title': 'Review Request', 'status': 'Sent', 'assignedTo': 'Patient L', 'assignedToUrl': '/a/pr/555/patient/212'})
 
 
@@ -83,6 +87,9 @@ async def halaxy(route):
         q = urllib.parse.parse_qs(u.query)
         lo, hi = int(q['start'][0]), int(q['end'][0])
         return await js({'payload': {'events': [e for e in S['events'] if lo <= e['start'] < hi]}})
+    m = re.search(r'/patient/invoice/(\d+)/list-data$', p)
+    if m:
+        return await js(S.get('invoices', {}).get(int(m.group(1)), []))
     if p.endswith('/task/task-followup/list/data'):
         return await js(S['followups'])
     m = re.search(r'/note/menu/linkPaG/(\d+)/items$', p)
@@ -161,7 +168,15 @@ async def main():
         await pg.wait_for_function("document.querySelector('[data-upc-check-ins] table') && !document.querySelector('[data-upc-check-ins] [data-a=refresh]').disabled", timeout=90000)
         rows = await pg.evaluate(ROWS)
         names = [r[0] for r in rows]
-        check('open-ended, 3 weeks to 3 months, nothing booked: oldest visit first', names == ['Patient C', 'Patient B', 'Patient L', 'Patient A', 'Patient D'], rows)
+        cards = await pg.evaluate("[...document.querySelectorAll('[data-upc-check-ins] .card')].map((c) => [c.querySelector('h2').textContent, [...c.querySelectorAll('tbody tr')].map((tr) => [...tr.cells].map((x) => x.textContent.trim()))])")
+        cd = dict(cards)
+        check('open-ended, 3 weeks to 3 months, nothing booked: oldest visit first', [r[0] for r in cd.get('Open-ended (5)', [])] == ['Patient C', 'Patient B', 'Patient L', 'Patient A', 'Patient D'], cards)
+        canc = cd.get('Cancelled, not rebooked (2)', [])
+        check('cancelled or missed after the last visit, nothing rebooked: own card, whatever the note says', [r[0] for r in canc] == ['Patient M', 'Patient H']
+              and canc[0][4].startswith('Cancelled 22-Oct-2026') and canc[1][4].startswith('Missed 27-Oct-2026'), cards)
+        check('left out: cancelled after the notes say finished, missed and owing money', 'Patient N' not in names and 'Patient O' not in names, names)
+        muted = await pg.evaluate("[...document.querySelectorAll('[data-upc-check-ins] p.text-muted')].pop().textContent")
+        check('line under the list counts them', '1 cancelled after finishing treatment' in muted and '1 cancelled and owing money' in muted, muted)
         by = {r[0]: r for r in rows}
         check('the wording found is named', by.get('Patient A', [''] * 6)[4].startswith('open return') and by.get('Patient B', [''] * 6)[4].startswith('book again if needed')
               and by.get('Patient C', [''] * 6)[4].startswith('see how things go') and by.get('Patient D', [''] * 6)[4].startswith('come back if needed'), rows)
@@ -169,15 +184,15 @@ async def main():
         check('last seen and days', by.get('Patient A', [])[1:3] == ['17-Oct-2026', '25'], by.get('Patient A'))
         check('nothing about Review requests: no column, follow-ups not read', all(len(r) == 6 for r in rows) and not [x for x in S['log'] if 'followup' in x[1]], (rows, S['log']))
         check('left out: booked ahead, under 3 weeks, over 3 months, last one missed, not open-ended, negated, older note only',
-              not any(n in names for n in ['Patient E', 'Patient F', 'Patient G', 'Patient H', 'Patient I', 'Patient J', 'Patient K']), names)
+              not any(n in names for n in ['Patient E', 'Patient F', 'Patient G', 'Patient I', 'Patient J', 'Patient K']), names)
         link = await pg.evaluate("document.querySelector('[data-upc-check-ins] tbody tr td:nth-child(5) a').getAttribute('href')")
         check('links to the note', re.fullmatch(r'/a/pr/555/patient/\d+/clinical/category/note/id/\d+', link or '') is not None, link)
         badge = await pg.evaluate("(document.querySelector('a.upc-ci-menu .upc-ci-badge') || {}).textContent")
-        check('menu item under Patients with the count', badge == '5', badge)
+        check('menu item under Patients with the count', badge == '7', badge)
         stored = await pg.evaluate("Object.keys(localStorage).filter((k) => k.startsWith('upc-ci:')).map((k) => localStorage.getItem(k)).join(' ')")
         check('note text never stored', not any(x in stored for x in ['Much improved', 'Exercises progressed', 'Pt to book', 'any problems', 'next few weeks']), stored[:300])
         notes_read = sorted({x[1] for x in S['log'] if x[1].startswith('/note/menu/')})
-        check('notes read only for patients 3 weeks to 3 months quiet with nothing booked', notes_read == ['/note/menu/linkPaG/%d/items' % i for i in (201, 202, 203, 204, 209, 210, 211, 212)], notes_read)
+        check('notes read only for patients 3 weeks to 3 months quiet with nothing booked', notes_read == ['/note/menu/linkPaG/%d/items' % i for i in (201, 202, 203, 204, 208, 209, 210, 211, 212, 213, 214, 215)], notes_read)
         before = len(S['log'])
         await pg.click('[data-upc-check-ins] [data-a=refresh]')
         await pg.wait_for_function("!document.querySelector('[data-upc-check-ins] [data-a=refresh]').disabled", timeout=60000)
@@ -201,7 +216,7 @@ async def main():
         check('moved to Recalled with the time, no button', rec and rec[0][0] == 'Patient A' and rec[0][5] == 'Scheduled for 12-Nov-2026 10:30'
               and not await pg.evaluate("!!document.querySelector(\"[data-a=recall][data-id='201']\")"), rows)
         badge = await pg.evaluate("(document.querySelector('a.upc-ci-menu .upc-ci-badge') || {}).textContent")
-        check('menu count: only those still to recall', badge == '4', badge)
+        check('menu count: only those still to recall', badge == '6', badge)
         note = ' '.join(n['html'] for v in S['notes'].values() for n in v)
         check('recorded in the shared note', re.search(r'p\.201 \| [\d :-]+ \| sched \d+ 2026-10-17', re.sub(r'<[^>]+>', ' ', note)) is not None, note[:400])
         # A template with a tag the script can't fill: not sent
@@ -211,6 +226,21 @@ async def main():
         await pg.wait_for_selector('[data-upc-check-ins] .alert-danger', timeout=30000)
         err = await pg.evaluate("document.querySelector('[data-upc-check-ins] .alert-danger').textContent")
         check('template with [Appointment Date]: not sent, says why', len(S['posts']) == 1 and '[Appointment Date]' in err and 'Nothing was sent' in err, (len(S['posts']), err))
+        # Don't send: off the list for this visit, on every PC
+        await pg.click("[data-upc-check-ins] [data-a=skip][data-id='213']")
+        await pg.click('[data-upc-ci-confirm] [data-c=yes]')
+        await pg.wait_for_function("/1 not sending/.test([...document.querySelectorAll('[data-upc-check-ins] p.text-muted')].pop().textContent)", timeout=30000)
+        note = ' '.join(n['html'] for v in S['notes'].values() for n in v)
+        muted = await pg.evaluate("[...document.querySelectorAll('[data-upc-check-ins] p.text-muted')].pop().textContent")
+        check("Don't send: recorded for this visit, counted as not sending", re.search(r'p\.213 \| [\d :-]+ \| skip 0 2026-10-07', re.sub(r'<[^>]+>', ' ', note)) is not None and '1 not sending' in muted
+              and await pg.evaluate("(document.querySelector('a.upc-ci-menu .upc-ci-badge') || {}).textContent") == '5', (muted, note[-300:]))
+        # A newer list from a PC still on an older version (no practitioners) doesn't replace this PC's
+        for v in S['notes'].values():
+            for n in v:
+                if 'UPC shared list: Open-ended patients' in n['html']:
+                    n['html'] = re.sub(r'<p>data .*?</p>', lambda m: '<p>data ' + json.dumps({'at': int(NOW.timestamp() * 1000) + 3600e3, 'by': '0.1.11', 'rows': [], 'counts': {}, 'listed': 0}).replace('"', '&quot;') + '</p>', n['html'])
+        kept = await pg.evaluate("window.upcCheckIns.pullShared(0).then(() => JSON.parse(localStorage.getItem('upc-ci:result')).by)")
+        check('an older version\'s list from another PC doesn\'t replace this one', kept != '0.1.11', kept)
         native = await pg.evaluate("document.querySelector('[data-upc-check-ins]').classList.contains('upc-native')")
         check('native look', native)
         check('no page errors', not errors, errors)
