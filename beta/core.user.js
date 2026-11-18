@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.63
+// @version      0.1.64
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.63';
+  const VERSION = '0.1.64';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -2175,26 +2175,39 @@
 
   // Phrases in clinical notes, shared so every script reads a note the same way. Only the kind's name is ever kept,
   // never the words. A phrase just after "not", "no longer" and similar doesn't count ("not yet discharged").
-  const IF_NEEDED = '(if|when|as) (needed|required|necessary|nec|req|reqd|appropriate)|if (any|further) (problems|issues|concerns|symptoms)|if (it |things |symptoms |pain )?(gets? worse|worsens?|returns?|recurs?|flares?( up)?)|prn|sos';
+  // Tuned on six months of the clinic's notes (Heidi; 18 Nov 2026): see the project doc clinical-notes-structure.md.
+  const IF_NEEDED = '(if|when|as) (needed|required|necessary|nec|req|reqd|appropriate)|if (any|further) (problems|issues|concerns|symptoms)|' +
+    'if (it |things |symptoms? |pain |back |knee |hip |neck |shoulder )?(gets? worse|worsens?|returns?|recurs?|flares?( up)?|deteriorates?|persists?|(is |are )?not settl(ed|ing)|(does|do)n.?t settle)|prn|sos';
+  const COMEBACK = '(come|coming|call|ring|get|getting|contact|be|return(ing)?|rtc|rebook(ing)?|book(ing)?) ?(back|in touch|us|again|in|to (the )?(clinic|physio))?';
   const wording = {
     NEGATION: /\b(not|no longer|never|isn'?t|wasn'?t|hasn'?t|without|unable to|not yet|before|no need to)\b[^.]{0,20}$/i,
     // Treatment has finished.
     FINISHED: [
-      ['discharged', /\bdischarg(ed|e)\b/i],
+      ['discharged', /\bdischarg(ed|e)\b(?! from (?!physio))|\bd\/?c(ed)? from physio/i],   // not "discharged from orthopaedics"
       ['goals met', /\bgoals? (met|achieved|reached)\b|\bachieved (all )?(his |her |their )?goals?\b/i],
-      ['no further treatment', /\bno (further|more) (treatment|physio|physiotherapy|sessions?|appointments?) (needed|required|necessary)\b/i],
+      ['no further treatment', /\bno (further|more) (physio(therapy)? )?(treatment|physio|physiotherapy|sessions?|appointments?|appts?) (needed|required|necessary)\b/i],
       ['self-managing', /\bself[- ]?manag|\bindependent(ly)? (with|managing)|\bcontinue (with )?(home )?(exercises|hep|programme|program) independently\b/i],
+      ['final session', /\bfinal (session|appointment|appt) today\b|\bagreed (to )?(a |the )?final (session|appointment)\b|\blast (session|appointment|appt) today\b/i],
     ],
     // Left open: the patient may come back.
     OPEN_ENDED: [
       ['open return', /\bopen (return|review|f\/?u|follow[- ]?up)\b|\bleft open\b|\bopen[- ]ended\b/i],
       ['open appointment', /\bopen (appointment|appt|booking)\b/i],
       ['book again if needed', new RegExp('\\b(re-?)?book (again|in|back|another( session| appointment| appt)?|a follow[- ]?up)?\\s*(' + IF_NEEDED + ')\\b', 'i')],
-      ['come back if needed', new RegExp('\\b(come|coming|call|ring|get|getting|contact|be) (back|in touch|us)\\s*(' + IF_NEEDED + ')\\b|\\b(to |will )?(contact|call|ring|email|e-?mail|text|message) (us|clinic|the clinic|me)?\\s*(' + IF_NEEDED + ')\\b|\\bget in touch\\b', 'i')],
+      ['come back if needed', new RegExp('\\b' + COMEBACK + '\\s*(' + IF_NEEDED + ')\\b|\\b(to |will )?(contact|call|ring|email|e-?mail|text|message) (us|clinic|the clinic|me)?\\s*(' + IF_NEEDED + ')\\b|\\bget in touch\\b', 'i')],
       ['see how things go', /\bsee how (things|it|he|she|they|pt|patient|symptoms|knee|back|shoulder|ankle|hip|neck)?\s*(go(es)?|get(s)? on|progress(es)?|settle(s)?)\b|\bwait and see\b/i],
-      ['see as needed', /\b(see|review|f\/?u|follow[- ]?up) (as|when|if) (needed|required|necessary|nec|req|reqd)\b|\bprn\b|\bsos\b/i],
+      // PRN / SOS only next to a follow-up or review: on their own they are mostly about medication ("paracetamol PRN").
+      ['see as needed', new RegExp('\\b(see|review|f\\/?u|follow[- ]?up|physio)( appointments?| sessions?| appts?)?\\b[^.;\\n]{0,25}?\\b(' + IF_NEEDED + ')\\b', 'i')],
     ],
-    // The kinds in `list` ([[name, regex]]) found in text, in list order; with negatable (default), negated ones don't count.
+    // Where a note says how treatment ends: from its Assessment (or Plan) heading on, when it has one. Heidi's notes
+    // start with Subjective and past history ("discharged from orthopaedics"), which isn't about this course.
+    outcome(text) {
+      const t = '\n' + String(text || '');
+      const m = /\n\s*(assessment|plan)\s*:?\s*(\n|$)/i.exec(t);
+      return m ? t.slice(m.index) : t;
+    },
+    // The kinds in `list` ([[name, regex]]) found in text, in list order; with negatable (default), negated ones don't count,
+    // nor do ones put off "until" something ("no further physio appointments until orthopaedic assessment").
     find(text, list, negatable) {
       const t = String(text || '');
       const found = [];
@@ -2203,14 +2216,15 @@
         let m;
         while ((m = g.exec(t))) {
           if (negatable !== false && wording.NEGATION.test(t.slice(Math.max(0, m.index - 30), m.index))) continue;
+          if (negatable !== false && /\buntil\b/i.test(t.slice(m.index, m.index + 80).split(/[\n.;]/)[0])) continue;
           if (!found.includes(name)) found.push(name);
           break;
         }
       });
       return found;
     },
-    finished(text) { return wording.find(text, wording.FINISHED); },
-    openEnded(text) { return wording.find(text, wording.OPEN_ENDED); },
+    finished(text) { return wording.find(wording.outcome(text), wording.FINISHED); },
+    openEnded(text) { return wording.find(wording.outcome(text), wording.OPEN_ENDED); },
   };
 
   // Lists shared by every PC (Carl, 16 Nov 2026): one PC works a list out and every PC shows it. One Admin Note per list

@@ -61,6 +61,7 @@ def setup():
     patient(212, 'Patient L', [(-26, '')], [(-26, 'SOS. See as needed.')])
     patient(213, 'Patient M', [(-35, ''), (-20, 'cancelled')], [(-35, 'Progressing well, next appt in 2 weeks.')])   # cancelled mid-treatment
     patient(214, 'Patient N', [(-35, ''), (-20, 'cancelled')], [(-35, 'Goals met, discharged.')])                    # cancelled after finishing
+    patient(216, 'Patient P', [(-30, '')], [(-30, 'Plan:\n- Discharge from physiotherapy today\n- Return if symptoms recur')])   # finished, with the usual advice
     patient(215, 'Patient O', [(-35, ''), (-20, 'did-not-attend')], [(-35, 'Continue exercises.')])                  # missed, owes the fee
     S['invoices'] = {215: [{'id': 1, 'total': '£ 40.00', 'balance': '£ 40.00', 'status': 'Not yet paid'}]}
     S['followups'].append({'id': 1, 'title': 'Review Request', 'status': 'Sent', 'assignedTo': 'Patient L', 'assignedToUrl': '/a/pr/555/patient/212'})
@@ -174,7 +175,7 @@ async def main():
         canc = cd.get('Cancelled, not rebooked (2)', [])
         check('cancelled or missed after the last visit, nothing rebooked: own card, whatever the note says', [r[0] for r in canc] == ['Patient M', 'Patient H']
               and canc[0][4].startswith('Cancelled 22-Oct-2026') and canc[1][4].startswith('Missed 27-Oct-2026'), cards)
-        check('left out: cancelled after the notes say finished, missed and owing money', 'Patient N' not in names and 'Patient O' not in names, names)
+        check('left out: discharged with "return if", cancelled after finishing, missed and owing money', 'Patient P' not in names and 'Patient N' not in names and 'Patient O' not in names, names)
         muted = await pg.evaluate("[...document.querySelectorAll('[data-upc-check-ins] p.text-muted')].pop().textContent")
         check('line under the list counts them', '1 cancelled after finishing treatment' in muted and '1 cancelled and owing money' in muted, muted)
         by = {r[0]: r for r in rows}
@@ -192,12 +193,29 @@ async def main():
         stored = await pg.evaluate("Object.keys(localStorage).filter((k) => k.startsWith('upc-ci:')).map((k) => localStorage.getItem(k)).join(' ')")
         check('note text never stored', not any(x in stored for x in ['Much improved', 'Exercises progressed', 'Pt to book', 'any problems', 'next few weeks']), stored[:300])
         notes_read = sorted({x[1] for x in S['log'] if x[1].startswith('/note/menu/')})
-        check('notes read only for patients 3 weeks to 3 months quiet with nothing booked', notes_read == ['/note/menu/linkPaG/%d/items' % i for i in (201, 202, 203, 204, 208, 209, 210, 211, 212, 213, 214, 215)], notes_read)
+        check('notes read only for patients 3 weeks to 3 months quiet with nothing booked', notes_read == ['/note/menu/linkPaG/%d/items' % i for i in (201, 202, 203, 204, 208, 209, 210, 211, 212, 213, 214, 215, 216)], notes_read)
         before = len(S['log'])
         await pg.click('[data-upc-check-ins] [data-a=refresh]')
         await pg.wait_for_function("!document.querySelector('[data-upc-check-ins] [data-a=refresh]').disabled", timeout=60000)
         again = [x[1] for x in S['log'][before:]]
         check('checking again reuses what was read (no notes re-read)', not [x for x in again if x.startswith('/note/')] and any(x.endswith('/calendar/json') for x in again), again)
+        # The shared wording, tuned on the clinic's notes (invented sentences in Heidi's layout)
+        W = [
+            ('Plan:\n- Return if symptoms recur', ['come back if needed'], []),
+            ('Plan:\n- RTC PRN if any concerns', ['come back if needed'], []),
+            ('Plan:\n- Follow-up if symptoms persist', ['see as needed'], []),
+            ('Plan:\n- Continue paracetamol PRN\n- Follow-up next week', [], []),
+            ('Subjective:\n- Discharged from orthopaedics in May\n- Self-management: gel\nPlan:\n- Follow-up next week', [], []),
+            ('Plan:\n- No further physio appointments required', [], ['no further treatment']),
+            ('Plan:\n- No further physio appointments until orthopaedic assessment completed', [], []),
+            ('Plan:\n- Final session today as requested', [], ['final session']),
+            ('Plan:\n- dc from physio offered open if required', ['see as needed'], ['discharged']),
+            ('Plan:\n- Discharge from physiotherapy today\n- Return if symptoms worsen', ['come back if needed'], ['discharged']),
+        ]
+        got = await pg.evaluate("(w) => w.map(([t]) => [UPC.wording.openEnded(t), UPC.wording.finished(t)])", W)
+        bad = [(W[i][0], g) for i, g in enumerate(got) if g[0] != W[i][1] or g[1] != W[i][2]]
+        check('wording: Heidi\'s phrasing read as the physios mean it', not bad, bad)
+
         # Send recall
         await pg.click("[data-upc-check-ins] [data-a=recall][data-id='201']")
         await pg.wait_for_selector('[data-upc-ci-confirm]')
