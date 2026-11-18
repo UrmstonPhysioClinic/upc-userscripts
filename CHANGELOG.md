@@ -1,5 +1,10 @@
 # Changelog
 
+## Open-ended patients 0.2.0, core 0.1.63, 18 Nov 2026 (beta)
+- Open-ended recalls: "Send recall" on each patient, after confirming, schedules the Halaxy template "Recall - Open-ended" through Email patient for the next weekday at 10:30, once per episode. The practitioner of the last visit is written in; Halaxy fills the patient's name (subject and body). Recorded in the shared note "Open-ended recalls", so every PC shows it under "Recalled" and it isn't offered again for that visit. Not sent if the template has a practitioner or appointment tag the script can't fill, or the patient has no email address.
+- Practitioner column; the menu count is those still to recall.
+- Core: a new Admin Note is found by its text, so two scripts adding notes at the same moment no longer stop each other.
+
 ## Health check 1.1.53, 18 Nov 2026 (beta)
 - The notice no longer shows on the log-in page or before the signed-in name is read; it shows only to the people named (Carl). Only a signed-in page whose name still can't be read after 20 seconds shows it, in case Halaxy has changed.
 
