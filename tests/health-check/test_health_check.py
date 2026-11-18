@@ -52,6 +52,8 @@ def page(path):
         brk = 'delete HkCalendar.Timeline;'
     head = "<script src='https://cdn.halaxy.com/z/version/%s/build/app.js'></script>" % STATE['version'] + GLOBALS.replace('BREAK', brk).replace('USER', json.dumps(STATE['user']))
     body = CAL_BODY if path.endswith('/calendar') else SIDEBAR
+    if 'login' in STATE['break']:   # the log-in page: nobody signed in, no side menu
+        body = "<form id='login'><input name='email'></form>"
     if path.endswith('/calendar') and 'slow' in STATE['break']:   # calendar takes 2 s to draw
         body = body.replace("<div class='timeLabel'>08:00</div>", "") + ("<script>setTimeout(function () { document.querySelector('.cal')"
                 ".insertAdjacentHTML('afterbegin', \"<div class='timeLabel'>08:00</div>\"); }, 2000);</script>")
@@ -306,8 +308,17 @@ async def main():
         check('Carl signs in on the same PC: the problem collected meanwhile shows', pill.startswith('Clinic scripts:') and
               await pg.evaluate("window.__menu.map(m => m[0])") == ['Health check: show results'], (pill, await pg.evaluate("window.__menu.map(m => m[0])")))
         STATE['user'] = ''
+        STATE['break'] = {'login'}
+        probs, pill = await load('/a/login')
+        await pg.wait_for_timeout(21000)
+        pill = await pg.evaluate("(document.querySelector('[data-hx-health]').querySelector('.upc-hc-pill') || {}).textContent || ''")
+        check('log-in page (nobody signed in): never shown', pill == '' and await pg.evaluate("window.__menu.length") == 0, pill)
+        STATE['break'] = set()
         probs, pill = await load()
-        check('sign-in not readable: shown rather than hidden', pill.startswith('Clinic scripts:'), pill)
+        check('signed-in page, name not read yet: hidden at first', pill == '', pill)
+        await pg.wait_for_timeout(21000)
+        pill = await pg.evaluate("(document.querySelector('[data-hx-health]').querySelector('.upc-hc-pill') || {}).textContent || ''")
+        check('signed-in page, name still not readable after 20 s: shown rather than hidden', pill.startswith('Clinic scripts:'), pill)
         STATE['user'] = 'Carl Healy'
         await pg.evaluate("localStorage.setItem('upc-health:errors', '[]')")
 
