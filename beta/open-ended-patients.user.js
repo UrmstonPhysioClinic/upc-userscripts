@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Open-ended patients (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.0
+// @version      0.2.1
 // @upc-was      check-ins.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/open-ended-patients.user.js
@@ -37,7 +37,7 @@
   if (window.__hxCheckIns) return;
   window.__hxCheckIns = true;
 
-  const VERSION = '0.2.0';
+  const VERSION = '0.2.1';
   const ROUTE = 'upc-check-ins';
   const MENU_CLS = 'upc-ci-menu';
   const ALLOWED = () => rule('openEnded.people', ['Carl Healy']);
@@ -57,7 +57,15 @@
   // Shared with every PC (Carl, 16 Nov 2026; core's UPC.sharedResult): one PC works the list out and every PC
   // shows it, so the list (and its count) is the same everywhere and Halaxy is read once for the clinic.
   const sharedList = () => (U() && U().sharedResult ? U().sharedResult('Open-ended patients') : null);
-  async function pullShared(maxAge) { const sl = sharedList(); if (!sl) return; try { await sl.pull(store, maxAge); } catch (e) { /* this PC's own list */ } }
+  // A list worked out by an older version on another PC (before every PC has updated) doesn't replace this PC's own:
+  // it lacks what this version adds (0.2.0: the practitioner, so Send recall couldn't name them).
+  async function pullShared(maxAge) {
+    const sl = sharedList(); if (!sl) return;
+    const mine = store.get('result', null);
+    try { await sl.pull(store, maxAge); } catch (e) { /* this PC's own list */ }
+    const now = store.get('result', null);
+    if (now && now.by !== VERSION && mine && mine.by === VERSION) store.set('result', mine);
+  }
   function pushShared(result) { const sl = sharedList(); if (sl) sl.push(result).catch((e) => console.warn('[UPC open-ended patients] shared list', e)); }
   async function myTurn() { const sl = sharedList(); if (!sl) return true; try { return await sl.claim(); } catch (e) { return true; } }
 
@@ -250,8 +258,8 @@
       if (done.length) h += '<div class="card"><div class="card-header"><h2>Recalled (' + done.length + ')</h2></div><div class="card-body p-0"><table class="table table-striped table-bordered w-100 m-0">' + head + '<tbody>' + done.map(row).join('') + '</tbody></table></div></div>';
       if (bad.length) h += '<div class="alert alert-danger upc-err">Notes not read for ' + bad.map((x) => esc(x.name) + ' (' + esc(x.error) + ')').join(', ') + '.</div>';
       const c = r.counts || {};
-      h += '<p class="text-muted">Last seen ' + AFTER_DAYS() + ' to ' + UP_TO_DAYS() + ' days ago, nothing booked, last note leaves treatment open. Left out: ' + (c.recent || 0) + ' seen in the last ' + AFTER_DAYS() + ' days, ' +
-        (c.ended || 0) + ' last appointment cancelled or missed, ' + (c.none || 0) + ' last note doesn\'t leave it open.</p>';
+      h += '<p class="text-muted">Last seen ' + AFTER_DAYS() + ' to ' + UP_TO_DAYS() + ' days ago, nothing booked. Left out: ' + (c.recent || 0) + ' seen in the last ' + AFTER_DAYS() + ' days, ' +
+        (c.ended || 0) + ' last appointment cancelled or missed, ' + (c.none || 0) + ' not open-ended.</p>';
     }
     h += '</div>';
     root.innerHTML = h;
@@ -430,5 +438,5 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', begin, { once: true });
   else begin();
 
-  window.upcCheckIns = { version: VERSION, wording, check, allowed, sendTime, fill };
+  window.upcCheckIns = { version: VERSION, wording, check, allowed, sendTime, fill, pullShared };
 })();

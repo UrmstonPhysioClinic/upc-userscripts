@@ -84,7 +84,7 @@
     {
       "file": "open-ended-patients.user.js",
       "name": "UPC Patients: Open-ended patients (beta)",
-      "version": "0.2.0",
+      "version": "0.2.1",
       "was": "check-ins.user.js"
     },
     {

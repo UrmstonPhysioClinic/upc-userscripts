@@ -211,6 +211,13 @@ async def main():
         await pg.wait_for_selector('[data-upc-check-ins] .alert-danger', timeout=30000)
         err = await pg.evaluate("document.querySelector('[data-upc-check-ins] .alert-danger').textContent")
         check('template with [Appointment Date]: not sent, says why', len(S['posts']) == 1 and '[Appointment Date]' in err and 'Nothing was sent' in err, (len(S['posts']), err))
+        # A newer list from a PC still on an older version (no practitioners) doesn't replace this PC's
+        for v in S['notes'].values():
+            for n in v:
+                if 'UPC shared list: Open-ended patients' in n['html']:
+                    n['html'] = re.sub(r'<p>data .*?</p>', lambda m: '<p>data ' + json.dumps({'at': int(NOW.timestamp() * 1000) + 3600e3, 'by': '0.1.11', 'rows': [], 'counts': {}, 'listed': 0}).replace('"', '&quot;') + '</p>', n['html'])
+        kept = await pg.evaluate("window.upcCheckIns.pullShared(0).then(() => JSON.parse(localStorage.getItem('upc-ci:result')).by)")
+        check('an older version\'s list from another PC doesn\'t replace this one', kept != '0.1.11', kept)
         native = await pg.evaluate("document.querySelector('[data-upc-check-ins]').classList.contains('upc-native')")
         check('native look', native)
         check('no page errors', not errors, errors)
