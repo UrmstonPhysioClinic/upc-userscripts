@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.62
+// @version      0.1.63
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.62';
+  const VERSION = '0.1.63';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -997,8 +997,8 @@
       const before = (await adminNotes.list(kind, id)).map((n) => n.id);
       const want = adminNotes.toText(adminNotes.toHtml(text));
       return adminNotes.save(adminNotes.path(kind, id) + '/new', text, () => adminNotes.settle(kind, id, (notes) => {
-        const added = notes.filter((n) => !before.includes(n.id));
-        return added.length === 1 && added[0].text === want ? added[0] : null;
+        // Another note (another script's shared note) can be added at the same moment: find this one by its text.
+        return notes.filter((n) => !before.includes(n.id)).find((n) => n.text === want) || null;
       }, 'Halaxy accepted the note but does not list it as written. Check the Admin Notes.'));
     },
     // Reads the list until found(notes) gives the note (up to three looks, a second or two apart: Halaxy's list can lag
