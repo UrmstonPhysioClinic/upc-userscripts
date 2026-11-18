@@ -182,7 +182,7 @@ async def main():
         check('the wording found is named', by.get('Patient A', [''] * 6)[4].startswith('open return') and by.get('Patient B', [''] * 6)[4].startswith('book again if needed')
               and by.get('Patient C', [''] * 6)[4].startswith('see how things go') and by.get('Patient D', [''] * 6)[4].startswith('come back if needed'), rows)
         check('practitioner of the last visit', by.get('Patient A', [''] * 6)[3] == 'Diana Satalova' and by.get('Patient B', [''] * 6)[3] == 'Carl Healy', rows)
-        check('last seen and days', by.get('Patient A', [])[1:3] == ['17-Oct-2026', '25'], by.get('Patient A'))
+        check('last seen and whole weeks since', by.get('Patient A', [])[1:3] == ['17-Oct-2026', '3'], by.get('Patient A'))
         check('nothing about Review requests: no column, follow-ups not read', all(len(r) == 6 for r in rows) and not [x for x in S['log'] if 'followup' in x[1]], (rows, S['log']))
         check('left out: booked ahead, under 3 weeks, over 3 months, last one missed, not open-ended, negated, older note only',
               not any(n in names for n in ['Patient E', 'Patient F', 'Patient G', 'Patient I', 'Patient J', 'Patient K']), names)

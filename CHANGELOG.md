@@ -1,5 +1,8 @@
 # Changelog
 
+## Open-ended patients 0.3.2, 18 Nov 2026 (beta)
+- Weeks since the last visit instead of days.
+
 ## Note wording tuned on the clinic's notes: core 0.1.64, Open-ended patients 0.3.1, Patient statuses 0.2.9, Review requests 0.5.11, 18 Nov 2026 (beta)
 - Six months of the clinic's notes (Heidi layout) read for how a course of treatment ends; the shared wording changed to match (project doc clinical-notes-structure.md).
 - How treatment ends is read from the Assessment / Plan part only: past history ("discharged from orthopaedics", "nasal discharge", "self-management: gel") no longer counts.

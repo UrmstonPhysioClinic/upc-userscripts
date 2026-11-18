@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Open-ended patients (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.1
+// @version      0.3.2
 // @upc-was      check-ins.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/open-ended-patients.user.js
@@ -41,7 +41,7 @@
   if (window.__hxCheckIns) return;
   window.__hxCheckIns = true;
 
-  const VERSION = '0.3.1';
+  const VERSION = '0.3.2';
   const ROUTE = 'upc-check-ins';
   const MENU_CLS = 'upc-ci-menu';
   const ALLOWED = () => rule('openEnded.people', ['Carl Healy']);
@@ -272,14 +272,14 @@
       const todo = ok.filter((x) => !recallFor(x, recs)), done = ok.filter((x) => { const k = recallFor(x, recs); return k && k.kind !== 'skip'; });
       const skipped = ok.filter((x) => { const k = recallFor(x, recs); return k && k.kind === 'skip'; }).length;
       const open = todo.filter((x) => x.kind !== 'cancelled'), cancelled = todo.filter((x) => x.kind === 'cancelled');
-      const head = '<thead><tr><th>Patient</th><th>Last seen</th><th class="number">Days</th><th>Practitioner</th><th>Why</th><th></th></tr></thead>';
+      const head = '<thead><tr><th>Patient</th><th>Last seen</th><th class="number">Weeks</th><th>Practitioner</th><th>Why</th><th></th></tr></thead>';
       const row = (x) => {
         const rc = recallFor(x, recs);
         const act = rc ? esc(rc.kind === 'sched' ? (rc.at > Date.now() ? 'Scheduled for ' : 'Sent ') + label(rc.at) + ' ' + two(new Date(rc.at).getHours()) + ':' + two(new Date(rc.at).getMinutes()) : 'Check in Halaxy')
           : state.busy === x.id ? U().ui.run.inline('') : '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-a="recall" data-id="' + esc(x.id) + '"' + (state.busy ? ' disabled' : '') + '>Send recall</button>' +
             '<button type="button" class="btn btn-outline-primary-light" data-a="skip" data-id="' + esc(x.id) + '"' + (state.busy ? ' disabled' : '') + '>Don\'t send</button></div>';
         return '<tr><td><a href="' + esc(base + '/patient/' + x.id) + '" target="_blank" rel="noopener">' + esc(x.name) + '</a></td>' +
-          '<td class="upc-ci-date">' + esc(label(x.lastSeen)) + '</td><td class="number">' + Math.round((today() - new Date(x.lastSeen).setHours(0, 0, 0, 0)) / DAY) + '</td>' +
+          '<td class="upc-ci-date">' + esc(label(x.lastSeen)) + '</td><td class="number">' + Math.floor(Math.round((today() - new Date(x.lastSeen).setHours(0, 0, 0, 0)) / DAY) / 7) + '</td>' +
           '<td>' + esc(x.prac || '') + '</td>' +
           '<td>' + esc(x.kind === 'cancelled' ? x.missed + ' ' + label(x.missedOn) : x.found.join(', ')) + (x.noteId ? ' (<a href="' + esc(base + '/patient/' + x.id + '/clinical/category/note/id/' + x.noteId) + '" target="_blank" rel="noopener">note' + (x.noteDate ? ' ' + esc(label(x.noteDate)) : '') + '</a>)' : '') + '</td>' +
           '<td class="upc-ci-act">' + act + '</td></tr>';
