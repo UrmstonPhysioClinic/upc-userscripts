@@ -4,7 +4,7 @@ Test for Missing details against a mock Halaxy (calendar, practitioner list, pat
 
 Checks: mandatory details (first and last name, date of birth, an address with a postcode, a phone number) read from
 the Edit page; email mentioned but not counted; who is checked (booked in the next 14 days or seen in the last 30, not
-cancelled, not deleted); the list for Carl and Wendy, soonest appointment first, with the practitioner; the menu count;
+cancelled, not deleted); the list for CH and WP, soonest appointment first, with the practitioner; the menu count;
 the banner on every page of a patient for everyone, whether booked or not, gone once the details are saved; complete
 patients not read again; the ids kept for Calendar controls; nothing saved to Halaxy except the shared note.
 

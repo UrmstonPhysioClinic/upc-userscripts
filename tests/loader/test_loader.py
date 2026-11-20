@@ -172,7 +172,7 @@ async def main():
         ASK = '''(t, d) => new Promise((res) => { document.addEventListener('upc-loader-state', (e) => res(JSON.parse(e.detail)), { once: true });
                  document.dispatchEvent(new CustomEvent(t, { detail: d ? JSON.stringify(d) : '' })); })'''
         st = await pg.evaluate('(' + ASK + ')("upc-loader-get")')
-        check('loader state for Script settings', st['version'] == '1.3.0' and st['channel'] == 'stable' and st['chosen'] == 'stable'
+        check('loader state for Script settings', st['version'] == [l.split()[-1] for l in LOADER.splitlines() if '@version' in l][0] and st['channel'] == 'stable' and st['chosen'] == 'stable'
               and any(x['file'] == 'start.user.js' and x['status'] == 'running' and x['on'] for x in st['scripts'])
               and any(x['file'] == 'appsonly.user.js' for x in st['scripts']) and any('throws.user.js' in p for p in st['problems']), st)
         st = await pg.evaluate('(' + ASK + ')("upc-loader-do", { act: "switch", file: "idle.user.js", on: false })')

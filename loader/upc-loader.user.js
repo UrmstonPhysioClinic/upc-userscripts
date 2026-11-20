@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Halaxy scripts
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.3.0
+// @version      1.4.0
 // @description  Runs all of the clinic's Halaxy scripts from GitHub (and the insurer portal fill on the Bupa and AXA provider sites). Install once per PC: new and updated scripts arrive by themselves.
 // @match        https://*.halaxy.com/*
 // @match        https://provider.axahealth.co.uk/*
@@ -46,6 +46,12 @@
  * settings and updates": a self-contained panel that works even when no page
  * script does, so it doesn't use Halaxy's look.
  *
+ * Run by the starter (1.4.0, loader/upc-starter.user.js): once the repository is private, the PCs install the
+ * starter instead of this file. It runs this loader with its Tampermonkey functions (UPC_STARTER is then set) and
+ * keeps the PC's access key, which this loader sends when fetching (Authorization header). Installed on its own as
+ * before, with no key, it works as it always has while the repository is public. The starter's problems (no key,
+ * key refused, key expiring within 30 days) are added to this loader's problems, which the health check shows.
+ *
  * Insurer portals (1.2.0): the loader also runs on the Bupa and AXA provider sites, where only scripts whose
  * own @match names those sites run (Portal fill). There, the PC's channel and switched-off scripts come from a
  * copy the loader keeps whenever Halaxy is open, and it doesn't check for updates. Scripts pass a claim from
@@ -56,7 +62,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '1.3.0';
+  const VERSION = '1.4.0';
   const RAW = 'https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/';
   const CHECK_EVERY_MINUTES = 10;
   const RETRY_STALE_MINUTES = 2;   // GitHub can serve an old file for a few minutes after a change
@@ -276,14 +282,19 @@
 
   // ------------------------------------------------------------------ updates from GitHub
 
+  const accessKey = () => { try { return String(GM_getValue('github-token', '') || '').trim(); } catch (e) { return ''; } };
   function get(url) {
     return new Promise((resolve, reject) => {
+      const headers = {};
+      if (accessKey()) headers.Authorization = 'token ' + accessKey();
       GM_xmlhttpRequest({
         method: 'GET',
         url,
+        headers,
         nocache: true,
         timeout: 20000,
-        onload: (r) => (r.status === 200 ? resolve(r.responseText) : reject(new Error('GitHub returned ' + r.status + ' for ' + url))),
+        onload: (r) => (r.status === 200 ? resolve(r.responseText)
+          : reject(new Error([401, 403, 404].includes(r.status) && typeof UPC_STARTER !== 'undefined' ? 'GitHub refused the access key for ' + url.split('/').pop().split('?')[0] + ' (Tampermonkey menu: UPC starter: access key)' : 'GitHub returned ' + r.status + ' for ' + url))),
         onerror: () => reject(new Error('Could not reach GitHub')),
         ontimeout: () => reject(new Error('GitHub took too long to answer')),
       });
@@ -318,6 +329,19 @@
     const rows = list.map((s) => Object.assign({ short: parse(s.name).short, group: parse(s.name).group }, s));
     rows.sort((a, b) => rank(a.group) - rank(b.group) || a.short.localeCompare(b.short));
     return rows;
+  }
+
+  // The starter's own problems, and its access key running out (warned 30 days ahead).
+  function starterProblems() {
+    if (typeof UPC_STARTER === 'undefined') return [];
+    const out = [];
+    try {
+      const err = GM_getValue('starter:error', '');
+      if (err) out.push('Starter: ' + err);
+      const exp = GM_getValue('starter:expires', 0);
+      if (exp && exp - Date.now() < 30 * 864e5) out.push('Starter: the access key ' + (exp < Date.now() ? 'has expired' : 'expires on ' + new Date(exp).toDateString()) + '. Add a new one from the Tampermonkey menu: UPC starter: access key.');
+    } catch (e) { /* storage unavailable */ }
+    return out;
   }
 
   let checking = null;
@@ -374,6 +398,7 @@
         result.problems.push(e.message);
         local.set('lastCheck:' + channel, Date.now() - (CHECK_EVERY_MINUTES - RETRY_STALE_MINUTES) * 60000);
       }
+      starterProblems().forEach((m) => { if (!result.problems.includes(m)) result.problems.push(m); });
       local.set('lastProblems:' + channel, result.problems);
       if (result.problems.length) console.warn(TAG, result.problems.join('; '));
       checking = null;
@@ -481,7 +506,7 @@
     function render() {
       const idx = readIndex();
       const off = local.get('off', {});
-      $('.status').textContent = 'Loader ' + VERSION + '. Last checked for updates: ' + time(local.get('lastCheck:' + channel, 0)) + '.';
+      $('.status').textContent = (typeof UPC_STARTER !== 'undefined' ? 'Starter ' + UPC_STARTER.version + ', loader ' : 'Loader ') + VERSION + '. Last checked for updates: ' + time(local.get('lastCheck:' + channel, 0)) + '.';
       sh.querySelectorAll('input[name="ch"]').forEach((r) => { r.checked = r.value === channel; });
       const list = idx && idx.scripts.length ? idx.scripts : null;
       let last = '';

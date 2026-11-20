@@ -11,7 +11,7 @@ Checks: who is listed and where; what's left out and counted; the menu count; no
 notes read only for finished patients, and not again on the next check; Send review request (Halaxy's
 Add Follow-Up with the Review Request templates, by email, confirmed first, checked afterwards); Don't
 ask (the label added on the Edit page with every other field sent back unchanged, checked afterwards);
-only Carl sees it; the Halaxy look.
+only CH sees it; the Halaxy look.
 
 Run:  python3 tests/review-requests/test_review_requests.py
 Needs: Python 3 with Playwright (Chromium).

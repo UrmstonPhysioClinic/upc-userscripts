@@ -1,5 +1,5 @@
 """
-Test for calendar controls' paid look on £0 invoices (Carl, 10 Nov 2026), on a minimal mock calendar.
+Test for calendar controls' paid look on £0 invoices (CH, 10 Nov 2026), on a minimal mock calendar.
 
 Checks: an appointment whose invoice is £0 is drawn exactly as a paid one (payment status and icon class
 taken from a paid appointment); unpaid appointments with something to pay and paid ones are untouched;

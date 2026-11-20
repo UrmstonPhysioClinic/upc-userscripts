@@ -4,7 +4,7 @@
 Copies each beta/<file> to stable/<file>, changing only what must differ between the channels:
 the " (beta)" suffix on @name, and the beta/ path in @updateURL and @downloadURL.
 Run tools/build_manifest.py and tests/check_scripts.py afterwards.
-Only promote what Carl has confirmed working on live Halaxy (CLAUDE.md).
+Only promote what CH has confirmed working on live Halaxy (CLAUDE.md).
 """
 import re
 import sys

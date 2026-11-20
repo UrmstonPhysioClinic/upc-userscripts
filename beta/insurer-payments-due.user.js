@@ -1,12 +1,12 @@
 // ==UserScript==
 // @name         UPC Billing: Insurer payments due (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.10
+// @version      0.1.11
 // @upc-was      funder-chaser.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/insurer-payments-due.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/insurer-payments-due.user.js
-// @description  Finances > Insurer payments due (Carl only for now): insurer invoices marked Issued that still aren't paid 30 days after their invoice date, with a count on the menu. Reads only.
+// @description  Finances > Insurer payments due (CH only for now): insurer invoices marked Issued that still aren't paid 30 days after their invoice date, with a count on the menu. Reads only.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
 // @grant        none
@@ -14,31 +14,31 @@
 // ==/UserScript==
 
 /*
- * Insurer payments due (Carl, 10 and 11 Nov 2026; named by Carl; first built as Funder chaser, and the file keeps that name).
+ * Insurer payments due (CH, 10 and 11 Nov 2026; named by CH; first built as Funder chaser, and the file keeps that name).
  *
  *  - One request: Halaxy's Unpaid Invoices report (core's UPC.reports.unpaidLines), which lists every unpaid invoice,
  *    Active or Issued, with its payer, funder, date and balance.
  *  - A funder invoice is one billed to the insurer itself (the payer is the funder), as Ready to bill tells them apart.
  *  - Overdue: marked Issued (submitted), a balance still to pay, and the invoice date (set to the billing day by Invoice
  *    Funder) 30 days ago or more. A remittance attached doesn't matter: until the payment is recorded it still counts
- *    (Carl, 11 Nov 2026: "an invoice with a Remittance but no payment should also flag").
+ *    (CH, 11 Nov 2026: "an invoice with a Remittance but no payment should also flag").
  *  - Also shown, greyed: funder invoices still Active (not marked Issued) after 30 days, which may never have been
  *    submitted. Not counted on the menu.
- *  - Just the list and the count for now (Carl): no tasks.
+ *  - Just the list and the count for now (CH): no tasks.
  */
 (() => {
   'use strict';
   if (window.__hxFunderChaser) return;
   window.__hxFunderChaser = true;
 
-  const VERSION = '0.1.10';
+  const VERSION = '0.1.11';
   const ROUTE = 'upc-funder-chaser';
   const MENU_CLS = 'upc-fc-menu';
   const ALLOWED = () => rule('insurerPayments.people', ['Carl Healy']);
   const DAY = 86400e3;
   // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
   const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
-  const OVERDUE_DAYS = () => rule('insurerPayments.overdueDays', 30);   // Carl, 11 Nov 2026: 30 days for every insurer to start with
+  const OVERDUE_DAYS = () => rule('insurerPayments.overdueDays', 30);   // CH, 11 Nov 2026: 30 days for every insurer to start with
   const LOOK_BACK_MONTHS = 18;         // how far back the report is read
   const REFRESH_EVERY = 12 * 3600e3;   // menu count: twice a day (it reads 18 months of the Unpaid Invoices report)
   const PAGE_FRESH = 10 * 60e3;
@@ -48,7 +48,7 @@
   const esc = (s) => U().esc(s);
   const store = { get: (k, d) => U().storage(KEY).get(k, d), set: (k, v) => U().storage(KEY).set(k, v), del: (k) => U().storage(KEY).del(k) };   // core's per-PC storage
 
-  // Shared with every PC (Carl, 16 Nov 2026; core's UPC.sharedResult): one PC works the list out and every PC
+  // Shared with every PC (CH, 16 Nov 2026; core's UPC.sharedResult): one PC works the list out and every PC
   // shows it, so the list (and its count) is the same everywhere and Halaxy is read once for the clinic.
   const sharedList = () => (U() && U().sharedResult ? U().sharedResult('Insurer payments due') : null);
   async function pullShared(maxAge) { const sl = sharedList(); if (!sl) return; try { await sl.pull(store, maxAge); } catch (e) { /* this PC's own list */ } }

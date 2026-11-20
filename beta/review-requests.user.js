@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         UPC Patients: Review requests (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.5.11
+// @version      0.5.12
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
-// @description  Patients > Review requests (Carl only): patients who have finished treatment with a good outcome in their notes, Progress Update form or Feedback Request survey, ready to be sent the Review Request follow-up. Send it or mark "No review request" from the list, after confirming.
+// @description  Patients > Review requests (CH only): patients who have finished treatment with a good outcome in their notes, Progress Update form or Feedback Request survey, ready to be sent the Review Request follow-up. Send it or mark "No review request" from the list, after confirming.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
 // @grant        none
@@ -13,16 +13,16 @@
 // ==/UserScript==
 
 /*
- * Review requests (agreed with Carl, 10 Nov 2026).
+ * Review requests (agreed with CH, 10 Nov 2026).
  *
- *  - Finished, asked while it's fresh (Carl, 10 Nov 2026: "2 to 8 weeks is a long time"): nothing
+ *  - Finished, asked while it's fresh (CH, 10 Nov 2026: "2 to 8 weeks is a long time"): nothing
  *    booked, the last appointment wasn't cancelled or missed, and either the last notes say treatment
  *    has finished ("discharged", "goals met", "self-managing", "see as needed"), from the day after
  *    that visit, or 2 weeks have passed with nothing booked. Nobody last seen over 4 weeks ago.
  *    One calendar request for everyone.
  *  - Left out: anyone with a "Review Request" follow-up already (Tasks & Follow-Ups, one request),
  *    under-16s, anyone with an unpaid invoice of their own, and anyone marked "Don't ask this time" for this visit.
- *  - "Don't ask this time" (Carl, 16 Nov 2026; replaces the "No review request" label, which is no longer read): kept in
+ *  - "Don't ask this time" (CH, 16 Nov 2026; replaces the "No review request" label, which is no longer read): kept in
  *    the shared Admin Note "UPC shared checks: Review requests" as the patient and the last visit it applies to, so
  *    they are suggested again after a new visit.
  *  - Feedback Request survey (11 Nov 2026): the latest response from this course of treatment (matched by name, checked
@@ -33,12 +33,12 @@
  *    "referred to GP" count against. Notes are read in the browser only: what's kept is the patient,
  *    the dates and which kinds of phrase matched, never the note text.
  *  - Send review request: Halaxy's Add Follow-Up with the Review Request template, by email, for the next
- *    weekday at 10:30 (Carl, 10 Nov 2026: "whatever creates the least work and drives the most conversions";
+ *    weekday at 10:30 (CH, 10 Nov 2026: "whatever creates the least work and drives the most conversions";
  *    review sellers' data favours weekday late mornings). Only the email template is used, not the
  *    follow-up template, which would set its own time. If Halaxy has an email template called
  *    "Review Reminder", a reminder is added for a week later at the same time; without one, nothing more.
  *    Don't ask: adds the "No review request" label on the patient's Edit page. Both ask first.
- *  - Shown only to Carl (by Halaxy sign-in). The menu count is refreshed at most every 12 hours in the
+ *  - Shown only to CH (by Halaxy sign-in). The menu count is refreshed at most every 12 hours in the
  *    visible tab, shared across tabs, skipped while Halaxy has asked scripts to pause. Each patient's
  *    result is kept for a week, so only newly finished patients are read again.
  */
@@ -47,12 +47,12 @@
   if (window.__hxReviewRequests) return;
   window.__hxReviewRequests = true;
 
-  const VERSION = '0.5.11';
+  const VERSION = '0.5.12';
   const ROUTE = 'upc-review-requests';
   const MENU_CLS = 'upc-rr-menu';
-  const ALLOWED = () => rule('reviewRequests.people', ['Carl Healy']);   // Carl, 10 Nov 2026: just me for now
+  const ALLOWED = () => rule('reviewRequests.people', ['Carl Healy']);   // CH, 10 Nov 2026: just me for now
   const TEMPLATE = 'Review Request';       // follow-up template and email template
-  const REMINDER = 'Review Reminder';      // optional: used only if Carl sets it up in Halaxy
+  const REMINDER = 'Review Reminder';      // optional: used only if CH sets it up in Halaxy
   // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
   const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
   const SEND_AT = () => String(rule('reviewRequests.sendAt', '10:30')).split(':').map(Number);   // weekday late morning
@@ -77,7 +77,7 @@
   const esc = (s) => U().esc(s);
   const store = { get: (k, d) => U().storage(KEY).get(k, d), set: (k, v) => U().storage(KEY).set(k, v), del: (k) => U().storage(KEY).del(k) };   // core's per-PC storage
 
-  // Shared with every PC (Carl, 16 Nov 2026; core's UPC.sharedResult): one PC works the list out and every PC
+  // Shared with every PC (CH, 16 Nov 2026; core's UPC.sharedResult): one PC works the list out and every PC
   // shows it, so the list (and its count) is the same everywhere and Halaxy is read once for the clinic.
   const sharedList = () => (U() && U().sharedResult ? U().sharedResult('Review requests') : null);
   async function pullShared(maxAge) { const sl = sharedList(); if (!sl) return; try { await sl.pull(store, maxAge); } catch (e) { /* this PC's own list */ } }
@@ -179,7 +179,7 @@
       if (out.progress >= 4) out.good.unshift('Progress Update +' + out.progress);
       else if (out.progress <= 1) out.bad.unshift('Progress Update ' + (out.progress > 0 ? '+' : '') + out.progress);
     }
-    // Feedback Request survey (Carl, 11 Nov 2026): the latest response from this course of treatment, matched by name
+    // Feedback Request survey (CH, 11 Nov 2026): the latest response from this course of treatment, matched by name
     // and checked against the date of birth. Excellent counts for; Below expected counts against.
     const key = U().patient.nameKey(p.name);
     const mine = (responses || []).filter((x) => x.answered && x.answered >= since && U().patient.nameKey(x.name) === key).sort((a, b) => b.answered - a.answered);

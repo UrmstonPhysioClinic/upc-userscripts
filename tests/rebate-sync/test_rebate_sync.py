@@ -280,7 +280,7 @@ async def main():
         check('invoices already disagree: not saved, says why, nothing changed', 'Not saved' in txt and 'disagree' in txt and not [x for x in S['log'] if '/remove' in x[2] or x[1] == 'POST'], (txt, S['log']))
         await ctx.close()
 
-        # 6. Halaxy refuses the re-bill part way (Issued funder invoice): everything put back, Issued again, a task for Carl
+        # 6. Halaxy refuses the re-bill part way (Issued funder invoice): everything put back, Issued again, a task for CH
         S.clear(); S.update(fresh())
         S['funders'][101]['status'] = 'issued'
         S['failClaimOnce'] = True
@@ -297,7 +297,7 @@ async def main():
               [(l['amount'], l['date']) for l in f['lines']] == [(6000, '02-Oct-2026')] and pt['lines'][0]['rebate'] == 6000 and not pt['pending'], (f, pt))
         check('stopped part way: Issued again', f['status'] == 'issued', S.get('statuses'))
         tk = S.get('tasks', {}).get(101, [])
-        check('says so, and a task for Carl on the funder invoice', 'Everything was put back as it was' in txt and len(tk) == 1 and tk[0].get('form[title]') == 'Rebate sync stopped on UPC-40001: please check'
+        check('says so, and a task for CH on the funder invoice', 'Everything was put back as it was' in txt and len(tk) == 1 and tk[0].get('form[title]') == 'Rebate sync stopped on UPC-40001: please check'
               and tk[0].get('form[linkPrGs][]') == '31' and 'Everything was put back' in tk[0].get('form[comment]', ''), (txt[-400:], tk))
         await ctx.close()
         await browser.close()

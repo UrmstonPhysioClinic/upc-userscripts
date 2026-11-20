@@ -4,7 +4,7 @@ requests' test, confirmed live). Invented patients and notes only.
 
 Checks: open-ended wording in the latest note, 3 weeks to 3 months after the last visit, nothing booked, last visit
 not cancelled or missed; negations; only the latest note counts; Review Request marked; the menu count; note text
-not stored; cached between checks; Carl only. Send recall (0.2.0): confirm, Email patient scheduled for the next weekday
+not stored; cached between checks; CH only. Send recall (0.2.0): confirm, Email patient scheduled for the next weekday
 10:30 with the "Recall - Open-ended" template, the last visit's practitioner written in, Halaxy's tags left; recorded in
 the shared note so it isn't offered again; a template with a tag the script can't fill isn't sent.
 

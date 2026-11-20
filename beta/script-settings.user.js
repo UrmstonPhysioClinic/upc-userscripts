@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         UPC System: Script settings (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.6
+// @version      0.2.7
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/script-settings.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/script-settings.user.js
-// @description  "Script settings" in Halaxy's account menu (your name, top right): every script's options, which scripts run on this PC, stable or beta, updates, and the clinic settings every PC shares (Carl changes them). Replaces the Tampermonkey menu.
+// @description  "Script settings" in Halaxy's account menu (your name, top right): every script's options, which scripts run on this PC, stable or beta, updates, and the clinic settings every PC shares (CH changes them). Replaces the Tampermonkey menu.
 // @match        https://*.halaxy.com/a/*
 // @run-at       document-idle
 // @grant        none
@@ -13,7 +13,7 @@
 // ==/UserScript==
 
 /*
- * Script settings (Carl, 10 Nov 2026: "not keen on this Tampermonkey menu at all").
+ * Script settings (CH, 10 Nov 2026: "not keen on this Tampermonkey menu at all").
  *
  *  - Adds "Script settings" to Halaxy's account menu (#practitioner-select, above Log Out).
  *  - Its pop-up lists each script's options (the items scripts register with GM_registerMenuCommand,
@@ -23,15 +23,15 @@
  *  - Once the menu item is in place the page is marked data-upc-script-settings, so the loader leaves
  *    scripts' items out of the Tampermonkey menu. The loader's own "UPC scripts: settings and updates"
  *    stays there as a way in if Halaxy's menu ever changes.
- *  - Clinic settings (Carl, 15 Nov 2026): the rules every PC shares (core's UPC.settings, kept in an Admin Note on
- *    UPC scripts (settings)). Everyone can see them; only Carl can change them. Each PC uses a change within the hour.
+ *  - Clinic settings (CH, 15 Nov 2026): the rules every PC shares (core's UPC.settings, kept in an Admin Note on
+ *    UPC scripts (settings)). Everyone can see them; only CH can change them. Each PC uses a change within the hour.
  */
 (() => {
   'use strict';
   if (window.__hxScriptSettings) return;
   window.__hxScriptSettings = true;
 
-  const VERSION = '0.2.6';
+  const VERSION = '0.2.7';
   const U = () => window.UPC;
   const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const STATUS = { running: 'running on this page', next: 'starts on next page', off: 'switched off', unused: 'not used on this page' };

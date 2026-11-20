@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Block reporting to Halaxy (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.2
+// @version      0.2.3
 // @upc-was      block-error-reporting.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/block-reporting.user.js
@@ -13,7 +13,7 @@
 // ==/UserScript==
 
 /*
- * Block reporting to Halaxy (Carl, 12 Nov 2026): "is there anything we can implement to robustly block Sentry and our
+ * Block reporting to Halaxy (CH, 12 Nov 2026): "is there anything we can implement to robustly block Sentry and our
  * scripts leaking to Halaxy from our end?" and "Userpilot can go too".
  *
  * Halaxy's pages load two services that report what happens in the browser:
@@ -36,11 +36,11 @@
 (function () {
   'use strict';
   if (window.__upcBlockReporting) return;
-  const VERSION = '0.2.2';
+  const VERSION = '0.2.3';
   const blocked = { scripts: 0, requests: 0 };
   window.__upcBlockReporting = { version: VERSION, blocked };
 
-  // Per-person settings (Script settings > Clinic settings, Carl 15 Nov 2026): once saved there they follow the person
+  // Per-person settings (Script settings > Clinic settings, CH 15 Nov 2026): once saved there they follow the person
   // signed in, on any PC; until then this PC's own switch. Read from core when it knows who is signed in, else from what
   // core kept for this PC's last sign-in (scripts that start before the page is ready).
   const personal = (key) => {

@@ -398,7 +398,7 @@ async def main():
         check('provider shortfall left for a person', 'By hand' in rows[2] and 'Provider shortfall' in rows[2], rows[2])
 
         # Apply, but Halaxy refuses the date correction on the re-billed line: everything put back as it was, and a task
-        # for Carl (Carl, 12 Nov 2026)
+        # for CH (CH, 12 Nov 2026)
         S['failLineDateOnce'] = True
         await pg.evaluate("document.querySelector('[data-upc-remittances]').querySelector('[data-act=apply]').click()")
         await pg.evaluate("document.querySelector('[data-upc-remit-confirm] [data-a=yes]').click()")
@@ -409,7 +409,7 @@ async def main():
         check('a failed move is put back: patient rebate as it was, nothing waiting, Issued again',
               [l['rebate'] for l in p2['lines']] == [6000, 6000, 6000] and not p2['pending'] and f2['status'] == 'issued', (p2, f2['status']))
         tk = S['tasks'].get(102, [])
-        check('says it was put back, and a task for Carl on the funder invoice', 'Everything on UPC-40002 was put back as it was' in log0 and len(tk) == 1
+        check('says it was put back, and a task for CH on the funder invoice', 'Everything on UPC-40002 was put back as it was' in log0 and len(tk) == 1
               and tk[0].get('form[title]') == 'Remittances stopped on UPC-40002: please check' and tk[0].get('form[linkPrGs][]') == '31' and 'put back as it was' in str(tk[0].get('form[comment]')), (log0[-600:], tk))
         check('no excess task when the move failed', 202 not in S['tasks'], S['tasks'])
         S['tasks'].clear(); S['statuses'] = []; S['linedates'] = 0
@@ -423,7 +423,7 @@ async def main():
         dlg = await pg.evaluate("document.querySelector('[data-upc-remit-confirm]').textContent")
         check('asks before changing anything', 'Patients will owe £ 36.00' in dlg and 'UPC-40002: 02-Oct-2026 £ 60.00 to £ 24.00' in dlg, dlg)
         await pg.evaluate("document.querySelector('[data-upc-remit-confirm] [data-a=yes]').click()")
-        # While it works: a progress bar and one line, no table and no step list (Carl, 13 Nov 2026)
+        # While it works: a progress bar and one line, no table and no step list (CH, 13 Nov 2026)
         await pg.wait_for_function("!!document.querySelector('[data-upc-remittances] .upc-run .progress')", timeout=30000)
         mid = await pg.evaluate("""({ table: !!document.querySelector('[data-upc-remittances] tbody'), now: (document.querySelector('[data-upc-remittances] .upc-run-now') || {}).textContent,
             logShown: !!document.querySelector('[data-upc-remittances] details.upc-run-log[open]') })""")
@@ -447,7 +447,7 @@ async def main():
         today = datetime.date.today().strftime('%d-%b-%Y')
         t0 = tk[0] if tk else {}
         check('task added on the patient invoice to bill the excess', len(tk) == 1 and str(t0.get('form[title]', '')).startswith('Bill excess: UPC-30002 (WPA remittance 2026-10-08'), tk)
-        check('task assigned to Carl, due today, medium priority', t0.get('form[linkPrGs][]') == '31' and t0.get('form[displayDueDate]') == today and t0.get('form[priority]') == '2' and t0.get('form[actionerType]') == '1', t0)
+        check('task assigned to CH, due today, medium priority', t0.get('form[linkPrGs][]') == '31' and t0.get('form[displayDueDate]') == today and t0.get('form[priority]') == '2' and t0.get('form[actionerType]') == '1', t0)
         check('task comment says what moved and what the patient owes', 'Moved to the patient: 01-Oct-2026 £ 36.00 (WPA paid £ 24.00)' in str(t0.get('form[comment]')) and 'Patient owes' in str(t0.get('form[comment]')), t0.get('form[comment]'))
         check('no tasks on invoices without an excess', sorted(S['tasks']) == [202], sorted(S['tasks']))
         check('other invoices untouched', [l['amount'] for l in S['funders'][101]['lines']] == [6000] and [l['amount'] for l in S['funders'][103]['lines']] == [6000])
@@ -496,7 +496,7 @@ async def main():
         S['funders'][103]['lines'][0]['amount'] = 6000
         S['paid'] = {}   # the rest of the test works on unpaid invoices
 
-        # Re-uploading after the excess was moved (Carl, 13 Nov 2026): said plainly, whatever the split; part moved by
+        # Re-uploading after the excess was moved (CH, 13 Nov 2026): said plainly, whatever the split; part moved by
         # hand, or more than the excess: not changed, check by hand
         rows = await pg.evaluate("[...document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr')].map(r => r.innerText.replace(/\\s+/g, ' '))")
         r2 = next((r for r in rows if 'UPC-40002' in r), '')
@@ -514,7 +514,7 @@ async def main():
         for l, a in zip(lines102, keep):
             l['amount'] = a
 
-        # Re-uploading where the remittance was attached by hand without details (Carl, 13 Nov 2026): the same file gets
+        # Re-uploading where the remittance was attached by hand without details (CH, 13 Nov 2026): the same file gets
         # the full details in place; a different file under the same name is left alone, this one attached as well, and a
         # task to check it; an invoice without it gets it
         wpa_bytes = pdfs['wpa'].read_bytes()
@@ -534,7 +534,7 @@ async def main():
         check('a different file under the same name: left alone, this one attached as well, with details',
               len(a2) == 2 and a2[0]['bytes'] == b'%PDF-1.4 some other document' and a2[0]['comments'] == '' and 'invoices UPC-' in a2[1]['comments'] and 'already has a different file' in log3, (a2, log3[-800:]))
         tk = S['tasks'].get(102, [])
-        check('and a task for Carl to check the other file', len(tk) == 1 and tk[0].get('form[title]') == 'Check the remittance attached to UPC-40002', tk)
+        check('and a task for CH to check the other file', len(tk) == 1 and tk[0].get('form[title]') == 'Check the remittance attached to UPC-40002', tk)
         check('an invoice without it gets it attached', len(S['attachments'].get(103, [])) == 1, S['attachments'].get(103))
 
         # "Check remittance" on a funder invoice: opens Remittances with the attached file
@@ -547,14 +547,14 @@ async def main():
         await pg.goto('https://eu.halaxy.com/a/pr/555/invoice/#upc-remittances')
         await pg.wait_for_selector('[data-upc-remittances] input[type=file]', state='attached', timeout=30000)
 
-        # The insurer paid nothing for a fee: it stays on the funder invoice at £0.00, never removed (Carl, 9 Nov 2026)
+        # The insurer paid nothing for a fee: it stays on the funder invoice at £0.00, never removed (CH, 9 Nov 2026)
         res = await pg.evaluate("""(async () => { try { const f = await UPC.invoice.fetch('103'); const l = f.lines[0];
             const plan = await UPC.rebate.plan('103', l.lineId, 0); await UPC.rebate.apply(plan); return 'ok'; } catch (e) { return e.message; } })()""")
         f3, p3 = S['funders'][103]['lines'], S['patients'][203]
         check('fee the insurer paid nothing for stays on the funder invoice at £0.00, correctly dated',
               res == 'ok' and [l['amount'] for l in f3] == [0] and [l['date'] for l in f3] == ['02-Oct-2026'], (res, f3))
         check('patient owes the fee, nothing left waiting to bill', not p3['pending'] and [l['rebate'] for l in p3['lines']] == [0], p3)
-        # A move that fails part way is put back as it was, at either stage (Carl, 12 Nov 2026)
+        # A move that fails part way is put back as it was, at either stage (CH, 12 Nov 2026)
         S['funders'][104] = {'id': 104, 'number': 'UPC-40004', 'lines': [{'lineId': 1041, 'pid': 204, 'plineId': 2041, 'date': '02-Oct-2026', 'item': 'PHY', 'amount': 6000}], 'status': ''}
         S['patients'][204] = {'id': 204, 'number': 'UPC-30004', 'lines': [{'lineId': 2041, 'date': '02-Oct-2026', 'item': 'PHY', 'fee': 6000, 'rebate': 6000}], 'pending': []}
         f4, p4 = S['funders'][104], S['patients'][204]
@@ -677,7 +677,7 @@ async def main():
         notes = await pg.evaluate("[...document.querySelectorAll('[data-upc-remittances] .upc-rem-notes li')].map((l) => l.textContent)")
         check('corrected back: the amounts add up again and the warning goes', not any('add up to' in n for n in notes), notes)
 
-        # A line the reading missed: added by hand from the paper copy, checked in Halaxy, totals checked again (Carl, 13 Nov 2026)
+        # A line the reading missed: added by hand from the paper copy, checked in Halaxy, totals checked again (CH, 13 Nov 2026)
         await pg.set_input_files(RS + ' input[type=file]', str(pdfs['axa']))
         await pg.wait_for_function("!!document.querySelector('[data-upc-remittances] [data-act=addline]') && document.querySelectorAll('[data-upc-remittances] tbody tr').length === 2", timeout=120000)
         await pg.fill(RS + ' [data-add=inv]', 'UPC-40021')

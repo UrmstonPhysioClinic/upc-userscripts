@@ -305,7 +305,7 @@ async def main():
         check('another sign-in: opening it does nothing', await pg.evaluate("document.querySelector('[data-hx-health]').innerHTML") == '')
         STATE['user'] = 'Carl Healy'
         probs, pill = await load()
-        check('Carl signs in on the same PC: the problem collected meanwhile shows', pill.startswith('Clinic scripts:') and
+        check('CH signs in on the same PC: the problem collected meanwhile shows', pill.startswith('Clinic scripts:') and
               await pg.evaluate("window.__menu.map(m => m[0])") == ['Health check: show results'], (pill, await pg.evaluate("window.__menu.map(m => m[0])")))
         STATE['user'] = ''
         STATE['break'] = {'login'}

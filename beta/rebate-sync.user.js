@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Rebate sync (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.4
+// @version      0.3.5
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/rebate-sync.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/rebate-sync.user.js
@@ -16,7 +16,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '0.3.4';
+  const VERSION = '0.3.5';
   const MONEY_FIELDS = ['form[amount]', 'form[rebate]', 'form[tax]', 'form[taxManual]'];
 
   const snapshots = {};      // lineId -> { fields: [[name, value]], at }
@@ -161,7 +161,7 @@
   async function doSync(plan) {
     const d = showDialog();
     d.title('Updating both invoices');
-    // A progress bar and the current step while it works; the steps behind View log (Carl, 13 Nov 2026).
+    // A progress bar and the current step while it works; the steps behind View log (CH, 13 Nov 2026).
     const prog = U().ui.run.start(0);
     const render = (extra) => d.body((extra || '') + U().ui.run.html(prog));
     d.buttons([]);
@@ -176,7 +176,7 @@
       U().ui.run.end(prog);
       render(`<div class="alert alert-danger upc-err upc-gap">${esc(e.message || e)}</div>`);
       d.buttons([['Reload', () => location.reload(), true]]);
-      // A task to look at why it failed (Carl, 12 Nov 2026), for whoever Clinic settings names. The core library has already
+      // A task to look at why it failed (CH, 12 Nov 2026), for whoever Clinic settings names. The core library has already
       // put it back as it was if it could; the message says which.
       const taskFor = U().settings && U().settings.def('rebateSync.taskFor') ? U().settings.get('rebateSync.taskFor') : 'Carl Healy';
       try {

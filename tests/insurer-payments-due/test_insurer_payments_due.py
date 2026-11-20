@@ -4,7 +4,7 @@ columns confirmed live 10 Nov 2026). Invented invoices only.
 
 Checks: insurer invoices marked Issued and unpaid 30+ days are listed, oldest first, part-paid with what's left;
 newer ones, patients' own invoices and self-funded are left out; Active ones after 30 days are greyed and not
-counted; the menu count; Carl only; a changed report is an error passed to the health check.
+counted; the menu count; CH only; a changed report is an error passed to the health check.
 
 Run:  python3 tests/insurer-payments-due/test_insurer_payments_due.py
 """
@@ -171,7 +171,7 @@ async def main():
         await ctx.close()
         S['lateUser'] = 0
 
-        # Not Carl: nothing
+        # Not CH: nothing
         S.update({'log': [], 'user': 'Someone Else'})
         ctx = await context(browser)
         pg = await ctx.new_page()

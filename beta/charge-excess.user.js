@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Schedule excess (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.0
+// @version      0.2.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/charge-excess.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/charge-excess.user.js
@@ -13,14 +13,14 @@
 // ==/UserScript==
 
 /*
- * Schedule excess (Carl, 16 Nov 2026; file name from its first name, Charge excess). On a patient invoice that has been billed to its funder and still has something
+ * Schedule excess (CH, 16 Nov 2026; file name from its first name, Charge excess). On a patient invoice that has been billed to its funder and still has something
  * outstanding (the excess), one button, after a confirm:
  *
  *  1. Invoice settings (cogwheel, /invoice/options/:id): Due Date = a week from today (core UPC.invoice.setSettings).
  *  2. Send Invoice Email (/email/document/invoice/:id, form#composeEmailForm; capture 16 Nov 2026): the form as Halaxy
  *     fills it (sender, recipient, BCC), with the template's subject and body as Halaxy's own Send box gets them when
  *     the template is chosen: GET /communication/template/render/:template/invoice/:id, after the due date is set so
- *     [Invoice Due Date] is filled. The template is the one in Halaxy (Carl edits it there, 16 Nov 2026): "Chase -
+ *     [Invoice Due Date] is filled. The template is the one in Halaxy (CH edits it there, 16 Nov 2026): "Chase -
  *     Excess Due" unless Clinic settings names another. The editor is never used, so its inline styles are kept. Merge
  *     tags left for sending, such as [Payment Link], are wrapped as Halaxy's own (span.dynamicterm).
  *  3. Schedule Payment (/invoicefunctions/payment/scheduled/new/invoice/:id, form#newScheduledPaymentForm; capture
@@ -39,7 +39,7 @@
   if (window.__hxChargeExcess) return;
   window.__hxChargeExcess = true;
 
-  const VERSION = '0.2.0';
+  const VERSION = '0.2.1';
   const U = () => window.UPC;
   if (!/^\/a\/pr\/\d+\//.test(location.pathname)) return;
   // A patient invoice: /invoice/{id} or /patient/invoice/{patient}/{id}; not the patient's Invoices tab.

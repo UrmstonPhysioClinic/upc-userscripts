@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         UPC Billing: Portal fill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.21
+// @version      0.1.22
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
-// @description  "Fill on the Bupa portal" / "Fill on the AXA portal" on a Bupa or AXA funder invoice: fills the claim on the insurer's provider site from Halaxy and stops before submitting, for Carl or Wendy to check and submit. Once the portal says it was submitted, offers to mark the funder invoice Issued. Needs loader 1.2.0.
+// @description  "Fill on the Bupa portal" / "Fill on the AXA portal" on a Bupa or AXA funder invoice: fills the claim on the insurer's provider site from Halaxy and stops before submitting, for CH or WP to check and submit. Once the portal says it was submitted, offers to mark the funder invoice Issued. Needs loader 1.2.0.
 // @match        https://*.halaxy.com/a/pr/*
 // @match        https://provider.axahealth.co.uk/*
 // @match        https://providersonline.bupa.co.uk/*
@@ -15,7 +15,7 @@
 // ==/UserScript==
 
 /*
- * Portal fill (agreed with Carl, 11 Nov 2026; layouts captured live the same day).
+ * Portal fill (agreed with CH, 11 Nov 2026; layouts captured live the same day).
  *
  *  In Halaxy, on a Bupa or AXA funder (organisation) invoice, and as the last step of Invoice Funder:
  *   - Reads the claim: the fees on the funder invoice (date, description, amount), the funder invoice's number
@@ -26,13 +26,13 @@
  *   - Passes it to the portal tab through the loader's storage on this PC (loader 1.2.0), only for that portal's
  *     site, and opens the portal. Cleared once done, or after 4 hours.
  *   - When the portal says the invoice was submitted ("submitted successfully"), the funder invoice is marked Issued
- *     straight away by the Halaxy tab it was started from (Carl, 16 Nov 2026: no question needed once the insurer
+ *     straight away by the Halaxy tab it was started from (CH, 16 Nov 2026: no question needed once the insurer
  *     has confirmed), and the portal offers "Back to Halaxy", which closes the portal tabs of this fill.
- *  On the portal, following Carl's steps (portal-fill.md):
+ *  On the portal, following CH's steps (portal-fill.md):
  *   - AXA: membership number, "Submit invoice", then the form: Therapist; payee details (Script settings, Portal
  *     fill: settings); ICS code NA; one fee per treatment line, Outpatient, 1 unit; "add another treatment line"
  *     for each further fee. The condition is highlighted to check.
- *   - Bupa: you log in (on Bupa's separate log-in site, identity.provider.bupa.co.uk, where the script doesn't run; Carl,
+ *   - Bupa: you log in (on Bupa's separate log-in site, identity.provider.bupa.co.uk, where the script doesn't run; CH,
  *     11 Nov 2026: simpler and safer than pressing it for you), then it carries on from Providers Online: closes the cookie box, Create an invoice, invoice number,
  *     first treatment date and pre-auth number, Next on the Pre-Auth Summary, checks Urmston Physio Clinic is the
  *     provider, removes any pre-populated treatment, then adds one fee per treatment (Consultant rooms, 1 session,
@@ -40,26 +40,26 @@
  *   - Stops before submitting, and stops (saying why) at anything it doesn't expect. It never presses Submit.
  *   - While it works, the page is covered (clicks and key presses blocked, Stop still works), and uncovered when it needs
  *     you. A page that sits unchanged under the cover for a minute counts as a failure.
- *   - A fill that fails, in Halaxy or on the portal, sends Carl a task on the funder invoice, and the person filling is
- *     told he has been notified (Carl, 11 Nov 2026). Stopping it with the Stop button doesn't.
+ *   - A fill that fails, in Halaxy or on the portal, sends CH a task on the funder invoice, and the person filling is
+ *     told he has been notified (CH, 11 Nov 2026). Stopping it with the Stop button doesn't.
  */
 (() => {
   'use strict';
   if (window.__hxPortalFill) return;
   window.__hxPortalFill = true;
 
-  const VERSION = '0.1.21';
+  const VERSION = '0.1.22';
   const KEY = 'portal-claim';
   const MAX_AGE = 4 * 3600e3;
   const PORTALS = {
     axa: { name: 'AXA', host: 'provider.axahealth.co.uk', start: 'https://provider.axahealth.co.uk/payment-support-service/form/submit-invoice-updated/' },
     bupa: { name: 'Bupa', host: 'providersonline.bupa.co.uk', start: 'https://providersonline.bupa.co.uk/providers-online/' },
   };
-  // The clinic's own payee details for AXA (Carl, 11 Nov 2026: "there is nothing secret"). Can be changed per PC in Script settings.
+  // The clinic's own payee details for AXA (CH, 11 Nov 2026: "there is nothing secret"). Can be changed per PC in Script settings.
   const DEFAULTS = { payee: 'Urmston Physio Clinic', providerCode: 'ZZ03779', email: 'admin@urmstonphysioclinic.com', phone: '01617484100' };
   // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
   const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
-  const OWNER = () => rule('portalFill.taskFor', 'Carl Healy');   // gets a task in Halaxy when a fill fails (Carl, 11 Nov 2026)
+  const OWNER = () => rule('portalFill.taskFor', 'Carl Healy');   // gets a task in Halaxy when a fill fails (CH, 11 Nov 2026)
   const clean = (s) => String(s === null || s === undefined ? '' : s).replace(/\s+/g, ' ').trim();
   const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -79,7 +79,7 @@
     const m = location.pathname.match(/\/invoice\/(?:\d+\/)?(\d+)\/?$/);
     const invoiceId = m ? m[1] : null;
     // A fill that fails on the portal is reported from any Halaxy page open on this PC, not only the funder invoice
-    // (which may have been closed), so the task to Carl isn't missed.
+    // (which may have been closed), so the task to CH isn't missed.
     const reportFailures = async () => {
       if (document.visibilityState !== 'visible' || !U()) return;
       const c = await shared('get', KEY);
@@ -98,7 +98,7 @@
     const startReporting = () => { setInterval(() => { reportFailures().catch(() => {}); }, 10000); reportFailures().catch(() => {}); };
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startReporting, { once: true }); else startReporting();
 
-    // A fill that fails: a task for Carl on the funder invoice (once per fill), so it's picked up.
+    // A fill that fails: a task for CH on the funder invoice (once per fill), so it's picked up.
     async function notifyOwner(invId, number, portalName, reason, where, key) {
       try {
         await U().tasks.addToInvoice(invId, {
@@ -149,7 +149,7 @@
       const first = same || lines[i + 1] || '';
       return brief(clean(first.replace(/^[-*•\s]+/, '').replace(/^c\s*\/\s*o\s*:?\s*/i, '')));
     }
-    // The condition only, without clinical detail (Carl, 11 Nov 2026: "lower back pain, dull achy quality" should be just
+    // The condition only, without clinical detail (CH, 11 Nov 2026: "lower back pain, dull achy quality" should be just
     // "Lower back pain"): the first phrase, without how long, how it started or what it feels like.
     function brief(c) {
       let s = clean(String(c || '').replace(/(^|\s)\(?([LR])\)\s*/gi, (m, a, side) => a + (/l/i.test(side) ? 'left ' : 'right ')).split(/\s*(?:[,;.:(]|\s[-–]\s)/)[0]);
@@ -202,7 +202,7 @@
       const ed = await U().http.html('/patient/' + encodeURIComponent(pinv.patientId) + '/edit');
       const addr = (part) => { const el = ed.querySelector('[name="patientdetailmain[linkPaG][linkpagaddresses][0][address][' + part + ']"]'); return el ? clean(el.value) : ''; };
       if (!ed.querySelector('[name^="patientdetailmain[linkPaG][linkpagaddresses][0][address]"]')) throw new (U().Error)('The patient Edit page has changed (address not found), so the claim couldn\'t be read.');
-      // The legal name, not the preferred one (Carl, 11 Nov 2026): the Edit page's legal name fields (the preferred name is a separate field).
+      // The legal name, not the preferred one (CH, 11 Nov 2026): the Edit page's legal name fields (the preferred name is a separate field).
       const nm = (part) => { const el = ed.querySelector('[name="patientdetailmain[name][' + part + ']"]'); return el ? clean(el.value) : ''; };
       const legal = nm('forename') && nm('surname') ? nm('forename') + ' ' + nm('surname') : '';
       const settingsForm = (await U().http.popup('/invoice/options/' + invoiceId)).doc.querySelector('[name="form[displayDate]"]');
@@ -320,7 +320,7 @@
         return;
       }
       if (c.status !== 'submitted') return;
-      // The insurer has confirmed: marked Issued straight away (Carl, 16 Nov 2026), whether or not this tab is in front.
+      // The insurer has confirmed: marked Issued straight away (CH, 16 Nov 2026), whether or not this tab is in front.
       asking = true;
       clearInterval(watching); watching = null;
       try { await U().invoice.setStatus(invoiceId, 'issued'); note = 'Submitted to ' + PORTALS[c.kind].name + ' (' + c.number + ', £ ' + c.total + ') and marked Issued.'; noteErr = false; }
@@ -409,7 +409,7 @@
       #upc-pf-cover { position: fixed; inset: 0; z-index: 2147482999; background: rgba(29,36,51,.35); cursor: wait; }
       #upc-pf-panel.upc-pf-busy { top: 50%; left: 50%; right: auto; transform: translate(-50%, -50%); width: 440px; font-size: 15px; padding: 18px 20px; }
     `;
-    // While the script works, the page is covered so a click or key press can't get in the way (Carl, 11 Nov 2026);
+    // While the script works, the page is covered so a click or key press can't get in the way (CH, 11 Nov 2026);
     // the cover goes as soon as it needs you (log in, choose, check and submit) or stops. Stop stays clickable.
     let cover = null, stuck = null;
     function working(message) {
@@ -444,7 +444,7 @@
       panel.innerHTML = '<b>Fill from Halaxy' + (claim ? ': ' + esc(claim.number) + ', ' + esc(claim.patient.name) : '') + '</b><div class="' + (error ? 'upc-pf-err' : '') + '">' + esc(message) + '</div>' +
         (done === 'back' ? '<button type="button" class="upc-pf-main" data-a="back">Back to Halaxy</button>' : done ? '' : '<button type="button" data-a="stop">Stop</button>');
     }
-    // Anything unexpected: the fill stops and Halaxy sends Carl a task (Carl, 11 Nov 2026).
+    // Anything unexpected: the fill stops and Halaxy sends CH a task (CH, 11 Nov 2026).
     const stop = async (message) => {
       if (claim) { claim.status = 'failed'; claim.reason = message; claim.failedAt = Date.now(); await save(); }
       say(message + ' The fill has stopped. ' + ((claim && claim.owner) || OWNER()).split(' ')[0] + ' has been notified (a task in Halaxy) and will pick it up.', true, true);
@@ -609,7 +609,7 @@
           if (pr.retries > 2) return stop('Bupa keeps returning treatment ' + ((pr.added || 0) + 1) + ' without saving it, and shows no message.');
           pr.stage = 'adding'; await save();
         }
-        // Bupa opens a new treatment by itself once the last pre-populated one is removed (Carl, 11 Nov 2026).
+        // Bupa opens a new treatment by itself once the last pre-populated one is removed (CH, 11 Nov 2026).
         // 'asked': the user was asked to choose something; their choice can reload the page (choosing a procedure does).
         const asked = pr.stage === 'asked';
         if (pr.stage !== 'adding' && !asked) { pr.cleared = true; pr.stage = 'adding'; await save(); }
@@ -623,7 +623,7 @@
         if (!place || !from || !to || !count || !charge || !saveBtn) return stop('Bupa\'s treatment form has changed.');
         const cr = optionByText(place, /^consultant rooms$/i);
         if (!cr) return stop('Bupa\'s place of service list has no "Consultant rooms".');
-        // Choosing in Bupa's lists can reload the page (the procedure does, Carl, 11 Nov 2026), which would lose anything typed
+        // Choosing in Bupa's lists can reload the page (the procedure does, CH, 11 Nov 2026), which would lose anything typed
         // first. So the lists come first, each only when it isn't already right, and if the page starts to reload the fill
         // carries on from the reloaded form.
         let leaving = false;
@@ -634,7 +634,7 @@
           await sleep(2000);
           return leaving;
         };
-        // The procedure is the fee (Carl, 11 Nov 2026): Bupa's code (AA360 ...) is in the Halaxy fee's Item Code ("Bup-IA (AA360)"),
+        // The procedure is the fee (CH, 11 Nov 2026): Bupa's code (AA360 ...) is in the Halaxy fee's Item Code ("Bup-IA (AA360)"),
         // and appears somewhere in the procedure's wording in Bupa's list. Matched as a whole code, so AA361 never picks AA3610.
         if (proc && !asked) {
           const codes = String(l.code || '').match(/\b[A-Z]{1,3}\d{2,}[A-Z]?\b/gi) || [];
@@ -644,7 +644,7 @@
           else if (proc.selectedIndex > 0) { if (await choose(proc, proc.options[0].value)) return; }   // pre-selected, but not this fee's code
         }
         if (await choose(place, cr.value)) return;
-        // Provider name: with more than one provider on the claim it starts as "Please select..." (Carl, 11 Nov 2026).
+        // Provider name: with more than one provider on the claim it starts as "Please select..." (CH, 11 Nov 2026).
         const prov = document.querySelector('select[name="providerId"]');
         if (prov) {
           const ours = optionByText(prov, new RegExp(claim.payee && claim.payee.name ? claim.payee.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : 'urmston physio clinic', 'i'));

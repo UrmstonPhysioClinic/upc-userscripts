@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Calendar: Forecourt lights (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.3
+// @version      0.3.4
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/forecourt-lights.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/forecourt-lights.user.js
@@ -13,7 +13,7 @@
 // ==/UserScript==
 
 /*
- * Forecourt lights timer reminder (Carl, 10 Nov 2026).
+ * Forecourt lights timer reminder (CH, 10 Nov 2026).
  *
  *  - The forecourt and sign floodlights run on a timer that moves in 15-minute steps, used on evening
  *    clinic days only. Sunset for Urmston (53.45 N, 2.35 W) is worked out here (NOAA formulae), so
@@ -30,7 +30,7 @@
  *  - Shown only on PCs where it's switched on, and only to the people ticked (by who is signed in to
  *    Halaxy; nobody ticked means anyone), as a Halaxy-style pop-up in the tab being used.
  *    "Remind me later" hides it for an hour (on this PC).
- *  - Shared by every PC (Carl, 15 Nov 2026): the clinic evenings, off time, minutes before sunset, reminder time and
+ *  - Shared by every PC (CH, 15 Nov 2026): the clinic evenings, off time, minutes before sunset, reminder time and
  *    dates to skip are clinic settings (Script settings > Clinic settings; until saved there, each PC keeps its own).
  *    What's been done and what the timer is set to are kept in the Admin Note "UPC shared checks: Forecourt lights"
  *    (core's UPC.shared), so Done on one PC clears the reminder on the others: a PC reads the note (at most every
@@ -43,7 +43,7 @@
   if (window.__hxForecourtLights) return;
   window.__hxForecourtLights = true;
 
-  const VERSION = '0.3.3';
+  const VERSION = '0.3.4';
   const LAT = 53.45, LON = -2.35, TZ = 'Europe/London';
   const STEP = 15;                      // the timer's segments, minutes
   const SNOOZE = 60 * 60e3;

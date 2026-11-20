@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Calendar: Alerts (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.0.3
+// @version      1.0.4
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/alerts.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/alerts.user.js
@@ -28,14 +28,14 @@
   if (window.__hxAlerts) return;
   window.__hxAlerts = true;
 
-  const VERSION = '1.0.3';
+  const VERSION = '1.0.4';
   const CHAT_BADGE_ID = 'btn-chat-popover-open';
   const REPEAT_EVERY_SECONDS = (window.__hxAlertsTest && window.__hxAlertsTest.repeatSeconds) || 15;   // chat alarm repeat
   const MAX_REPEATS = 10;            // set to 0 to sound once only
   const SHARED = 'upc-alerts:';      // storage keys shared by this PC's Halaxy tabs
   const TAB = Math.random().toString(36).slice(2);
 
-  // Per-person settings (Script settings > Clinic settings, Carl 15 Nov 2026): once saved there they follow the person
+  // Per-person settings (Script settings > Clinic settings, CH 15 Nov 2026): once saved there they follow the person
   // signed in, on any PC; until then this PC's own switch. Read from core when it knows who is signed in, else from what
   // core kept for this PC's last sign-in (scripts that start before the page is ready).
   const personal = (key) => {

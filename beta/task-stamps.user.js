@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Calendar: Task stamps (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.4
+// @version      0.1.5
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/task-stamps.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/task-stamps.user.js
@@ -13,12 +13,12 @@
 // ==/UserScript==
 
 /*
- * Task stamps (Carl, 11 Nov 2026): "whenever I create a task (or add to a task) manually, it would be really useful
+ * Task stamps (CH, 11 Nov 2026): "whenever I create a task (or add to a task) manually, it would be really useful
  * if it automatically added a date, time, author stamp for me (or any user) (we use initials)".
  *
  *  - Halaxy's add-task and edit-task pop-ups are form#form_task_edit, with a plain text box form[comment]
  *    (line breaks kept; capture, 11 Nov 2026).
- *  - Also an appointment's Comments in the calendar (Carl, 11 Nov 2026: "we use the same system there").
+ *  - Also an appointment's Comments in the calendar (CH, 11 Nov 2026: "we use the same system there").
  *  - When the box is first clicked into: an empty box gets "2026-11-11 15:49 CH" and a new line starting "- ";
  *    one with text gets a blank line and a new stamp under what's there. The cursor goes under the stamp.
  *  - "- " bullets behave like a rich text list (see bullets()).
@@ -34,7 +34,7 @@
   if (window.__hxTaskStamps) return;
   window.__hxTaskStamps = true;
 
-  const VERSION = '0.1.4';
+  const VERSION = '0.1.5';
   const RECENT = 5 * 60e3;
   // Task comments (add-task and edit-task pop-ups), and an appointment's Comments in the calendar (form#pr-appointment,
   // a plain box form[description]; capture, 11 Nov 2026). Both plain text, line breaks kept.
@@ -71,7 +71,7 @@
   }
   const fire = (el) => el.dispatchEvent(new Event('input', { bubbles: true }));
 
-  // Bullets, like a rich text list (Carl, 11 Nov 2026): Enter on a "- " line starts a new "- " line; Enter on an
+  // Bullets, like a rich text list (CH, 11 Nov 2026): Enter on a "- " line starts a new "- " line; Enter on an
   // empty "- " line ends the list (the "- " goes, leaving a plain new line); Enter after a stamp starts the list;
   // Shift+Enter is a plain new line; Backspace on an empty "- " takes the "- " off.
   const BULLET = /^-[ \t]?/;

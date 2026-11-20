@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.65
+// @version      0.1.66
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.65';
+  const VERSION = '0.1.66';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -563,7 +563,7 @@
     http.expectRefresh(await http.postForm('/invoice/line/' + lineId + '/edit', pairs), what);
   }
 
-  // The steps of a move. If any step fails after something was changed, everything is put back as it was (Carl,
+  // The steps of a move. If any step fails after something was changed, everything is put back as it was (CH,
   // 12 Nov 2026: "any work that was started reverted back to the original state"): the error says whether that
   // worked (error.undone true), or exactly what is left (error.undone false).
   async function moveSteps(plan, funder, say) {
@@ -588,7 +588,7 @@
       await saveLineFields(patientLineId, Object.assign({}, plan.overrides || {}, { 'form[rebate]': money.plain(newRebate) }), 'Saving the new rebate');
 
       // Re-bill what the funder now owes, £0 included, so the fee stays on the funder invoice at that
-      // amount (Carl, 9 Nov 2026: a £0.00 line, never a missing one). Halaxy offers £0 to bill like any amount.
+      // amount (CH, 9 Nov 2026: a £0.00 line, never a missing one). Halaxy offers £0 to bill like any amount.
       say('Re-billing ' + money.fmt(newRebate) + ' to ' + plan.funderNumber);
       await rebill(patientInvoiceId, funderInvoiceId, newRebate);
       stage = 'rebilled';
@@ -863,7 +863,7 @@
     },
     // Insurer profiles seen on invoices (their Bill To), so a bank line with no invoice to go by can still find its
     // insurer's profile, and so the lingering check knows which profiles to look at. Kept on this PC and, for every PC,
-    // in the shared note "UPC shared checks: Insurer profiles" (org.<id> | when | insurer; Carl, 15 Nov 2026).
+    // in the shared note "UPC shared checks: Insurer profiles" (org.<id> | when | insurer; CH, 15 Nov 2026).
     shared: () => shared('Insurer profiles', { keep: 400 * 86400e3 }),
     orgs() {
       const all = Object.assign({}, storage('upc-funder-orgs:').get('list', {}));
@@ -1013,7 +1013,7 @@
     },
     // Deletes a note (capture 14 Nov 2026): GET .../:noteId/delete is Halaxy's "Delete Admin Note" pop-up, whose Delete
     // button is a link to .../:noteId/delete/<hex>; opening that deletes it. Checked by listing afterwards. Only used for
-    // the scripts' own spare shared-check notes (Carl, 15 Nov 2026).
+    // the scripts' own spare shared-check notes (CH, 15 Nov 2026).
     async remove(kind, id, noteId) {
       const del = adminNotes.path(kind, id) + '/' + encodeURIComponent(noteId) + '/delete';
       const { doc } = await http.popup(del);
@@ -1030,7 +1030,7 @@
     },
   };
 
-  // Checks shared between the PCs (Carl, 15 Nov 2026). One Admin Note per script on the "UPC scripts (settings)"
+  // Checks shared between the PCs (CH, 15 Nov 2026). One Admin Note per script on the "UPC scripts (settings)"
   // organisation holds what each PC found, so the other PCs needn't check again, and claims ("checking"), so two PCs
   // don't check the same thing at once. Ids and short codes only, never names. Lines:
   //   <key> | <when found> | <what was found> [| checking <pc> until <time>]
@@ -1086,7 +1086,7 @@
     // The note among the organisation's Admin Notes: the oldest whose first line is ours (so every PC settles on the same
     // one, live 15 Nov 2026: three PCs made one each at the same moment), or the one this PC last used (if its first line
     // was lost). Lines in any other copies are taken in (the newest check wins); those copies are deleted on the next save
-    // (Carl, 15 Nov 2026), or relabelled as spare if Halaxy won't delete them (and deleted on a later save).
+    // (CH, 15 Nov 2026), or relabelled as spare if Halaxy won't delete them (and deleted on a later save).
     const SPARE = 'Spare copy of ' + head + ' (two PCs started it at the same moment). It can be deleted.';
     function pick(notes) {
       const ours = notes.filter((n) => n.text.split('\n')[0] === head).sort((a, b) => Number(a.id) - Number(b.id));
@@ -1395,14 +1395,14 @@
       if (!Array.isArray(rows)) throw new UPCError('The patient\'s task list has changed, so their tasks could not be read.');
       return rows;
     },
-    // A stamp (Carl, 11 Nov 2026): "2026-11-11 15:45 Portal fill" (the date, the time, and who: a script's name or a person's
+    // A stamp (CH, 11 Nov 2026): "2026-11-11 15:45 Portal fill" (the date, the time, and who: a script's name or a person's
     // initials), on its own line with the notes below it.
     stamp(by, when) {
       const d = new Date(when || Date.now());
       const p2 = (n) => String(n).padStart(2, '0');
       return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()) + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes()) + ' ' + by;
     },
-    // A script's task comment (Carl, 11 Nov 2026): the stamp, then each statement on its own line starting "- ".
+    // A script's task comment (CH, 11 Nov 2026): the stamp, then each statement on its own line starting "- ".
     // `lines` is an array or text with line breaks; blank lines are dropped.
     comment(by, lines) {
       const list = (Array.isArray(lines) ? lines : String(lines || '').split('\n')).map((l) => clean(l).replace(/^[-*•]\s*/, '')).filter(Boolean);
@@ -1545,7 +1545,7 @@
       const when = o.when || (() => { const d = new Date(Date.now() + 10 * 60e3); d.setSeconds(0, 0); d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5); return d; })();
       const two = (n) => String(n).padStart(2, '0');
       // Halaxy's follow-ups read the date and time typed in as Sydney time, whatever the practice's time zone:
-      // 11-Nov 10:30 entered went on the list, and out, at 23:30 UK time on 10-Nov (live, 10 Nov 2026; Carl:
+      // 11-Nov 10:30 entered went on the list, and out, at 23:30 UK time on 10-Nov (live, 10 Nov 2026; CH:
       // "they actually go out at the evening time displayed"). So the time is entered as Sydney's clock reads
       // at the moment it should go, and checked against the list afterwards.
       const p = {};
@@ -1810,7 +1810,7 @@
   // Never use Halaxy's behaviour classes, which its scripts act on: ajax, btn-submit, btn-cancel,
   // bootbox, bootbox-close-button, modal (on the outer layer), dialogBoxForm, datepicker,
   // popoverTarget, chosen.
-  // Our own progress bars, ticks and radio buttons are in the clinic's brand purple (#994DE6, Branding's --purple; Carl,
+  // Our own progress bars, ticks and radio buttons are in the clinic's brand purple (#994DE6, Branding's --purple; CH,
   // 16 Nov 2026), not the browser's or Halaxy's blue.
   const NATIVE_CSS = `
     .upc-native .upc-gap { margin-top: 12px; }
@@ -1860,7 +1860,7 @@
   }
 
   // A run of steps shown as a progress bar with one line for the current step; the steps themselves go to a log,
-  // shown when asked for (Carl, 13 Nov 2026: no step-by-step output while it works). Problems are always shown once
+  // shown when asked for (CH, 13 Nov 2026: no step-by-step output while it works). Problems are always shown once
   // it has finished. The script keeps the run object and puts `ui.run.html(run)` where its log used to be.
   const runOpen = new Map();   // run id -> log open (kept across re-renders)
   let runSeq = 0;
@@ -2071,7 +2071,7 @@
   // When background checks (menu counts, Patient statuses and the like) may run: in the visible tab, between 7 am and
   // 9 pm, only while someone has used this PC in the last 30 minutes (any Halaxy tab), and not while Halaxy has asked
   // us to wait. A PC left open overnight or unattended goes quiet. Checks fall due at their interval give or take 15%,
-  // so they don't run on an exact clock (Carl, 12 Nov 2026).
+  // so they don't run on an exact clock (CH, 12 Nov 2026).
   const BG = { from: 7, to: 21, idleMs: 30 * 60e3, key: 'upc-core:active' };
   let activeMark = 0;
   function markActive() {
@@ -2227,7 +2227,7 @@
     openEnded(text) { return wording.find(wording.outcome(text), wording.OPEN_ENDED); },
   };
 
-  // Lists shared by every PC (Carl, 16 Nov 2026): one PC works a list out and every PC shows it. One Admin Note per list
+  // Lists shared by every PC (CH, 16 Nov 2026): one PC works a list out and every PC shows it. One Admin Note per list
   // on UPC scripts (settings), "UPC shared list: <name>", whose last line is "data <the result as JSON>" (patient names
   // allowed: the note is inside Halaxy, Access All). Halaxy keeps at least 150,000 characters in a note (16 Nov 2026).
   // Who refreshes is claimed in the "UPC shared checks: Lists" note, so two PCs don't work the same list out at once.
@@ -2278,7 +2278,7 @@
 
   // ------------------------------------------------------------------ clinic settings
 
-  // Settings shared by every PC (Carl, 15 Nov 2026): one Admin Note, "UPC clinic settings", on UPC scripts (settings),
+  // Settings shared by every PC (CH, 15 Nov 2026): one Admin Note, "UPC clinic settings", on UPC scripts (settings),
   // one "key = value" line each, changed only through Script settings > Clinic settings by CLINIC_EDITORS. Each PC reads it
   // about hourly (visible tab, shared across tabs) and keeps a copy; a value missing, unreadable or outside its limits
   // falls back to its default, and the health check lists it.
@@ -2318,7 +2318,7 @@
     { key: 'missingDetails.backDays', script: 'Missing details', label: 'and those seen in the last', unit: 'days', def: 30, min: 0, max: 180 },
     { key: 'bankStatement.lingerDays', script: 'Bank statement', label: 'Task when a deposit and its remittance are still not matched after', unit: 'days', def: 10, min: 3, max: 60 },
     { key: 'bankStatement.dueFromDay', script: 'Bank statement', label: 'Remind about last month\'s statement from day', unit: 'of the month', def: 15, min: 1, max: 28 },
-    // People (stage 2, Carl 15 Nov 2026). A page's list also decides on whose sign-in its background checks run.
+    // People (stage 2, CH 15 Nov 2026). A page's list also decides on whose sign-in its background checks run.
     { key: 'readyToBill.people', script: 'Who sees what', label: 'Ready to bill', type: 'people', def: [CARL, WENDY] },
     { key: 'missingDetails.people', script: 'Who sees what', label: 'Missing details list', type: 'people', def: [CARL, WENDY] },
     { key: 'patientForms.people', script: 'Who sees what', label: 'Patient forms list', type: 'people', def: [CARL, WENDY] },
@@ -2334,7 +2334,7 @@
     { key: 'portalFill.taskFor', script: 'Who gets tasks', label: 'Portal fill stopped', type: 'person', def: CARL },
     { key: 'rebateSync.taskFor', script: 'Who gets tasks', label: 'Rebate sync stopped', type: 'person', def: CARL },
     { key: 'forecourtLights.staff', script: 'Forecourt lights', label: 'Who can be reminded', type: 'people', def: [CARL, 'Diana Satalova', 'Lottie Harold', 'Roxanna Healy', 'Stephen Sharples', WENDY] },
-    // Stage 3 (Carl, 15 Nov 2026). Forecourt lights: until these are saved here, each PC keeps the schedule it had.
+    // Stage 3 (CH, 15 Nov 2026). Forecourt lights: until these are saved here, each PC keeps the schedule it had.
     { key: 'forecourtLights.days', script: 'Forecourt lights', label: 'Clinic evenings', type: 'weekdays', def: [] },
     { key: 'forecourtLights.offTime', script: 'Forecourt lights', label: 'Lights off at', type: 'time', def: '20:45', min: '17:00', max: '23:45' },
     { key: 'forecourtLights.offset', script: 'Forecourt lights', label: 'Lights on before sunset', unit: 'minutes', def: 30, min: 0, max: 120 },
@@ -2347,7 +2347,7 @@
     { key: 'portalFill.phone', script: 'Portal fill (AXA payee details)', label: 'Payee phone number', type: 'text', def: '01617484100', max: 20, re: /^\+?[0-9 ()]{6,20}$/ },
     { key: 'calendar.order', script: 'Calendar', label: 'Column order for All practitioners', type: 'order', def: ['Roxanna Healy', CARL, 'Diana Satalova', 'Stephen Sharples'] },
     { key: 'calendar.hideProfessions', script: 'Calendar', label: 'Professions left out of All practitioners', type: 'words', def: ['Administrator'] },
-    // Per person (Carl, 15 Nov 2026: settings follow the account, not the PC; only Carl changes them). Until saved here,
+    // Per person (CH, 15 Nov 2026: settings follow the account, not the PC; only CH changes them). Until saved here,
     // each PC keeps its own switch.
     { key: 'forecourtLights.remind', script: 'Per person', label: 'Forecourt lights reminders for', type: 'audience', def: [] },
     { key: 'alerts.arrivalChime', script: 'Per person', label: 'Arrival chime for', type: 'audience', def: 'everyone' },
@@ -2509,7 +2509,7 @@
       if (!settings.canEdit()) throw new UPCError('Only ' + CLINIC_EDITORS.join(' or ') + ' can change the clinic settings.');
       const clean = {};
       for (const def of CLINIC_SETTINGS) {
-        // Every setting is written (Carl, 16 Nov 2026), so after one save nothing falls back to a PC's own value: what was
+        // Every setting is written (CH, 16 Nov 2026), so after one save nothing falls back to a PC's own value: what was
         // given; if not given, what is in use (the clinic's, else what this PC offers, else the default); empty: the default.
         let raw = values[def.key];
         if (raw === undefined) { const cur = settings.all().find((x) => x.def.key === def.key); raw = cur ? cur.value : def.def; }

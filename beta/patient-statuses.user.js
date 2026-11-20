@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         UPC Patients: Patient statuses (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.9
+// @version      0.2.10
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
-// @description  Keeps patient statuses up to date by itself (Current, Claimant, Discharged; Contacts who book are moved over), in the background while Carl is signed in. Review and every other status are left alone. "Patient statuses: recent changes" lists what it changed.
+// @description  Keeps patient statuses up to date by itself (Current, Claimant, Discharged; Contacts who book are moved over), in the background while CH is signed in. Review and every other status are left alone. "Patient statuses: recent changes" lists what it changed.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
 // @grant        none
@@ -13,10 +13,10 @@
 // ==/UserScript==
 
 /*
- * Patient statuses (Carl, 11 Nov 2026). Housekeeping, done automatically (Carl, 11 Nov 2026: "lets just automate this
+ * Patient statuses (CH, 11 Nov 2026). Housekeeping, done automatically (CH, 11 Nov 2026: "lets just automate this
  * now and remove the menu"), after he checked 0.1.x's suggestions on real patients.
  *
- *  - Only Current, Claimant and Discharged are set. Review is set by hand (Carl: "not something that should be guessed
+ *  - Only Current, Claimant and Discharged are set. Review is set by hand (CH: "not something that should be guessed
  *    at"), and Archived, Waiting List, Blocked and the rest are left alone. A Contact (only another patient's contact,
  *    hidden from searches) who has an appointment, say booked online, is moved to the usual statuses.
  *  - From one calendar request (6 months back, 4 months ahead):
@@ -25,12 +25,12 @@
  *    - Nothing booked, and no appointment for 6 weeks or more: Discharged (open-ended patients too).
  *    - Nothing booked, seen in the last 6 weeks: Discharged if their last note says so ("discharged", "goals met",
  *      "no further treatment needed", "self-managing"); otherwise Current or Claimant from their last appointment.
- *  - Funded or not (Carl: the latest fee): booked with an Insurance or Referral appointment type (the appointment's title
+ *  - Funded or not (CH: the latest fee): booked with an Insurance or Referral appointment type (the appointment's title
  *    starts with the type; its colour as a fallback), else the fee's own funder in Halaxy's fee list, or the invoice
  *    linked to an insurance claim.
  *  - Runs in the visible tab, in clinic hours while someone is using the PC, about every 3 hours, at most 15 changes a
  *    run a few seconds apart (each patient's latest note read again only after a new appointment
- *    or a change to its note), shared across tabs, only while Carl is signed in (so the changes
+ *    or a change to its note), shared across tabs, only while CH is signed in (so the changes
  *    are his in Halaxy's status history), and skips while Halaxy is busy. Changed on the patient's Edit page (core
  *    UPC.patient.setStatus), only if the status still reads what was seen, at most 40 a run.
  *  - "Patient statuses: recent changes" (Script settings, or the Tampermonkey menu) lists the last 100 changes and any
@@ -41,12 +41,12 @@
   if (window.__hxPatientStatuses) return;
   window.__hxPatientStatuses = true;
 
-  const VERSION = '0.2.9';
+  const VERSION = '0.2.10';
   const ALLOWED = () => rule('patientStatuses.people', ['Carl Healy']);
   const DAY = 86400e3;
   // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
   const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
-  const GAP_DAYS = () => rule('patientStatuses.gapDays', 42);   // Carl, 11 Nov 2026: a gap counts; 6 weeks
+  const GAP_DAYS = () => rule('patientStatuses.gapDays', 42);   // CH, 11 Nov 2026: a gap counts; 6 weeks
   const BACK_DAYS = 183, AHEAD_DAYS = 122;
   const MANAGED = ['current', 'claimant', 'discharged'];
   const FROM = MANAGED.concat(['contact']);
