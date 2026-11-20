@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.54
+// @version      1.1.55
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.54';
+  const VERSION = '1.1.55';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -77,8 +77,8 @@
   const group = () => (location.pathname.match(/\/a\/pr\/(\d+)\//) || [])[1];
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  // Who sees it (Carl, 11 Nov 2026: "just show health check on my account"). The checks and error
-  // collection still run for everyone: results stay on this PC, so they show when Carl signs in here.
+  // Who sees it (CH, 11 Nov 2026: "just show health check on my account"). The checks and error
+  // collection still run for everyone: results stay on this PC, so they show when CH signs in here.
   const SHOW_TO = ['Carl Healy'];
   function signedInAs() {
     try {

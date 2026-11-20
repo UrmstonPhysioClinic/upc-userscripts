@@ -1,12 +1,12 @@
 // ==UserScript==
 // @name         UPC Patients: Feedback alerts (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.7
+// @version      0.1.8
 // @upc-was      survey-feedback.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/feedback-alerts.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/feedback-alerts.user.js
-// @description  Feedback Request survey responses that need a look (Below expected, or Satisfactory with a comment) become a Halaxy task for Carl on the patient's profile. Carl only.
+// @description  Feedback Request survey responses that need a look (Below expected, or Satisfactory with a comment) become a Halaxy task for CH on the patient's profile. CH only.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
 // @grant        none
@@ -14,20 +14,20 @@
 // ==/UserScript==
 
 /*
- * Feedback alerts (agreed with Carl, 11 Nov 2026).
+ * Feedback alerts (agreed with CH, 11 Nov 2026).
  *
  *  - The clinic's Feedback Request survey ("How Was Your Appointment?") is scored by Halaxy: Excellent 32 to 35
  *    (no action needed), Satisfactory 26 to 31 (no action unless the comment indicates concern), Below expected
  *    0 to 25 (consider patient follow-up).
- *  - Below expected, or Satisfactory with a comment, becomes a task for Carl on the patient's profile, added
- *    without asking (Carl: "adding the tasks automatically without user interaction would be best"). Completing
+ *  - Below expected, or Satisfactory with a comment, becomes a task for CH on the patient's profile, added
+ *    without asking (CH: "adding the tasks automatically without user interaction would be best"). Completing
  *    the task is how it's marked dealt with, so it shows on every PC. The task carries the answers and comment,
  *    inside Halaxy; the script keeps only the response's id, score band and the outcome, never names or answers.
  *  - Survey responses have no patient id: the patient is found with Halaxy's patient search by name, and the date
  *    of birth on the response picks the right one. If that isn't certain, nothing is added and the response is
  *    listed in Feedback alerts: show results (Script settings), with a count on Reports > Surveys.
  *  - A task is never added twice: the patient's tasks are checked first for the response's number.
- *  - Checked at most every 2 hours, on Carl's sign-in, in the visible tab, one tab at a time, skipped while
+ *  - Checked at most every 2 hours, on CH's sign-in, in the visible tab, one tab at a time, skipped while
  *    Halaxy has asked scripts to pause. Only responses from the last 14 days are looked at, so a PC that starts
  *    checking doesn't go back through old ones. One request for the list, one for each new response.
  */
@@ -36,10 +36,10 @@
   if (window.__hxSurveyFeedback) return;
   window.__hxSurveyFeedback = true;
 
-  const VERSION = '0.1.7';
+  const VERSION = '0.1.8';
   // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
   const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
-  const ALLOWED = () => rule('feedbackAlerts.people', ['Carl Healy']);   // Carl, 11 Nov 2026
+  const ALLOWED = () => rule('feedbackAlerts.people', ['Carl Healy']);   // CH, 11 Nov 2026
   const ASSIGNEE = () => rule('feedbackAlerts.taskFor', 'Carl Healy');
   const MAX_SCORE = 35;             // the Feedback Request template: 3 x 5 + 2 x 5 + 2 x 5
   const DAY = 86400e3;

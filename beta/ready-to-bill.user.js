@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         UPC Billing: Ready to bill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.6
+// @version      0.4.7
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
-// @description  Finances > Ready to bill (Carl and Wendy only): insurer patients whose unbilled fees are due to be billed, with the reason and an Invoice Funder button, and a count on the menu. Reads only, except Set to £ 0.00 on a cancelled or did-not-attend fee after confirming.
+// @description  Finances > Ready to bill (CH and WP only): insurer patients whose unbilled fees are due to be billed, with the reason and an Invoice Funder button, and a count on the menu. Reads only, except Set to £ 0.00 on a cancelled or did-not-attend fee after confirming.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
 // @grant        none
@@ -13,7 +13,7 @@
 // ==/UserScript==
 
 /*
- * Ready to bill (agreed with Carl, 6 to 7 and 10 November 2026; spec in the Claude project).
+ * Ready to bill (agreed with CH, 6 to 7 and 10 November 2026; spec in the Claude project).
  *
  *  - Unbilled fees: Halaxy's Unpaid Invoices report (one request) gives every unpaid fee line with its
  *    payer, funder and invoice status. A fee is unbilled when it is on a patient's invoice (not the
@@ -23,9 +23,9 @@
  *    "3rd of 5", claim, patient), cached per invoice; and one calendar request for everyone (last attended,
  *    next booked).
  *  - Due when: the authorisation is used up; or no attended appointment for 14 days and nothing booked.
- *    Bupa, AXA, WPA and Aviva can also be billed mid-treatment (Carl, 10 Nov 2026), so for them also: the
+ *    Bupa, AXA, WPA and Aviva can also be billed mid-treatment (CH, 10 Nov 2026), so for them also: the
  *    oldest unbilled fee is 4 weeks old (unless the next visit is within 7 days: then after it, on the same
- *    bill), or fees 3 months old or more. Rolling rather than month end (Carl, 14 Nov 2026), so the work is
+ *    bill), or fees 3 months old or more. Rolling rather than month end (CH, 14 Nov 2026), so the work is
  *    spread through the month and nobody drops off the list on a set day. Other funders (3rd Party Funded and
  *    so on) are billed only at the end.
  *  - Excess hold (Bupa, AXA, WPA): on a new claim (its first authorised appointment is among the unbilled
@@ -37,7 +37,7 @@
  *    events) is due straight away, for any funder, and ends the excess hold.
  *  - Patients whose only unbilled fees are cancelled or did-not-attend: listed with each appointment's
  *    comments and Set to £ 0.00 (fee and funder rebate, after confirming), read when the page is open.
- *  - Shown only to Carl and Wendy, only inside Halaxy. The count on the menu is refreshed at most every
+ *  - Shown only to CH and WP, only inside Halaxy. The count on the menu is refreshed at most every
  *    2 hours, in the visible tab only, shared across tabs, never while Halaxy has asked us to pause.
  *  - Billing is Invoice Funder's job: the button opens the invoice with Invoice Funder.
  */
@@ -46,10 +46,10 @@
   if (window.__hxReadyToBill) return;
   window.__hxReadyToBill = true;
 
-  const VERSION = '0.4.6';
+  const VERSION = '0.4.7';
   const ROUTE = 'upc-ready-to-bill';
   const MENU_CLS = 'upc-rtb-menu';
-  const ALLOWED = () => rule('readyToBill.people', ['Carl Healy', 'Wendy Pritchard']);   // Carl, 7 Nov 2026: only the two of them
+  const ALLOWED = () => rule('readyToBill.people', ['Carl Healy', 'Wendy Pritchard']);   // CH, 7 Nov 2026: only the two of them
   const DAY = 86400e3;
   // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
   const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
@@ -61,13 +61,13 @@
   const NOT_ATTENDED = /did not attend|did-not-attend|cancel/i;
   const MID_TREATMENT = /bupa|axa|wpa|aviva/i;
   const EXCESS_ON_FORM = /bupa|axa/i;      // only their intake forms ask for the excess
-  const MAX_EXCESS = () => rule('readyToBill.maxExcess', 500) * 100;   // pence; above it is taken as a slip (an extra 0, the annual limit): use the fallback (Carl, 14 Nov 2026: £ 500; real excesses up to about £ 300)
+  const MAX_EXCESS = () => rule('readyToBill.maxExcess', 500) * 100;   // pence; above it is taken as a slip (an extra 0, the annual limit): use the fallback (CH, 14 Nov 2026: £ 500; real excesses up to about £ 300)
 
   const U = () => window.UPC;
   const esc = (s) => U().esc(s);
   const store = { get: (k, d) => U().storage(KEY).get(k, d), set: (k, v) => U().storage(KEY).set(k, v), del: (k) => U().storage(KEY).del(k) };   // core's per-PC storage
 
-  // Shared with every PC (Carl, 16 Nov 2026; core's UPC.sharedResult): one PC works the list out and every PC
+  // Shared with every PC (CH, 16 Nov 2026; core's UPC.sharedResult): one PC works the list out and every PC
   // shows it, so the list (and its count) is the same everywhere and Halaxy is read once for the clinic.
   const sharedList = () => (U() && U().sharedResult ? U().sharedResult('Ready to bill') : null);
   async function pullShared(maxAge) { const sl = sharedList(); if (!sl) return; try { await sl.pull(store, maxAge); } catch (e) { /* this PC's own list */ } }
@@ -218,19 +218,19 @@
       const quiet = !g.nextBooked && (!g.lastSeen || g.lastSeen < now - QUIET_DAYS() * DAY);
       if (quiet) reasons.push('No visit for ' + QUIET_DAYS() + ' days' + (g.lastSeen ? ' (last ' + label(g.lastSeen) + ')' : '') + ', nothing booked');
       // Marked Discharged with nothing booked: treatment has finished, so bill now rather than wait for 14 quiet days
-      // (Carl, 14 Nov 2026). Any funder, as finished treatment is when all of them are billed.
+      // (CH, 14 Nov 2026). Any funder, as finished treatment is when all of them are billed.
       const finished = g.discharged && !g.nextBooked;
       if (finished && !quiet) reasons.push('Discharged, nothing booked');
       // Mid-treatment billing (4-weekly, old fees, the excess hold) is for Bupa, AXA, WPA and Aviva only.
       const old = g.mid && g.oldest !== null && g.oldest <= addMonths(day0, -OLD_MONTHS());
       if (old) reasons.push('Fees from ' + label(g.oldest) + ', over ' + OLD_MONTHS() + ' months old');
-      // Rolling, not month end (Carl, 14 Nov 2026: billed "around once a month", spread through the month): due once
+      // Rolling, not month end (CH, 14 Nov 2026: billed "around once a month", spread through the month): due once
       // the oldest unbilled fee is 4 weeks old, unless the next visit is within a week, so that it joins the same bill.
       const rolling = g.mid && !old && g.oldest !== null && g.oldest <= day0 - ROLLING_DAYS() * DAY;
       const visitSoon = !!g.nextBooked && g.nextBooked - now <= SOON_DAYS() * DAY;
       if (rolling && !visitSoon) reasons.push('Fees from ' + label(g.oldest) + ', over 4 weeks old');
       const afterVisit = rolling && visitSoon;
-      // The excess hold ends when no more fees are coming (no visit for 14 days, nothing booked): Carl, 14 Nov 2026.
+      // The excess hold ends when no more fees are coming (no visit for 14 days, nothing booked): CH, 14 Nov 2026.
       const mayHold = g.mid && g.newClaim && g.billable.length > 0 && !authUsed && !old && !quiet && !finished;
       let excess = null;
       if (mayHold && EXCESS_ON_FORM.test(g.funder) && g.patientId) {

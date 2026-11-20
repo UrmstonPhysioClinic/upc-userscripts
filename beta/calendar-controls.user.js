@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Calendar: Calendar controls (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      2.16
+// @version      2.17
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/calendar-controls.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/calendar-controls.user.js
@@ -40,7 +40,7 @@
     313962, // Roxanna Healy
     313953, // Carl Healy
     417802, // Diana Satalova
-    477442, // Steve Sharples
+    477442, // SS Sharples
   ];
 
   // Clinic calendar preferences (Calendar > cog icon). Checked on every calendar load and
@@ -270,7 +270,7 @@
   let zoomApplied = false;
 
   // ---------- 0a. £0 invoices look paid ----------
-  // Carl, 10 Nov 2026: an appointment whose invoice is £0 (package follow-ups, cancelled appointments)
+  // CH, 10 Nov 2026: an appointment whose invoice is £0 (package follow-ups, cancelled appointments)
   // has nothing to pay, but Halaxy draws the black "unpaid" icon, which catches the eye. The calendar
   // data has the payment status but not the amount, so the amounts come from Halaxy's invoice list:
   // one request for the dates on screen, shared by all tabs, repeated at most every 30 minutes for those

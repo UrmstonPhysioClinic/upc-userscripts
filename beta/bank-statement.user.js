@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         UPC Billing: Bank statement (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.7
+// @version      0.2.8
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
-// @description  Finances > Bank statement (Carl only for now): open a Starling statement PDF, add each insurer payment as a deposit on the insurer's profile (Direct Deposit, the bank date) and apply it to the invoices its remittance names, after confirming. The only place insurer money enters Halaxy.
+// @description  Finances > Bank statement (CH only for now): open a Starling statement PDF, add each insurer payment as a deposit on the insurer's profile (Direct Deposit, the bank date) and apply it to the invoices its remittance names, after confirming. The only place insurer money enters Halaxy.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
 // @grant        none
@@ -13,23 +13,23 @@
 // ==/UserScript==
 
 /*
- * Bank statement (Carl, 10 and 11 Nov 2026). Carl's rule: an insurer payment is recorded only once the bank statement
+ * Bank statement (CH, 10 and 11 Nov 2026). CH's rule: an insurer payment is recorded only once the bank statement
  * shows the money arrived. This is where that happens.
  *
  *  - The statement: a Starling Bank business statement PDF (layout from the September 2026 statement), read in the
  *    browser with pdf.js; nothing is uploaded (only the register below is kept). The parse is checked against the statement's running balance.
  *  - Insurer credits: money in whose details name an insurer (Bupa, AXA, WPA, Aviva and others), or name one of our
  *    unpaid insurer invoices (UPC-...). A transfer from the clinic's old account whose reference names an insurer counts
- *    as that insurer's (Carl, 11 Nov 2026). Patients' invoices are not used.
+ *    as that insurer's (CH, 11 Nov 2026). Patients' invoices are not used.
  *  - Candidates: the insurer's unpaid invoices billed to it (Halaxy's Unpaid Invoices report, one request), dated on or
  *    before the credit. Remittances has already settled any excess, so their balances are what was paid.
- *  - Match, in this order: the invoice(s) whose number (UPC-...) is in the bank reference, if they add up to it (Carl:
+ *  - Match, in this order: the invoice(s) whose number (UPC-...) is in the bank reference, if they add up to it (CH:
  *    a reused old reference doesn't fit, so it falls through to the rest); invoices sharing the same remittance (Remittances attaches it to every invoice it covers,
  *    with the comment "Insurer reference ...; remittance total ... over N invoices") that add up to it, preferring the
- *    one whose reference is the bank reference, then one dated within a few days of the payment (Carl: the strongest
+ *    one whose reference is the bank reference, then one dated within a few days of the payment (CH: the strongest
  *    sign; a remittance far from the bank date is offered to tick, not ticked); else one invoice whose balance is the credit; else any set of invoices
  *    that adds up to it. One answer is ticked; several are offered to choose from; none says so.
- *  - Record (after confirming; Carl, 13 Nov 2026): each insurer payment becomes a Direct Deposit on the insurer's profile
+ *  - Record (after confirming; CH, 13 Nov 2026): each insurer payment becomes a Direct Deposit on the insurer's profile
  *    (the profile its invoices are billed to), dated the bank date, with the note "Bupa, bank 05-Oct-2026, ref 2455419,
  *    Starling statement 01-Oct-2026 to 31-Oct-2026" (core UPC.deposits.add, which checks it is listed). When a remittance
  *    put through Remittances names its invoices and they add up exactly, the deposit is applied to them (core
@@ -39,7 +39,7 @@
  *    dated 10 days before to 3 days after the bank date, adding up to it) is shown as "Already in Halaxy"; one whose
  *    deposit is on the profile (its note names the bank date) is shown as added or applied. A deposit of the same amount
  *    with no note (by hand) is shown to check.
- *  - Tasks for Carl on what needs him: on the insurer's profile, or a general task when the profile isn't known.
+ *  - Tasks for CH on what needs him: on the insurer's profile, or a general task when the profile isn't known.
  *  - Due: from the 15th, a blob on the menu item while last month's statement isn't in the register (once a day).
  *  - Register: each statement read leaves one Admin Note on the "Starling Bank (statements)" profile (period, balances,
  *    number of lines, a fingerprint, who read it and when, the insurer payments and what became of them), so a statement
@@ -50,7 +50,7 @@
   if (window.__hxBankStatement) return;
   window.__hxBankStatement = true;
 
-  const VERSION = '0.2.7';
+  const VERSION = '0.2.8';
   const ROUTE = 'upc-bank-statement';
   const MENU_CLS = 'upc-bank-menu';
   const ALLOWED = () => rule('bankStatement.people', ['Carl Healy']);
@@ -58,7 +58,7 @@
   const TASK_FOR = () => rule('bankStatement.taskFor', 'Carl Healy');
   const LOOK_BACK_MONTHS = 18;
   const NEAR_BEFORE = 3, NEAR_AFTER = 14;   // days the bank date may be before / after the remittance's date
-  const USUAL_DAYS = 5;   // Carl, 12 Nov 2026: Bupa (and AXA) almost always pay 2 days after the remittance date
+  const USUAL_DAYS = 5;   // CH, 12 Nov 2026: Bupa (and AXA) almost always pay 2 days after the remittance date
   const MAX_AGE_DAYS = 120;   // invoices dated more than this before a payment are not matched to it
   // A payment recorded in Halaxy counts as this bank line's if dated up to this many days before the bank date (recorded
   // on the remittance's date, say) or after it.
@@ -68,11 +68,11 @@
   const HAND_BEFORE = 5, HAND_AFTER = 1;
   // Bank lines before this were recorded the old way (payments straight onto invoices). Reading an older statement again
   // only fills in its register: a line not found as recorded is shown to check, never added as a deposit by Record all
-  // (Carl, 13 Nov 2026: going back over old statements must not count money twice).
+  // (CH, 13 Nov 2026: going back over old statements must not count money twice).
   const CHANGEOVER = '2026-11-01';
   // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
   const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
-  const LINGER_DAYS = () => rule('bankStatement.lingerDays', 10);   // a deposit with no remittance this long after it reached the bank gets a task (Carl, 13 Nov 2026)
+  const LINGER_DAYS = () => rule('bankStatement.lingerDays', 10);   // a deposit with no remittance this long after it reached the bank gets a task (CH, 13 Nov 2026)
   const REGISTER_ORG = '78812';   // the "Starling Bank (statements)" profile, which keeps a register of each statement read
   const PATIENT_METHODS = /^(card|online payment|discount|stripe|gift card|debt written off|cash)\b/i;   // not how insurers pay
   const PDFJS = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/';
@@ -251,7 +251,7 @@
     });
     const open = [...byId.values()].filter((i) => i.balance > 0 && i.when !== null);
     // Payments already recorded in Halaxy around the statement's dates (Halaxy's Income report, one request), so a
-    // bank line recorded by hand or on another PC shows as already recorded, not matched again (Carl, 12 Nov 2026).
+    // bank line recorded by hand or on another PC shows as already recorded, not matched again (CH, 12 Nov 2026).
     let pays = [];
     say('Reading the payments recorded in Halaxy...');
     try {
@@ -343,7 +343,7 @@
     // A match made only from payments recorded by hand (no note) is not certain when another bank line could be the
     // same payment: one on this statement from the same insurer for the same amount, dated close to those payments and
     // not itself recorded for sure; or one on last month's statement (a payment dated before this statement starts).
-    // Neither is marked; both say to check which is recorded (Carl, 12 Nov 2026).
+    // Neither is marked; both say to check which is recorded (CH, 12 Nov 2026).
     const doubt = new Map();   // credit key -> text
     recorded.forEach((rec, key) => {
       if (!rec.hand) return;
@@ -408,13 +408,13 @@
       n++;
       const r = Object.assign({}, c, { state: 'none', options: [], remit: false });
       // 0. The bank reference names our invoice(s) and they add up to the payment. A named invoice that doesn't fit (an
-      //    old reference reused, Carl 11 Nov 2026) is set aside and the payment matched by amount and date as usual.
+      //    old reference reused, CH 11 Nov 2026) is set aside and the payment matched by amount and date as usual.
       const named = c.numbers.map((n) => open.find((i) => numberOf(i.number) === n && !used.has(i.id))).filter(Boolean);
       const namedFits = named.length === c.numbers.length && named.length && named.reduce((t, i) => t + i.balance, 0) === c.amount &&
         named.every((i) => i.when <= isoMs(c.date) + 86400e3) && (!c.insurer || named.every((i) => i.insurer === c.insurer));
       if (!c.insurer && namedFits) r.insurer = named[0].insurer;
       // Already recorded in Halaxy the old way (payments straight onto invoices, by hand or by Bank statement before
-      // 0.2.0): nothing more to do, and no deposit is added for it (Carl, 13 Nov 2026: never counted twice).
+      // 0.2.0): nothing more to do, and no deposit is added for it (CH, 13 Nov 2026: never counted twice).
       const rec = recorded.get(c.key) && recorded.get(c.key).list;
       if (rec && (r.insurer || rec.some((p) => p.insurer))) {
         if (!r.insurer) r.insurer = (rec.find((p) => p.insurer) || {}).insurer;
@@ -435,7 +435,7 @@
       } else {
         const setAside = c.numbers.length ? 'the bank reference names ' + (String(c.desc).match(/\bUPC[\s-]?\d{2,}\b/gi) || []).join(', ') + ', which doesn\'t fit (paid already, or another amount); ' : '';
         // Only invoices dated in the few months before the payment: an older unpaid invoice that happens to add up is
-        // not evidence (Carl, 12 Nov 2026: once a payment's own invoices are paid, it reached further back).
+        // not evidence (CH, 12 Nov 2026: once a payment's own invoices are paid, it reached further back).
         const cand = open.filter((i) => i.insurer === c.insurer && !used.has(i.id) && i.when <= isoMs(c.date) + 86400e3 && i.when >= isoMs(c.date) - MAX_AGE_DAYS * 86400e3).sort((a, b) => b.when - a.when);
         // 1. The invoices covered by one remittance (Remittances attaches the same PDF to each) that add up to it: the
         //    strongest evidence. 2. One invoice for the whole amount. 3. Any set of invoices that adds up to it.
@@ -458,7 +458,7 @@
         // not been moved to the patient yet (a remittance attached by hand, before Remittances).
         const notMoved = !byRemit.length ? [...groups.values()].filter((g) => g.paid.every((x) => x !== null) && g.paid.reduce((t, x) => t + x, 0) === target) : [];
         // The bank reference being the remittance's own reference settles it. Otherwise the payment usually reaches the
-        // bank within a few days of the remittance's date (Carl, 11 Nov 2026): a remittance in that window is preferred,
+        // bank within a few days of the remittance's date (CH, 11 Nov 2026): a remittance in that window is preferred,
         // and one far from it is only offered, not ticked.
         byRemit.forEach((g) => { g.gap = g.date ? Math.round((isoMs(c.date) - isoMs(g.date)) / 86400e3) : null; g.near = g.gap !== null && g.gap >= -NEAR_BEFORE && g.gap <= NEAR_AFTER; });
         const sameRef = byRemit.filter((g) => g.ref && c.ref && normRef(c.ref).includes(normRef(g.ref)));
@@ -477,7 +477,7 @@
           r.options = [g.list]; r.remit = true; r.remits = [g];
         } else if (byRemit.length > 1) { r.state = 'choose'; r.how = 'more than one remittance adds up to it'; r.options = byRemit.map((g) => g.list); r.labels = byRemit.map((g) => g.key + dated(g)); r.remit = true; r.remits = byRemit; }
         // Amount alone is weak evidence (£ 40.00 fits many invoices), and without a remittance the deposit is only added,
-        // not applied (Carl, 13 Nov 2026): these are shown as the invoices it may be for.
+        // not applied (CH, 13 Nov 2026): these are shown as the invoices it may be for.
         else if (single.length === 1) { r.how = 'one invoice for the whole amount, but no remittance links them'; r.options = [single]; }
         else {
           const sets = single.length > 1 ? single.map((i) => [i]) : subsets(recent.slice(0, 24), target, 4);
@@ -580,7 +580,7 @@
     } catch (e) { say('The deposit is applied, but the remittance on the profile does not say so yet (' + (e.message || e) + ').', true); }
   }
 
-  // A task for Carl: on the insurer's profile, or a general one when the profile isn't known.
+  // A task for CH: on the insurer's profile, or a general one when the profile isn't known.
   async function taskFor(r, title, comment) {
     const task = { title, assignee: TASK_FOR(), priority: 3, due: today(), by: 'Bank statement', comment };
     try {
@@ -596,7 +596,7 @@
 
   // ------------------------------------------------------------------ the statement register
 
-  // Each statement read leaves one small record on the "Starling Bank (statements)" profile (Carl, 13 Nov 2026): its
+  // Each statement read leaves one small record on the "Starling Bank (statements)" profile (CH, 13 Nov 2026): its
   // period, balances, number of lines and fingerprint, who read it and when, and each insurer payment and what became
   // of it. Nothing else from the statement. A statement read again (or one overlapping it) is recognised from it.
   const outcome = (r) => ({ recorded: 'already recorded in Halaxy', applied: 'deposit applied' + (r.invoices ? ' to ' + r.invoices.map((i) => i.number).join(', ') : ''),
@@ -609,7 +609,7 @@
     const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
     return [...new Uint8Array(buf)].slice(0, 8).map((b) => b.toString(16).padStart(2, '0')).join('');
   }
-  // The register entries are Admin Notes on the Starling Bank profile (Carl, 14 Nov 2026: lighter than a PDF file; one
+  // The register entries are Admin Notes on the Starling Bank profile (CH, 14 Nov 2026: lighter than a PDF file; one
   // request reads them all, and Halaxy records who wrote each and when). The first line names the statement.
   const registerNotes = async () => (await U().adminNotes.list('organisation', REGISTER_ORG)).filter((n) => /^starling statement \d{4}-\d\d-\d\d to \d{4}-\d\d-\d\d/i.test(n.text))
     .map((n) => Object.assign(n, { title: n.text.split('\n')[0] }));
@@ -633,7 +633,7 @@
 
   // ------------------------------------------------------------------ last month's statement still to read
 
-  // From the 15th, a blob on the menu item while last month's statement isn't in the register (Carl, 13 Nov 2026);
+  // From the 15th, a blob on the menu item while last month's statement isn't in the register (CH, 13 Nov 2026);
   // before the 15th, the month before that. Checked at most once a day, in the visible tab, shared across tabs.
   const KEY = 'upc-bank:';
   const store = { get: (k, d) => U().storage(KEY).get(k, d), set: (k, v) => U().storage(KEY).set(k, v) };
@@ -698,17 +698,17 @@
   function render() {
     if (!root) return;
     const st = state.statement, rs = state.results;
-    // Laid out as Remittances (Carl, 13 Nov 2026): a "Read ..." card with what it does, the drop box, progress and notes.
+    // Laid out as Remittances (CH, 13 Nov 2026): a "Read ..." card with what it does, the drop box, progress and notes.
     let h = '<div class="upc-bank"><h1>Bank statement</h1>' +
       '<div class="card"><div class="card-header"><h2>Read a bank statement</h2></div><div class="card-body">' +
       '<div class="upc-bank-drop" tabindex="0" role="button" data-a="choose">' + (state.busy ? 'Reading...' : 'Drop a Starling statement PDF here, or click to choose one') + '<input type="file" accept="application/pdf" hidden></div>';
-    // While it works: a progress bar and the current step; the results once it has finished (Carl, 13 Nov 2026).
+    // While it works: a progress bar and the current step; the results once it has finished (CH, 13 Nov 2026).
     if (state.run) h += U().ui.run.html(state.run);
     const working = state.busy && state.run && !state.run.finished;
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     if (state.warn) h += '<div class="alert alert-danger upc-err">' + esc(state.warn) + '</div>';
     if (state.seen) h += '<p class="text-muted">' + esc(state.seen) + '</p>';
-    // Not in the register yet, or its entry is out of date (Carl, 13 Nov 2026: reading old statements again should fill
+    // Not in the register yet, or its entry is out of date (CH, 13 Nov 2026: reading old statements again should fill
     // the register in, even when there is nothing to record).
     const reg = registerNeed();
     if (reg && !(state.busy && state.run && !state.run.finished)) h += '<p class="upc-gap">' + esc(reg.why) + ' <button type="button" class="btn btn-outline-primary-light" data-a="register"' + (state.busy ? ' disabled' : '') + '>' + esc(reg.label) + '</button></p>';
@@ -763,7 +763,7 @@
       state.statement = await readStatement(file);
       state.register = null; state.seen = ''; state.regError = false;
       render();
-      // Read before? The register on the Starling Bank profile (Carl, 13 Nov 2026).
+      // Read before? The register on the Starling Bank profile (CH, 13 Nov 2026).
       U().ui.run.step(run, 'Checking the statement register...');
       try {
         const st = state.statement, regs = await registersFor(st);
@@ -842,7 +842,7 @@
           await record(r, say);
           if (r.error) say(r.insurer + ' ' + fmt(r.amount) + ' (' + isoLabel(r.date) + '): ' + r.error, true);
         } catch (e) {
-          // Nothing added (a deposit is added whole or not at all): a task for Carl to record it by hand.
+          // Nothing added (a deposit is added whole or not at all): a task for CH to record it by hand.
           r.error = 'Not recorded: ' + (e.message || e);
           await taskFor(r, 'Bank statement could not record ' + r.insurer + ' ' + fmt(r.amount) + ' (' + isoLabel(r.date) + ')',
             ['Adding the deposit for the ' + r.insurer + ' payment of ' + fmt(r.amount) + ' (bank ' + isoLabel(r.date) + (r.ref ? ', ref ' + r.ref : '') + ') stopped: ' + (e.message || e), 'Check the profile\'s deposits, then open the statement again or add it by hand.']);

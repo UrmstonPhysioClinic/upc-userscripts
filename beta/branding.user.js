@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Look: Branding (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      2.9.5
+// @version      2.9.6
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/branding.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/branding.user.js
@@ -450,7 +450,7 @@ ${S} .mainmenu-collapsed #logoWrapper { height: 2.34rem !important; }
 
   // ---- Apply ----------------------------------------------------------------
 
-  // Per-person settings (Script settings > Clinic settings, Carl 15 Nov 2026): once saved there they follow the person
+  // Per-person settings (Script settings > Clinic settings, CH 15 Nov 2026): once saved there they follow the person
   // signed in, on any PC; until then this PC's own switch. Read from core when it knows who is signed in, else from what
   // core kept for this PC's last sign-in (scripts that start before the page is ready).
   const personal = (key) => {
@@ -487,7 +487,7 @@ ${S} .mainmenu-collapsed #logoWrapper { height: 2.34rem !important; }
     });
   }
 
-  // Reports > Medicare: Australian only, never used here (Carl, 11 Nov 2026). Hidden whether the branding is on or not.
+  // Reports > Medicare: Australian only, never used here (CH, 11 Nov 2026). Hidden whether the branding is on or not.
   const hideMenu = document.createElement('style');
   hideMenu.id = 'upc-hidden-menu-items';
   hideMenu.textContent = '#mainMenu li:has(> a.mainmenu-sublink[href*="/report/medicare" i]), #mainMenu a.mainmenu-sublink[href*="/report/medicare" i] { display: none !important; }';

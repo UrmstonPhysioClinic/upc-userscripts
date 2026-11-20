@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.4
+// @version      0.4.5
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -24,9 +24,9 @@
  *    the rebate lowered and the rest re-billed to the same organisation invoice (UPC.rebate).
  *    The remittance PDF is attached to each matched invoice, and filed once on the insurer's profile, named
  *    "Bupa remittance 2026-10-28 ref 2455419 £ 216.00" with the whole remittance in its comment.
- * 5. Pay (Carl, 13 Nov 2026): the money itself only ever comes from the bank statement, as a deposit on the insurer's
+ * 5. Pay (CH, 13 Nov 2026): the money itself only ever comes from the bank statement, as a deposit on the insurer's
  *    profile (Bank statement). When that deposit is there and everything agrees exactly, it is applied to the
- *    invoices after one more confirmation; otherwise Bank statement applies it when the money arrives. Tasks for Carl on
+ *    invoices after one more confirmation; otherwise Bank statement applies it when the money arrives. Tasks for CH on
  *    anything that doesn't agree, and when a remittance's money hasn't reached the bank 10 days on.
  * Needs the core library (core.user.js).
  */
@@ -36,7 +36,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.4.4';
+  const VERSION = '0.4.5';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -386,7 +386,7 @@
     return r;
   }
 
-  // A scanned remittance corrected by hand (Carl, 12 Nov 2026: "in case the OCR misreads a 3 as an 8"): the invoice
+  // A scanned remittance corrected by hand (CH, 12 Nov 2026: "in case the OCR misreads a 3 as an 8"): the invoice
   // number, and what the insurer paid, either in total or per line (Aviva). Deductions, the patient's share and the
   // reason follow from the corrected amounts.
   function correctItem(item, fix) {
@@ -557,7 +557,7 @@
         return res;
       }
       // Moved already (an earlier upload, or by hand), however it was split over the fees: the invoice now asks the
-      // insurer for exactly what it paid. Nothing to move; said plainly (Carl, 13 Nov 2026: re-uploading old remittances).
+      // insurer for exactly what it paid. Nothing to move; said plainly (CH, 13 Nov 2026: re-uploading old remittances).
       if (total === insurerPays && item.claimed > total) {
         res.status = 'ok'; res.shortfall = 0; res.already = item.claimed - total;
         res.message = 'Excess of ' + fmt(item.claimed - total) + ' already moved to the patient (billed ' + fmt(item.claimed) + ', now ' + fmt(total) + ', what was paid). Nothing to move.';
@@ -643,7 +643,7 @@
       html += '<div class="upc-gap"><b>' + esc(r.insurer || 'Unknown insurer') + '</b>' + (r.date ? ' remittance dated ' + esc(r.date) : '') + (r.reference ? ', reference ' + esc(r.reference) : '') +
         '. ' + r.items.length + ' invoice' + (r.items.length === 1 ? '' : 's') + ' read' + (r.checks && r.checks.paidTotal !== null ? ', total paid ' + fmt(r.checks.paidTotal) : '') + '.</div>';
       if (r.notes.length) html += '<div class="upc-rem-notes"><b>Check before applying</b><ul>' + r.notes.map((n) => '<li>' + esc(n) + '</li>').join('') + '</ul></div>';
-      // A line the reading missed altogether (Carl, 13 Nov 2026): added by hand from the paper copy, then checked in
+      // A line the reading missed altogether (CH, 13 Nov 2026): added by hand from the paper copy, then checked in
       // Halaxy like any other. Offered on scanned remittances, and on any whose amounts don't add up to its total.
       const short = r.checks && r.checks.paidTotal !== null && r.checks.paidRead !== r.checks.paidTotal;
       if (r.insurer && (r.scanned || short) && !state.busy && !state.applied) {
@@ -656,7 +656,7 @@
       }
     }
     html += '</div></div>';
-    // While it works: a progress bar and the current step only; the results once it has finished (Carl, 13 Nov 2026).
+    // While it works: a progress bar and the current step only; the results once it has finished (CH, 13 Nov 2026).
     if (state.run) html += UPC.ui.run.html(state.run);
     const working = state.busy && state.run && !state.run.finished;
     if (state.results.length && !working) {
@@ -804,7 +804,7 @@
     });
   }
 
-  // Who bills the patient for an excess (Carl, 9 Nov 2026). Matched by name in the task's Assign to list.
+  // Who bills the patient for an excess (CH, 9 Nov 2026). Matched by name in the task's Assign to list.
   // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
   const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
   const TASK_FOR = () => rule('remittances.taskFor', 'Carl Healy');
@@ -852,7 +852,7 @@
     });
   }
 
-  // The remittance's name everywhere it is filed (Carl, 13 Nov 2026): insurer, date, reference and total, as
+  // The remittance's name everywhere it is filed (CH, 13 Nov 2026): insurer, date, reference and total, as
   // "Bupa remittance 2026-10-28 ref 2455419 £ 216.00". Earlier copies were named without the reference and total.
   const oldTitle = () => (state.remit.insurer || 'Insurer') + ' remittance' + (state.remit.date ? ' ' + state.remit.date : '');
   const remitTotal = () => (state.remit.totals && typeof state.remit.totals.paid === 'number' ? state.remit.totals.paid : null);
@@ -869,7 +869,7 @@
   };
   const DAY = 86400e3, LINGER_DAYS = () => rule('bankStatement.lingerDays', 10);
   const remStore = () => UPC.storage('upc-remit:');
-  // Remittances waiting for their money, for every PC (Carl, 15 Nov 2026): the shared note "UPC shared checks:
+  // Remittances waiting for their money, for every PC (CH, 15 Nov 2026): the shared note "UPC shared checks:
   // Remittances waiting", one line per remittance (remit.<first invoice id> | when | org .. inv .. num .. since .. name ..,
   // or 'done' once paid), so the ten-day check runs once a day for the clinic whichever PC loaded the remittance.
   const waitShared = () => (UPC.shared ? UPC.shared('Remittances waiting', { keep: 120 * DAY, file: 'remittances.user.js' }) : null);
@@ -888,7 +888,7 @@
 
   // Files the remittance on the insurer's profile: once, under its name. The same file filed before gets its details
   // brought up to date (keeping any deposit note); a different file under that name is left, this one filed as well,
-  // and Carl gets a task.
+  // and CH gets a task.
   async function fileMaster(orgId, say) {
     const ref = state.remit.reference, named = identity(), comments = masterComment();
     const found = await UPC.orgFiles.find(orgId, (d) => d.title === named || d.title === oldTitle() || (!!ref && d.comments.includes('Insurer reference ' + ref)), ref || oldTitle());
@@ -1034,7 +1034,7 @@
         }
         x.status = 'done';
         x.message = 'Moved ' + fmt(x.shortfall) + ' to the patient.';
-        // A task for Carl to bill the patient (Carl, 9 Nov 2026: always assigned to him, due today).
+        // A task for CH to bill the patient (CH, 9 Nov 2026: always assigned to him, due today).
         for (const id of Object.keys(moved)) {
           const m = moved[id];
           const remit = (state.remit.insurer || 'Insurer') + ' remittance' + (state.remit.date ? ' ' + state.remit.date : '') + (state.remit.reference ? ', ref ' + state.remit.reference : '');
@@ -1049,8 +1049,8 @@
           }
         }
       } catch (e) {
-        // All or nothing for each invoice (Carl, 12 Nov 2026): the fee that failed was put back by the core library;
-        // the fees already moved on this invoice are moved back too, newest first. Then a task for Carl.
+        // All or nothing for each invoice (CH, 12 Nov 2026): the fee that failed was put back by the core library;
+        // the fees already moved on this invoice are moved back too, newest first. Then a task for CH.
         const failed = e.message || String(e);
         const left = e.undone === false ? [failed] : [];
         for (const d of doneMoves.slice().reverse()) {
@@ -1077,7 +1077,7 @@
         } catch (te) { say('  The task could not be added (' + (te.message || te) + '). Please note this one by hand.', true); }
       }
     }
-    // A fixed comment Bank statement reads (Carl, 11 and 12 Nov 2026): the reference (Bupa's BACS reference is the bank
+    // A fixed comment Bank statement reads (CH, 11 and 12 Nov 2026): the reference (Bupa's BACS reference is the bank
     // reference), the payment date (the money usually reaches the bank about 2 days later), the remittance total, and
     // what was billed and paid on this invoice. "Insurer reference 2662551; payment date 28-Oct-2026; remittance total
     // £ 216.00 over 3 invoices; this invoice billed £ 170.00, paid £ 136.00; invoices UPC-38023, UPC-37981, UPC-37990".
@@ -1092,7 +1092,7 @@
         state.remit.date ? 'payment date ' + isoLabel(state.remit.date) : '',
         (typeof paid === 'number' ? 'remittance total ' + fmt(paid) : 'remittance') + ' over ' + n + ' invoice' + (n === 1 ? '' : 's'),
         typeof billed === 'number' && typeof thisPaid === 'number' ? 'this invoice billed ' + fmt(billed) + ', paid ' + fmt(thisPaid) : '',
-        // Every invoice the remittance covers (Carl, 12 Nov 2026), so Bank statement can gather the whole remittance from
+        // Every invoice the remittance covers (CH, 12 Nov 2026), so Bank statement can gather the whole remittance from
         // any one of them.
         'invoices ' + attachable().map((y) => y.item.invoice).join(', ')]
         .filter(Boolean).join('; ').replace(/^r/, 'R').replace(/^p/, 'P');
@@ -1113,9 +1113,9 @@
           const there = inv.attachmentList.filter((at) => at.title.includes(title) || (dateName && at.title.includes(dateName)));
           if (!there.length) { await attach(); say('Attached the remittance to ' + x.item.invoice + '.'); UPC.ui.run.tick(run); continue; }
           if (there.some((at) => /payment date/i.test(at.comments) && /\binvoices UPC/i.test(at.comments))) { say('The remittance is already attached to ' + x.item.invoice + '.'); UPC.ui.run.tick(run); continue; }
-          // Attached without the full details (Carl, 13 Nov 2026): if it is this very file, the details are added to it;
+          // Attached without the full details (CH, 13 Nov 2026): if it is this very file, the details are added to it;
           // if it is a different file (the wrong document under the right name, say), it is left alone, this remittance
-          // is attached as well, and Carl gets a task to check the other one.
+          // is attached as well, and CH gets a task to check the other one.
           let same = null, unsure = false;
           for (const at of there) {
             if (!at.fileUrl) { unsure = true; continue; }
@@ -1143,7 +1143,7 @@
         UPC.ui.run.tick(run);
       }
     }
-    // The money (Carl, 13 Nov 2026): the master copy on the insurer's profile, then the deposit from the bank applied.
+    // The money (CH, 13 Nov 2026): the master copy on the insurer's profile, then the deposit from the bank applied.
     try { await settle(orgs, say); }
     catch (e) { say('Stopped while settling the payment: ' + (e.message || e), true); }
     UPC.ui.run.end(run, 'Finished. Open the invoices to check.');
@@ -1202,7 +1202,7 @@
   }
   const route = () => (location.hash === '#' + ROUTE ? (mount(), loadPending()) : unmount());
 
-  // "Check remittance" on each remittance attached to an invoice (Carl, 13 Nov 2026): opens Remittances with that file,
+  // "Check remittance" on each remittance attached to an invoice (CH, 13 Nov 2026): opens Remittances with that file,
   // to move an excess not moved yet, or add the full details to an older copy. Shown on titles Remittances gives
   // ("Bupa remittance 2026-10-28") and on remittances attached by hand named by their date ("2026-10-28.pdf").
   const PENDING = 'upc-remit-pending';
@@ -1243,7 +1243,7 @@
 
   function start() {
     if (!window.UPC) { console.error('[UPC remittances] needs the core library'); return; }
-    // Under Finances (Carl, 9 Nov 2026), opening over Halaxy's Invoices page so Halaxy highlights Finances.
+    // Under Finances (CH, 9 Nov 2026), opening over Halaxy's Invoices page so Halaxy highlights Finances.
     // Remittances opens on any page with its address, so older links to the Finance report still work.
     UPC.ui.ensureMenuItem('Remittances', (section) => {
       const inv = section && [...section.querySelectorAll('a.mainmenu-sublink')].find((a) => /^invoices$/i.test(UPC.clean(a.textContent)));

@@ -253,14 +253,14 @@ async def main():
         check('settings pop-up: clinic values left out (changed in Clinic settings); the rest still editable', view['dayBoxes'] == 0 and not view['off'] and view['offset'] and 'Lights off at' not in view['text'], view)
         await c5.close()
 
-        # Per person (clinic setting): reminders follow whoever is signed in (here Wendy) on any PC, whatever the PC's own
+        # Per person (clinic setting): reminders follow whoever is signed in (here WP) on any PC, whatever the PC's own
         # switch says, and "Remind me later" follows her to other PCs
         for n in NOTES[78842]:
             if n['id'] == 69000:
                 n['html'] = '<p>UPC clinic settings</p><p>forecourtLights.remind = Wendy Pritchard</p>'
         c6, g6 = await pc(dict(BASE, enabled=False, timerOn='15:30'), datetime.datetime(2026, 11, 17, 10, 0, tzinfo=LON))
         await g6.wait_for_selector('[data-upc-dialog="upc-forecourt-lights"]', timeout=20000)
-        check('per person: Wendy reminded on a PC switched off for reminders', True)
+        check('per person: WP reminded on a PC switched off for reminders', True)
         await g6.click('[data-upc-dialog="upc-forecourt-lights"] [data-a=later]')
         for _ in range(40):
             if any(l.startswith('snooze.WendyPritchard |') for l in note_lines('UPC shared checks: Forecourt lights')):

@@ -13,7 +13,7 @@ line, stopping before Submit; after Submit, Halaxy offers to mark the invoice Is
 log-in, closes the cookie box, Create an invoice, set-up, Pre-Auth Summary, provider check, removes the
 pre-populated treatment, one fee per treatment, stops on Confirm and Submit; the claim is only given to the
 portal it is for; the Bupa log-in left to the user; a fill that fails (a changed page) stops,
-says Carl has been notified, and Halaxy adds a task for him on the funder invoice.
+says CH has been notified, and Halaxy adds a task for him on the funder invoice.
 
 Run:  python3 tests/portal-fill/test_portal_fill.py
 Needs: Python 3 with Playwright (Chromium).
@@ -493,10 +493,10 @@ async def main():
         portal = await new_form_tab(ctx)
         await portal.wait_for_function("document.getElementById('upc-pf-panel') && /has stopped/.test(document.getElementById('upc-pf-panel').textContent)", timeout=60000)
         panel = await portal.evaluate("document.getElementById('upc-pf-panel').textContent")
-        check('a changed portal page stops the fill, says what, and that Carl has been notified', 'treatment line 1: charge per unit not found' in panel and 'Carl has been notified' in panel, panel)
+        check('a changed portal page stops the fill, says what, and that CH has been notified', 'treatment line 1: charge per unit not found' in panel and 'Carl has been notified' in panel, panel)
         await pg.wait_for_function("/Carl Healy has been sent a task/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=60000)
         t = S['tasks'][9001]
-        check('a task for Carl on the funder invoice, with the reason', len(t) == 1 and t[0]['title'] == 'Portal fill stopped: AXA, UPC-01111' and t[0]['who'] == ['31']
+        check('a task for CH on the funder invoice, with the reason', len(t) == 1 and t[0]['title'] == 'Portal fill stopped: AXA, UPC-01111' and t[0]['who'] == ['31']
               and 'charge per unit not found' in t[0]['comment'] and 'shared:portal-claim' not in S['gm'], t)
         lines = t[0]['comment'].split('\n') if t else []
         check('the task comment: stamped "date time Portal fill", then one point per line starting "- "', bool(lines) and re.fullmatch(r'\d{4}-\d{2}-\d{2} \d{2}:\d{2} Portal fill', lines[0]) is not None
@@ -505,7 +505,7 @@ async def main():
         await portal.close()
         await member_tab.close()
 
-        # The funder invoice closed before the fill fails: another Halaxy page on the PC still sends Carl the task
+        # The funder invoice closed before the fill fails: another Halaxy page on the PC still sends CH the task
         S['tasks'][9001] = []
         AXA_FORM_OVERRIDE['html'] = axa_form().replace('Charge per unit (required)', 'Unit price (required)')
         inv_url = pg.url
@@ -546,7 +546,7 @@ async def main():
         S['tasks'][9002] = []
         await portal.close()
 
-        # Bupa refuses a treatment (an error message on the form): the fill stops with Bupa's words, and Carl gets a task
+        # Bupa refuses a treatment (an error message on the form): the fill stops with Bupa's words, and CH gets a task
         S['bupa'].update({'logged': True, 'treatments': [], 'prepopulated': False, 'refuseSave': True, 'submitted': False})
         await pg2.bring_to_front()
         async with ctx.expect_page() as newp:
@@ -556,7 +556,7 @@ async def main():
         panel = await portal.evaluate("document.getElementById('upc-pf-panel').textContent")
         check('Bupa: a refused treatment stops the fill, with Bupa\'s message', 'Please enter a valid fee' in panel, panel)
         await pg2.wait_for_function("/has been sent a task/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=60000)
-        check('and Carl gets a task on that invoice', len(S['tasks'][9002]) == 1 and 'Please enter a valid fee' in S['tasks'][9002][0]['comment'], S['tasks'][9002])
+        check('and CH gets a task on that invoice', len(S['tasks'][9002]) == 1 and 'Please enter a valid fee' in S['tasks'][9002][0]['comment'], S['tasks'][9002])
         await portal.close()
 
         # A fee whose Bupa code isn't in the list: the user is asked, their choice reloads the page, and the fill carries on

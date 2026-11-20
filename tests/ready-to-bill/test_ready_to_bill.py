@@ -8,7 +8,7 @@ the insurer's own invoice, self-funded, older than 6 months.
 
 Checks: who is due and why; the greyed rows with their invoice links; the Invoice Funder link; the
 count on the Finances menu item; the count shared with a second tab without asking Halaxy again;
-invoice details cached; only Carl and Wendy see it; nothing special on the last working day; a changed
+invoice details cached; only CH and WP see it; nothing special on the last working day; a changed
 report is shown as an error and passed to the health check; the native look.
 
 Run:  python3 tests/ready-to-bill/test_ready_to_bill.py
@@ -271,7 +271,7 @@ async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch()
 
-        # Scenario 1: Tuesday 10 Nov 2026, Carl signed in
+        # Scenario 1: Tuesday 10 Nov 2026, CH signed in
         S = fresh(datetime.date(2026, 11, 10)); S['user'] = 'Carl Healy'
         ctx = await context(browser, '2026-11-10T12:00:00Z')
         pg, errors = await open_page(ctx)
@@ -362,7 +362,7 @@ async def main():
         check('checking again reuses invoice details', not [x for x in again if re.search(r'/invoice/\d+$', x[1])] and any(x[1].endswith('/report/finance/0') for x in again), again)
         await ctx.close()
 
-        # Scenario 2: Monday 30 Nov 2026 (the last working day): nothing special any more (rolling, Carl 14 Nov 2026)
+        # Scenario 2: Monday 30 Nov 2026 (the last working day): nothing special any more (rolling, CH 14 Nov 2026)
         S = fresh(datetime.date(2026, 11, 30)); S['user'] = 'Wendy Pritchard'
         ctx = await context(browser, '2026-11-30T12:00:00Z')
         pg, errors = await open_page(ctx)
@@ -370,7 +370,7 @@ async def main():
         await pg.wait_for_function("!document.querySelector('[data-a=refresh]').disabled", timeout=60000)
         rows = await pg.evaluate(ROWS_JS)
         by = {r['who']: r for r in rows}
-        check('Wendy sees it too', bool(rows), rows)
+        check('WP sees it too', bool(rows), rows)
         check('last working day: not-due-yet patients stay not due', by.get('Patient E', {}).get('off') and not any('Last working day' in r['why'] for r in rows), by.get('Patient E'))
         check('held and did-not-attend stay greyed; 3rd Party Funded still waits for the end', by.get('Patient C', {}).get('off') and by.get('Patient F', {}).get('off') and by.get('Patient M', {}).get('off') and by.get('Patient L', {}).get('off'), rows)
         check('no page errors (scenario 2)', not errors, errors)

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Look: HTML source for emails (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.8
+// @version      0.9
 // @upc-was      email-html-source.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/email-html.user.js
@@ -34,7 +34,7 @@
   // field name -> textarea, for every editor currently in HTML mode
   const actives = new Map();
 
-  // ---------- 0. Templates chosen in a send box (Carl, 16 Nov 2026) ----------
+  // ---------- 0. Templates chosen in a send box (CH, 16 Nov 2026) ----------
   // GET /communication/template/render/:template/<invoice|...>/:id returns the template filled in (JSON; merge tags
   // Halaxy fills on sending, such as [Payment Link], still as tags; capture 16 Nov 2026). If it has styling the
   // editor would strip, the send box's editor opens it in HTML mode, so it is sent exactly as saved.

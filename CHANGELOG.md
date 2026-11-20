@@ -1,5 +1,10 @@
 # Changelog
 
+## Starter 1.0.0, loader 1.4.0, 20 Nov 2026
+- New: loader/upc-starter.user.js, for when the repository goes private. Installed once per PC instead of the loader; it keeps the PC's access key (a read-only GitHub token, entered from its Tampermonkey menu), runs a saved copy of the loader at document-start and fetches new copies with the key. Menu: access key, status, fetch the loader again.
+- Loader 1.4.0: sends the access key when there is one; the starter's problems (no key, key refused, key expiring within 30 days) appear in its problems and so in the health check. Installed on its own with no key it works as before.
+- Names in comments, docs and tests replaced with initials (CH and so on). Script versions bumped for the comment changes only.
+
 ## Missing details 0.2.6, 20 Nov 2026 (beta)
 - A first line of address that is only a place name ("Urmston", or the address's own town or county) counts as missing. One-word house names still count as an address. Patients checked before this are read again.
 
@@ -39,13 +44,13 @@
 - Core: a new Admin Note is found by its text, so two scripts adding notes at the same moment no longer stop each other.
 
 ## Health check 1.1.53, 18 Nov 2026 (beta)
-- The notice no longer shows on the log-in page or before the signed-in name is read; it shows only to the people named (Carl). Only a signed-in page whose name still can't be read after 20 seconds shows it, in case Halaxy has changed.
+- The notice no longer shows on the log-in page or before the signed-in name is read; it shows only to the people named (CH). Only a signed-in page whose name still can't be read after 20 seconds shows it, in case Halaxy has changed.
 
 ## Patient forms 0.1.4, 17 Nov 2026 (beta)
 - Page laid out as the other lists: Check now and the progress bar (or "Checked at ...") under the heading, space between the cards.
 
 ## Patient forms 0.1.3, 17 Nov 2026 (beta)
-- Sending and reminders back on (Carl), after the held preview matched the live form history.
+- Sending and reminders back on (CH), after the held preview matched the live form history.
 - "Don't send" no longer shows where a form has already gone.
 
 ## Patient forms 0.1.2, 17 Nov 2026 (beta)
@@ -66,7 +71,7 @@
 - The <> HTML view on the online booking preferences page: the booking email (form[booking][bookingEmailText]) and the booking page's notes and terms.
 
 ## Schedule excess 0.2.0, core 0.1.61, 16 Nov 2026 (beta)
-- The email is Halaxy's own "Chase - Excess Due" template (Carl edits it in Halaxy), loaded for the invoice as the Send box does once the due date is set, and sent with its styling. No HTML kept in the script. Stops first if the template isn't there.
+- The email is Halaxy's own "Chase - Excess Due" template (CH edits it in Halaxy), loaded for the invoice as the Send box does once the due date is set, and sent with its styling. No HTML kept in the script. Stops first if the template isn't there.
 - Clinic settings: Schedule excess, Email template (default "Chase - Excess Due").
 
 ## Schedule excess 0.1.3, 16 Nov 2026 (beta)
@@ -77,7 +82,7 @@
 - Scheduled exactly a week from when the button is pressed, to the minute (Halaxy fills a time an hour ahead).
 
 ## Schedule excess 0.1.1, 16 Nov 2026 (beta)
-- Charge excess renamed Schedule excess (Carl), and the button sits after Process Now and its drop-down. Halaxy's Process Now and Mark as Paid carry their address in data-modal-href, not href (live, 16 Nov 2026).
+- Charge excess renamed Schedule excess (CH), and the button sits after Process Now and its drop-down. Halaxy's Process Now and Mark as Paid carry their address in data-modal-href, not href (live, 16 Nov 2026).
 - Health check 1.1.51: checks #btn-email-invoice itself (it is the Send link) and Process Now, found either way.
 
 ## HTML source for emails 0.7, 16 Nov 2026 (beta)
@@ -88,10 +93,10 @@
 - Health check 1.1.50: knows Charge excess and checks the Send button and Mark as Paid on invoice pages where it shows.
 
 ## Calendar controls 2.16, 16 Nov 2026 (beta)
-- Just me / All practitioners no longer sit on top of Day / Week / Month on a narrower screen (Carl's laptop, 16 Nov 2026): they switch to "Me" / "All" when that is enough, otherwise move to a line of their own under the toolbar, and go back when there is room. Measured on the page, so it follows the window width and zoom.
+- Just me / All practitioners no longer sit on top of Day / Week / Month on a narrower screen (CH's laptop, 16 Nov 2026): they switch to "Me" / "All" when that is enough, otherwise move to a line of their own under the toolbar, and go back when there is room. Measured on the page, so it follows the window width and zoom.
 
 ## Wording and look, 16 Nov 2026 (beta; 17 scripts)
-- On-screen text no longer explains the clinic's processes or how a script works (Carl, 16 Nov 2026): list intros and long footers, step-by-step paragraphs in confirm pop-ups, explanatory brackets in Clinic settings labels and row notes are removed or shortened. Task comments give the facts only.
+- On-screen text no longer explains the clinic's processes or how a script works (CH, 16 Nov 2026): list intros and long footers, step-by-step paragraphs in confirm pop-ups, explanatory brackets in Clinic settings labels and row notes are removed or shortened. Task comments give the facts only.
 - Look: errors, warnings and confirmations use Halaxy's own message boxes; no faded rows (each group has its own card); no version lines on pages (Script settings lists versions); "Check now" and "Checked at 12:30 on 16-Nov-2026." everywhere; the small progress bar instead of "Working...".
 - Missing details: columns Next appointment and Last seen; the banner lists what is missing, email included.
 - Forecourt lights: the settings pop-up shows only what isn't a clinic setting yet, plus the timer and the next two weeks.
@@ -99,15 +104,15 @@
 - tests/check_scripts.py checks beta for red-text paragraphs, faded rows, version lines, "Check again" and em dashes.
 
 ## Missing details 0.2.4, 16 Nov 2026 (beta)
-- Two groups (Carl, 16 Nov 2026): ongoing patients (an appointment attended in the last 18 months: worth a call) and not seen yet (they fill in the online form before their first visit: no chasing). The menu count is ongoing patients only; the banner and the calendar mark stay for everyone with gaps. The calendar is read 18 months back for this (still one request).
+- Two groups (CH, 16 Nov 2026): ongoing patients (an appointment attended in the last 18 months: worth a call) and not seen yet (they fill in the online form before their first visit: no chasing). The menu count is ongoing patients only; the banner and the calendar mark stay for everyone with gaps. The calendar is read 18 months back for this (still one request).
 
 ## Portal fill 0.1.20, 16 Nov 2026 (beta); Missing details and Patient statuses to stable
-- Portal fill: once the insurer's site says the invoice was submitted, the Halaxy tab it was started from marks the funder invoice Issued straight away (Carl, 16 Nov 2026), and the portal offers "Back to Halaxy", which closes the portal tabs of that fill. The portal panel is in the clinic's brand colours.
-- Stable: Missing details 0.2.3, Patient statuses 0.2.7 and core 0.1.59 (Carl, 16 Nov 2026). Patient statuses needs core's fix for a patient number Halaxy fills in on save; Missing details' sharing between PCs needs it too. Each stable script's own tests from the last promotion pass on this core, except two that only object to its hourly clinic settings read (Forecourt lights, Review requests); Remittances 0.3.2's own test gives the same result on this core as on the previous stable core.
+- Portal fill: once the insurer's site says the invoice was submitted, the Halaxy tab it was started from marks the funder invoice Issued straight away (CH, 16 Nov 2026), and the portal offers "Back to Halaxy", which closes the portal tabs of that fill. The portal panel is in the clinic's brand colours.
+- Stable: Missing details 0.2.3, Patient statuses 0.2.7 and core 0.1.59 (CH, 16 Nov 2026). Patient statuses needs core's fix for a patient number Halaxy fills in on save; Missing details' sharing between PCs needs it too. Each stable script's own tests from the last promotion pass on this core, except two that only object to its hourly clinic settings read (Forecourt lights, Review requests); Remittances 0.3.2's own test gives the same result on this core as on the previous stable core.
 - Review requests 0.5.9: owing money is read from the Unpaid Invoices report (one request; its Payer ID is the clinic's patient number, P-005365, so matched by name); only a patient it names has their own invoices read to be sure.
 
 ## Review requests 0.5.8, core 0.1.59, health check 1.1.48, 16 Nov 2026 (beta)
-- Review requests: the "No review request" label is no longer read (Carl will remove it from patients). "Don't ask this time" replaces "Don't ask": it notes the patient and the visit it applies to in the shared Admin Note "UPC shared checks: Review requests" (nothing changes on the patient), so they are suggested again after a new visit; their notes aren't read meanwhile.
+- Review requests: the "No review request" label is no longer read (CH will remove it from patients). "Don't ask this time" replaces "Don't ask": it notes the patient and the visit it applies to in the shared Admin Note "UPC shared checks: Review requests" (nothing changes on the patient), so they are suggested again after a new visit; their notes aren't read meanwhile.
 - Core: our own progress bars, ticks and radio buttons are in the clinic's brand purple.
 - Health check: Review requests no longer relies on the patient Edit page.
 
@@ -121,7 +126,7 @@
 - Alerts 1.0.3, Block reporting 0.2.2, Branding 2.9.5, Forecourt lights 0.3.2, Portal fill 0.1.19: offer their current per-PC values.
 
 ## Per-person settings, 15 Nov 2026 (beta)
-- Core 0.1.56: per-person clinic settings ("Everyone", or people ticked) and choices: Forecourt lights reminders, arrival chime, chat alarm, clinic branding, branding font, Halaxy's tours (Userpilot). They follow whoever is signed in, on any PC; only Carl changes them (Script settings > Clinic settings). Core keeps what applies to this PC's last sign-in for scripts that start before the page is ready.
+- Core 0.1.56: per-person clinic settings ("Everyone", or people ticked) and choices: Forecourt lights reminders, arrival chime, chat alarm, clinic branding, branding font, Halaxy's tours (Userpilot). They follow whoever is signed in, on any PC; only CH changes them (Script settings > Clinic settings). Core keeps what applies to this PC's last sign-in for scripts that start before the page is ready.
 - Alerts 1.0.2, Block reporting 0.2.1, Branding 2.9.4: use them once set; until then the PC's own switch (and the Tampermonkey menu switch is only offered until then).
 - Forecourt lights 0.3.1: who is reminded is per person once set; "Remind me later" follows the person to other PCs; checks again as soon as the clinic settings are read.
 - Script settings 0.2.4: Everyone or people ticks, and choice lists.
@@ -147,19 +152,19 @@
 - Script settings: the Clinic settings table fits the pop-up (fixed column widths, long lists wrap).
 
 ## Clinic settings stage 2: people, 15 Nov 2026 (beta)
-- Core 0.1.51: people settings. Who sees each page (Ready to bill, Missing details list, Insurer payments due, Open-ended patients, Review requests, Feedback alerts, Patient statuses, Bank statement; a page's list also decides on whose sign-in its background checks run), who gets each script's tasks (Feedback alerts, Remittances, Bank statement, Portal fill), and who Forecourt lights can remind. At least one person per page. Only Carl can change clinic settings (not itself a setting).
+- Core 0.1.51: people settings. Who sees each page (Ready to bill, Missing details list, Insurer payments due, Open-ended patients, Review requests, Feedback alerts, Patient statuses, Bank statement; a page's list also decides on whose sign-in its background checks run), who gets each script's tasks (Feedback alerts, Remittances, Bank statement, Portal fill), and who Forecourt lights can remind. At least one person per page. Only CH can change clinic settings (not itself a setting).
 - Script settings 0.2.1: ticks for people, a list for one person (offered: Halaxy's practitioner list, everyone named in a setting, who is signed in); a refused save keeps the changes on screen.
 - Remittances uses the same "not matched after" days as Bank statement. Portal fill passes the task owner to the portal, which names them if a fill stops.
 - Health check 1.1.45: wording for people settings it can't use.
 
 ## Clinic settings, 15 Nov 2026 (beta)
 - Core 0.1.50: `UPC.settings`, the rules every PC shares, kept in the Admin Note "UPC clinic settings" on UPC scripts (settings) (one `key = value` line for each value that differs from the default). Read about hourly by each PC; a value outside its limits or a line that can't be read falls back to the default.
-- Script settings 0.2.0: a Clinic settings section. Everyone sees the values; only Carl can change them ("Save for every PC"). Values outside their limits are refused.
+- Script settings 0.2.0: a Clinic settings section. Everyone sees the values; only CH can change them ("Save for every PC"). Values outside their limits are refused.
 - Ready to bill, Insurer payments due, Open-ended patients, Patient statuses, Review requests, Missing details and Bank statement read their rules from it (excess limit, rolling and quiet periods, overdue days, look-back windows, discharge gap, send time, minimum age and so on). Page text gives periods in days.
 - Health check 1.1.44: reads the clinic settings daily and lists any value it can't use.
 
 ## Core 0.1.49, health check 1.1.43, 15 Nov 2026 (beta)
-- Shared checks: spare copies of a shared note are deleted (Carl, 15 Nov 2026), through Halaxy's own Delete Admin Note pop-up, checked by listing afterwards. Only the scripts' own copies are touched; one Halaxy won't delete is relabelled "Spare copy ..." and tried again on a later save. Core `UPC.adminNotes.remove`.
+- Shared checks: spare copies of a shared note are deleted (CH, 15 Nov 2026), through Halaxy's own Delete Admin Note pop-up, checked by listing afterwards. Only the scripts' own copies are touched; one Halaxy won't delete is relabelled "Spare copy ..." and tried again on a later save. Core `UPC.adminNotes.remove`.
 - Health check: opens (never confirms) the Delete Admin Note pop-up on UPC scripts (settings) to check its Delete link is there.
 
 ## Core 0.1.48, health check 1.1.42, 15 Nov 2026 (beta)
@@ -181,52 +186,52 @@
 - Fewer reads: a patient with gaps is read again only on the next page after a visit to their Edit page (when the details may have been saved), or after 10 minutes; moving between their pages otherwise costs nothing.
 
 ## Missing details, 15 Nov 2026 (beta)
-- New, Missing details 0.1.0 (Carl, 15 Nov 2026): patients missing a first or last name, date of birth, address (first line and postcode) or phone number.
+- New, Missing details 0.1.0 (CH, 15 Nov 2026): patients missing a first or last name, date of birth, address (first line and postcode) or phone number.
   - A banner on every page of that patient for everyone, until the details are saved; it mentions email as well when there is none ("if they use one"), but email alone never brings it up.
-  - Patients > Missing details for Carl and Wendy: everyone booked in the next 14 days or seen in the last 30 with gaps, soonest appointment first, with the practitioner and a link to the Edit page; a count on the menu; a separate greyed list of those with only no email.
+  - Patients > Missing details for CH and WP: everyone booked in the next 14 days or seen in the last 30 with gaps, soonest appointment first, with the practitioner and a link to the Edit page; a count on the menu; a separate greyed list of those with only no email.
   - Read from each patient's Edit page (nothing saved): complete patients again after 30 days, those with gaps after a day, at most 40 a run every 3 hours in the background.
 - Calendar controls 2.14: a warning sign before the name on the appointments of patients missing details (from Missing details' check on that PC; no extra requests).
 - Health check 1.1.40: the Edit page's date of birth, phone and email fields.
 
 ## Statement register as Admin Notes, 14 Nov 2026 (beta)
-- Bank statement 0.2.3 (Carl, 14 Nov 2026): each statement's register entry is now an Admin Note on the Starling Bank profile, not a PDF file. Same details (period, fingerprint, balances, who read it and when, each insurer payment and what became of it); one request reads every entry, and saving one is the Admin Note pop-up only.
+- Bank statement 0.2.3 (CH, 14 Nov 2026): each statement's register entry is now an Admin Note on the Starling Bank profile, not a PDF file. Same details (period, fingerprint, balances, who read it and when, each insurer payment and what became of it); one request reads every entry, and saving one is the Admin Note pop-up only.
 - Core 0.1.45: `UPC.adminNotes` (list, add, update) for organisations and patients.
 - Health check 1.1.39: the Admin Notes list and Add pop-up on the Starling Bank profile.
 
 ## Ready to bill: excess limit, 14 Nov 2026 (beta)
-- Ready to bill 0.4.2 (Carl, 14 Nov 2026): an excess on the intake form over £ 500 (was £ 2,000) is taken as a mistake (an extra 0, the annual limit) and the 2-fee rule is used instead. Real excesses run to about £ 300.
+- Ready to bill 0.4.2 (CH, 14 Nov 2026): an excess on the intake form over £ 500 (was £ 2,000) is taken as a mistake (an extra 0, the annual limit) and the 2-fee rule is used instead. Real excesses run to about £ 300.
 
 ## Contacts made patients, 14 Nov 2026 (beta)
 - Core 0.1.44: when a Contact's status is changed, Halaxy gives them a patient number. Setting a status no longer reports that as "these details now read differently" (a number that was blank before may fill in). Anything else that changes is still reported.
 - Patient statuses 0.2.5: a change that went through but needs a look is logged as "Changed, but please check", not "Not changed".
 
 ## Ready to bill: Discharged patients, 14 Nov 2026 (beta)
-- Ready to bill 0.4.1 (Carl, 14 Nov 2026): a patient whose status is Discharged and who has nothing booked is due straight away ("Discharged, nothing booked"), for any funder, without waiting for 14 quiet days, and is not held for the excess. The status comes with the calendar events already read, so no extra requests.
+- Ready to bill 0.4.1 (CH, 14 Nov 2026): a patient whose status is Discharged and who has nothing booked is due straight away ("Discharged, nothing booked"), for any funder, without waiting for 14 quiet days, and is not held for the excess. The status comes with the calendar events already read, so no extra requests.
 
 ## Ready to bill: rolling instead of month end, 14 Nov 2026 (beta)
-- Ready to bill 0.4.0 (Carl, 14 Nov 2026): the month-end rule is gone. Bupa, AXA, WPA and Aviva patients are due once their oldest unbilled fee is 4 weeks old, unless their next visit is within 7 days (then after it, on the same bill), so billing is spread through the month and nobody drops off the list on a set day. The excess hold now also ends when no more fees are coming (no visit for 14 days, nothing booked). Authorisation used up, 14 days quiet and 3-month-old fees still make a patient due.
+- Ready to bill 0.4.0 (CH, 14 Nov 2026): the month-end rule is gone. Bupa, AXA, WPA and Aviva patients are due once their oldest unbilled fee is 4 weeks old, unless their next visit is within 7 days (then after it, on the same bill), so billing is spread through the month and nobody drops off the list on a set day. The excess hold now also ends when no more fees are coming (no visit for 14 days, nothing booked). Authorisation used up, 14 days quiet and 3-month-old fees still make a patient due.
 
 ## Bank statement: last month's statement due, 13 Nov 2026 (beta)
-- Bank statement 0.2.2 (Carl, 13 Nov 2026): from the 15th, a blob on the menu item while last month's statement isn't in the register (before the 15th, the month before). Checked at most once a day from the Starling Bank profile, in the visible tab, and again straight after a register is saved.
+- Bank statement 0.2.2 (CH, 13 Nov 2026): from the 15th, a blob on the menu item while last month's statement isn't in the register (before the 15th, the month before). Checked at most once a day from the Starling Bank profile, in the visible tab, and again straight after a register is saved.
 
 ## Promoted to stable, 13 Nov 2026
-Confirmed by Carl on live Halaxy: core library 0.1.43 (pacing, report retry), health check 1.1.38, Alerts 1.0.1, Branding 2.9.3, Calendar controls 2.13, Forecourt lights 0.2.2, Outstanding actions 0.5.5, Task stamps 0.1.4, Toast alerts 1.2, Script settings 0.1.1 (grouping and new names), Email HTML 0.5 (was HTML source for emails), Text boxes 1.2 (was Auto-expanding text boxes), Ready to bill 0.3.4, Rebate sync 0.3.3, Review requests 0.5.4, Invoice Funder 0.8.3 (replaces Bill funder), Feedback alerts 0.1.5 (replaces Survey feedback), Insurer payments due 0.1.6 and Open-ended patients 0.1.7 (new on stable). Custom Reports retired from stable. Held on beta: Bank statement, Remittances 0.4 (stable keeps 0.3.2, checked against the new core), Portal fill, Patient statuses, Mobile layout, Block reporting.
+Confirmed by CH on live Halaxy: core library 0.1.43 (pacing, report retry), health check 1.1.38, Alerts 1.0.1, Branding 2.9.3, Calendar controls 2.13, Forecourt lights 0.2.2, Outstanding actions 0.5.5, Task stamps 0.1.4, Toast alerts 1.2, Script settings 0.1.1 (grouping and new names), Email HTML 0.5 (was HTML source for emails), Text boxes 1.2 (was Auto-expanding text boxes), Ready to bill 0.3.4, Rebate sync 0.3.3, Review requests 0.5.4, Invoice Funder 0.8.3 (replaces Bill funder), Feedback alerts 0.1.5 (replaces Survey feedback), Insurer payments due 0.1.6 and Open-ended patients 0.1.7 (new on stable). Custom Reports retired from stable. Held on beta: Bank statement, Remittances 0.4 (stable keeps 0.3.2, checked against the new core), Portal fill, Patient statuses, Mobile layout, Block reporting.
 
 ## Bank statement: Save to register, 13 Nov 2026 (beta)
-- Bank statement 0.2.1 (Carl, 13 Nov 2026): a statement not in the register yet, or whose entry is out of date, shows "Save to register" (or "Update register"). After confirming, it writes the register entry on the Starling Bank profile without recording any money, so reading old statements again fills the register in even when there is nothing to record.
+- Bank statement 0.2.1 (CH, 13 Nov 2026): a statement not in the register yet, or whose entry is out of date, shows "Save to register" (or "Update register"). After confirming, it writes the register entry on the Starling Bank profile without recording any money, so reading old statements again fills the register in even when there is nothing to record.
 
 ## Report hiccups, spacing, 13 Nov 2026 (beta)
 - Core 0.1.43: a report page that comes back without its table (a passing Halaxy hiccup, seen on two PCs at 13:29 on 13 Nov 2026) is asked for once more 20 seconds later; only if it fails again is the report said to have changed, naming the page Halaxy sent instead. Space between "View log" (or its open log) and the card below it.
 - Remittances 0.4.1: the page's description says where the money now comes from (the bank statement's deposit) and that a copy goes on the insurer's profile.
 
 ## Insurer money through funder deposits, 13 Nov 2026 (beta)
-- Carl, 13 Nov 2026: insurer payments now go onto the insurer's profile as a deposit, made only from the bank statement, then applied to invoices. Whichever of the bank statement and the remittance comes second applies it, only when the amounts agree exactly, and only after you confirm.
+- CH, 13 Nov 2026: insurer payments now go onto the insurer's profile as a deposit, made only from the bank statement, then applied to invoices. Whichever of the bank statement and the remittance comes second applies it, only when the amounts agree exactly, and only after you confirm.
 - Bank statement 0.2.0:
   - Each insurer payment becomes a Direct Deposit on the insurer's profile, dated the bank date, with a note naming the bank line and statement. If a remittance put through Remittances names its invoices and they agree, it is applied to them and the remittance copies say so. Otherwise it waits for the remittance.
   - Never twice: payments already recorded the old way show "Already in Halaxy" and get no deposit. A deposit already on the profile is found by its note. A deposit of the same amount with no note shows "check".
   - Lines dated before 1 November 2026 are never in "Record all": reading an old statement again only fills in its register and shows anything not found, to check.
   - The statement register: one small PDF per statement on the Starling Bank profile (period, balances, line count, fingerprint, who read it and when, and each insurer payment with what became of it). A statement read again, or one overlapping it, is recognised.
-  - Tasks for Carl on the insurer's profile, or a general task when the profile isn't known.
+  - Tasks for CH on the insurer's profile, or a general task when the profile isn't known.
 - Remittances 0.4.0:
   - New remittance name: "Bupa remittance 2026-10-28 ref 2455419 £ 216.00".
   - The remittance is filed once on the insurer's profile, with the whole remittance in its comment. The same file is updated, not duplicated; a different file under that name gets a task.
@@ -235,70 +240,70 @@ Confirmed by Carl on live Halaxy: core library 0.1.43 (pacing, report retry), he
 - Core 0.1.42: `UPC.deposits` (list, details, add, apply, insurer profiles seen, lingering check), `UPC.orgFiles` (list, find, details, update, attach on a funder profile), tasks on a profile and general tasks, the invoice's Bill To profile, and adding to an attachment's comment (`append`).
 
 ## Bank statement page laid out like Remittances, 13 Nov 2026 (beta)
-- Bank statement 0.1.9 (Carl, 13 Nov 2026): the same layout as Remittances: a "Read a bank statement" card saying what it does, the same drop box (highlighted while a file is dragged over), then progress and notes, then the results.
+- Bank statement 0.1.9 (CH, 13 Nov 2026): the same layout as Remittances: a "Read a bank statement" card saying what it does, the same drop box (highlighted while a file is dragged over), then progress and notes, then the results.
 
 ## Progress bar instead of step-by-step output, 13 Nov 2026 (beta)
-- Carl, 13 Nov 2026: no live list of steps while a script works. Core 0.1.41 adds one shared display (`UPC.ui.run`): a progress bar with one line saying what it is doing now; once finished, the full results in one go, any problems listed, and the steps behind a "View log" button.
+- CH, 13 Nov 2026: no live list of steps while a script works. Core 0.1.41 adds one shared display (`UPC.ui.run`): a progress bar with one line saying what it is doing now; once finished, the full results in one go, any problems listed, and the steps behind a "View log" button.
 - Remittances 0.3.15: reading and checking a remittance, applying excess fixes and attaching, and finishing part-way moves all show the progress bar; the table appears when it has finished.
 - Invoice Funder 0.8.3, Rebate sync 0.3.3 and Bank statement 0.1.8 (reading, matching and recording): the same.
 - Ready to bill 0.3.4, Review requests 0.5.4, Open-ended patients 0.1.7, Insurer payments due 0.1.6 and Feedback alerts 0.1.5: a small moving bar beside the status line while they check.
 
 ## Remittances: add a missing line by hand, 13 Nov 2026 (beta)
-- Remittances 0.3.14 (Carl, 13 Nov 2026): "A line missing? Add it from the paper copy" on scanned remittances, and on any whose amounts don't add up to its total: invoice number, amount paid, amount billed if shown, and a tick for member contribution or excess. The line is checked in Halaxy like any other and the totals are checked again; it then takes part in moving excesses and attaching as normal.
+- Remittances 0.3.14 (CH, 13 Nov 2026): "A line missing? Add it from the paper copy" on scanned remittances, and on any whose amounts don't add up to its total: invoice number, amount paid, amount billed if shown, and a tick for member contribution or excess. The line is checked in Halaxy like any other and the totals are checked again; it then takes part in moving excesses and attaching as normal.
 
 ## Remittances: scanned AXA misreads, 13 Nov 2026 (beta)
 - Remittances 0.3.13: an invoice number the text recognition reads as "UPGC-..." (or with G or O for the C) is still found (live 13 Nov 2026: an AXA remittance showed one of its two invoices), and an explanation joined onto the same row as the invoice number still counts ("member contribution" = excess).
 
 ## Remittances: full details on older copies, and Check remittance, 13 Nov 2026 (beta)
-- Remittances 0.3.12 (Carl, 13 Nov 2026):
-  - Where the remittance is already attached without the full details (attached by hand, or by an older version), it compares the attached file with the one loaded. The same file: its title and comment are updated in place (Halaxy's attachment edit pop-up), no second copy. A different file under the same name (the wrong document, say): left alone, this remittance attached as well with its details, and a task for Carl to check the other one. Already with the full details: skipped as before.
+- Remittances 0.3.12 (CH, 13 Nov 2026):
+  - Where the remittance is already attached without the full details (attached by hand, or by an older version), it compares the attached file with the one loaded. The same file: its title and comment are updated in place (Halaxy's attachment edit pop-up), no second copy. A different file under the same name (the wrong document, say): left alone, this remittance attached as well with its details, and a task for CH to check the other one. Already with the full details: skipped as before.
   - "Check remittance" next to each remittance attached to an invoice (titled by Remittances, or a date name like "2026-10-28.pdf"): opens Remittances with that file loaded, to move an excess not moved yet or add the full details.
 - Core 0.1.40: an invoice's attachments in parts (`attachmentList`: created, category, title, comments, download and edit links); `UPC.files.sameFile` and `UPC.files.updateAttachment`.
 
 ## Remittances: re-uploading says what's already done, 13 Nov 2026 (beta)
-- Remittances 0.3.11 (Carl, 13 Nov 2026: re-uploading old remittances): an invoice whose excess was already moved (by an earlier upload or by hand, however it was split over the fees) now shows "Excess moved" with how much, instead of "Insurer was billed ... but the Halaxy invoice is ...". Part moved, or more than the excess moved: says how much and leaves it for a check by hand. Nothing is moved twice. The comment's "billed" is now what the insurer was billed, not Halaxy's total after the move.
+- Remittances 0.3.11 (CH, 13 Nov 2026: re-uploading old remittances): an invoice whose excess was already moved (by an earlier upload or by hand, however it was split over the fees) now shows "Excess moved" with how much, instead of "Insurer was billed ... but the Halaxy invoice is ...". Part moved, or more than the excess moved: says how much and leaves it for a check by hand. Nothing is moved twice. The comment's "billed" is now what the insurer was billed, not Halaxy's total after the move.
 
 ## Bank statement: certain about what's already recorded, 12 Nov 2026 (beta)
-- Bank statement 0.1.7 (Carl, 12 Nov 2026: "as robust as possible"):
+- Bank statement 0.1.7 (CH, 12 Nov 2026: "as robust as possible"):
   - A recorded payment's note decides whose it is. Bank statement notes the insurer, bank date and reference on each payment it records; a payment whose note names this bank line makes it certain, and one whose note names another bank line is never counted for this one (read from the invoice, only for payments that look like a match).
   - A payment recorded by hand (no such note) counts only if dated on the bank date or up to 5 days before it (the remittance's date), and only when nothing else could be it. If another payment on the statement from the same insurer for the same amount is close by, or the payment is dated before the statement starts (it may be last month's), neither is marked: each says to check which is recorded, and nothing is ticked.
 
 ## Bank statement knows what's already recorded, 12 Nov 2026 (beta)
-- Bank statement 0.1.6: reads the payments already recorded in Halaxy (Halaxy's Income report, one request) and shows a bank line as "Already in Halaxy", with nothing to do, when the insurer's payments recorded around its date add up to it (Direct Deposit and the like, not card or online; from 10 days before the bank date to 3 after, the same day first), or our invoice numbers in its reference were paid that amount (Carl, 12 Nov 2026: once a payment was recorded by hand, it had looked further back for something else to match). Works for payments recorded by hand, on another PC, or by Bank statement itself. A remittance whose comment lists its invoices gathers all of them, even ones outside the recent invoices it looks at.
+- Bank statement 0.1.6: reads the payments already recorded in Halaxy (Halaxy's Income report, one request) and shows a bank line as "Already in Halaxy", with nothing to do, when the insurer's payments recorded around its date add up to it (Direct Deposit and the like, not card or online; from 10 days before the bank date to 3 after, the same day first), or our invoice numbers in its reference were paid that amount (CH, 12 Nov 2026: once a payment was recorded by hand, it had looked further back for something else to match). Works for payments recorded by hand, on another PC, or by Bank statement itself. A remittance whose comment lists its invoices gathers all of them, even ones outside the recent invoices it looks at.
 - Core 0.1.39: `UPC.reports.paymentLines(start, stop)` reads Halaxy's Income report: each payment's invoice, payer, funder, date, method and amount.
 - Remittances 0.3.10: the comment on each attached remittance also lists every invoice it covers ("...; invoices UPC-38023, UPC-37981").
 
 ## Put back as it was when something fails, 12 Nov 2026 (beta)
-- Core 0.1.38: moving part of a fee between a funder invoice and a patient invoice is now all or nothing (Carl, 12 Nov 2026: a job shouldn't be left half done). If Halaxy refuses any step after something was changed, the fee is put back exactly as it was (rebate, the line billed back to the same funder invoice on its own date, Issued again if it was) and the message says so. If putting it back fails too, it says exactly what to check.
-- Remittances 0.3.9: when one fee of an invoice can't be moved, the fees already moved on that invoice are moved back too, so the invoice is as it was before Remittances started on it, and a task "Remittances stopped on UPC-...: please check" is added for Carl on the funder invoice saying why.
-- Rebate sync 0.3.2: when a change stops, it is put back (core) and a task "Rebate sync stopped on UPC-...: please check" is added for Carl on the funder invoice.
-- Bank statement 0.1.5: every invoice on a bank line is checked before any payment is recorded, so a surprise (an invoice now showing a different amount) stops it with nothing recorded. If Halaxy refuses a payment part way, it lists what was recorded and adds a task for Carl; Record again carries on from there. Recorded payments aren't taken off by the script yet: that needs a capture of Halaxy's payment delete.
+- Core 0.1.38: moving part of a fee between a funder invoice and a patient invoice is now all or nothing (CH, 12 Nov 2026: a job shouldn't be left half done). If Halaxy refuses any step after something was changed, the fee is put back exactly as it was (rebate, the line billed back to the same funder invoice on its own date, Issued again if it was) and the message says so. If putting it back fails too, it says exactly what to check.
+- Remittances 0.3.9: when one fee of an invoice can't be moved, the fees already moved on that invoice are moved back too, so the invoice is as it was before Remittances started on it, and a task "Remittances stopped on UPC-...: please check" is added for CH on the funder invoice saying why.
+- Rebate sync 0.3.2: when a change stops, it is put back (core) and a task "Rebate sync stopped on UPC-...: please check" is added for CH on the funder invoice.
+- Bank statement 0.1.5: every invoice on a bank line is checked before any payment is recorded, so a surprise (an invoice now showing a different amount) stops it with nothing recorded. If Halaxy refuses a payment part way, it lists what was recorded and adds a task for CH; Record again carries on from there. Recorded payments aren't taken off by the script yet: that needs a capture of Halaxy's payment delete.
 
 ## Bank statement: paid in full, and safer matching, 12 Nov 2026 (beta)
-- Fix (core 0.1.37): an invoice paid in full shows as a "Receipt" with no Outstanding row, so after recording a payment that cleared it, Bank statement said it couldn't check it and stopped before the next invoice on the same bank line (Carl, 12 Nov 2026: UPC-38023 recorded, UPC-37981 not). A Receipt, or an invoice marked Paid in full, now counts as nothing outstanding. Pressing Record again carries on: the invoice already recorded is skipped.
-- Bank statement 0.1.4: only invoices dated in the 120 days before a payment are matched to it, and an amount on its own (one invoice, or the only set that adds up) is offered to tick, never ticked. Once a payment's own invoices were paid, it had reached back to older unpaid invoices that happened to add up (Carl, 12 Nov 2026). Ticked by itself only with evidence: our invoice number in the bank reference, or the invoices one remittance covers.
+- Fix (core 0.1.37): an invoice paid in full shows as a "Receipt" with no Outstanding row, so after recording a payment that cleared it, Bank statement said it couldn't check it and stopped before the next invoice on the same bank line (CH, 12 Nov 2026: UPC-38023 recorded, UPC-37981 not). A Receipt, or an invoice marked Paid in full, now counts as nothing outstanding. Pressing Record again carries on: the invoice already recorded is skipped.
+- Bank statement 0.1.4: only invoices dated in the 120 days before a payment are matched to it, and an amount on its own (one invoice, or the only set that adds up) is offered to tick, never ticked. Once a payment's own invoices were paid, it had reached back to older unpaid invoices that happened to add up (CH, 12 Nov 2026). Ticked by itself only with evidence: our invoice number in the bank reference, or the invoices one remittance covers.
 
 ## Excess moves on Issued invoices, 12 Nov 2026 (beta)
-- Fix (core 0.1.36): moving an excess on a funder invoice marked Issued stopped part way. The fee came off, but Halaxy only offers Active invoices when billing a funder, so it couldn't go back on (Carl, 12 Nov 2026: UPC-38023 and UPC-37983 left with a fee waiting on the patient invoice). An Issued funder invoice is now set back to Active for the change and marked Issued again afterwards, even if something fails in between. Rebate sync and Remittances both use this. New `UPC.rebate.resume` bills a fee left waiting back to its funder invoice with its own date.
+- Fix (core 0.1.36): moving an excess on a funder invoice marked Issued stopped part way. The fee came off, but Halaxy only offers Active invoices when billing a funder, so it couldn't go back on (CH, 12 Nov 2026: UPC-38023 and UPC-37983 left with a fee waiting on the patient invoice). An Issued funder invoice is now set back to Active for the change and marked Issued again afterwards, even if something fails in between. Rebate sync and Remittances both use this. New `UPC.rebate.resume` bills a fee left waiting back to its funder invoice with its own date.
 - Remittances 0.3.8: an invoice left part-way is recognised ("Finish": the fee waiting on the patient invoice, within the remittance's dates, missing from the funder invoice) and finished first with one confirmation, then checked again. Bupa rows already moved are counted as done, so the rest of the fix is offered as usual.
 
 ## Bank statement and remittances, after the first live run, 12 Nov 2026 (beta)
-- Fix (core 0.1.35): a payment recorded by Bank statement showed "not accepted by Halaxy" although Halaxy had recorded it, and recording stopped there, so the other invoices on the same bank line were left unpaid (Carl, 12 Nov 2026). Halaxy answers Mark as Paid with something other than OK, so the invoice itself is now the answer: it is read back, and only Halaxy returning the form counts as a refusal.
-- Bank statement 0.1.3: never records an invoice twice (one already showing a payment with the same note is skipped); saves progress after each invoice, so a stop part way carries on from there next time ("£ 80.00 already recorded on ...; the rest: ..."). The date of a remittance attached by hand is read from its file name ("2026-09-30.pdf"), and from Remittances' comment ("payment date ..."); a remittance dated up to 5 days before the payment is preferred (Carl: Bupa and AXA almost always pay 2 days after). When a remittance paid a bank line but Halaxy still shows more on its invoices (an excess not yet moved to the patient), it says to run the remittance through Remittances first.
+- Fix (core 0.1.35): a payment recorded by Bank statement showed "not accepted by Halaxy" although Halaxy had recorded it, and recording stopped there, so the other invoices on the same bank line were left unpaid (CH, 12 Nov 2026). Halaxy answers Mark as Paid with something other than OK, so the invoice itself is now the answer: it is read back, and only Halaxy returning the form counts as a refusal.
+- Bank statement 0.1.3: never records an invoice twice (one already showing a payment with the same note is skipped); saves progress after each invoice, so a stop part way carries on from there next time ("£ 80.00 already recorded on ...; the rest: ..."). The date of a remittance attached by hand is read from its file name ("2026-09-30.pdf"), and from Remittances' comment ("payment date ..."); a remittance dated up to 5 days before the payment is preferred (CH: Bupa and AXA almost always pay 2 days after). When a remittance paid a bank line but Halaxy still shows more on its invoices (an excess not yet moved to the patient), it says to run the remittance through Remittances first.
 - Remittances 0.3.6: the comment on each attachment also gives the payment date and what was billed and paid on that invoice ("Insurer reference 2662551; payment date 28-Oct-2026; remittance total £ 216.00 over 3 invoices; this invoice billed £ 170.00, paid £ 136.00"); Bupa's reference is its BACS reference, the bank reference. A remittance attached by hand, named by its date, isn't attached again.
 
 ## Reports read correctly; reporting to Halaxy blocked, 12 Nov 2026 (beta)
-- Fix (core 0.1.34): an invoice with more than one fee was read from Halaxy's Unpaid Invoices report as its first fee only, with no balance (Carl, 12 Nov 2026: UPC-37737, 2 fees for £ 80.00, shown as 1 fee for £ 40.00 with nothing still to pay). Halaxy leaves the invoice cell blank on an invoice's later fee rows and puts the balance on its last row; every fee row now belongs to its invoice and carries its balance. This also affected Insurer payments due (fees, amount, still to pay), Bank statement (such invoices couldn't be matched) and Ready to bill (later fees of an invoice not counted). The tests now use Halaxy's real layout.
-- Block reporting to Halaxy 0.2.0 (was Block error reporting): Userpilot (Halaxy's product analytics, tours and announcements) is blocked too, in the same three ways, including its connection (Carl, 12 Nov 2026). It can be let through again on a PC from Script settings ("Halaxy's tours and announcements").
+- Fix (core 0.1.34): an invoice with more than one fee was read from Halaxy's Unpaid Invoices report as its first fee only, with no balance (CH, 12 Nov 2026: UPC-37737, 2 fees for £ 80.00, shown as 1 fee for £ 40.00 with nothing still to pay). Halaxy leaves the invoice cell blank on an invoice's later fee rows and puts the balance on its last row; every fee row now belongs to its invoice and carries its balance. This also affected Insurer payments due (fees, amount, still to pay), Bank statement (such invoices couldn't be matched) and Ready to bill (later fees of an invoice not counted). The tests now use Halaxy's real layout.
+- Block reporting to Halaxy 0.2.0 (was Block error reporting): Userpilot (Halaxy's product analytics, tours and announcements) is blocked too, in the same three ways, including its connection (CH, 12 Nov 2026). It can be let through again on a PC from Script settings ("Halaxy's tours and announcements").
 
 ## Quieter background checks and blocked error reporting, 12 Nov 2026 (beta)
-- Core 0.1.33: `UPC.background`. Background checks (menu counts, Patient statuses, Feedback alerts, the health check's daily check) run only in the visible tab, between 7 am and 9 pm, while someone has used the PC in the last 30 minutes, and fall due at their interval give or take 15%, not on an exact clock (Carl, 12 Nov 2026). Outstanding actions and Calendar controls stop their regular checks when nobody has used the PC for 30 minutes.
+- Core 0.1.33: `UPC.background`. Background checks (menu counts, Patient statuses, Feedback alerts, the health check's daily check) run only in the visible tab, between 7 am and 9 pm, while someone has used the PC in the last 30 minutes, and fall due at their interval give or take 15%, not on an exact clock (CH, 12 Nov 2026). Outstanding actions and Calendar controls stop their regular checks when nobody has used the PC for 30 minutes.
 - Insurer payments due 0.1.5: menu count twice a day instead of every 2 hours.
 - Patient statuses 0.2.4: at most 15 changes a run, 3 to 6 seconds apart.
 - New: Block error reporting 0.1.0 (System; now Block reporting to Halaxy). Stops Halaxy's error reporting service (Sentry) loading or sending anything from our PCs, so errors and requests from our scripts don't reach Halaxy. Loads straight after the health check.
 
 ## Names and groups, 12 Nov 2026 (beta)
-- Every script is now named "UPC <Group>: <Name>" (Billing, Patients, Calendar, Look, System), and Script settings and the loader panel list them under their groups (Carl, 12 Nov 2026). Every beta script's version goes up one step for the new name.
+- Every script is now named "UPC <Group>: <Name>" (Billing, Patients, Calendar, Look, System), and Script settings and the loader panel list them under their groups (CH, 12 Nov 2026). Every beta script's version goes up one step for the new name.
 - Files renamed to match their names: bill-funder to invoice-funder, funder-chaser to insurer-payments-due, check-ins to open-ended-patients, survey-feedback to feedback-alerts, halaxy-mobile to mobile-layout, textarea-autogrow to text-boxes, email-html-source to email-html. Each carries `@upc-was` with its old file name; `tools/promote.py` removes the old stable file when the new one is promoted.
 - Loader 1.3.0: lists scripts under their groups, and moves a renamed script's switch (on or off on that PC) and saved settings to the new file name. Script settings 0.1.1 lists by group too.
 
@@ -308,17 +313,17 @@ Confirmed by Carl on live Halaxy: core library 0.1.43 (pacing, report retry), he
 - Sign-in check and storage from the core library. No change in what it does.
 
 ### 0.1.0 (11 Nov 2026, beta)
-- New (Carl, 10 and 11 Nov 2026): Finances > Bank statement, Carl only for now. Open the month's Starling statement (PDF; read in the browser, nothing uploaded or kept). The reading is checked against the statement's running balance. Each insurer credit (a transfer from the old account naming an insurer counts as that insurer) is matched to the insurer's unpaid invoices dated on or before it: first the invoice(s) whose number is in the bank reference, if they add up (a reused old reference falls through to the rest, and says so); then the invoices one remittance covers (from the comment Remittances leaves on each), preferring the remittance whose reference is the bank reference, then the one dated within a few days of the payment (a remittance far from the bank date is offered, not ticked); then one invoice for the whole amount; then the only set of invoices that adds up. Several answers are offered to choose from. A credit naming a patient's invoice (a patient paying by transfer) is left out. After confirming, each invoice is marked paid as Direct Deposit on the bank date, with a note of the insurer, date and reference, and the result is checked. Recorded credits are remembered on the PC. This is the only place payments are recorded (Carl's rule: only once the bank shows the money).
+- New (CH, 10 and 11 Nov 2026): Finances > Bank statement, CH only for now. Open the month's Starling statement (PDF; read in the browser, nothing uploaded or kept). The reading is checked against the statement's running balance. Each insurer credit (a transfer from the old account naming an insurer counts as that insurer) is matched to the insurer's unpaid invoices dated on or before it: first the invoice(s) whose number is in the bank reference, if they add up (a reused old reference falls through to the rest, and says so); then the invoices one remittance covers (from the comment Remittances leaves on each), preferring the remittance whose reference is the bank reference, then the one dated within a few days of the payment (a remittance far from the bank date is offered, not ticked); then one invoice for the whole amount; then the only set of invoices that adds up. Several answers are offered to choose from. A credit naming a patient's invoice (a patient paying by transfer) is left out. After confirming, each invoice is marked paid as Direct Deposit on the bank date, with a note of the insurer, date and reference, and the result is checked. Recorded credits are remembered on the PC. This is the only place payments are recorded (CH's rule: only once the bank shows the money).
 
 ## Branding
 
 ### 2.9.2 (11 Nov 2026, beta)
-- Hides Reports > Medicare in the menu (Australian only; Carl). Hidden whether the branding is switched on or not.
+- Hides Reports > Medicare in the menu (Australian only; CH). Hidden whether the branding is switched on or not.
 
 ## Custom Reports
 
 ### Retired from beta (11 Nov 2026)
-- Carl: what it was used for is now done by its own tools (Ready to bill, Insurer payments due, Remittances and so on). Removed from beta; it stays on stable until Insurer payments due goes to stable, then it's removed there too.
+- CH: what it was used for is now done by its own tools (Ready to bill, Insurer payments due, Remittances and so on). Removed from beta; it stays on stable until Insurer payments due goes to stable, then it's removed there too.
 
 ### 0.7.0 (7 Nov 2026, beta)
 - Halaxy card headers on the Report and Filters sections, and Halaxy's page buttons in the toolbar.
@@ -332,13 +337,13 @@ Confirmed by Carl on live Halaxy: core library 0.1.43 (pacing, report retry), he
 - Sign-in check and storage from the core library. No change in what it shows.
 
 ### 0.1.2 (11 Nov 2026, beta)
-- Fix: the menu item didn't appear on live Halaxy. The script starts early, before Halaxy has filled in who's signed in, so it decided the page wasn't Carl's. It now keeps looking for 20 seconds, and also reads the name in Halaxy's top bar.
+- Fix: the menu item didn't appear on live Halaxy. The script starts early, before Halaxy has filled in who's signed in, so it decided the page wasn't CH's. It now keeps looking for 20 seconds, and also reads the name in Halaxy's top bar.
 
 ### 0.1.1 (11 Nov 2026, beta)
-- Renamed from Funder chaser (Carl's choice): the menu item, page and script name. Nothing else changed.
+- Renamed from Funder chaser (CH's choice): the menu item, page and script name. Nothing else changed.
 
 ### 0.1.0 (11 Nov 2026, beta)
-- New (Carl, 10 and 11 Nov 2026): Finances > Funder chaser, Carl only for now. Insurer invoices (billed to the insurer itself) marked Issued that still have something to pay 30 days or more after their invoice date, oldest first, with a count on the menu. A remittance attached doesn't take an invoice off the list; only the payment does. Funder invoices still Active after 30 days are shown greyed (perhaps never submitted) and not counted. One request: Halaxy's Unpaid Invoices report, read back 18 months. Reads only; no tasks.
+- New (CH, 10 and 11 Nov 2026): Finances > Funder chaser, CH only for now. Insurer invoices (billed to the insurer itself) marked Issued that still have something to pay 30 days or more after their invoice date, oldest first, with a count on the menu. A remittance attached doesn't take an invoice off the list; only the payment does. Funder invoices still Active after 30 days are shown greyed (perhaps never submitted) and not counted. One request: Halaxy's Unpaid Invoices report, read back 18 months. Reads only; no tasks.
 
 ## Open-ended patients
 
@@ -346,16 +351,16 @@ Confirmed by Carl on live Halaxy: core library 0.1.43 (pacing, report retry), he
 - Open-ended wording and the calendar come from the core library (shared with Patient statuses and Review requests). Patients are read again once, as the "not ..." rule now also covers "not yet" and "before".
 
 ### 0.1.3 (11 Nov 2026, beta)
-- Fix: the menu item didn't appear on live Halaxy. The script starts early, before Halaxy has filled in who's signed in, so it decided the page wasn't Carl's. It now keeps looking for 20 seconds, and also reads the name in Halaxy's top bar.
+- Fix: the menu item didn't appear on live Halaxy. The script starts early, before Halaxy has filled in who's signed in, so it decided the page wasn't CH's. It now keeps looking for 20 seconds, and also reads the name in Halaxy's top bar.
 
 ### 0.1.2 (11 Nov 2026, beta)
-- Renamed from Check-ins (Carl's choice): the menu item, page and script name.
+- Renamed from Check-ins (CH's choice): the menu item, page and script name.
 
 ### 0.1.1 (11 Nov 2026, beta)
-- No link with Review requests (Carl, 11 Nov 2026): the Review request column is gone and follow-ups aren't read.
+- No link with Review requests (CH, 11 Nov 2026): the Review request column is gone and follow-ups aren't read.
 
 ### 0.1.0 (11 Nov 2026, beta)
-- New (Carl, 11 Nov 2026), the list only: Patients > Check-ins, Carl only for now. Patients last seen 3 weeks to 3 months ago, with nothing booked and their last appointment not cancelled or missed, whose latest note leaves treatment open-ended ("open return", "open appointment", "book again if needed", "see how things go", "come back if needed", "see as needed" and similar; negations cancel). Shows the wording found and a link to the note. Count on the menu. Note text is never kept, only which wording was found (kept a week). Sends nothing.
+- New (CH, 11 Nov 2026), the list only: Patients > Check-ins, CH only for now. Patients last seen 3 weeks to 3 months ago, with nothing booked and their last appointment not cancelled or missed, whose latest note leaves treatment open-ended ("open return", "open appointment", "book again if needed", "see how things go", "come back if needed", "see as needed" and similar; negations cancel). Shows the wording found and a link to the note. Count on the menu. Note text is never kept, only which wording was found (kept a week). Sends nothing.
 
 ## Patient statuses
 
@@ -364,125 +369,125 @@ Confirmed by Carl on live Halaxy: core library 0.1.43 (pacing, report retry), he
 - "Treatment finished" wording is the core library's, shared with Review requests (adds "independent with exercises" and "continue exercises independently").
 
 ### 0.2.1 (11 Nov 2026, beta)
-- The same timing fix as Insurer payments due 0.1.2: it keeps looking for Carl's sign-in for 20 seconds rather than deciding at once.
+- The same timing fix as Insurer payments due 0.1.2: it keeps looking for CH's sign-in for 20 seconds rather than deciding at once.
 
 ### 0.2.0 (11 Nov 2026, beta)
-- Automatic (Carl, 11 Nov 2026: "lets just automate this now and remove the menu"): statuses are updated in the background while Carl is signed in, at most every 30 minutes, at most 40 a run. The menu item and page are gone; "Patient statuses: recent changes" (Script settings or the Tampermonkey menu) lists the last 100 changes and any that failed.
+- Automatic (CH, 11 Nov 2026: "lets just automate this now and remove the menu"): statuses are updated in the background while CH is signed in, at most every 30 minutes, at most 40 a run. The menu item and page are gone; "Patient statuses: recent changes" (Script settings or the Tampermonkey menu) lists the last 100 changes and any that failed.
 - Insurance appointment types: an appointment booked with an active type titled Insurance or Referral counts as funded, fee or not. The type is read from the appointment's title, which starts with it (its colour as a fallback). Archived types (Appointment Available) are ignored.
 - The patient's name is taken from after the type in such titles.
 
 ### 0.1.1 (11 Nov 2026, beta)
-- Contacts (only another patient's contact, hidden from searches) who have an appointment, say booked online, are moved to Current, Claimant or Discharged by the same rules (Carl, 11 Nov 2026).
+- Contacts (only another patient's contact, hidden from searches) who have an appointment, say booked online, are moved to Current, Claimant or Discharged by the same rules (CH, 11 Nov 2026).
 - Funded or not now also comes from the fee's own funder in Halaxy's fee list. The appointment type sets the fee, so an online booking counts as funded before any claim exists. A claim on the invoice still counts too.
 
 ### 0.1.0 (11 Nov 2026, beta)
-- New (Carl, 11 Nov 2026): Patients > Patient statuses, Carl only for now. Suggests Current, Claimant or Discharged where a status looks out of date, with why, and changes them only with Change or Change all after confirming. Booked: Current if the booked fee is self-funded, Claimant if funded (its invoice is linked to an insurance claim); this also brings back discharged patients who book again. Nothing booked: Discharged after 6 weeks without an appointment (open-ended patients too), or sooner if the last note says treatment has finished. Review is never suggested or changed (set by hand), nor any other status. The change is made on the patient's Edit page, only if it still shows what was listed. Once the suggestions prove right, the plan is to make the changes automatically.
+- New (CH, 11 Nov 2026): Patients > Patient statuses, CH only for now. Suggests Current, Claimant or Discharged where a status looks out of date, with why, and changes them only with Change or Change all after confirming. Booked: Current if the booked fee is self-funded, Claimant if funded (its invoice is linked to an insurance claim); this also brings back discharged patients who book again. Nothing booked: Discharged after 6 weeks without an appointment (open-ended patients too), or sooner if the last note says treatment has finished. Review is never suggested or changed (set by hand), nor any other status. The change is made on the patient's Edit page, only if it still shows what was listed. Once the suggestions prove right, the plan is to make the changes automatically.
 
 ## Mobile layout
 
 ### 2.18 (11 Nov 2026, beta)
-- Joins the clinic's script set (Carl's stand-alone Halaxy mobile 2.17), so the loader keeps it up to date. It switches itself on only on phone-sized screens (the shorter side 600 pixels or less), and does nothing on PCs; ?hxm=1 on a Halaxy address still forces it on for testing. Guarded against running twice, and waits for the page if it starts before the page exists. Otherwise unchanged.
+- Joins the clinic's script set (CH's stand-alone Halaxy mobile 2.17), so the loader keeps it up to date. It switches itself on only on phone-sized screens (the shorter side 600 pixels or less), and does nothing on PCs; ?hxm=1 on a Halaxy address still forces it on for testing. Guarded against running twice, and waits for the page if it starts before the page exists. Otherwise unchanged.
 
 ## Stable release, 11 Nov 2026
 
-Confirmed on live Halaxy by Carl and promoted: core 0.1.28, health check 1.1.23, Remittances 0.3.2, Review requests 0.5.0 (new on stable), Feedback alerts 0.1.1 (new on stable), Task stamps 0.1.3 (new on stable). Held on beta: Portal fill (AXA with several fees not yet tried) and Invoice Funder 0.8.x (the Billed total not yet checked).
+Confirmed on live Halaxy by CH and promoted: core 0.1.28, health check 1.1.23, Remittances 0.3.2, Review requests 0.5.0 (new on stable), Feedback alerts 0.1.1 (new on stable), Task stamps 0.1.3 (new on stable). Held on beta: Portal fill (AXA with several fees not yet tried) and Invoice Funder 0.8.x (the Billed total not yet checked).
 
 ## Moved to the clinic PCs (stable), 10 Nov 2026 (night)
 
-Carl confirmed on live Halaxy: Script settings 0.1.0 (in the account menu; stable PCs need loader 1.1.0, which Tampermonkey fetches by itself) and health check 1.1.15.
+CH confirmed on live Halaxy: Script settings 0.1.0 (in the account menu; stable PCs need loader 1.1.0, which Tampermonkey fetches by itself) and health check 1.1.15.
 
 ## Moved to the clinic PCs (stable), 10 Nov 2026 (evening)
 
-Carl confirmed on live Halaxy: core library 0.1.19, Invoice Funder (bill-funder) 0.7.3, Remittances 0.3.1, Ready to bill 0.3.0, calendar controls 2.11, Rebate Sync 0.2.0 and health check 1.1.13.
+CH confirmed on live Halaxy: core library 0.1.19, Invoice Funder (bill-funder) 0.7.3, Remittances 0.3.1, Ready to bill 0.3.0, calendar controls 2.11, Rebate Sync 0.2.0 and health check 1.1.13.
 
 ## Moved to the clinic PCs (stable), 9 Nov 2026 (evening)
 
-Health check 1.1.9 (Carl), which also brings 1.1.8's add-task check and the table builder false alarm fix.
+Health check 1.1.9 (CH), which also brings 1.1.8's add-task check and the table builder false alarm fix.
 
 ## Moved to the clinic PCs (stable), 9 Nov 2026 (afternoon)
 
-Health check 1.1.6, then 1.1.7, at Carl's request, so the clinic PCs stop reporting the check-response status as a problem.
+Health check 1.1.6, then 1.1.7, at CH's request, so the clinic PCs stop reporting the check-response status as a problem.
 
 ## Moved to the clinic PCs (stable), 9 Nov 2026
 
-Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outstanding Actions 0.5.3, calendar controls 2.10, Alerts 1.0.0, Custom Reports 0.7.0, HTML source for emails 0.4. Arrival chime and Chat alert retired from stable (replaced by Alerts). `tools/promote.py` added for promotions.
+Confirmed by CH on live Halaxy: core library 0.1.7, health check 1.1.4, Outstanding Actions 0.5.3, calendar controls 2.10, Alerts 1.0.0, Custom Reports 0.7.0, HTML source for emails 0.4. Arrival chime and Chat alert retired from stable (replaced by Alerts). `tools/promote.py` added for promotions.
 
 ## Task stamps
 
 ### 0.1.3 (11 Nov 2026, beta)
-- Also an appointment's Comments in the calendar (Carl, 11 Nov 2026), the same stamp and bullets.
+- Also an appointment's Comments in the calendar (CH, 11 Nov 2026), the same stamp and bullets.
 - The stamp now goes in when you first click (or tab) into the box, not when the pop-up opens, so a task or appointment that's only opened, moved or given a new status is left exactly as it was.
 - Tells the health check if the appointment pop-up turns up without its Comments box.
 
 ### 0.1.2 (11 Nov 2026, beta)
-- The stamp is now "2026-11-11 15:45 CH": a colon in the time, nothing after the initials (Carl's choice, 11 Nov 2026). The first style ("2026-11-11 15-45 CH:") is still recognised.
+- The stamp is now "2026-11-11 15:45 CH": a colon in the time, nothing after the initials (CH's choice, 11 Nov 2026). The first style ("2026-11-11 15-45 CH:") is still recognised.
 
 ### 0.1.1 (11 Nov 2026, beta)
-- Bullets in the task comment box, like a rich text list (Carl, 11 Nov 2026): the stamp is followed by a "- " line; Enter on a "- " line starts a new one (in the middle of a line it splits it); Enter on an empty "- " ends the list; Enter straight after a stamp you type starts a list; Shift+Enter is a plain new line; Backspace on an empty "- " takes it off. Undo works as normal. Empty "- " lines left at the end are taken off on Save.
+- Bullets in the task comment box, like a rich text list (CH, 11 Nov 2026): the stamp is followed by a "- " line; Enter on a "- " line starts a new one (in the middle of a line it splits it); Enter on an empty "- " ends the list; Enter straight after a stamp you type starts a list; Shift+Enter is a plain new line; Backspace on an empty "- " takes it off. Undo works as normal. Empty "- " lines left at the end are taken off on Save.
 
 ### 0.1.0 (11 Nov 2026, beta)
-- New (Carl, 11 Nov 2026): in Halaxy's add-task and edit-task pop-ups, the comment gets a stamp with the date, time and the signed-in person's initials ("2026-11-11 15-49 CH:") and a new line, under what's already there (after a blank line). The first click into the box puts the cursor under the stamp. Saved without typing after it, the empty stamp is taken off. Not stamped twice if the comment already ends with your stamp from the last 5 minutes.
+- New (CH, 11 Nov 2026): in Halaxy's add-task and edit-task pop-ups, the comment gets a stamp with the date, time and the signed-in person's initials ("2026-11-11 15-49 CH:") and a new line, under what's already there (after a blank line). The first click into the box puts the cursor under the stamp. Saved without typing after it, the empty stamp is taken off. Not stamped twice if the comment already ends with your stamp from the last 5 minutes.
 
 ## Portal fill
 
 ### 0.1.15 (11 Nov 2026, beta)
-- A fill that fails on the portal now sends Carl his task from any Halaxy page open on the PC. Before, the task was only sent if that funder invoice was still open, so closing it meant no task, even though the portal said Carl had been notified. The funder invoice's own page still gets the first go; only one task is sent.
+- A fill that fails on the portal now sends CH his task from any Halaxy page open on the PC. Before, the task was only sent if that funder invoice was still open, so closing it meant no task, even though the portal said CH had been notified. The funder invoice's own page still gets the first go; only one task is sent.
 
 ### 0.1.14 (11 Nov 2026, beta)
-- The task Carl gets when a fill stops is written the new way (core 0.1.27): stamped, one point per line.
+- The task CH gets when a fill stops is written the new way (core 0.1.27): stamped, one point per line.
 
 ### 0.1.13 (11 Nov 2026, beta)
-- Bupa: picks "Urmston Physio Clinic" as the treatment's Provider name. With more than one provider on the claim Bupa leaves it at "Please select...", and refused the treatment (Carl, 11 Nov 2026).
+- Bupa: picks "Urmston Physio Clinic" as the treatment's Provider name. With more than one provider on the claim Bupa leaves it at "Please select...", and refused the treatment (CH, 11 Nov 2026).
 - When Bupa refuses a treatment, the fill quotes Bupa's actual messages ("Provider Name is required"), not a styled heading ("Add treatments").
 
 ### 0.1.12 (11 Nov 2026, beta)
-- AXA opens its invoice form in a new tab, leaving the first tab behind. That tab used to time out after a minute, report a failure (sending Carl a task) and stop the Halaxy side waiting, so "Mark Issued?" was never asked even though the fill finished in the new tab. Now the first tab steps aside once the form tab has the claim ("carried on there; you can close this tab"), and only reports a failure if the form never opens.
+- AXA opens its invoice form in a new tab, leaving the first tab behind. That tab used to time out after a minute, report a failure (sending CH a task) and stop the Halaxy side waiting, so "Mark Issued?" was never asked even though the fill finished in the new tab. Now the first tab steps aside once the form tab has the claim ("carried on there; you can close this tab"), and only reports a failure if the form never opens.
 
 ### 0.1.11 (11 Nov 2026, beta)
 - AXA: the legal name now comes from the patient Edit page's own name fields (forename and surname; the preferred name is a separate field there), confirmed by a capture on live Halaxy. One less request than 0.1.10's General page read.
 
 ### 0.1.10 (11 Nov 2026, beta)
-- AXA: the patient's legal name (the "Legal Name" row on their General page), not the preferred name (Carl, 11 Nov 2026). If the legal name can't be found, the name is highlighted for checking and the message says why.
-- AXA condition: just the condition, without clinical detail (Carl: "lower back pain, dull achy quality" becomes "Lower back pain"). The first phrase is kept; duration, onset and description are dropped; (L) and (R) become left and right.
+- AXA: the patient's legal name (the "Legal Name" row on their General page), not the preferred name (CH, 11 Nov 2026). If the legal name can't be found, the name is highlighted for checking and the message says why.
+- AXA condition: just the condition, without clinical detail (CH: "lower back pain, dull achy quality" becomes "Lower back pain"). The first phrase is kept; duration, onset and description are dropped; (L) and (R) become left and right.
 - AXA address: the postcode written properly ("m419el" becomes "M41 9EL").
 
 ### 0.1.9 (11 Nov 2026, beta)
-- Bupa reloads the treatment form when a procedure is chosen (Carl, 11 Nov 2026). The fill now sets Bupa's lists first (procedure, then place of service), only when they aren't already right, and if the page reloads it carries on from the reloaded form; the dates, quantity and fee are typed last, just before Save.
+- Bupa reloads the treatment form when a procedure is chosen (CH, 11 Nov 2026). The fill now sets Bupa's lists first (procedure, then place of service), only when they aren't already right, and if the page reloads it carries on from the reloaded form; the dates, quantity and fee are typed last, just before Save.
 - When the fill asks you to choose a procedure or impairment, it carries on by itself once you've chosen (whether or not Bupa reloads the page), and presses Save.
 
 ### 0.1.8 (11 Nov 2026, beta)
 - Fixes a false stop on Bupa's treatment form ("Bupa didn't accept treatment 1: "*""): Bupa's red required-field stars were read as an error message. Only an error with wording now counts.
-- If Bupa hands the treatment form back without saving and without a message, the fill tries twice more, then stops (and Carl gets a task) rather than going round in a loop.
+- If Bupa hands the treatment form back without saving and without a message, the fill tries twice more, then stops (and CH gets a task) rather than going round in a loop.
 
 ### 0.1.7 (11 Nov 2026, beta)
-- While the fill is working on a portal page, the page is covered (a grey layer, with the progress in the middle and a Stop button) so a click or key press can't interfere (Carl, 11 Nov 2026). The cover goes as soon as it needs you: log in, choose a procedure, check and submit, or when it stops.
-- A page that sits unchanged under the cover for a minute counts as a failure: the fill stops, uncovers the page and Carl gets a task.
+- While the fill is working on a portal page, the page is covered (a grey layer, with the progress in the middle and a Stop button) so a click or key press can't interfere (CH, 11 Nov 2026). The cover goes as soon as it needs you: log in, choose a procedure, check and submit, or when it stops.
+- A page that sits unchanged under the cover for a minute counts as a failure: the fill stops, uncovers the page and CH gets a task.
 
 ### 0.1.6 (11 Nov 2026, beta)
-- Bupa: a treatment form that comes back while saving only counts as refused when Bupa shows an error message; the fill then stops quoting it (and Carl gets a task). Without a message (the page refreshed or reopened), the form is filled again and the fill carries on. On the live run, a refresh was wrongly taken for a refusal ("Bupa didn't accept treatment 1").
+- Bupa: a treatment form that comes back while saving only counts as refused when Bupa shows an error message; the fill then stops quoting it (and CH gets a task). Without a message (the page refreshed or reopened), the form is filled again and the fill carries on. On the live run, a refresh was wrongly taken for a refusal ("Bupa didn't accept treatment 1").
 
 ### 0.1.5 (11 Nov 2026, beta)
-- Bupa: the procedure is found by Bupa's code anywhere in its wording (Carl: "make sure AA360 that appears in the Halaxy invoice also appears somewhere in one of the dropdown options"). The code is taken from the fee's Item Code, which reads like "Bup-IA (AA360)"; 0.1.4 compared the whole Item Code and found nothing on the first live run.
+- Bupa: the procedure is found by Bupa's code anywhere in its wording (CH: "make sure AA360 that appears in the Halaxy invoice also appears somewhere in one of the dropdown options"). The code is taken from the fee's Item Code, which reads like "Bup-IA (AA360)"; 0.1.4 compared the whole Item Code and found nothing on the first live run.
 - Fee descriptions lose Halaxy's " - Patient Invoice UPC-..." ending (seen live), so AXA's treatment description is just the fee's name.
 
 ### 0.1.4 (11 Nov 2026, beta)
-- Bupa: the procedure is chosen by code (Carl, 11 Nov 2026): the Halaxy fee's Item Code is Bupa's procedure code (AA360, AA361 ...), so the procedure starting with that code is picked. If the code isn't in Bupa's list, the box is highlighted for you to choose, saying so. Matching by wording (0.1.3) is gone.
+- Bupa: the procedure is chosen by code (CH, 11 Nov 2026): the Halaxy fee's Item Code is Bupa's procedure code (AA360, AA361 ...), so the procedure starting with that code is picked. If the code isn't in Bupa's list, the box is highlighted for you to choose, saying so. Matching by wording (0.1.3) is gone.
 
 ### 0.1.3 (11 Nov 2026, beta)
 - Bupa: once the last pre-populated treatment is removed, Bupa opens a new treatment by itself; the fill now carries on from there (it stopped with "A treatment is open" on the first live run).
-- Bupa: the procedure is the fee (Carl, 11 Nov 2026). For each Halaxy fee, the procedure whose wording matches it (initial consultation or assessment; follow-up) is chosen. If none, or more than one, fits, the box is highlighted for you to choose, then you press Save and the fill carries on.
-- Bupa: if Bupa doesn't accept a saved treatment, the fill stops (and Carl gets a task) instead of waiting.
+- Bupa: the procedure is the fee (CH, 11 Nov 2026). For each Halaxy fee, the procedure whose wording matches it (initial consultation or assessment; follow-up) is chosen. If none, or more than one, fits, the box is highlighted for you to choose, then you press Save and the fill carries on.
+- Bupa: if Bupa doesn't accept a saved treatment, the fill stops (and CH gets a task) instead of waiting.
 
 ### 0.1.2 (11 Nov 2026, beta)
-- Bupa: you log in yourself again. Bupa's log-in is on a separate site (identity.provider.bupa.co.uk), and Carl agreed logging in by hand is simpler and safer than having the script press it there. Once you're in, the fill carries on by itself from Providers Online.
+- Bupa: you log in yourself again. Bupa's log-in is on a separate site (identity.provider.bupa.co.uk), and CH agreed logging in by hand is simpler and safer than having the script press it there. Once you're in, the fill carries on by itself from Providers Online.
 
 ### 0.1.1 (11 Nov 2026, beta)
-- Bupa: presses Log in once Firefox has filled in the saved log-in (Carl: "can you log in as part of the flow"). The password is never read or kept, only whether the box has something in it. If Bupa refuses it, the fill stops rather than trying again.
-- A fill that fails, in Halaxy or on the portal, now sends Carl a task on the funder invoice ("Portal fill stopped: ...", with the reason), and the person filling is told he has been notified and will pick it up (Carl, 11 Nov 2026). The Stop button doesn't.
-- The AXA payee email and phone are the clinic's own, so they're built in (Carl: "there is nothing secret"); Script settings > Portal fill: settings can still change them on a PC. The repository check now allows the clinic's own email domain.
+- Bupa: presses Log in once Firefox has filled in the saved log-in (CH: "can you log in as part of the flow"). The password is never read or kept, only whether the box has something in it. If Bupa refuses it, the fill stops rather than trying again.
+- A fill that fails, in Halaxy or on the portal, now sends CH a task on the funder invoice ("Portal fill stopped: ...", with the reason), and the person filling is told he has been notified and will pick it up (CH, 11 Nov 2026). The Stop button doesn't.
+- The AXA payee email and phone are the clinic's own, so they're built in (CH: "there is nothing secret"); Script settings > Portal fill: settings can still change them on a PC. The repository check now allows the clinic's own email domain.
 
 ### 0.1.0 (11 Nov 2026, beta, with core 0.1.26 and loader 1.2.0)
-- New (Carl's steps, 11 Nov 2026). "Fill on the AXA portal" / "Fill on the Bupa portal" in the Bill To box of a Bupa or AXA funder invoice, and at the end of Invoice Funder. Reads the claim from Halaxy (the funder invoice's fees, number without the leading 0 and date; the claim's membership and authorisation numbers; the patient's name without title, date of birth, and address with postcode from the Edit page, read only; for AXA a condition from the first line under "Subjective:" in the notes for that claim), passes it to the portal tab through the loader on this PC, and opens the portal.
+- New (CH's steps, 11 Nov 2026). "Fill on the AXA portal" / "Fill on the Bupa portal" in the Bill To box of a Bupa or AXA funder invoice, and at the end of Invoice Funder. Reads the claim from Halaxy (the funder invoice's fees, number without the leading 0 and date; the claim's membership and authorisation numbers; the patient's name without title, date of birth, and address with postcode from the Edit page, read only; for AXA a condition from the first line under "Subjective:" in the notes for that claim), passes it to the portal tab through the loader on this PC, and opens the portal.
 - AXA: membership number, Submit invoice, then the form: Therapist, payee details (Script settings > Portal fill: settings, asked for the first time), ICS code NA, one fee per treatment line (Outpatient, 1 unit), "add another treatment line" for each further fee. The condition is highlighted to check.
 - Bupa: waits for the log-in, Reject all on the cookie box, Create an invoice, set-up (invoice number, first treatment date, pre-auth number), Pre-Auth Summary, checks Urmston Physio Clinic is the provider, removes pre-populated treatments, adds one fee per treatment (Consultant rooms, 1 session) leaving Bupa's impairment and procedure code, and stops on Confirm and Submit (warning if Bupa's total differs).
 - Never presses Submit. Stops, saying what, at anything it doesn't expect. Once the portal shows its "submitted" message, Halaxy asks whether to mark the funder invoice Issued; the claim is then cleared from the PC (and after 4 hours in any case).
@@ -496,7 +501,7 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Task comments stamped "date time Feedback alerts:", one point per line starting "- " (core 0.1.27).
 
 ### 0.1.0 (11 Nov 2026, beta, with core 0.1.24)
-- New (Carl, 11 Nov 2026: "less than positive Feedback Request survey submissions flagged to me"). Every 2 hours on Carl's sign-in, new responses to the Feedback Request survey ("How Was Your Appointment?") from the last 14 days are read. Below expected (25 or less), or Satisfactory (26 to 31) with a comment, becomes a task for Carl on the patient's profile, added without asking: titled with the level and score, High for Below expected, due that day, with the answers (as 1 to 5), the comment and the response number. Completing the task marks it dealt with, on every PC.
+- New (CH, 11 Nov 2026: "less than positive Feedback Request survey submissions flagged to me"). Every 2 hours on CH's sign-in, new responses to the Feedback Request survey ("How Was Your Appointment?") from the last 14 days are read. Below expected (25 or less), or Satisfactory (26 to 31) with a comment, becomes a task for CH on the patient's profile, added without asking: titled with the level and score, High for Below expected, due that day, with the answers (as 1 to 5), the comment and the response number. Completing the task marks it dealt with, on every PC.
 - The patient is found with Halaxy's patient search by name, and the response's date of birth picks the right one. If that isn't certain, no task is added; the response is counted on Reports > Surveys and listed in Script settings > Feedback alerts: show results, with a link to the Responses page.
 - Never twice: the patient's tasks are checked for the response number first. Only the response number, score band and outcome are kept on the PC; names and answers are read from Halaxy when needed.
 
@@ -507,17 +512,17 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - "Finished" wording and the calendar come from the core library. "See as needed" is now shown under its own name rather than as "discharged" (it still counts as finished). Patients are read again once.
 
 ### 0.5.0 (11 Nov 2026, beta, with core 0.1.24)
-- Feedback Request survey (Carl, 11 Nov 2026): the patient's latest response from this course of treatment, matched by name and checked against their date of birth. Excellent (32 to 35) counts for a review request; Below expected (25 or less) counts against. Shown in the reasons, with a Feedback survey link under Check first. Everyone is read again once, as the signs have changed.
+- Feedback Request survey (CH, 11 Nov 2026): the patient's latest response from this course of treatment, matched by name and checked against their date of birth. Excellent (32 to 35) counts for a review request; Below expected (25 or less) counts against. Shown in the reasons, with a Feedback survey link under Check first. Everyone is read again once, as the signs have changed.
 
 ### 0.4.2 (10 Nov 2026, beta, with core 0.1.23)
-- Review requests now go at 10:30 UK time. Halaxy reads a follow-up's date and time as Sydney time, whatever the practice's time zone: 11-Nov 10:30 entered went out at 23:30 UK time on 10-Nov (Carl confirmed they go at the time the list shows). The time is now entered as Sydney's clock reads at 10:30 UK time (21:30 in winter), and the time on the list is checked afterwards: if it isn't 10:30 UK time, the page says so.
+- Review requests now go at 10:30 UK time. Halaxy reads a follow-up's date and time as Sydney time, whatever the practice's time zone: 11-Nov 10:30 entered went out at 23:30 UK time on 10-Nov (CH confirmed they go at the time the list shows). The time is now entered as Sydney's clock reads at 10:30 UK time (21:30 in winter), and the time on the list is checked afterwards: if it isn't 10:30 UK time, the page says so.
 
 ### 0.4.1 (10 Nov 2026, beta, with core 0.1.22)
 - A sent request said "Halaxy accepted the follow-up, but it does not show in Tasks & Follow-Ups" although it did: follow-ups added from the patient's profile have no "Linked To" note, and the patient is in Assigned To. The patient now comes from assignedToUrl, so the check passes and anyone already sent one is left out.
 - The follow-up template is no longer imported, only the Review Request email template: with the template, Halaxy set its own send time (a request sent at 21:30 was scheduled for 23:30). The reminder now needs only a "Review Reminder" email template.
 
 ### 0.4.0 (10 Nov 2026, beta)
-- Review requests are scheduled for the next weekday at 10:30 (at least 15 minutes ahead), the late-morning weekday slot review sellers' data favours (Carl: "whatever creates the least work and drives the most conversions"). The confirmation says when, and the row shows it.
+- Review requests are scheduled for the next weekday at 10:30 (at least 15 minutes ahead), the late-morning weekday slot review sellers' data favours (CH: "whatever creates the least work and drives the most conversions"). The confirmation says when, and the row shows it.
 - Optional reminder: if Halaxy has a follow-up template and an email template called "Review Reminder", a reminder is added for a week later at the same time. Without them, nothing more is sent. Both can be cancelled in Tasks & Follow-Ups before they go.
 
 ### 0.3.2 (10 Nov 2026, beta, with core 0.1.21)
@@ -528,13 +533,13 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Against narrowed after the first live list (25 under Worth a look): only "referred to GP/consultant/for a scan...", "awaiting an MRI/surgery", "getting/feeling worse", "had a flare-up", "still painful", "not fully better", "no better". Plain mentions such as "worse on stairs", "no need for a scan" or "discussed injection options" no longer count, and "no flare-up" doesn't either. Patients are read again once with the new rules.
 
 ### 0.3.0 (10 Nov 2026, beta)
-- A "Check first" column with links to the notes and Progress Update form behind each suggestion (Last note, Previous note, Progress Update, with their dates), opening in a new tab, so they can be read before sending (Carl).
+- A "Check first" column with links to the notes and Progress Update form behind each suggestion (Last note, Previous note, Progress Update, with their dates), opening in a new tab, so they can be read before sending (CH).
 
 ### 0.2.0 (10 Nov 2026, beta)
-- Asks while it's fresh (Carl): from the day after the last visit when the notes say treatment has finished (discharged, goals met, self-managing, see as needed), otherwise once 2 weeks have passed with nothing booked. Nobody last seen over 4 weeks ago (was 2 to 8 weeks).
+- Asks while it's fresh (CH): from the day after the last visit when the notes say treatment has finished (discharged, goals met, self-managing, see as needed), otherwise once 2 weeks have passed with nothing booked. Nobody last seen over 4 weeks ago (was 2 to 8 weeks).
 
 ### 0.1.0 (10 Nov 2026, beta)
-- New: Patients > Review requests, for Carl only, with a count on the menu item. Patients last seen 2 to 8 weeks ago with nothing booked, whose latest Progress Update form (+4 or +5) or last two clinical notes show a good outcome ("100% better", "pain-free", "back to running", "goals met", "discharged" and so on). Mixed signs ("not 100%", "flare-up", "referred to GP", a scan or injection) are listed greyed under Worth a look.
+- New: Patients > Review requests, for CH only, with a count on the menu item. Patients last seen 2 to 8 weeks ago with nothing booked, whose latest Progress Update form (+4 or +5) or last two clinical notes show a good outcome ("100% better", "pain-free", "back to running", "goals met", "discharged" and so on). Mixed signs ("not 100%", "flare-up", "referred to GP", a scan or injection) are listed greyed under Worth a look.
 - Left out: anyone already sent a Review Request follow-up, labelled No review request, under 16, owing money on their own invoices, or whose last appointment was cancelled or missed.
 - Send review request: Halaxy's Add Follow-Up with the Review Request templates, by email, now, after confirming; checked in Tasks & Follow-Ups afterwards. Don't ask: adds the No review request label on the patient's Edit page, sending everything else back unchanged, and checks it afterwards.
 - Notes are read in the browser only; only the kinds of phrase found are kept, never the note text. Each patient's result is kept for a week; the count refreshes at most every 12 hours.
@@ -555,7 +560,7 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Script task stamps in the new style: "2026-11-11 15:45 Portal fill", on its own line, with the "- " points below.
 
 ### 0.1.27 (11 Nov 2026, beta)
-- Tasks added by scripts (Carl, 11 Nov 2026): the comment starts with a stamp, "2026-11-11 15-45 Portal fill:", then each statement on its own line starting "- ". `UPC.tasks.stamp(by)` and `UPC.tasks.comment(by, lines)`; `addToInvoice` / `addToPatient` take `by` (the script's name) and `comment` as lines.
+- Tasks added by scripts (CH, 11 Nov 2026): the comment starts with a stamp, "2026-11-11 15-45 Portal fill:", then each statement on its own line starting "- ". `UPC.tasks.stamp(by)` and `UPC.tasks.comment(by, lines)`; `addToInvoice` / `addToPatient` take `by` (the script's name) and `comment` as lines.
 
 ### 0.1.26 (11 Nov 2026, beta)
 - UPC.invoice.parse: each fee's description (on an organisation invoice, the last description cell, without the Patient column's script) and `billToName` (the funder in an organisation invoice's Bill To box).
@@ -693,7 +698,7 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Daily data checks for Feedback alerts: the survey responses list and a response's total, level and questions; Halaxy's patient search; a patient's add-task pop-up and task list. Feedback alerts added to the script names.
 
 ### 1.1.17 (11 Nov 2026, beta)
-- Shown only to Carl Healy (Carl: "just show health check on my account"): the notice and "Health check: show results" in Script settings appear only on his sign-in. The checks and script errors are still collected on every sign-in and kept on that PC, so they show when Carl next signs in there. If the page doesn't say who is signed in (Halaxy may have changed), it shows rather than hides.
+- Shown only to Carl Healy (CH: "just show health check on my account"): the notice and "Health check: show results" in Script settings appear only on his sign-in. The checks and script errors are still collected on every sign-in and kept on that PC, so they show when CH next signs in there. If the page doesn't say who is signed in (Halaxy may have changed), it shows rather than hides.
 
 ### 1.1.16 (10 Nov 2026, beta)
 - The follow-ups check looks for assignedToUrl (the patient), which Review requests now reads.
@@ -784,18 +789,18 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 ## Script settings
 
 ### 0.1.0 (10 Nov 2026, beta)
-- New: "Script settings" in Halaxy's account menu (your name, top right), above Log Out (Carl). Its pop-up lists every script's options, grouped by script, and the scripts on this PC with their versions, switches, stable or beta, and Check for updates now. Replaces the Tampermonkey menu, which keeps only the loader's own entry as a way in.
+- New: "Script settings" in Halaxy's account menu (your name, top right), above Log Out (CH). Its pop-up lists every script's options, grouped by script, and the scripts on this PC with their versions, switches, stable or beta, and Check for updates now. Replaces the Tampermonkey menu, which keeps only the loader's own entry as a way in.
 
 ## Forecourt lights
 
 ### 0.2.1 (10 Nov 2026, stable and beta)
-- Reads typed skip dates itself (25-Dec-2026, 25/12/2026 or 2026-12-25), so it runs with the stable core library. Moved to the clinic PCs (Carl confirmed it on live Halaxy).
+- Reads typed skip dates itself (25-Dec-2026, 25/12/2026 or 2026-12-25), so it runs with the stable core library. Moved to the clinic PCs (CH confirmed it on live Halaxy).
 
 ### 0.2.0 (10 Nov 2026, beta)
-- Settings choose who is reminded, by who is signed in to Halaxy on that PC (Carl). Nobody ticked means anyone.
+- Settings choose who is reminded, by who is signed in to Halaxy on that PC (CH). Nobody ticked means anyone.
 
 ### 0.1.0 (10 Nov 2026, beta)
-- New: reminders for the forecourt and sign floodlights timer (Carl). On clinic evenings, from the reminder time: turn the timer on, with the times (sunset for Urmston minus 30 minutes, rounded down to the timer's 15-minute steps, off at 20:45); move the timer's on time when it changes; change the timer's clock after the clocks go forward or back, with a heads-up on the last clinic evening before. The day after a clinic evening, until done: turn the timer off (not when that day is a clinic evening too). In summer, when the lights aren't needed, it says so once, with the date they're next needed.
+- New: reminders for the forecourt and sign floodlights timer (CH). On clinic evenings, from the reminder time: turn the timer on, with the times (sunset for Urmston minus 30 minutes, rounded down to the timer's 15-minute steps, off at 20:45); move the timer's on time when it changes; change the timer's clock after the clocks go forward or back, with a heads-up on the last clinic evening before. The day after a clinic evening, until done: turn the timer off (not when that day is a clinic evening too). In summer, when the lights aren't needed, it says so once, with the date they're next needed.
 - Off until switched on per PC from the Tampermonkey menu (Forecourt lights: settings): clinic evenings, off time, minutes before sunset, reminder time, the timer's current on time, dates to skip, and a two-week preview. Halaxy-style pop-up with Done and Remind me later (an hour). Sunset is worked out on the PC: nothing is fetched.
 
 ## Ready to bill
@@ -807,28 +812,28 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 - Excess hold reads the patient's answer to "Excess amount:" on their Bupa or AXA Initial Assessment Form (the form nearest the start of the claim) and holds a new claim until the unbilled fees cover it. Shown as "patient-reported excess £ 250.00 (unconfirmed)" and used only to time billing. "None" or 0 means no hold. Aviva and WPA forms don't ask, and a missing or unreadable answer falls back to 2 fees. Two requests per new Bupa or AXA claim, cached for a day.
 
 ### 0.2.1 (10 Nov 2026, beta)
-- Aviva can be billed mid-treatment too (Carl): month end, 3-month-old fees and the excess hold now apply to Bupa, AXA, WPA and Aviva.
+- Aviva can be billed mid-treatment too (CH): month end, 3-month-old fees and the excess hold now apply to Bupa, AXA, WPA and Aviva.
 
 ### 0.2.0 (10 Nov 2026, beta)
-- Only Bupa, AXA and WPA are billed mid-treatment (Carl): the month-end and 3-month rules and the excess hold apply to them only. Other funders (Aviva, OPM, 3rd Party Funded and so on) are due when the authorisation is used up or treatment has finished, and otherwise show "Billed at the end of treatment".
+- Only Bupa, AXA and WPA are billed mid-treatment (CH): the month-end and 3-month rules and the excess hold apply to them only. Other funders (Aviva, OPM, 3rd Party Funded and so on) are due when the authorisation is used up or treatment has finished, and otherwise show "Billed at the end of treatment".
 - Patients with only cancelled or did-not-attend fees: each fee is listed with its appointment comments and a Set to £ 0.00 button (fee and funder rebate together, after confirming). The Unbilled column shows those fees instead of "0 fees".
 - The empty column on the right of the Not due yet table is gone, and dates no longer wrap.
 
 ### 0.1.0 (10 Nov 2026, beta)
-- New: Finances > Ready to bill, for Carl and Wendy only. Lists insurer patients with unbilled fees (on an Active patient invoice that Halaxy doesn't show as Pending, last 6 months) and says which are due to bill and why: authorisation used up, no visit for 14 days with nothing booked, the last working day of the month, or fees 3 months old or more. Each due patient has an Invoice Funder button that opens their latest invoice with Invoice Funder.
+- New: Finances > Ready to bill, for CH and WP only. Lists insurer patients with unbilled fees (on an Active patient invoice that Halaxy doesn't show as Pending, last 6 months) and says which are due to bill and why: authorisation used up, no visit for 14 days with nothing booked, the last working day of the month, or fees 3 months old or more. Each due patient has an Invoice Funder button that opens their latest invoice with Invoice Funder.
 - Not due yet, held for the excess (a new claim with fewer than 2 fees, until the intake form's excess can be read) and did-not-attend-only patients are greyed at the bottom, with links to their invoices.
 - A count of due patients on the menu item, refreshed at most every 2 hours in the visible tab and shared by all tabs. One report, one list and one calendar request per check, plus each patient's first and latest invoice (cached for a week). Read-only.
 
 ## Invoice Funder (was Bill funder)
 
 ### 0.8.1 (11 Nov 2026, beta)
-- The "Billed." line gives the funder invoice's own total. It showed one fee's amount (£ 40.00 for five fees, Carl, 11 Nov 2026), read from the patient invoice's payment row. A warning shows if the funder invoice total differs from the fees chosen.
+- The "Billed." line gives the funder invoice's own total. It showed one fee's amount (£ 40.00 for five fees, CH, 11 Nov 2026), read from the patient invoice's payment row. A warning shows if the funder invoice total differs from the fees chosen.
 
 ### 0.8.0 (11 Nov 2026, beta)
 - After billing Bupa or AXA: a "Fill on the Bupa portal" / "Fill on the AXA portal" button opens the new funder invoice, where Portal fill does the rest.
 
 ### 0.7.3 (10 Nov 2026, beta)
-- "Zero" is now worded "Set to £ 0.00" throughout (Carl).
+- "Zero" is now worded "Set to £ 0.00" throughout (CH).
 
 ### 0.7.2 (10 Nov 2026, beta)
 - Opens by itself on an invoice opened from Ready to bill (address ending #upc-invoice-funder), once.
@@ -882,7 +887,7 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 ## Calendar controls
 
 ### 2.11 (10 Nov 2026, beta)
-- Appointments whose invoice is £0 (package follow-ups, cancelled appointments) show the green paid £ instead of the black unpaid one (Carl). The amounts come from one invoice list request for the dates on screen, shared by all tabs and repeated at most every 30 minutes, through the core library's pacing. Display only.
+- Appointments whose invoice is £0 (package follow-ups, cancelled appointments) show the green paid £ instead of the black unpaid one (CH). The amounts come from one invoice list request for the dates on screen, shared by all tabs and repeated at most every 30 minutes, through the core library's pacing. Display only.
 
 ### 2.10 (6 Nov 2026, beta)
 - The 30-second check for changes made on other PCs is skipped whenever the calendar was loaded in the last 30 seconds by anything else (Halaxy redrawing, changing date, or a refresh of its own), so the calendar is never loaded twice for nothing.
@@ -891,13 +896,13 @@ Confirmed by Carl on live Halaxy: core library 0.1.7, health check 1.1.4, Outsta
 ## Remittances
 
 ### 0.3.7 (12 Nov 2026, beta)
-- Fix: Bupa lists each treatment, or run of treatments, of an invoice on its own row; only the first row was used ("appears more than once"), so an invoice over several rows was read as billed and paid for its first row only (Carl, 12 Nov 2026: UPC-38023 on three rows, read as £ 50.00 billed). The rows of one invoice are now added together, and each row's shortfall goes on the fees in that row's dates, shared in proportion to their amounts (a fee Halaxy dates a day or two out still counts). Notes 1 ("due from the patient") and 2 (excess) both count as the patient's to pay; a mix with an unexplained shortfall is left to a person.
+- Fix: Bupa lists each treatment, or run of treatments, of an invoice on its own row; only the first row was used ("appears more than once"), so an invoice over several rows was read as billed and paid for its first row only (CH, 12 Nov 2026: UPC-38023 on three rows, read as £ 50.00 billed). The rows of one invoice are now added together, and each row's shortfall goes on the fees in that row's dates, shared in proportion to their amounts (a fee Halaxy dates a day or two out still counts). Notes 1 ("due from the patient") and 2 (excess) both count as the patient's to pay; a mix with an unexplained shortfall is left to a person.
 
 ### 0.3.5 (12 Nov 2026, beta)
-- Scanned remittances: the amount paid can be corrected as well as the invoice number (Carl, 12 Nov 2026: "in case the OCR misreads a 3 as an 8"). One box per line where the insurer lists lines (Aviva), otherwise one for the invoice. Re-check (or Enter) works out the deductions and the patient's share again, checks the invoice with Halaxy, and checks the amounts against the remittance's total again, so the warning goes once they add up. A mistyped amount is refused.
+- Scanned remittances: the amount paid can be corrected as well as the invoice number (CH, 12 Nov 2026: "in case the OCR misreads a 3 as an 8"). One box per line where the insurer lists lines (Aviva), otherwise one for the invoice. Re-check (or Enter) works out the deductions and the patient's share again, checks the invoice with Halaxy, and checks the amounts against the remittance's total again, so the warning goes once they add up. A mistyped amount is refused.
 
 ### 0.3.3 (11 Nov 2026, beta)
-- The comment on each invoice the remittance is attached to now reads "Insurer reference 2455419; remittance total £ 120.00 over 3 invoices", so Bank statement can tell which invoices one payment covers (Carl).
+- The comment on each invoice the remittance is attached to now reads "Insurer reference 2455419; remittance total £ 120.00 over 3 invoices", so Bank statement can tell which invoices one payment covers (CH).
 
 ### 0.3.2 (11 Nov 2026, beta)
 - The "Bill excess" task comment is stamped "date time Remittances:", one point per line starting "- " (core 0.1.27).
@@ -981,7 +986,7 @@ Existing scripts moved here from earlier chats, code unchanged. Only the header 
 
 ### 0.3.0 (11 Nov 2026, beta)
 - Runs on the core library: its requests are paced like every other script's, and the revert, rebate and re-bill steps are the same ones Remittances uses (tested).
-- Brings it in line with Remittances: a rebate set to £ 0.00 leaves a £ 0.00 line on the funder invoice (Carl, 9 Nov 2026: never a missing one), the re-billed line gets the fee's own date back when Halaxy shifts it, and a fee Halaxy copied a day or two out is still found.
+- Brings it in line with Remittances: a rebate set to £ 0.00 leaves a £ 0.00 line on the funder invoice (CH, 9 Nov 2026: never a missing one), the re-billed line gets the fee's own date back when Halaxy shifts it, and a fee Halaxy copied a day or two out is still found.
 - Changing a fee's amount together with its rebate on the patient invoice still works (core: UPC.rebate.plan takes the other changes).
 
 ### 0.2.0 (7 Nov 2026, beta)

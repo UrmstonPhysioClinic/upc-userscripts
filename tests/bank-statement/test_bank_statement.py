@@ -9,7 +9,7 @@ remittances are offered to choose from; nothing is written until confirmed; each
 the insurer's profile (bank date, amount, note), applied to its invoices only when a remittance names them and they
 agree; the remittance's copies say so; the statement register is written on the Starling Bank profile and recognises
 the statement next time; a deposit already there is never added twice; payments recorded the old way are never
-counted again; tasks for what needs Carl; Carl only.
+counted again; tasks for what needs CH; CH only.
 
 Run:  python3 tests/bank-statement/test_bank_statement.py
 Needs: Python 3 with Playwright (Chromium) and reportlab; npm (installs pdf.js into tests/bank-statement/node_modules
@@ -571,7 +571,7 @@ async def main():
         await pg.wait_for_function("document.querySelector('[data-upc-bank-statement] tbody tr:nth-child(1) .upc-err')", timeout=60000)
         err = await pg.evaluate("document.querySelector('[data-upc-bank-statement] tbody tr:nth-child(1) .upc-err').textContent")
         tk = S['orgtasks'].get(501, [])
-        check('deposit refused: nothing added or applied, a task for Carl', not S['added'] and not S['allocs'] and 'Not recorded: Halaxy did not accept the deposit: Payment could not be saved' in err and 'Task added for Carl Healy' in err
+        check('deposit refused: nothing added or applied, a task for CH', not S['added'] and not S['allocs'] and 'Not recorded: Halaxy did not accept the deposit: Payment could not be saved' in err and 'Task added for Carl Healy' in err
               and len(tk) == 1 and tk[0].get('form[title]', '').startswith('Bank statement could not record Bupa £ 120.00'), (err, tk))
         await ctx.close()
 
@@ -593,7 +593,7 @@ async def main():
         check('nothing added on AXA', not [1 for o, f in S['added'] if o == 502], S['added'])
         await ctx.close()
 
-        # Recorded in Halaxy by hand (Carl, 12 Nov 2026): Aviva's £ 60.00 on its bank date, Simplyhealth's £ 33.00 on its
+        # Recorded in Halaxy by hand (CH, 12 Nov 2026): Aviva's £ 60.00 on its bank date, Simplyhealth's £ 33.00 on its
         # remittance's date 2 days before; a card payment the same day is not an insurer's. Shown as already recorded.
         inv = fresh()
         inv[931][3] = 0; inv[932][3] = 0; inv[951][3] = 0
@@ -720,7 +720,7 @@ async def main():
         check('once it is in the register the blob goes', await pg.evaluate(badge) is None)
         await ctx.close()
 
-        # not Carl: nothing
+        # not CH: nothing
         reset(user='Someone Else')
         ctx = await context(browser)
         pg = await ctx.new_page()

@@ -4,7 +4,7 @@ Checks every script in stable/ and beta/ against the repository rules.
 - Header has @name, @namespace, @version, and update/download URLs pointing at its own file.
 - Beta @name ends in " (beta)"; stable does not.
 - A script in both channels at the same version differs only in @name, @updateURL and @downloadURL.
-  Beta may be ahead of stable (newer version, new scripts, scripts removed) until Carl confirms it.
+  Beta may be ahead of stable (newer version, new scripts, scripts removed) until CH confirms it.
 - If a VERSION constant exists, it matches @version.
 - JavaScript syntax is valid (node --check).
 - No obvious secrets or patient identifiers (invoice numbers, email addresses other than the clinic's own, dated names).
@@ -20,7 +20,7 @@ RAW = 'https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/mai
 ALLOWED_DIFF = re.compile(r'//\s*@(name|updateURL|downloadURL)\b')
 SUSPECT = [
     (re.compile(r'\bUPC\d{4,}\b'), 'invoice number'),
-    # Email addresses, except the clinic's own (its public contact details: Carl, 11 Nov 2026).
+    # Email addresses, except the clinic's own (its public contact details: CH, 11 Nov 2026).
     (re.compile(r'[\w.+-]+@(?!urmstonphysioclinic\.com\b)[\w-]+\.(?:com|co\.uk|org|net)\b'), 'email address'),
     (re.compile(r'(?i)(api[_-]?key|secret|password)\s*[:=]\s*[\'"][^\'"]{6,}'), 'secret'),
     (re.compile(r'(?i)bearer\s+[a-z0-9._-]{20,}'), 'token'),

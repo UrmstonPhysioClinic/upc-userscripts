@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         UPC Patients: Missing details (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.6
+// @version      0.2.7
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/missing-details.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/missing-details.user.js
-// @description  Patients missing their mandatory details (first and last name, date of birth, address, a phone number): a banner on every page of that patient for everyone until the details are saved, a marker on their appointments in the calendar, and Patients > Missing details for Carl and Wendy (a list with a count). Reads only.
+// @description  Patients missing their mandatory details (first and last name, date of birth, address, a phone number): a banner on every page of that patient for everyone until the details are saved, a marker on their appointments in the calendar, and Patients > Missing details for CH and WP (a list with a count). Reads only.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
 // @grant        none
@@ -13,7 +13,7 @@
 // ==/UserScript==
 
 /*
- * Missing details (Carl, 15 Nov 2026). Details should be taken at booking, on the intake form or at the first appointment,
+ * Missing details (CH, 15 Nov 2026). Details should be taken at booking, on the intake form or at the first appointment,
  * but sometimes are missed.
  *
  *  - Mandatory: first name, last name, date of birth, an address (first line and postcode) and at least one phone
@@ -26,16 +26,16 @@
  *  - In the background (each PC, visible tab, clinic hours, shared across tabs, every 3 hours): everyone booked in the
  *    next 14 days or seen in the last 30. Complete patients are read again after 30 days, those with gaps after a day,
  *    at most 40 a run. The patients with gaps are kept on this PC for Calendar controls, which marks their appointments.
- *  - Patients > Missing details (Carl and Wendy): who is missing what, their next appointment and with whom (or when
+ *  - Patients > Missing details (CH and WP): who is missing what, their next appointment and with whom (or when
  *    they were last seen), and a link to their Edit page. Soonest appointment first. A count on the menu (not email).
- *  - No pop-ups (Carl, 15 Nov 2026: the banner first; a pop-up only if it proves too easy to miss).
- *  - Shared between the PCs (Carl, 15 Nov 2026; core's UPC.shared): what each PC finds goes in the Admin Note
+ *  - No pop-ups (CH, 15 Nov 2026: the banner first; a pop-up only if it proves too easy to miss).
+ *  - Shared between the PCs (CH, 15 Nov 2026; core's UPC.shared): what each PC finds goes in the Admin Note
  *    "UPC shared checks: Missing details" on UPC scripts (settings), as patient id | when | codes (never names). Before
  *    checking, a PC reads the note, takes what the others found, and claims the patients it is about to check, so the
  *    clinic reads each patient once rather than once per PC. A PC notes a patient's outcome there when it differs from
  *    the note (details just saved, new gaps). Every PC reads the note every 30 minutes, so banners and calendar marks
  *    follow. If the note can't be read, each PC checks for itself as before.
- *  - Two groups (Carl, 16 Nov 2026): "ongoing" (seen in the last 18 months: worth a call for the details) and "not seen
+ *  - Two groups (CH, 16 Nov 2026): "ongoing" (seen in the last 18 months: worth a call for the details) and "not seen
  *    yet" (no attended appointment in that time: they fill in the online form before their first visit, so no chasing).
  *    The menu count is the ongoing ones only; the banner and the calendar mark stay for everyone with gaps.
  */
@@ -44,14 +44,14 @@
   if (window.__hxMissingDetails) return;
   window.__hxMissingDetails = true;
 
-  const VERSION = '0.2.6';
+  const VERSION = '0.2.7';
   const ROUTE = 'upc-missing-details';
   const MENU_CLS = 'upc-md-menu';
-  const ADMINS = () => rule('missingDetails.people', ['Carl Healy', 'Wendy Pritchard']);   // who sees the page (Carl, 15 Nov 2026: Carl and Wendy)
+  const ADMINS = () => rule('missingDetails.people', ['Carl Healy', 'Wendy Pritchard']);   // who sees the page (CH, 15 Nov 2026: CH and WP)
   const DAY = 86400e3;
   // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
   const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
-  const AHEAD_DAYS = () => rule('missingDetails.aheadDays', 14), BACK_DAYS = () => rule('missingDetails.backDays', 30);    // Carl, 15 Nov 2026
+  const AHEAD_DAYS = () => rule('missingDetails.aheadDays', 14), BACK_DAYS = () => rule('missingDetails.backDays', 30);    // CH, 15 Nov 2026
   const KEEP_COMPLETE = 30 * DAY, KEEP_GAPS = DAY, RECHECK_GAPS = 10 * 60e3;
   const SWEEP_EVERY = 3 * 3600e3, PER_RUN = 40;
   const SKIP_STATUS = /^(deleted|archived|deceased|off)$/i;
@@ -297,7 +297,7 @@
     paintBanner();
   }
 
-  // ------------------------------------------------------------------ Patients > Missing details (Carl and Wendy)
+  // ------------------------------------------------------------------ Patients > Missing details (CH and WP)
 
   function paintBadge() {
     const a = document.querySelector('a.' + MENU_CLS);
@@ -407,7 +407,7 @@
     document.addEventListener('visibilitychange', background);
     setTimeout(background, 8000);
     setInterval(background, 30 * 60e3);
-    // Carl and Wendy: the page under Patients, opening over Halaxy's Patient List (as Open-ended patients does).
+    // CH and WP: the page under Patients, opening over Halaxy's Patient List (as Open-ended patients does).
     U().user.whenAllowed(ADMINS(), () => {
       U().ui.ensureMenuItem('Missing details', (section) => {
         const list = section && [...section.querySelectorAll('a.mainmenu-sublink')].find((a) => /^patient list$/i.test(clean(a.textContent)));

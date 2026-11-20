@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Invoice Funder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.8.4
+// @version      0.8.5
 // @upc-was      bill-funder.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/invoice-funder.user.js
@@ -41,7 +41,7 @@
   if (window.__upcBillFunder) return;
   window.__upcBillFunder = true;
 
-  const VERSION = '0.8.4';
+  const VERSION = '0.8.5';
   const MAX_AGE_DAYS = 183;   // about 6 months
   const NOT_ATTENDED = /cancel|did-not-attend|dna|reject|declin|reschedul/i;
   const DAY = 86400e3;
@@ -214,7 +214,7 @@
     const after = await U().invoice.fetch(targetId);
     const org = after.payments.find((p) => p.funderInvoiceId);
     if (after.billFunderHref || !org) throw new (U().Error)('Halaxy accepted the request, but ' + after.number + ' does not show an organisation invoice. Check it.');
-    // The funder invoice's own total (Carl, 11 Nov 2026: the payment row's last amount showed one fee, not the total).
+    // The funder invoice's own total (CH, 11 Nov 2026: the payment row's last amount showed one fee, not the total).
     let orgNumber = '', orgTotal = null;
     try { const o = await U().invoice.fetch(org.funderInvoiceId); orgNumber = o.number; orgTotal = o.total; } catch (e) { /* link still works */ }
 
@@ -223,7 +223,7 @@
     let issuedError = '';
     try { await U().invoice.setStatus(targetId, 'issued'); } catch (e) { issuedError = e.message || String(e); }
 
-    // 6. Fee dates on the funder invoice (Carl, 9 Nov 2026): Halaxy sometimes copies a fee with the wrong
+    // 6. Fee dates on the funder invoice (CH, 9 Nov 2026): Halaxy sometimes copies a fee with the wrong
     // date (13-Oct became 14-Oct). Pair each funder fee with the patient fee it came from (same order by
     // date, same item) and correct dates a day or two out. Anything else is reported, not changed.
     say('Checking the fee dates on ' + (orgNumber || 'the funder invoice') + '...');
@@ -248,7 +248,7 @@
       }
     } catch (e) { feeDateError = e.message || String(e); }
 
-    // 7. Funder invoice dates (Carl, 9 Nov 2026): invoice date the day it was created, due 3 months later.
+    // 7. Funder invoice dates (CH, 9 Nov 2026): invoice date the day it was created, due 3 months later.
     // Halaxy copies the patient invoice's date and leaves the due date empty.
     const today = new Date();
     const invDate = dateLabel(today.getTime());
@@ -279,7 +279,7 @@
       let h = '';
       if (st.phase === 'loading') h += '<p>' + esc(st.status) + '</p>';
       if (st.error) h += '<div class="alert alert-warning upc-warn upc-gap">' + esc(st.error) + '</div>';
-      // While it works: a progress bar and the current step only (Carl, 13 Nov 2026); the fees again once it has finished.
+      // While it works: a progress bar and the current step only (CH, 13 Nov 2026); the fees again once it has finished.
       const working = st.phase === 'running' || st.phase === 'zeroing';
       if (p && st.phase !== 'loading' && !working) {
         if (!p.fees.length) h += '<p>No unbilled fees for this claim, dated today or earlier in the last 6 months.</p>';
@@ -439,7 +439,7 @@
 
   // ------------------------------------------------------------------ Halaxy's Invoice Funder button opens our flow
 
-  // One button, as Halaxy draws it (Carl, 9 Nov 2026): clicking Halaxy's own Invoice Funder opens this
+  // One button, as Halaxy draws it (CH, 9 Nov 2026): clicking Halaxy's own Invoice Funder opens this
   // flow instead. Halaxy's original is one click away inside our pop-up ("Use Halaxy's Invoice
   // Funder"), for what this flow does not do (switching the payer, adding to an existing organisation
   // invoice). If these scripts are not loaded, the button simply works as Halaxy's.

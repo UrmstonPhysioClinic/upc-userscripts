@@ -205,7 +205,7 @@ async def main():
         pg = await ctx.new_page()
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/')
         await pg.wait_for_timeout(12000)
-        check('only on Carl\'s sign-in: nothing asked of Halaxy, nothing changed', not [x for x in S['log'] if 'calendar' in x[1]] and not S['writes'], S['log'])
+        check('only on CH\'s sign-in: nothing asked of Halaxy, nothing changed', not [x for x in S['log'] if 'calendar' in x[1]] and not S['writes'], S['log'])
         await ctx.close()
         await browser.close()
     print('\n%d failed' % len(FAILS) if FAILS else '\nAll passed')

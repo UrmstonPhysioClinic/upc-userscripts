@@ -6,10 +6,10 @@ Responses: A Excellent; B Below expected with a comment; C Satisfactory with a c
 "No"; E Below expected, two patients called E (the date of birth picks one); F Below expected, nobody with
 that date of birth; G Below expected but 20 days old.
 
-Checks: tasks added (without asking) for B, C and E only, on the right profile, for Carl, with the score,
+Checks: tasks added (without asking) for B, C and E only, on the right profile, for CH, with the score,
 answers and response number; nothing for A, D, F or G; F counted on Reports > Surveys and listed as not
 added; nothing stored holds names or answers; a second PC adds no duplicates; a second check opens only new
-responses; the results pop-up; only Carl's sign-in makes any requests.
+responses; the results pop-up; only CH's sign-in makes any requests.
 
 Run:  python3 tests/feedback-alerts/test_feedback_alerts.py
 Needs: Python 3 with Playwright (Chromium).
@@ -163,7 +163,7 @@ async def main():
         added = {k: v for k, v in t.items() if v}
         check('tasks added for B, C and E (the E with the matching date of birth) only', sorted(added) == [202, 203, 206], {k: [x['title'] for x in v] for k, v in added.items()})
         b = (t[202] or [{}])[0]
-        check('Below expected: title, High, due today, for Carl, form token', b.get('title') == 'Feedback to look at: Below expected (22 of 35)' and b.get('priority') == '3'
+        check('Below expected: title, High, due today, for CH, form token', b.get('title') == 'Feedback to look at: Below expected (22 of 35)' and b.get('priority') == '3'
               and b.get('dueDate') == '11-Nov-2026' and b.get('assignees') == ['31'] and b.get('token') == 'TT', b)
         c = b.get('comment', '')
         check('the task holds when, the score, each answer as 1 to 5, the comment and the response number', 'answered 08-Nov-2026 11:00' in c and '- Score: 22 of 35, Below expected' in c and re.match(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2} Feedback alerts\n- ", c)

@@ -1,12 +1,12 @@
 // ==UserScript==
 // @name         UPC Patients: Open-ended recalls (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.0
+// @version      0.4.1
 // @upc-was      check-ins.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/open-ended-patients.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/open-ended-patients.user.js
-// @description  Patients > Open-ended recalls (Carl only for now): patients left open-ended in their last note ("open return", "book again if needed" and so on), last seen 3 weeks or more ago, with nothing booked. A list with a count on the menu; Send recall schedules the "Recall - Open-ended" email, once per episode, after confirming.
+// @description  Patients > Open-ended recalls (CH only for now): patients left open-ended in their last note ("open return", "book again if needed" and so on), last seen 3 weeks or more ago, with nothing booked. A list with a count on the menu; Send recall schedules the "Recall - Open-ended" email, once per episode, after confirming.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
 // @grant        none
@@ -14,7 +14,7 @@
 // ==/UserScript==
 
 /*
- * Open-ended patients (Carl, 11 Nov 2026; named by Carl; first built as Check-ins, and the file keeps that name), the list only for now: who to send a short "how are things going?" with the booking link.
+ * Open-ended patients (CH, 11 Nov 2026; named by CH; first built as Check-ins, and the file keeps that name), the list only for now: who to send a short "how are things going?" with the booking link.
  *
  *  - One calendar request: patients whose last attended appointment was 3 weeks to 3 months ago, with nothing booked
  *    since and nothing booked ahead. Left out if their last appointment was cancelled or missed.
@@ -22,16 +22,16 @@
  *    open-ended wording: "open return", "open appointment", "book again if needed", "see how things go",
  *    "come back if needed" and similar. "Not", "no longer" and so on just before a phrase cancel it.
  *  - Shown: the patient, last seen, which wording was found and a link to the note.
- *  - Separate from Review requests: neither reads or affects the other (Carl, 11 Nov 2026).
+ *  - Separate from Review requests: neither reads or affects the other (CH, 11 Nov 2026).
  *  - Note text is read when checking and never kept: only which wording was found.
- *  - Send recall (0.2.0, Carl, 17-18 Nov 2026: "Open-ended recalls"): after confirming, schedules the Halaxy template
+ *  - Send recall (0.2.0, CH, 17-18 Nov 2026: "Open-ended recalls"): after confirming, schedules the Halaxy template
  *    "Recall - Open-ended" through Email patient for the next weekday at 10:30, once per episode (the last visit). From
  *    the clinic; [Practitioner First Name] is written in as the practitioner of the last visit (Halaxy would fill it
  *    with whoever is signed in); Halaxy fills [Patient First Name], also in the subject. Recorded in the shared note
  *    "Open-ended recalls" (p.<patient> = sched <time> <last visit day>) so every PC knows, and checked in the patient's
  *    scheduled emails. A send Halaxy accepted is never repeated, even if it can't be seen afterwards.
- *    No opt-out field yet (Carl, 18 Nov 2026: later).
- *  - Cancelled, not rebooked (0.3.0, Carl, 18 Nov 2026): last visit 3 weeks to 3 months ago, the booking after it
+ *    No opt-out field yet (CH, 18 Nov 2026: later).
+ *  - Cancelled, not rebooked (0.3.0, CH, 18 Nov 2026): last visit 3 weeks to 3 months ago, the booking after it
  *    cancelled or missed, nothing booked since; its own card, same recall email. Left out: last note says treatment
  *    finished, or an unpaid invoice of their own (chasing payment comes first; the Unpaid Invoices report finds who
  *    might owe, their own invoices confirm). Don't send: p.<patient> = skip 0 <last visit day>, for every PC.
@@ -41,14 +41,14 @@
   if (window.__hxCheckIns) return;
   window.__hxCheckIns = true;
 
-  const VERSION = '0.4.0';
+  const VERSION = '0.4.1';
   const ROUTE = 'upc-check-ins';
   const MENU_CLS = 'upc-ci-menu';
   const ALLOWED = () => rule('openEnded.people', ['Carl Healy']);
   const DAY = 86400e3;
   // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
   const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
-  const AFTER_DAYS = () => rule('openEnded.afterDays', 21);   // Carl, 11 Nov 2026: 3 weeks after the last visit
+  const AFTER_DAYS = () => rule('openEnded.afterDays', 21);   // CH, 11 Nov 2026: 3 weeks after the last visit
   const UP_TO_DAYS = () => rule('openEnded.upToDays', 91);    // not further back than about 3 months
   const REFRESH_EVERY = 12 * 3600e3, PAGE_FRESH = 30 * 60e3, KEEP = 7 * DAY;
   const KEY = 'upc-ci:';
@@ -58,7 +58,7 @@
   const esc = (s) => U().esc(s);
   const store = { get: (k, d) => U().storage(KEY).get(k, d), set: (k, v) => U().storage(KEY).set(k, v), del: (k) => U().storage(KEY).del(k) };   // core's per-PC storage
 
-  // Shared with every PC (Carl, 16 Nov 2026; core's UPC.sharedResult): one PC works the list out and every PC
+  // Shared with every PC (CH, 16 Nov 2026; core's UPC.sharedResult): one PC works the list out and every PC
   // shows it, so the list (and its count) is the same everywhere and Halaxy is read once for the clinic.
   const sharedList = () => (U() && U().sharedResult ? U().sharedResult('Open-ended patients') : null);
   // A list worked out by an older version on another PC (before every PC has updated) doesn't replace this PC's own:
@@ -374,7 +374,7 @@
     return seen ? 'sched' : 'check';
   }
 
-  // Queue (Carl, 18 Nov 2026: scripts save work time, so the next action can be pressed straight away and the queue
+  // Queue (CH, 18 Nov 2026: scripts save work time, so the next action can be pressed straight away and the queue
   // left to run): each press is confirmed, then waits its turn; one runs at a time, at Halaxy's usual pace.
   const rowOf = (id) => { const r = store.get('result', null); return r && r.rows.find((y) => y.id === id && !y.error); };
   const queued = (id) => state.queue.some((q) => q.id === id) || state.busy === id;
@@ -414,7 +414,7 @@
     catch (e) { state.errors.push('Not changed: ' + x.name + ' (' + (e.message || e) + ')'); }
   }
 
-  // Send date chosen in the pop-up (Carl, 20 Nov 2026), the next weekday by default; always at 10:30.
+  // Send date chosen in the pop-up (CH, 20 Nov 2026), the next weekday by default; always at 10:30.
   const iso = (ms) => { const d = new Date(ms); return d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate()); };
   const at1030 = (isoDay) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDay || ''); return m ? new Date(+m[1], +m[2] - 1, +m[3], 10, 30).getTime() : null; };
   async function recall(id) {

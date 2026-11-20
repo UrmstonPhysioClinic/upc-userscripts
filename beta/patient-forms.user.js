@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Patient forms (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.4
+// @version      0.1.5
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-forms.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-forms.user.js
@@ -13,7 +13,7 @@
 // ==/UserScript==
 
 /*
- * Patient forms (Carl, 17 Nov 2026). Forms go out at 05:00 the day before an appointment, through Halaxy's own Send
+ * Patient forms (CH, 17 Nov 2026). Forms go out at 05:00 the day before an appointment, through Halaxy's own Send
  * Patient form (so the form is linked to the patient and the email is Halaxy's), never twice.
  *
  *  Which form (Clinic settings decide whether this script sends: late bookings only while the 05:00 campaigns still
@@ -39,7 +39,7 @@
  *   - Scheduled emails: GET /api/v2/practitioner/messaging/history/scheduled/emails?_locale=:pg&linkPaG=:id
  *     (bearer token) -> data.emailMessages [{ sentDateLocal 'dd-Mon-yyyy HH:MM' (UK time), subject, entityId,
  *     emailCancelUrl, emailStatus }]; the cancel link is followed to cancel one.
- *  Reminders (Carl: "include the original form link, so they don't lose their progress"): at 18:00 the day before, the
+ *  Reminders (CH: "include the original form link, so they don't lose their progress"): at 18:00 the day before, the
  *  same email with "Reminder: " before the subject and the original link, sent with Email patient (/email/compose/
  *  patient/:id, the same form with Schedule). Scheduled once the form has gone (campaign or ours) and cancelled when a
  *  PC sees the form filled in. None for a form sent less than 6 hours before. A Monday appointment's form goes on Sunday, so its reminder needs a PC on that afternoon.
@@ -51,11 +51,11 @@
   if (window.__hxPatientForms) return;
   window.__hxPatientForms = true;
 
-  const VERSION = '0.1.4';
+  const VERSION = '0.1.5';
   // Sending and reminders held (0.1.1): 0.1.0 read the form history as a table, but Halaxy lays it out in divs (live,
   // 17 Nov 2026), so it saw no forms and sent Progress Updates the campaign had already sent. 0.1.2 reads the divs and
   // stops if any sent form can't be read. While held, Check now works out what would happen (reads only).
-  const HOLD = false;   // lifted 17 Nov 2026 (Carl) after the held preview matched the live history
+  const HOLD = false;   // lifted 17 Nov 2026 (CH) after the held preview matched the live history
   const U = () => window.UPC;
   const ROUTE = 'upc-patient-forms';
   const MENU_CLS = 'upc-pf-menu';
