@@ -21,7 +21,7 @@ from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
 CORE = (ROOT / 'beta' / 'core.user.js').read_text().replace('perMinute: 45,', 'perMinute: 100000,')   # tests: no 45-a-minute wait (the 300 ms gap stays)
-MD = (ROOT / 'beta' / 'missing-details.user.js').read_text()
+MD = (ROOT / 'beta' / 'missing-details.user.js').read_text().replace('Date.UTC(2026, 10, 20, 12)', 'Date.UTC(2026, 0, 1)')   # the clock here is before the rule change
 NOW = datetime.datetime(2026, 11, 16, 9, 0, tzinfo=datetime.timezone.utc)
 FAILS = []
 S = {}
@@ -172,6 +172,14 @@ async def main():
         check('not seen yet (no appointment attended): a separate list, no chasing', len(cards) > 1 and cards[1][0] == 'Not seen yet (1)' and notyet == ['Patient H'], cards)
         by = {r[0]: r for r in need + (cards[1][1] if len(cards) > 1 else [])}
         names = names + notyet
+        # First line of the address: a place name alone isn't an address; a one-word house name is
+        addr = await pg.evaluate('''(() => {
+          const form = (l1, city) => new DOMParser().parseFromString("<form id='patientGeneralEditForm'><input name='patientdetailmain[name][forename]' value='A'><input name='patientdetailmain[name][surname]' value='B'>" +
+            "<input name='patientdetailmain[linkPaG][linkpagaddresses][0][address][firstline]' value='" + l1 + "'><input name='patientdetailmain[linkPaG][linkpagaddresses][0][address][city]' value='" + city + "'>" +
+            "<input name='patientdetailmain[linkPaG][linkpagaddresses][0][address][postcode]' value='M41 0AA'></form>", 'text/html');
+          return [['Urmston', 'Trafford'], ['Rosemount', 'Manchester'], ['Bolton', 'Bolton'], ['12 Test Road', 'Urmston'], ['Flat 2, Urmston', 'Manchester']].map(([l, c]) => window.upcMissingDetails.detailsFrom(form(l, c)).missing.includes('address'));
+        })()''')
+        check('first line only a place name: address missing; house name or street: fine', addr == [True, False, True, False, False], addr)
         check('what is missing, and the email as well where it is missing', by.get('Patient B', ['', ''])[1].startswith('date of birth, phone number') and by['Patient C'][1].startswith('address')
               and by['Patient H'][1].startswith('first name, last name'), need)
         check('next appointment with the practitioner, and last seen', '18-Nov-2026 10:00 with Physio Two' in by.get('Patient B', ['', '', '', ''])[2] and by.get('Patient B', ['', '', '', ''])[3] == '27-Oct-2026'

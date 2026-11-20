@@ -179,7 +179,7 @@ async def main():
         err = await pg.evaluate("document.querySelector('.upc-ss-clinic .upc-err[data-msg]').textContent")
         kept = await pg.evaluate("[document.querySelector(\"[data-people='readyToBill.people'] input[value='Physio One']\").checked, document.querySelector(\"select[data-key='remittances.taskFor']\").value]")
         check('a refused save keeps the changes on screen', kept == [True, 'Physio One'], kept)
-        check('nobody ticked: refused, nothing saved', 'Open-ended patients" must be at least one person' in err and 'readyToBill.people = Carl Healy, Wendy Pritchard' in note_lines(), err)
+        check('nobody ticked: refused, nothing saved', 'Open-ended recalls" must be at least one person' in err and 'readyToBill.people = Carl Healy, Wendy Pritchard' in note_lines(), err)
         await pg.check("[data-people='openEnded.people'] input[value='Carl Healy']")
         await pg.click("[data-a=save]")
         await pg.wait_for_function("document.querySelector('.upc-ss-clinic .upc-ok')", timeout=15000)

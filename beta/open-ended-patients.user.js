@@ -1,12 +1,12 @@
 // ==UserScript==
-// @name         UPC Patients: Open-ended patients (beta)
+// @name         UPC Patients: Open-ended recalls (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.3
+// @version      0.4.0
 // @upc-was      check-ins.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/open-ended-patients.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/open-ended-patients.user.js
-// @description  Patients > Open-ended patients (Carl only for now): patients left open-ended in their last note ("open return", "book again if needed" and so on), last seen 3 weeks or more ago, with nothing booked. A list with a count on the menu; Send recall schedules the "Recall - Open-ended" email, once per episode, after confirming.
+// @description  Patients > Open-ended recalls (Carl only for now): patients left open-ended in their last note ("open return", "book again if needed" and so on), last seen 3 weeks or more ago, with nothing booked. A list with a count on the menu; Send recall schedules the "Recall - Open-ended" email, once per episode, after confirming.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
 // @grant        none
@@ -41,7 +41,7 @@
   if (window.__hxCheckIns) return;
   window.__hxCheckIns = true;
 
-  const VERSION = '0.3.3';
+  const VERSION = '0.4.0';
   const ROUTE = 'upc-check-ins';
   const MENU_CLS = 'upc-ci-menu';
   const ALLOWED = () => rule('openEnded.people', ['Carl Healy']);
@@ -92,7 +92,8 @@
     const r = recs['p.' + row.id];
     if (!r || !r.value) return null;
     const f = r.value.split(' ');
-    return f[2] === dayOf(row.lastSeen) ? { kind: f[0], at: Number(f[1]) } : null;   // sched, check or skip
+    if (f[2] !== dayOf(row.lastSeen) || f[0] === 'undo') return null;   // undo: a Don't send taken back
+    return { kind: f[0], at: Number(f[1]) };                             // sched, check or skip
   }
   const today = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
 
@@ -252,6 +253,8 @@
     .upc-ci .upc-ci-bar .btn { margin: 0; }
     .upc-ci td.upc-ci-date { white-space: nowrap; }
     .upc-ci td.upc-ci-act { white-space: nowrap; }
+    .upc-ci-when { display: flex; align-items: center; gap: 8px; }
+    .upc-ci-when .form-control { max-width: 12em; }
     .upc-ci td.upc-ci-act .upc-actions { margin: 0; justify-content: flex-start; flex-wrap: nowrap; }
   `;
   const state = { unmount: null, running: false, status: '', error: '', busy: null, queue: [], errors: [] };
@@ -261,7 +264,7 @@
     if (!root) return;
     const r = store.get('result', null);
     const base = U().base();
-    let h = '<div class="upc-ci"><h1>Open-ended patients</h1><div class="upc-ci-bar">' +
+    let h = '<div class="upc-ci"><h1>Open-ended recalls</h1><div class="upc-ci-bar">' +
       '<button type="button" class="btn btn-outline-primary-light" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>' +
       (state.running ? U().ui.run.inline(state.status) : '<span class="text-muted">' + esc(r ? 'Checked at ' + new Date(r.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + label(r.at) + '.' : '') + '</span>') + '</div>';
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
@@ -270,12 +273,14 @@
       const recs = (() => { try { return recalls().cached(); } catch (e) { return {}; } })();
       const ok = r.rows.filter((x) => !x.error), bad = r.rows.filter((x) => x.error);
       const todo = ok.filter((x) => !recallFor(x, recs)), done = ok.filter((x) => { const k = recallFor(x, recs); return k && k.kind !== 'skip'; });
-      const skipped = ok.filter((x) => { const k = recallFor(x, recs); return k && k.kind === 'skip'; }).length;
+      const notRecalled = ok.filter((x) => { const k = recallFor(x, recs); return k && k.kind === 'skip'; });
       const open = todo.filter((x) => x.kind !== 'cancelled'), cancelled = todo.filter((x) => x.kind === 'cancelled');
       const head = '<thead><tr><th>Patient</th><th>Last seen</th><th class="number">Weeks</th><th>Practitioner</th><th>Why</th><th></th></tr></thead>';
       const row = (x) => {
         const rc = recallFor(x, recs);
-        const act = rc ? esc(rc.kind === 'sched' ? (rc.at > Date.now() ? 'Scheduled for ' : 'Sent ') + label(rc.at) + ' ' + two(new Date(rc.at).getHours()) + ':' + two(new Date(rc.at).getMinutes()) : 'Check in Halaxy')
+        const act = rc && rc.kind === 'skip' ? (state.busy === x.id ? U().ui.run.inline('') : state.queue.some((q) => q.id === x.id) ? 'Queued'
+            : '<button type="button" class="btn btn-outline-primary-light" data-a="undo" data-id="' + esc(x.id) + '">Undo</button>')
+          : rc ? esc(rc.kind === 'sched' ? (rc.at > Date.now() ? 'Scheduled for ' : 'Sent ') + label(rc.at) + ' ' + two(new Date(rc.at).getHours()) + ':' + two(new Date(rc.at).getMinutes()) : 'Check in Halaxy')
           : state.busy === x.id ? U().ui.run.inline('') : state.queue.some((q) => q.id === x.id) ? 'Queued'
           : '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-a="recall" data-id="' + esc(x.id) + '">Send recall</button>' +
             '<button type="button" class="btn btn-outline-primary-light" data-a="skip" data-id="' + esc(x.id) + '">Don\'t send</button></div>';
@@ -288,12 +293,13 @@
       const card = (title, list) => '<div class="card"><div class="card-header"><h2>' + title + ' (' + list.length + ')</h2></div><div class="card-body p-0">' +
         (list.length ? '<table class="table table-striped table-bordered w-100 m-0">' + head + '<tbody>' + list.map(row).join('') + '</tbody></table>' : '<p class="text-muted m-3">None.</p>') + '</div></div>';
       h += card('Open-ended', open) + card('Cancelled, not rebooked', cancelled);
-      if (done.length) h += '<div class="card"><div class="card-header"><h2>Recalled (' + done.length + ')</h2></div><div class="card-body p-0"><table class="table table-striped table-bordered w-100 m-0">' + head + '<tbody>' + done.map(row).join('') + '</tbody></table></div></div>';
+      if (done.length) h += card('Recalled', done);
+      if (notRecalled.length) h += card('Not recalled', notRecalled);
       if (bad.length) h += '<div class="alert alert-danger upc-err">Notes not read for ' + bad.map((x) => esc(x.name) + ' (' + esc(x.error) + ')').join(', ') + '.</div>';
       const c = r.counts || {};
       h += '<p class="text-muted">Last seen ' + AFTER_DAYS() + ' to ' + UP_TO_DAYS() + ' days ago, nothing booked. Left out: ' + (c.recent || 0) + ' seen in the last ' + AFTER_DAYS() + ' days, ' +
         (c.ended || 0) + ' last appointment declined or rescheduled, ' + (c.none || 0) + ' not open-ended, ' + (c.done || 0) + ' finished, ' + (c.finished || 0) + ' cancelled after finishing treatment, ' +
-        (c.owing || 0) + ' cancelled and owing money, ' + skipped + ' not sending.</p>';
+        (c.owing || 0) + ' cancelled and owing money.</p>';
     }
     h += '</div>';
     root.innerHTML = h;
@@ -301,14 +307,19 @@
 
   // ------------------------------------------------------------------ send recall
 
-  function confirmBox(title, html, yes) {
+  // Resolves false (cancelled) or the pop-up's body (confirmed), so fields in it can be read.
+  function confirmBox(title, html, yes, check) {
     return new Promise((resolve) => {
       let answered = false;
       const doneWith = (v) => { if (!answered) { answered = true; resolve(v); } };
       const dlg = U().ui.dialog({ title, small: true, onClose: () => doneWith(false) });
       dlg.root.setAttribute('data-upc-ci-confirm', '');
-      dlg.body.innerHTML = html + '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-c="no">Cancel</button><button type="button" class="btn btn-primary" data-c="yes">' + esc(yes) + '</button></div>';
-      dlg.body.addEventListener('click', (e) => { const b = e.target.closest('[data-c]'); if (!b) return; doneWith(b.dataset.c === 'yes'); dlg.close(); });
+      dlg.body.innerHTML = html + '<div class="alert alert-danger upc-err" data-c-err hidden></div><div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-c="no">Cancel</button><button type="button" class="btn btn-primary" data-c="yes">' + esc(yes) + '</button></div>';
+      dlg.body.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-c]'); if (!b) return;
+        if (b.dataset.c === 'yes' && check) { const m = check(dlg.body); if (m) { const el = dlg.body.querySelector('[data-c-err]'); el.textContent = m; el.hidden = false; return; } }
+        doneWith(b.dataset.c === 'yes' ? dlg.body : false); dlg.close();
+      });
     });
   }
 
@@ -377,7 +388,7 @@
     const job = state.queue.shift();
     state.busy = job.id;
     render();
-    try { await (job.kind === 'skip' ? doSkip(job.x) : doRecall(job.x)); }
+    try { await (job.kind === 'skip' ? doSkip(job.x) : job.kind === 'undo' ? doUndo(job.x) : doRecall(job.x, job.due)); }
     finally { state.busy = null; render(); paintBadge(); pump(); }
   }
   window.addEventListener('beforeunload', (e) => { if (state.busy || state.queue.length) { e.preventDefault(); e.returnValue = ''; } });
@@ -388,19 +399,35 @@
     if (!(await confirmBox('Don\'t send a recall?', '<p>Take ' + esc(x.name) + ' off the list for their visit on ' + esc(label(x.lastSeen)) + '?</p>', 'Don\'t send'))) return;
     enqueue({ kind: 'skip', id, x });
   }
+  async function undo(id) {
+    const x = rowOf(id);
+    if (!x || queued(id)) return;
+    if (!(await confirmBox('Undo Don\'t send?', '<p>Put ' + esc(x.name) + ' back on the list to recall?</p>', 'Undo'))) return;
+    enqueue({ kind: 'undo', id, x });
+  }
+  async function doUndo(x) {
+    try { await recalls().write({ ['p.' + x.id]: 'undo 0 ' + dayOf(x.lastSeen) }); }
+    catch (e) { state.errors.push('Not changed: ' + x.name + ' (' + (e.message || e) + ')'); }
+  }
   async function doSkip(x) {
     try { await recalls().write({ ['p.' + x.id]: 'skip 0 ' + dayOf(x.lastSeen) }); }
     catch (e) { state.errors.push('Not changed: ' + x.name + ' (' + (e.message || e) + ')'); }
   }
 
+  // Send date chosen in the pop-up (Carl, 20 Nov 2026), the next weekday by default; always at 10:30.
+  const iso = (ms) => { const d = new Date(ms); return d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate()); };
+  const at1030 = (isoDay) => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(isoDay || ''); return m ? new Date(+m[1], +m[2] - 1, +m[3], 10, 30).getTime() : null; };
   async function recall(id) {
     const x = rowOf(id);
     if (!x || queued(id)) return;
-    const ok = await confirmBox('Send recall?', '<p>Schedule the ' + esc(TEMPLATE) + ' email to ' + esc(x.name) + ' for ' + esc(whenLabel(sendTime())) + ', naming ' + esc(x.prac ? x.prac.split(' ')[0] : 'their practitioner') + '?</p>', 'Send recall');
-    if (ok) enqueue({ kind: 'recall', id, x });
+    const first = sendTime();
+    const body = await confirmBox('Send recall?', '<p>Schedule the ' + esc(TEMPLATE) + ' email to ' + esc(x.name) + ', naming ' + esc(x.prac ? x.prac.split(' ')[0] : 'their practitioner') + '?</p>' +
+      '<div class="form-group"><label for="upc-ci-when">Send on</label><div class="upc-ci-when"><input type="date" id="upc-ci-when" class="form-control" value="' + iso(first) + '" min="' + iso(first) + '"><span>at 10:30</span></div></div>', 'Send recall',
+      (b) => { const due = at1030(b.querySelector('#upc-ci-when').value); return due === null ? 'Choose a date.' : due < first ? 'Choose ' + label(first) + ' or later.' : ''; });
+    if (body) enqueue({ kind: 'recall', id, x, due: at1030(body.querySelector('#upc-ci-when').value) });
   }
-  async function doRecall(x) {
-    const due = sendTime();
+  async function doRecall(x, chosen) {
+    const due = chosen && chosen > Date.now() + 15 * 60e3 ? chosen : sendTime();
     const sh = recalls();
     const key = 'p.' + x.id;
     try {
@@ -460,8 +487,10 @@
       if (b) recall(b.dataset.id);
       const k = e.target.closest('[data-a=skip]');
       if (k) skip(k.dataset.id);
+      const u = e.target.closest('[data-a=undo]');
+      if (u) undo(u.dataset.id);
     });
-    state.unmount = U().ui.mountPage('Open-ended patients', root, MENU_CLS);
+    state.unmount = U().ui.mountPage('Open-ended recalls', root, MENU_CLS);
     render();
     const r = store.get('result', null);
     Promise.all([pullShared(0), recalls().read(10 * 60e3).catch(() => {})]).then(() => {
@@ -483,7 +512,7 @@
     if (!allowed()) return;
     if (!document.getElementById('upc-check-ins-css')) { const st = document.createElement('style'); st.id = 'upc-check-ins-css'; st.textContent = CSS; document.head.appendChild(st); }
     // Under Patients, opening over Halaxy's Patient List (as Review requests does).
-    U().ui.ensureMenuItem('Open-ended patients', (section) => {
+    U().ui.ensureMenuItem('Open-ended recalls', (section) => {
       const list = section && [...section.querySelectorAll('a.mainmenu-sublink')].find((a) => /^patient list$/i.test(U().clean(a.textContent)));
       return (list ? list.getAttribute('href').split('#')[0] : U().base() + '/patient/') + '#' + ROUTE;
     }, MENU_CLS, /^patients?$/i);
