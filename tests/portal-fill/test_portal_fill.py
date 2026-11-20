@@ -493,7 +493,7 @@ async def main():
         portal = await new_form_tab(ctx)
         await portal.wait_for_function("document.getElementById('upc-pf-panel') && /has stopped/.test(document.getElementById('upc-pf-panel').textContent)", timeout=60000)
         panel = await portal.evaluate("document.getElementById('upc-pf-panel').textContent")
-        check('a changed portal page stops the fill, says what, and that CH has been notified', 'treatment line 1: charge per unit not found' in panel and 'CH has been notified' in panel, panel)
+        check('a changed portal page stops the fill, says what, and that CH has been notified', 'treatment line 1: charge per unit not found' in panel and 'Carl has been notified' in panel, panel)
         await pg.wait_for_function("/Carl Healy has been sent a task/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=60000)
         t = S['tasks'][9001]
         check('a task for CH on the funder invoice, with the reason', len(t) == 1 and t[0]['title'] == 'Portal fill stopped: AXA, UPC-01111' and t[0]['who'] == ['31']
