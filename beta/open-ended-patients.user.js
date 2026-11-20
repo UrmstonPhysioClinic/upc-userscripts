@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Open-ended patients (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.2
+// @version      0.3.3
 // @upc-was      check-ins.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/open-ended-patients.user.js
@@ -41,7 +41,7 @@
   if (window.__hxCheckIns) return;
   window.__hxCheckIns = true;
 
-  const VERSION = '0.3.2';
+  const VERSION = '0.3.3';
   const ROUTE = 'upc-check-ins';
   const MENU_CLS = 'upc-ci-menu';
   const ALLOWED = () => rule('openEnded.people', ['Carl Healy']);
@@ -252,9 +252,9 @@
     .upc-ci .upc-ci-bar .btn { margin: 0; }
     .upc-ci td.upc-ci-date { white-space: nowrap; }
     .upc-ci td.upc-ci-act { white-space: nowrap; }
-    .upc-ci td.upc-ci-act .btn { margin: 0; }
+    .upc-ci td.upc-ci-act .upc-actions { margin: 0; justify-content: flex-start; flex-wrap: nowrap; }
   `;
-  const state = { unmount: null, running: false, status: '', error: '', busy: null, sendError: '' };
+  const state = { unmount: null, running: false, status: '', error: '', busy: null, queue: [], errors: [] };
   let root = null;
 
   function render() {
@@ -265,7 +265,7 @@
       '<button type="button" class="btn btn-outline-primary-light" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>' +
       (state.running ? U().ui.run.inline(state.status) : '<span class="text-muted">' + esc(r ? 'Checked at ' + new Date(r.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + label(r.at) + '.' : '') + '</span>') + '</div>';
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
-    if (state.sendError) h += '<div class="alert alert-danger upc-err">' + esc(state.sendError) + '</div>';
+    state.errors.forEach((m) => { h += '<div class="alert alert-danger upc-err">' + esc(m) + '</div>'; });
     if (r) {
       const recs = (() => { try { return recalls().cached(); } catch (e) { return {}; } })();
       const ok = r.rows.filter((x) => !x.error), bad = r.rows.filter((x) => x.error);
@@ -276,8 +276,9 @@
       const row = (x) => {
         const rc = recallFor(x, recs);
         const act = rc ? esc(rc.kind === 'sched' ? (rc.at > Date.now() ? 'Scheduled for ' : 'Sent ') + label(rc.at) + ' ' + two(new Date(rc.at).getHours()) + ':' + two(new Date(rc.at).getMinutes()) : 'Check in Halaxy')
-          : state.busy === x.id ? U().ui.run.inline('') : '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-a="recall" data-id="' + esc(x.id) + '"' + (state.busy ? ' disabled' : '') + '>Send recall</button>' +
-            '<button type="button" class="btn btn-outline-primary-light" data-a="skip" data-id="' + esc(x.id) + '"' + (state.busy ? ' disabled' : '') + '>Don\'t send</button></div>';
+          : state.busy === x.id ? U().ui.run.inline('') : state.queue.some((q) => q.id === x.id) ? 'Queued'
+          : '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-a="recall" data-id="' + esc(x.id) + '">Send recall</button>' +
+            '<button type="button" class="btn btn-outline-primary-light" data-a="skip" data-id="' + esc(x.id) + '">Don\'t send</button></div>';
         return '<tr><td><a href="' + esc(base + '/patient/' + x.id) + '" target="_blank" rel="noopener">' + esc(x.name) + '</a></td>' +
           '<td class="upc-ci-date">' + esc(label(x.lastSeen)) + '</td><td class="number">' + Math.floor(Math.round((today() - new Date(x.lastSeen).setHours(0, 0, 0, 0)) / DAY) / 7) + '</td>' +
           '<td>' + esc(x.prac || '') + '</td>' +
@@ -362,31 +363,46 @@
     return seen ? 'sched' : 'check';
   }
 
-  async function skip(id) {
-    const r = store.get('result', null);
-    const x = r && r.rows.find((y) => y.id === id && !y.error);
-    if (!x || state.busy) return;
-    state.sendError = '';
-    if (!(await confirmBox('Don\'t send a recall?', '<p>Take ' + esc(x.name) + ' off the list for their visit on ' + esc(label(x.lastSeen)) + '?</p>', 'Don\'t send'))) return;
-    state.busy = id;
+  // Queue (Carl, 18 Nov 2026: scripts save work time, so the next action can be pressed straight away and the queue
+  // left to run): each press is confirmed, then waits its turn; one runs at a time, at Halaxy's usual pace.
+  const rowOf = (id) => { const r = store.get('result', null); return r && r.rows.find((y) => y.id === id && !y.error); };
+  const queued = (id) => state.queue.some((q) => q.id === id) || state.busy === id;
+  function enqueue(job) {
+    state.queue.push(job);
     render();
-    try { await recalls().write({ ['p.' + id]: 'skip 0 ' + dayOf(x.lastSeen) }); }
-    catch (e) { state.sendError = 'Not changed: ' + x.name + ' (' + (e.message || e) + ')'; }
-    finally { state.busy = null; render(); paintBadge(); }
+    pump();
+  }
+  async function pump() {
+    if (state.busy || !state.queue.length) return;
+    const job = state.queue.shift();
+    state.busy = job.id;
+    render();
+    try { await (job.kind === 'skip' ? doSkip(job.x) : doRecall(job.x)); }
+    finally { state.busy = null; render(); paintBadge(); pump(); }
+  }
+  window.addEventListener('beforeunload', (e) => { if (state.busy || state.queue.length) { e.preventDefault(); e.returnValue = ''; } });
+
+  async function skip(id) {
+    const x = rowOf(id);
+    if (!x || queued(id)) return;
+    if (!(await confirmBox('Don\'t send a recall?', '<p>Take ' + esc(x.name) + ' off the list for their visit on ' + esc(label(x.lastSeen)) + '?</p>', 'Don\'t send'))) return;
+    enqueue({ kind: 'skip', id, x });
+  }
+  async function doSkip(x) {
+    try { await recalls().write({ ['p.' + x.id]: 'skip 0 ' + dayOf(x.lastSeen) }); }
+    catch (e) { state.errors.push('Not changed: ' + x.name + ' (' + (e.message || e) + ')'); }
   }
 
   async function recall(id) {
-    const r = store.get('result', null);
-    const x = r && r.rows.find((y) => y.id === id && !y.error);
-    if (!x || state.busy) return;
-    state.sendError = '';
+    const x = rowOf(id);
+    if (!x || queued(id)) return;
+    const ok = await confirmBox('Send recall?', '<p>Schedule the ' + esc(TEMPLATE) + ' email to ' + esc(x.name) + ' for ' + esc(whenLabel(sendTime())) + ', naming ' + esc(x.prac ? x.prac.split(' ')[0] : 'their practitioner') + '?</p>', 'Send recall');
+    if (ok) enqueue({ kind: 'recall', id, x });
+  }
+  async function doRecall(x) {
     const due = sendTime();
-    const ok = await confirmBox('Send recall?', '<p>Schedule the ' + esc(TEMPLATE) + ' email to ' + esc(x.name) + ' for ' + esc(whenLabel(due)) + ', naming ' + esc(x.prac ? x.prac.split(' ')[0] : 'their practitioner') + '?</p>', 'Send recall');
-    if (!ok) return;
-    state.busy = id;
-    render();
     const sh = recalls();
-    const key = 'p.' + id;
+    const key = 'p.' + x.id;
     try {
       await sh.read(0);
       if (recallFor(x, sh.cached())) return;                       // another PC got there first
@@ -395,16 +411,13 @@
       try { kind = await sendRecall(x, due); } catch (e) { await sh.write({}).catch(() => {}); throw e; }
       await sh.write({ [key]: kind + ' ' + due + ' ' + dayOf(x.lastSeen) });
       if (kind === 'check') {
-        state.sendError = 'Halaxy accepted the recall to ' + x.name + ', but it isn\'t in their scheduled emails. Check their emails in Halaxy.';
-        document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: 'open-ended-patients.user.js', message: state.sendError }) }));
+        const m = 'Halaxy accepted the recall to ' + x.name + ', but it isn\'t in their scheduled emails. Check their emails in Halaxy.';
+        state.errors.push(m);
+        document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: 'open-ended-patients.user.js', message: m }) }));
       }
     } catch (e) {
-      state.sendError = 'Recall not sent to ' + x.name + ': ' + (e.message || e);
+      state.errors.push('Recall not sent to ' + x.name + ': ' + (e.message || e));
       tellHealthCheck(e);
-    } finally {
-      state.busy = null;
-      render();
-      paintBadge();
     }
   }
 
@@ -412,6 +425,7 @@
     if (state.running) return;
     state.running = true;
     state.error = '';
+    if (!state.busy && !state.queue.length) state.errors = [];
     state.status = 'Checking...';
     render();
     try {

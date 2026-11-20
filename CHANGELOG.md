@@ -1,5 +1,9 @@
 # Changelog
 
+## Open-ended patients 0.3.3, 18 Nov 2026 (beta)
+- Send recall and Don't send queue: press the next patient straight away; each waits its turn ("Queued") and runs one at a time. The browser asks before leaving the page while the queue is running.
+- Buttons line up with the text in their row.
+
 ## Open-ended patients 0.3.2, 18 Nov 2026 (beta)
 - Weeks since the last visit instead of days.
 

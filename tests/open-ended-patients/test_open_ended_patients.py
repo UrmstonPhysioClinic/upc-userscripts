@@ -237,13 +237,21 @@ async def main():
         check('menu count: only those still to recall', badge == '6', badge)
         note = ' '.join(n['html'] for v in S['notes'].values() for n in v)
         check('recorded in the shared note', re.search(r'p\.201 \| [\d :-]+ \| sched \d+ 2026-10-17', re.sub(r'<[^>]+>', ' ', note)) is not None, note[:400])
+        # Queue: the next patient can be pressed straight away; both go, one after the other
+        await pg.click("[data-upc-check-ins] [data-a=recall][data-id='204']")
+        await pg.click('[data-upc-ci-confirm] [data-c=yes]')
+        await pg.click("[data-upc-check-ins] [data-a=recall][data-id='212']")
+        await pg.click('[data-upc-ci-confirm] [data-c=yes]')
+        queued = await pg.evaluate("[...document.querySelectorAll('[data-upc-check-ins] tbody tr')].filter((tr) => tr.cells[0].textContent.trim() === 'Patient L').map((tr) => tr.cells[5].textContent.trim())")
+        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-check-ins] .card h2')].some((h) => h.textContent === 'Recalled (3)')", timeout=60000)
+        check('queue: pressed while another runs, shown as Queued, both sent', queued == ['Queued'] and [x[0] for x in S['posts']] == [201, 204, 212], (queued, [x[0] for x in S['posts']]))
         # A template with a tag the script can't fill: not sent
         S['template'] = ('How are you getting on?', '<p>Your last visit was <span class="dynamicterm">[Appointment Date]</span>.</p>')
         await pg.click("[data-upc-check-ins] [data-a=recall][data-id='202']")
         await pg.click('[data-upc-ci-confirm] [data-c=yes]')
         await pg.wait_for_selector('[data-upc-check-ins] .alert-danger', timeout=30000)
         err = await pg.evaluate("document.querySelector('[data-upc-check-ins] .alert-danger').textContent")
-        check('template with [Appointment Date]: not sent, says why', len(S['posts']) == 1 and '[Appointment Date]' in err and 'Nothing was sent' in err, (len(S['posts']), err))
+        check('template with [Appointment Date]: not sent, says why', len(S['posts']) == 3 and '[Appointment Date]' in err and 'Nothing was sent' in err, (len(S['posts']), err))
         # Don't send: off the list for this visit, on every PC
         await pg.click("[data-upc-check-ins] [data-a=skip][data-id='213']")
         await pg.click('[data-upc-ci-confirm] [data-c=yes]')
@@ -251,7 +259,7 @@ async def main():
         note = ' '.join(n['html'] for v in S['notes'].values() for n in v)
         muted = await pg.evaluate("[...document.querySelectorAll('[data-upc-check-ins] p.text-muted')].pop().textContent")
         check("Don't send: recorded for this visit, counted as not sending", re.search(r'p\.213 \| [\d :-]+ \| skip 0 2026-10-07', re.sub(r'<[^>]+>', ' ', note)) is not None and '1 not sending' in muted
-              and await pg.evaluate("(document.querySelector('a.upc-ci-menu .upc-ci-badge') || {}).textContent") == '5', (muted, note[-300:]))
+              and await pg.evaluate("(document.querySelector('a.upc-ci-menu .upc-ci-badge') || {}).textContent") == '3', (muted, note[-300:]))
         # A newer list from a PC still on an older version (no practitioners) doesn't replace this PC's
         for v in S['notes'].values():
             for n in v:
