@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.64
+// @version      0.1.65
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.64';
+  const VERSION = '0.1.65';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -2302,8 +2302,8 @@
     { key: 'readyToBill.oldMonths', script: 'Ready to bill', label: 'Bill fees older than', unit: 'months', def: 3, min: 1, max: 12 },
     { key: 'readyToBill.windowMonths', script: 'Ready to bill', label: 'Leave out fees older than', unit: 'months', def: 6, min: 2, max: 24 },
     { key: 'insurerPayments.overdueDays', script: 'Insurer payments due', label: 'An insurer invoice is overdue after', unit: 'days', def: 30, min: 7, max: 180 },
-    { key: 'openEnded.afterDays', script: 'Open-ended patients', label: 'List patients last seen at least', unit: 'days ago', def: 21, min: 7, max: 90 },
-    { key: 'openEnded.upToDays', script: 'Open-ended patients', label: 'and at most', unit: 'days ago', def: 91, min: 30, max: 365 },
+    { key: 'openEnded.afterDays', script: 'Open-ended recalls', label: 'List patients last seen at least', unit: 'days ago', def: 21, min: 7, max: 90 },
+    { key: 'openEnded.upToDays', script: 'Open-ended recalls', label: 'and at most', unit: 'days ago', def: 91, min: 30, max: 365 },
     { key: 'patientStatuses.gapDays', script: 'Patient statuses', label: 'Discharged when nothing is booked and no appointment for', unit: 'days', def: 42, min: 14, max: 365 },
     { key: 'patientStatuses.maxChanges', script: 'Patient statuses', label: 'Most status changes in one run', unit: 'changes', def: 15, min: 1, max: 50 },
     { key: 'reviewRequests.sendAt', script: 'Review requests', label: 'Send at (weekdays)', unit: '', def: '10:30', min: '07:00', max: '20:00', type: 'time' },
@@ -2323,7 +2323,7 @@
     { key: 'missingDetails.people', script: 'Who sees what', label: 'Missing details list', type: 'people', def: [CARL, WENDY] },
     { key: 'patientForms.people', script: 'Who sees what', label: 'Patient forms list', type: 'people', def: [CARL, WENDY] },
     { key: 'insurerPayments.people', script: 'Who sees what', label: 'Insurer payments due', type: 'people', def: [CARL] },
-    { key: 'openEnded.people', script: 'Who sees what', label: 'Open-ended patients', type: 'people', def: [CARL] },
+    { key: 'openEnded.people', script: 'Who sees what', label: 'Open-ended recalls', type: 'people', def: [CARL] },
     { key: 'reviewRequests.people', script: 'Who sees what', label: 'Review requests', type: 'people', def: [CARL] },
     { key: 'feedbackAlerts.people', script: 'Who sees what', label: 'Feedback alerts', type: 'people', def: [CARL] },
     { key: 'patientStatuses.people', script: 'Who sees what', label: 'Patient statuses', type: 'people', def: [CARL] },

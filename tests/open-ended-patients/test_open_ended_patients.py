@@ -220,7 +220,8 @@ async def main():
         await pg.click("[data-upc-check-ins] [data-a=recall][data-id='201']")
         await pg.wait_for_selector('[data-upc-ci-confirm]')
         q = await pg.evaluate("document.querySelector('[data-upc-ci-confirm]').textContent")
-        check('confirm: who, when and the practitioner named', 'Patient A' in q and 'Thursday 12-Nov-2026 at 10:30' in q and 'Diana' in q, q)
+        when = await pg.evaluate("document.querySelector('[data-upc-ci-confirm] #upc-ci-when').value")
+        check('confirm: who and the practitioner named; send date chosen there, the next weekday by default', 'Patient A' in q and 'Diana' in q and 'at 10:30' in q and when == '2026-11-12', (q, when))
         await pg.click('[data-upc-ci-confirm] [data-c=yes]')
         await pg.wait_for_function("[...document.querySelectorAll('[data-upc-check-ins] .card')].some((c) => /Recalled/.test(c.textContent))", timeout=30000)
         f = S['posts'][0][1] if S['posts'] else {}
@@ -255,11 +256,30 @@ async def main():
         # Don't send: off the list for this visit, on every PC
         await pg.click("[data-upc-check-ins] [data-a=skip][data-id='213']")
         await pg.click('[data-upc-ci-confirm] [data-c=yes]')
-        await pg.wait_for_function("/1 not sending/.test([...document.querySelectorAll('[data-upc-check-ins] p.text-muted')].pop().textContent)", timeout=30000)
+        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-check-ins] .card h2')].some((h) => h.textContent === 'Not recalled (1)')", timeout=30000)
         note = ' '.join(n['html'] for v in S['notes'].values() for n in v)
-        muted = await pg.evaluate("[...document.querySelectorAll('[data-upc-check-ins] p.text-muted')].pop().textContent")
-        check("Don't send: recorded for this visit, counted as not sending", re.search(r'p\.213 \| [\d :-]+ \| skip 0 2026-10-07', re.sub(r'<[^>]+>', ' ', note)) is not None and '1 not sending' in muted
-              and await pg.evaluate("(document.querySelector('a.upc-ci-menu .upc-ci-badge') || {}).textContent") == '3', (muted, note[-300:]))
+        cards = dict(await pg.evaluate("[...document.querySelectorAll('[data-upc-check-ins] .card')].map((c) => [c.querySelector('h2').textContent, [...c.querySelectorAll('tbody tr')].map((tr) => [...tr.cells].map((x) => x.textContent.trim()))])"))
+        check("Don't send: recorded for this visit, listed under Not recalled with Undo", re.search(r'p\.213 \| [\d :-]+ \| skip 0 2026-10-07', re.sub(r'<[^>]+>', ' ', note)) is not None
+              and [r[0] for r in cards.get('Not recalled (1)', [])] == ['Patient M'] and cards['Not recalled (1)'][0][5] == 'Undo'
+              and await pg.evaluate("(document.querySelector('a.upc-ci-menu .upc-ci-badge') || {}).textContent") == '3', (cards, note[-300:]))
+        # Undo: back on the list
+        await pg.click("[data-upc-check-ins] [data-a=undo][data-id='213']")
+        await pg.click('[data-upc-ci-confirm] [data-c=yes]')
+        await pg.wait_for_function("!![...document.querySelectorAll('[data-upc-check-ins] .card')].find((c) => /Cancelled, not rebooked \\(2\\)/.test(c.textContent))", timeout=30000)
+        check('Undo: back to recall, Not recalled card gone', not await pg.evaluate("[...document.querySelectorAll('[data-upc-check-ins] .card h2')].some((h) => /Not recalled/.test(h.textContent))")
+              and await pg.evaluate("(document.querySelector('a.upc-ci-menu .upc-ci-badge') || {}).textContent") == '4', cards)
+        # Send date: a later date chosen in the pop-up
+        S['template'] = ('How are you getting on?', '<p>Since you last saw <span class="dynamicterm">[Practitioner First Name]</span>.</p>')
+        await pg.click("[data-upc-check-ins] [data-a=recall][data-id='213']")
+        await pg.fill('[data-upc-ci-confirm] #upc-ci-when', '2026-11-11')
+        await pg.click('[data-upc-ci-confirm] [data-c=yes]')
+        err = await pg.evaluate("document.querySelector('[data-upc-ci-confirm] [data-c-err]').textContent")
+        await pg.fill('[data-upc-ci-confirm] #upc-ci-when', '2026-11-30')
+        await pg.click('[data-upc-ci-confirm] [data-c=yes]')
+        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-check-ins] .card h2')].some((h) => h.textContent === 'Recalled (4)')", timeout=60000)
+        f = S['posts'][-1][1]
+        check('send date: earlier than allowed refused in the pop-up; a later one used', 'Choose 12-Nov-2026 or later.' == err and S['posts'][-1][0] == 213
+              and f.get('form[scheduleDetails][scheduleDate]') == '30-Nov-2026' and f.get('form[scheduleDetails][scheduleTime][hour]') == '10', (err, f.get('form[scheduleDetails][scheduleDate]')))
         # A newer list from a PC still on an older version (no practitioners) doesn't replace this PC's
         for v in S['notes'].values():
             for n in v:

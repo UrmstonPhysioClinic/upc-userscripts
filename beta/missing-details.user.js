@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Missing details (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.5
+// @version      0.2.6
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/missing-details.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/missing-details.user.js
@@ -44,7 +44,7 @@
   if (window.__hxMissingDetails) return;
   window.__hxMissingDetails = true;
 
-  const VERSION = '0.2.5';
+  const VERSION = '0.2.6';
   const ROUTE = 'upc-missing-details';
   const MENU_CLS = 'upc-md-menu';
   const ADMINS = () => rule('missingDetails.people', ['Carl Healy', 'Wendy Pritchard']);   // who sees the page (Carl, 15 Nov 2026: Carl and Wendy)
@@ -69,6 +69,8 @@
 
   // ------------------------------------------------------------------ reading a patient
 
+  const PLACES = new Set(['urmston', 'flixton', 'davyhulme', 'stretford', 'sale', 'trafford', 'partington', 'carrington', 'altrincham', 'eccles', 'irlam', 'cadishead',
+    'manchester', 'salford', 'chorlton', 'didsbury', 'timperley', 'hale', 'bowdon', 'ashton', 'swinton', 'worsley', 'stockport', 'warrington', 'cheshire', 'lancashire']);
   const FIELD_NAMES = { first: 'first name', last: 'last name', dob: 'date of birth', address: 'address', phone: 'phone number' };
   // What the Edit page has: { name, status, missing: ['dob', ...], email: bool }.
   function detailsFrom(doc) {
@@ -78,9 +80,16 @@
     const all = (re) => [...form.querySelectorAll('input, select, textarea')].filter((el) => re.test(el.name || ''));
     const first = v('patientdetailmain[name][forename]'), last = v('patientdetailmain[name][surname]');
     const dob = ['day', 'month', 'year'].every((p) => v('patientdetailmain[dob][' + p + ']'));
-    // Any address with a first line and a postcode; any phone number with at least 6 digits.
+    // Any address with a real first line and a postcode; any phone number with at least 6 digits. A first line that is
+    // only a place name (CH, 20 Nov 2026: "Urmston", with the town in the next field) doesn't count: a single word that
+    // is one of the address's own town/region fields or a local place. Single-word house names still count.
     const lines = all(/\[linkpagaddresses\]\[\d+\]\[address\]\[firstline\]$/);
-    const address = lines.some((el) => clean(el.value) && v(el.name.replace(/\[firstline\]$/, '[postcode]')));
+    const address = lines.some((el) => {
+      const line = clean(el.value), part = (f) => clean(v(el.name.replace(/\[firstline\]$/, '[' + f + ']'))).toLowerCase();
+      if (!line || !part('postcode')) return false;
+      const word = line.toLowerCase().replace(/[.,]/g, '').trim();
+      return !(/^[a-z' -]+$/.test(word) && !/\s/.test(word) && (PLACES.has(word) || ['secondline', 'city', 'region'].some((f) => part(f) === word)));
+    });
     const phone = all(/\[linkphonepas\]\[\d+\]\[phone\]\[number\]$/).some((el) => (el.value.match(/\d/g) || []).length >= 6);
     const missing = [];
     if (!first) missing.push('first');
@@ -136,7 +145,9 @@
       if (differs(await sh.read(SHARE_EVERY)) && differs(await sh.read(0))) await sh.write({ [id]: now });
     } catch (e) { console.warn('[UPC missing details] shared note', e); }
   }
-  const fresh = (r) => r && Date.now() - r.at < (r.missing.length ? KEEP_GAPS : KEEP_COMPLETE);
+  // Results from before the address rule changed (0.2.6) are read again.
+  const RULES_AT = Date.UTC(2026, 10, 20, 12);
+  const fresh = (r) => r && r.at >= RULES_AT && Date.now() - r.at < (r.missing.length ? KEEP_GAPS : KEEP_COMPLETE);
   const missingText = (r) => r.missing.map((m) => FIELD_NAMES[m]).join(', ');
 
   function tellHealthCheck(e) {

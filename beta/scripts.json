@@ -3,7 +3,7 @@
     {
       "file": "health-check.user.js",
       "name": "UPC System: Health check (beta)",
-      "version": "1.1.53"
+      "version": "1.1.54"
     },
     {
       "file": "block-reporting.user.js",
@@ -14,7 +14,7 @@
     {
       "file": "core.user.js",
       "name": "UPC System: Core library (beta)",
-      "version": "0.1.64"
+      "version": "0.1.65"
     },
     {
       "file": "alerts.user.js",
@@ -73,7 +73,7 @@
     {
       "file": "missing-details.user.js",
       "name": "UPC Patients: Missing details (beta)",
-      "version": "0.2.5"
+      "version": "0.2.6"
     },
     {
       "file": "mobile-layout.user.js",
@@ -83,8 +83,8 @@
     },
     {
       "file": "open-ended-patients.user.js",
-      "name": "UPC Patients: Open-ended patients (beta)",
-      "version": "0.3.3",
+      "name": "UPC Patients: Open-ended recalls (beta)",
+      "version": "0.4.0",
       "was": "check-ins.user.js"
     },
     {

@@ -1,5 +1,13 @@
 # Changelog
 
+## Missing details 0.2.6, 20 Nov 2026 (beta)
+- A first line of address that is only a place name ("Urmston", or the address's own town or county) counts as missing. One-word house names still count as an address. Patients checked before this are read again.
+
+## Open-ended recalls 0.4.0, core 0.1.65, health check 1.1.54, 20 Nov 2026 (beta)
+- Renamed from Open-ended patients: "Open-ended recalls" in the menu, page title, Clinic settings and health check (the file name stays).
+- "Not recalled" card: patients marked Don't send, each with Undo (confirmed, queued) to put them back on the list.
+- Send recall: the pop-up has a "Send on" date (the next weekday by default; earlier refused), always at 10:30.
+
 ## Open-ended patients 0.3.3, 18 Nov 2026 (beta)
 - Send recall and Don't send queue: press the next patient straight away; each waits its turn ("Queued") and runs one at a time. The browser asks before leaving the page while the queue is running.
 - Buttons line up with the text in their row.
