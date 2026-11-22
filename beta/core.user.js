@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.66
+// @version      0.1.67
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.66';
+  const VERSION = '0.1.67';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -1506,6 +1506,11 @@
       doc.querySelectorAll('br, p, div, li, tr, h1, h2, h3, h4, h5, h6').forEach((e) => e.append(' '));
       return clean(doc.body.textContent);
     },
+    // What a note's wording says, read once and reused by every script on every PC (see noteFacts below).
+    // opts.draft: the note is a draft (its notes list item's status), so it is read again after a day.
+    facts: (noteId, kinds, opts) => noteFacts.get(noteId, kinds, opts),
+    addFacts: (kind, version, fn) => noteFacts.add(kind, version, fn),
+    saveFacts: () => noteFacts.save(),
   };
 
   // ------------------------------------------------------------------ follow-ups
@@ -2275,6 +2280,104 @@
       release: () => claims().write({}).catch(() => {}),
     };
   }
+
+  // ------------------------------------------------------------------ note facts
+
+  // Note facts (core 0.1.67, CH, 20 Nov 2026): what a clinical note's wording says (which kinds of phrase it contains,
+  // never its text), worked out once per note and reused by Open-ended recalls, Patient statuses and Review requests, on
+  // every PC. Each kind has a function of the note's text and a version (with the wording lists' WORDING_V); a note is
+  // read again only for a kind it hasn't got at the current version, and then every known kind is worked out at once.
+  // Kept on this PC (local storage) and shared through one Admin Note, "UPC shared list: Note wording" (JSON, merged on
+  // each save, 150 days, trimmed to fit), pulled at most every 15 minutes and saved a minute after new facts are found.
+  // A published note doesn't change; a draft is read again after a day.
+  const WORDING_V = 1;   // bump when wording.FINISHED / OPEN_ENDED / NEGATION or outcome() change
+  const noteFacts = (() => {
+    const kinds = { finished: { v: '1', fn: (t) => wording.finished(t) }, open: { v: '1', fn: (t) => wording.openEnded(t) } };
+    const st = storage('upc-notefacts:');
+    const KEEP = 150 * 864e5, MAX_CHARS = 110000, PULL_EVERY = 15 * 60e3, DRAFT_AGAIN = 864e5;
+    const head = LIST_HEAD + 'Note wording';
+    const ver = (k) => kinds[k].v + '.' + WORDING_V;
+    let pulling = null, saveTimer = null;
+    const map = () => st.get('map', {});
+    function merge(into, from) {
+      Object.keys(from || {}).forEach((id) => {
+        const a = into[id], b = from[id];
+        if (!b || !b.k) return;
+        if (!a) { into[id] = b; return; }
+        Object.keys(b.k).forEach((k) => { if (!a.k[k] || (b.at || 0) > (a.at || 0)) a.k[k] = b.k[k]; });
+        a.at = Math.max(a.at || 0, b.at || 0);
+        if ((b.at || 0) >= (a.at || 0)) a.draft = !!b.draft;
+      });
+      return into;
+    }
+    function trim(m) {
+      const now = Date.now();
+      let ids = Object.keys(m).filter((id) => now - (m[id].at || 0) < KEEP).sort((x, y) => (m[y].at || 0) - (m[x].at || 0));
+      const out = {};
+      let size = 0;
+      for (const id of ids) {
+        size += JSON.stringify(m[id]).length + id.length + 4;
+        if (size > MAX_CHARS) break;
+        out[id] = m[id];
+      }
+      return out;
+    }
+    async function noteOf() {
+      return (await adminNotes.list('organisation', SHARED_ORG)).filter((n) => n.text.split('\n')[0] === head).sort((a, b) => Number(a.id) - Number(b.id));
+    }
+    const dataOf = (n) => {
+      const line = n ? n.text.split('\n').reverse().find((l) => l.startsWith('data ')) : null;
+      try { const d = line ? JSON.parse(line.slice(5)) : null; return d && d.notes ? d.notes : {}; } catch (e) { return {}; }
+    };
+    function pull() {
+      if (Date.now() - st.get('pulled', 0) < PULL_EVERY) return Promise.resolve();
+      if (!pulling) {
+        pulling = noteOf().then((all) => { st.set('map', trim(merge(map(), dataOf(all[0])))); })
+          .catch(() => { /* this PC's own facts until the next pull */ })
+          .finally(() => { st.set('pulled', Date.now()); pulling = null; });
+      }
+      return pulling;
+    }
+    async function save() {
+      saveTimer = null;
+      try {
+        const all = await noteOf();
+        const m = trim(merge(dataOf(all[0]), map()));
+        st.set('map', m);
+        const text = [head, LIST_INFO, 'data ' + JSON.stringify({ at: Date.now(), notes: m })].join('\n');
+        if (!all.length) await adminNotes.add('organisation', SHARED_ORG, text);
+        else await adminNotes.update('organisation', SHARED_ORG, all[0].id, text);
+        st.set('dirty', false);
+      } catch (e) { /* saved with the next new facts */ }
+    }
+    const later = () => { st.set('dirty', true); if (!saveTimer) saveTimer = setTimeout(save, 60e3); };
+    if (st.get('dirty', false)) setTimeout(() => { if (!saveTimer) later(); }, 5000);
+    return {
+      add(kind, version, fn) { kinds[kind] = { v: String(version), fn }; },
+      // { kind: value } for the kinds asked (all known kinds if none given).
+      async get(noteId, want, opts) {
+        const id = String(noteId);
+        want = want && want.length ? want : Object.keys(kinds);
+        want.forEach((k) => { if (!kinds[k]) throw new UPCError('Unknown note fact: ' + k); });
+        await pull();
+        let m = map(), e = m[id];
+        const fresh = (x) => x && !(x.draft && Date.now() - (x.at || 0) > DRAFT_AGAIN);
+        if (!fresh(e) || want.some((k) => !e.k[k] || e.k[k][0] !== ver(k))) {
+          const text = await notes.text(id);
+          e = { at: Date.now(), k: {}, draft: !!(opts && opts.draft) };
+          Object.keys(kinds).forEach((k) => { e.k[k] = [ver(k), kinds[k].fn(text)]; });
+          m = map();
+          m[id] = e;
+          st.set('map', m);
+          later();
+        }
+        const out = {};
+        want.forEach((k) => { out[k] = e.k[k][1]; });
+        return out;
+      },
+      save,
+    };
+  })();
 
   // ------------------------------------------------------------------ clinic settings
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Review requests (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.5.12
+// @version      0.5.13
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
@@ -47,7 +47,7 @@
   if (window.__hxReviewRequests) return;
   window.__hxReviewRequests = true;
 
-  const VERSION = '0.5.12';
+  const VERSION = '0.5.13';
   const ROUTE = 'upc-review-requests';
   const MENU_CLS = 'upc-rr-menu';
   const ALLOWED = () => rule('reviewRequests.people', ['Carl Healy']);   // CH, 10 Nov 2026: just me for now
@@ -172,7 +172,9 @@
     const recent = items.filter((x) => x.noteId && x.entity === 'note' && (x.category === 'appointment' || x.category === 'note') && (x.date === null || x.date >= since)).slice(0, 2);
     recent.forEach((n) => out.links.unshift({ kind: 'note', id: n.noteId, date: n.date }));
     for (const n of recent) {
-      const f = phrases(await U().notes.text(n.noteId));
+      // Shared with the other scripts and PCs through the core library's note facts (worked out once per note).
+      U().notes.addFacts('review', RULES, phrases);
+      const f = (await U().notes.facts(n.noteId, ['review'], { draft: /draft/i.test(n.status) })).review;
       ['good', 'nice', 'bad'].forEach((k) => f[k].forEach((x) => { if (!out[k].includes(x)) out[k].push(x); }));
     }
     if (out.progress !== null) {
