@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Review requests (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.5.13
+// @version      0.5.14
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
@@ -47,7 +47,7 @@
   if (window.__hxReviewRequests) return;
   window.__hxReviewRequests = true;
 
-  const VERSION = '0.5.13';
+  const VERSION = '0.5.14';
   const ROUTE = 'upc-review-requests';
   const MENU_CLS = 'upc-rr-menu';
   const ALLOWED = () => rule('reviewRequests.people', ['Carl Healy']);   // CH, 10 Nov 2026: just me for now
@@ -359,7 +359,7 @@
     const why = esc((r.good || []).concat(r.nice || []).join(', ')) + ((r.bad || []).length ? '<span class="upc-err">Against: ' + esc(r.bad.join(', ')) + '</span>' : '') +
       (r.verdict === 'error' ? '<span class="upc-err">Not read: ' + esc(r.why) + '</span>' : '');
     const acts = d && d.sent ? '<span class="upc-ok">Review request scheduled for ' + esc(d.sent) + (d.reminder ? ', reminder ' + esc(d.reminder) : '') + '</span>' +
-      (d.reminderError ? '<br><span class="upc-err">Reminder not added: ' + esc(d.reminderError) + '</span>' : '') : d === 'skipped' ? '<span class="upc-ok">Not asking this time</span>' : d === 'busy' ? U().ui.run.inline('')
+      (d.reminderError ? '<br><span class="upc-err">Reminder not added: ' + esc(d.reminderError) + '</span>' : '') : d === 'skipped' ? '<span class="upc-ok">Not asking this time</span>' : queuedOf(r.id) === 'busy' ? U().ui.run.inline('') : queuedOf(r.id) === 'queued' ? 'Queued'
       : (d && d.error ? '<span class="upc-err">' + esc(d.error) + '</span><br>' : '') +
         '<button type="button" class="btn btn-outline-primary-light" data-send="' + esc(r.id) + '">Send review request</button>' +
         '<button type="button" class="btn btn-outline-primary" data-skip="' + esc(r.id) + '">Don\'t ask this time</button>';
@@ -400,16 +400,32 @@
     });
   }
 
+  // Queue, don't block (CH, 18 Nov 2026): each press is confirmed, then waits its turn; one runs at a time.
+  const jobs = [];
+  let jobBusy = null;
+  const queuedOf = (id) => (jobBusy === id ? 'busy' : jobs.some((j) => j.id === id) ? 'queued' : null);
+  function enqueue(id, fn) { jobs.push({ id, fn }); render(); pump(); }
+  async function pump() {
+    if (jobBusy !== null || !jobs.length) return;
+    const j = jobs.shift();
+    jobBusy = j.id;
+    render();
+    try { await j.fn(); } catch (e) { /* each job reports its own errors */ }
+    finally { jobBusy = null; render(); pump(); }
+  }
+  window.addEventListener('beforeunload', (e) => { if (jobBusy !== null || jobs.length) { e.preventDefault(); e.returnValue = ''; } });
+
   async function act(kind, id) {
     const r = (store.get('result', { rows: [] }).rows || []).find((x) => x.id === id);
-    if (!r || done.get(id) === 'busy') return;
+    if (!r || queuedOf(id) || (done.get(id) && !done.get(id).error)) return;
     const when = sendTime();
     const ok = kind === 'send'
       ? await confirm('Send review request?', '<p>Schedule the ' + esc(TEMPLATE) + ' email for ' + esc(r.name) + ' on ' + esc(whenLabel(when)) + '?</p>', 'Send review request')
       : await confirm('Don\'t ask this time?', '<p>Don\'t suggest a review request for ' + esc(r.name) + ' for their visit on ' + esc(label(r.lastSeen)) + '?</p>', 'Don\'t ask this time');
     if (!ok) return;
-    done.set(id, 'busy');
-    render();
+    enqueue(id, () => doAct(kind, id, r, when));
+  }
+  async function doAct(kind, id, r, when) {
     try {
       if (kind === 'send') {
         await U().followUps.add(id, { template: TEMPLATE, when });

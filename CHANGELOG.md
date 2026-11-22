@@ -1,5 +1,9 @@
 # Changelog
 
+## Old balances 0.1.0, Review requests, Ready to bill, health check, 22 Nov 2026 (beta)
+- New: Finances > Old balances (CH only for now). Active and Issued invoices with a balance, from Halaxy's Unpaid Invoices report: "Over 6 years" and "6 months to 6 years", each with a count and total. Write off (confirmed, queued) sets the invoice's status to Write-off.
+- Queue, don't block: Review requests (Send review request, Don't ask this time) and Ready to bill (Set to £ 0.00) take the next press straight away; it waits its turn ("Queued") and they run one at a time. The browser asks before leaving while the queue is running.
+
 ## Core 0.1.67, Open-ended recalls 0.4.2, Patient statuses 0.2.12, Review requests 0.5.13, 22 Nov 2026 (beta)
 - Note facts: what a clinical note's wording says is worked out once per note and reused by Open-ended recalls, Patient statuses and Review requests, on every PC, through a shared Admin Note "UPC shared list: Note wording" (kinds of phrase only, never the text; 150 days). Drafts are read again after a day.
 - Patient statuses: two weeks after an open-ended recall went, with nothing booked since that visit, the patient is set to Discharged ("Recall sent 05-Dec-2026, nothing booked").

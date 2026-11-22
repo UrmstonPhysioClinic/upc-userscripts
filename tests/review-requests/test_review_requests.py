@@ -289,6 +289,12 @@ async def main():
         await pg.click("[data-send='114']")
         await pg.wait_for_selector('[data-upc-rr-confirm]')
         await pg.click('[data-upc-rr-confirm] [data-c=yes]')
+        # Queue: Don't ask for Patient B pressed straight away, while Patient E's request is still going
+        await pg.click("[data-skip='102']")
+        await pg.wait_for_selector('[data-upc-rr-confirm]')
+        await pg.click('[data-upc-rr-confirm] [data-c=yes]')
+        q = await pg.evaluate("[...document.querySelectorAll('[data-upc-review-requests] tbody tr')].filter(tr => tr.cells[0].textContent.trim() === 'Patient B').map(tr => tr.querySelector('.upc-rr-acts').textContent.trim())")
+        check('queue: the next patient can be pressed straight away and waits its turn', q == ['Queued'], q)
         await pg.wait_for_function("[...document.querySelectorAll('[data-upc-review-requests] tbody tr')].some(tr => tr.innerText.includes('not accepted'))", timeout=90000)
         err = await pg.evaluate("[...document.querySelectorAll('[data-upc-review-requests] .upc-rr-acts .upc-err')].map(e => e.textContent).join(' | ')")
         check('a refusal shows Halaxy\'s reason only', err == 'Adding the follow-up was not accepted by Halaxy: Scheduled date must be in the future', err)
@@ -305,10 +311,7 @@ async def main():
               and w[1][2].get('form[scheduleAt][date]') == ['18-Nov-2026'] and w[1][2].get('form[title]') == ['Review Reminder'], [x[2] for x in w])
         S['reminder'] = False
 
-        # Don't ask for Patient B
-        await pg.click("[data-skip='102']")
-        await pg.wait_for_selector('[data-upc-rr-confirm]')
-        await pg.click('[data-upc-rr-confirm] [data-c=yes]')
+        # Don't ask for Patient B (queued above)
         # (up to a minute: by now the check has used this minute's 45 requests, and the pacing waits its turn)
         await pg.wait_for_function("[...document.querySelectorAll('[data-upc-review-requests] tbody tr')].some(tr => tr.innerText.includes('Not asking this time'))", timeout=90000)
         lines = [re.sub(r'<[^>]+>', '', x) for x in S['notes'][0]['html'].split('</p>') if x.strip()]
