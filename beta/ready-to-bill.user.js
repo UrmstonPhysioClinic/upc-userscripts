@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Ready to bill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.7
+// @version      0.4.8
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
@@ -46,7 +46,7 @@
   if (window.__hxReadyToBill) return;
   window.__hxReadyToBill = true;
 
-  const VERSION = '0.4.7';
+  const VERSION = '0.4.8';
   const ROUTE = 'upc-ready-to-bill';
   const MENU_CLS = 'upc-rtb-menu';
   const ALLOWED = () => rule('readyToBill.people', ['Carl Healy', 'Wendy Pritchard']);   // CH, 7 Nov 2026: only the two of them
@@ -371,7 +371,8 @@
       return d.fees.map((f) => {
         const z = zeroed.get(f.lineId);
         const btn = '<button type="button" class="' + U().ui.btn('light') + '" data-zero="' + esc(f.lineId) + '" data-inv="' + esc(f.invoiceId) + '">Set to £ 0.00</button>';
-        const act = !z ? btn : z.busy ? U().ui.run.inline('') : z.ok ? '<span class="upc-ok">Set to £ 0.00</span>'
+        const q = queuedOf(f.lineId);
+        const act = q === 'busy' ? U().ui.run.inline('') : q === 'queued' ? 'Queued' : !z ? btn : z.ok ? '<span class="upc-ok">Set to £ 0.00</span>'
           : '<span class="upc-err">Not changed: ' + esc(z.error) + '</span> ' + btn;
         return '<div class="upc-rtb-fee"><b>' + esc(f.date) + '</b> ' + esc(f.item) + ', ' + fmt(f.amount) + ' (' + esc(f.invoiceNumber) + ')' +
           (f.comment ? '<div class="upc-note">' + esc(f.comment) + '</div>' : '<div class="text-muted">' + (f.commentError ? 'Comments not read: ' + esc(f.commentError) : 'No comments') + '</div>') +
@@ -411,13 +412,29 @@
     });
   }
 
+  // Queue, don't block (CH, 18 Nov 2026): each press is confirmed, then waits its turn; one runs at a time.
+  const jobs = [];
+  let jobBusy = null;
+  const queuedOf = (id) => (jobBusy === id ? 'busy' : jobs.some((j) => j.id === id) ? 'queued' : null);
+  function enqueue(id, fn) { jobs.push({ id, fn }); render(); pump(); }
+  async function pump() {
+    if (jobBusy !== null || !jobs.length) return;
+    const j = jobs.shift();
+    jobBusy = j.id;
+    render();
+    try { await j.fn(); } catch (e) { /* each job reports its own errors */ }
+    finally { jobBusy = null; render(); pump(); }
+  }
+  window.addEventListener('beforeunload', (e) => { if (jobBusy !== null || jobs.length) { e.preventDefault(); e.returnValue = ''; } });
+
   async function zero(lineId, invoiceId) {
     const d = details.get(invoiceId);
     const f = d && d.fees && d.fees.find((x) => String(x.lineId) === String(lineId));
     const z = f && zeroed.get(f.lineId);
-    if (!f || (z && (z.busy || z.ok)) || !(await confirmZero(f))) return;
-    zeroed.set(f.lineId, { busy: true });
-    render();
+    if (!f || queuedOf(f.lineId) || (z && z.ok) || !(await confirmZero(f))) return;
+    enqueue(f.lineId, () => doZero(f));
+  }
+  async function doZero(f) {
     try {
       await U().invoice.setLineAmount(f.invoiceId, f.lineId, 0, { lowerRebate: true });   // amount and funder rebate together
       zeroed.set(f.lineId, { ok: true });
