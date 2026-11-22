@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Open-ended recalls (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.1
+// @version      0.4.2
 // @upc-was      check-ins.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/open-ended-patients.user.js
@@ -41,7 +41,7 @@
   if (window.__hxCheckIns) return;
   window.__hxCheckIns = true;
 
-  const VERSION = '0.4.1';
+  const VERSION = '0.4.2';
   const ROUTE = 'upc-check-ins';
   const MENU_CLS = 'upc-ci-menu';
   const ALLOWED = () => rule('openEnded.people', ['Carl Healy']);
@@ -176,8 +176,8 @@
         try {
           const items = await U().notes.items(p.id);
           const last = items.find((x) => x.noteId && x.entity === 'note' && (x.category === 'appointment' || x.category === 'note'));
-          const text = last ? await U().notes.text(last.noteId) : '';
-          r = { at: now, rules: RULES, noteId: last ? last.noteId : null, noteDate: last ? last.date : null, found: last ? wording(text) : [], finished: last ? U().wording.finished(text).length > 0 : false };
+          const f = last ? await U().notes.facts(last.noteId, ['open', 'finished'], { draft: /draft/i.test(last.status) }) : { open: [], finished: [] };
+          r = { at: now, rules: RULES, noteId: last ? last.noteId : null, noteDate: last ? last.date : null, found: f.open, finished: f.finished.length > 0 };
           cache[ck] = r;
           store.set('cache', cache);
         } catch (e) {

@@ -59,6 +59,12 @@ def setup():
     patient(309, 'Patient I', 'current', [(-12, '', False)], [(-12, 'Not discharged yet, review in 2 weeks.')])  # negated: stays Current
     patient(310, 'Patient J', 'archived', [(-100, '', False)])                                 # Archived: left alone
     patient(311, 'Patient K', 'current', [(-50, '', False)], cal_status=False)                 # status not on the calendar: read from details
+    patient(320, 'Patient R', 'current', [(-30, '', False)], [(-30, 'Open return.')])            # open-ended recall sent 16 days ago, nothing booked -> Discharged
+    patient(321, 'Patient S', 'current', [(-30, '', False)], [(-30, 'Open return.')])            # recall sent 5 days ago: stays Current
+    day = lambda d: (NOW + datetime.timedelta(days=d)).strftime('%Y-%m-%d')
+    ms = lambda d: int((NOW + datetime.timedelta(days=d)).timestamp() * 1000)
+    S['recalls'] = '<p>UPC shared checks: Open-ended recalls</p><p>Kept by UPC scripts. Please do not edit: a line that is changed is dropped and checked again.</p>' + \
+        '<p>p.320 | %s 10:30 | sched %d %s</p><p>p.321 | %s 10:30 | sched %d %s</p>' % (day(-16), ms(-16), day(-30), day(-5), ms(-5), day(-30))
     patient(312, 'Patient L', 'contact', [(9, '', 'fee')])                                     # Contact booked online, funded fee, no claim yet -> Claimant
     patient(313, 'Patient M', 'contact', [])                                                   # just a contact: no appointments, left alone
     patient(314, 'Patient N', 'contact', [(3, '', 'type')])                                    # booked online with an insurance appointment type, no fee -> Claimant
@@ -101,6 +107,9 @@ async def halaxy(route):
     p = u.path
     S['log'].append((req.method, re.sub(r'^/a/pr/555', '', p)))
     js = lambda o: route.fulfill(body=json.dumps(o), content_type='application/json')
+    if re.search(r'/communication-log/organisation/78842/list-data$', p):
+        return await js({'data': [{'id': 33001, 'date': '2026-11-01 10:00:00', 'privacy': 'All', 'creator': 'Carl Healy', 'isImportant': False,
+                                   'content': '\n<p class="font-weight-bold">Log Notes</p>\n' + S.get('recalls', '') + '\n<div class="form-row mt-4">\n    </div>\n'}]})
     if p.endswith('/lookup/practitioner'):
         return await js([{'id': 11}])
     if p.endswith('/profile/group/appointmenttypes/data'):
@@ -173,6 +182,7 @@ async def main():
         final = {pid: S['patients'][pid]['status'] for pid in S['patients']}
         check('changed by itself: 8 weeks quiet, note says finished, booked funded, discharged booked again, self-funded, details status',
               {k: final[k] for k in (301, 302, 303, 304, 308, 311)} == {301: 'discharged', 302: 'discharged', 303: 'claimant', 304: 'current', 308: 'current', 311: 'discharged'}, final)
+        check('open-ended recall sent over two weeks ago, nothing booked: Discharged; sent 5 days ago: left', final[320] == 'discharged' and final[321] == 'current', final)
         check('Contacts with an appointment moved: funded fee (no claim), insurance appointment type with no fee', final[312] == 'claimant' and final[314] == 'claimant', final)
         check('left alone: already right, Review, Archived, open-ended under 6 weeks, "not discharged yet", Contact with no appointments',
               {k: final[k] for k in (305, 306, 307, 309, 310, 313)} == {305: 'claimant', 306: 'review', 307: 'current', 309: 'current', 310: 'archived', 313: 'contact'}, final)
@@ -184,7 +194,7 @@ async def main():
         n = next((x for x in log if x.get('name') == 'Patient N'), {})
         check('the patient\'s name, not the appointment type or phone, from a type booking\'s title', n.get('name') == 'Patient N', n)
         check('a Contact made a patient gets a patient number: not reported as something else changing', not any(x.get('check') or x.get('error') for x in log), [x for x in log if x.get('check') or x.get('error')])
-        check('each change logged with why', len(log) == 8 and n.get('from') == 'contact' and n.get('to') == 'claimant' and 'Contact with an appointment' in n.get('why', ''), log)
+        check('each change logged with why', len(log) == 9 and any(x.get('name') == 'Patient R' and x.get('why', '').startswith('Recall sent') for x in log) and n.get('from') == 'contact' and n.get('to') == 'claimant' and 'Contact with an appointment' in n.get('why', ''), log)
         check('no menu item or page any more', await pg.evaluate("!document.querySelector('a.upc-ps-menu') && !document.querySelector('[data-upc-patient-statuses]')"))
         # Recent changes dialog
         await pg.evaluate("window.upcPatientStatuses && document.dispatchEvent(new Event('x'))")

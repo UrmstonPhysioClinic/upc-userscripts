@@ -1,5 +1,9 @@
 # Changelog
 
+## Core 0.1.67, Open-ended recalls 0.4.2, Patient statuses 0.2.12, Review requests 0.5.13, 22 Nov 2026 (beta)
+- Note facts: what a clinical note's wording says is worked out once per note and reused by Open-ended recalls, Patient statuses and Review requests, on every PC, through a shared Admin Note "UPC shared list: Note wording" (kinds of phrase only, never the text; 150 days). Drafts are read again after a day.
+- Patient statuses: two weeks after an open-ended recall went, with nothing booked since that visit, the patient is set to Discharged ("Recall sent 05-Dec-2026, nothing booked").
+
 ## Starter 1.0.0, loader 1.4.0, 20 Nov 2026
 - New: loader/upc-starter.user.js, for when the repository goes private. Installed once per PC instead of the loader; it keeps the PC's access key (a read-only GitHub token, entered from its Tampermonkey menu), runs a saved copy of the loader at document-start and fetches new copies with the key. Menu: access key, status, fetch the loader again.
 - Loader 1.4.0: sends the access key when there is one; the starter's problems (no key, key refused, key expiring within 30 days) appear in its problems and so in the health check. Installed on its own with no key it works as before.

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Patient statuses (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.10
+// @version      0.2.12
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
@@ -41,7 +41,7 @@
   if (window.__hxPatientStatuses) return;
   window.__hxPatientStatuses = true;
 
-  const VERSION = '0.2.10';
+  const VERSION = '0.2.12';
   const ALLOWED = () => rule('patientStatuses.people', ['Carl Healy']);
   const DAY = 86400e3;
   // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
@@ -143,6 +143,17 @@
       }
       return funded[iid];
     };
+    // Open-ended recalls (CH, 18 Nov 2026): two weeks after the recall email went, with nothing booked since the visit
+    // it was about, the course of treatment is closed. Read from Open-ended recalls' shared note (p.<patient> =
+    // sched <send time> <last visit day>).
+    let recalled = {};
+    try { recalled = await U().shared('Open-ended recalls', { keep: 150 * DAY, claimFor: 5 * 60e3, file: 'open-ended-patients.user.js' }).read(10 * 60e3); } catch (e) { /* no recalls known this time */ }
+    const dayOf = (ms) => { const d = new Date(ms); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+    const recallFor = (id, last) => {
+      const r = recalled['p.' + id];
+      const f = r && r.value ? r.value.split(' ') : [];
+      return /^(sched|check)$/.test(f[0] || '') && f[2] === dayOf(startMs(last)) ? Number(f[1]) : null;
+    };
     const list = [...byPatient.entries()];
     let n = 0;
     for (const [id, evs] of list) {
@@ -168,7 +179,11 @@
         } else {
           const last = attended[attended.length - 1];
           const gap = Math.floor((now - startMs(last)) / DAY);
-          if (gap >= GAP_DAYS()) {
+          const sent = recallFor(id, last);
+          if (sent && now - sent >= 14 * DAY && status !== 'discharged') {
+            to = 'discharged';
+            why = 'Recall sent ' + label(sent) + ', nothing booked';
+          } else if (gap >= GAP_DAYS()) {
             to = 'discharged';
             why = 'No appointment for ' + Math.floor(gap / 7) + ' weeks (last ' + label(startMs(last)) + '), nothing booked';
           } else if (status !== 'discharged') {
@@ -179,13 +194,13 @@
               tell('Reading ' + name + '\'s last note');
               const items = await U().notes.items(id);
               const found = items.find((x) => x.noteId && x.entity === 'note' && (x.category === 'appointment' || x.category === 'note'));
-              note = found ? { noteId: found.noteId, date: found.date || null } : null;
+              note = found ? { noteId: found.noteId, date: found.date || null, draft: /draft/i.test(found.status) } : null;
               latest[id] = { key: seenKey, note };
               store.set('latest', latest);
             }
             let said = '';
             if (note) {
-              if (!(note.noteId in finished)) { finished[note.noteId] = saysFinished(await U().notes.text(note.noteId)); store.set('finished3', finished); }
+              if (!(note.noteId in finished)) { finished[note.noteId] = (await U().notes.facts(note.noteId, ['finished'], { draft: note.draft })).finished[0] || ''; store.set('finished3', finished); }
               said = finished[note.noteId];
             }
             if (said) { to = 'discharged'; why = 'Last note (' + label(note.date || startMs(last)) + ') says "' + said + '", nothing booked'; }
