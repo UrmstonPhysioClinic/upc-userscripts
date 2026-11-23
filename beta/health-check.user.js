@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.57
+// @version      1.1.58
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.57';
+  const VERSION = '1.1.58';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -49,7 +49,7 @@
     'review-requests.user.js': 'Review requests',
     'feedback-alerts.user.js': 'Feedback alerts',
     // Calendar
-    'calendar-controls.user.js': 'Calendar controls', 'outstanding-actions.user.js': 'Outstanding actions', 'task-stamps.user.js': 'Task stamps', 'appointment-reminders.user.js': 'Appointment reminders',
+    'calendar-controls.user.js': 'Calendar controls', 'outstanding-actions.user.js': 'Outstanding actions', 'task-stamps.user.js': 'Task stamps', 'appointment-reminders.user.js': 'Appointment reminders', 'to-do.user.js': 'To do',
     'alerts.user.js': 'Alerts', 'forecourt-lights.user.js': 'Forecourt lights',
     // Look
     'branding.user.js': 'Branding', 'mobile-layout.user.js': 'Mobile layout', 'text-boxes.user.js': 'Auto-expanding text boxes',

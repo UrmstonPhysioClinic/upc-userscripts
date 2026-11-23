@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.5
+// @version      0.4.6
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -36,7 +36,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.4.5';
+  const VERSION = '0.4.6';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -599,8 +599,6 @@
   // Halaxy's own classes (cards, tables, buttons, form controls) style the page; these rules only
   // cover what Halaxy has no class for, scoped to our page and using Halaxy's colour variables.
   const CSS = `
-    .upc-rem { max-width: 1200px; }
-    .upc-rem h1 { margin: 0 0 16px; }
     .upc-rem .card { margin-bottom: 24px; }
     .upc-rem .upc-rem-drop { border: 2px dashed var(--vs-theme-border-color, #ced4da); border-radius: 4.8px; padding: 28px; text-align: center; margin-top: 12px;
       background: var(--vs-card-standout-bg-color, #f0f0f5); cursor: pointer; }
@@ -635,7 +633,7 @@
   function render() {
     const r = state.remit;
     const fixes = state.results.filter((x) => x.status === 'fix');
-    let html = '<div class="upc-rem"><h1>Remittances</h1>' +
+    let html = '<div class="upc-rem">' + UPC.ui.page.bar('Remittances', '', '') +
       '<div class="card"><div class="card-header"><h2>Read a remittance</h2></div><div class="card-body">' +
       '<div class="upc-rem-drop" tabindex="0" role="button">Drop a remittance PDF here, or click to choose one<input type="file" accept="application/pdf" hidden></div>' +
       '<div class="upc-rem-status" aria-live="polite"></div>';

@@ -1,5 +1,10 @@
 # Changelog
 
+## To do 0.1.0 (new), our pages on the page kit, core 0.1.70, 23 Nov 2026 (beta)
+- New: Schedule > To do. Your Halaxy tasks by when they are due (Overdue, Today, This week, Later, No date), with Done, Tomorrow and Monday on each (confirmed, queued) and for ticked rows; New task linked to nothing, a patient, an invoice or an organisation, for anyone, with a stamped comment. Below, a card for each of our lists you can open, with its count and top rows. Menu badge: tasks overdue or due today.
+- Ready to bill, Missing details, Open-ended recalls, Review requests, Patient forms, Insurer payments due, Bank statement and Remittances use the page kit: Halaxy's title bar with Check now on the right, full width, and search and sorting on their lists.
+- Core: list pages publish their count and top rows for To do (UPC.todo); lists in cards are set up automatically.
+
 ## Appointment reminders 0.1.0 (new), core 0.1.69, health check 1.1.57, 23 Nov 2026 (beta)
 - New: tidies Halaxy's own appointment reminder emails in the background (they carry the manage-booking link, so they are kept). When the booking confirmation went less than 24 hours before the reminder is due, the reminder is cancelled; an upcoming appointment with no email reminder gets one added at 06:00 two days before (none if that time has passed). Email only. Shared across PCs; "Appointment reminders: recent changes" lists what it did. Clinic settings: on or off for each, the 24 hours, and who it runs for (CH and WP).
 

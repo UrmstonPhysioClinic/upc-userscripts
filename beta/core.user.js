@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.69
+// @version      0.1.70
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.69';
+  const VERSION = '0.1.70';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -1997,6 +1997,13 @@
         });
       }
       root.__upcListOpts = opts;
+      // auto: every table in a card is a list, named by its card's heading (without the count), so its search,
+      // sort and ticks stay with it whichever cards are showing.
+      if (opts.auto) root.querySelectorAll('.card table.table:not([data-upc-list])').forEach((t) => {
+        if (t.parentElement.closest('table')) return;
+        const h = t.closest('.card').querySelector('.card-header h2, .card-header');
+        t.setAttribute('data-upc-list', clean(h ? h.textContent : '').replace(/\s*\(.*$/, '').toLowerCase() || 'list');
+      });
       root.querySelectorAll('table[data-upc-list]').forEach((table) => {
         const id = table.getAttribute('data-upc-list'), s = listState(id), body = table.tBodies[0];
         if (!body) return;
@@ -2064,6 +2071,33 @@
           more.innerHTML = '<button type="button" class="btn btn-outline-primary-light" data-upc-more="' + esc(id) + '">Show ' + Math.min(50, match.length - s.shown) + ' more</button> <span class="text-muted">' + s.shown + ' of ' + match.length + ' shown</span>';
         } else if (more) more.remove();
       });
+    },
+  };
+
+  // ------------------------------------------------------------------ To do summaries (CH, 23 Nov 2026)
+  // Each list page publishes its count and top rows when it paints its menu badge; the To do page shows a card for
+  // each whose menu item is in this person's menu (so only lists they can open). Kept in this browser; written only
+  // when it changes (the menu is repainted often).
+  const todo = {
+    publish(key, o) {
+      try {
+        const k = 'upc-todo:' + key, body = JSON.stringify(o);
+        const old = JSON.parse(localStorage.getItem(k) || 'null');
+        if (old && JSON.stringify(old.o) === body) return;
+        localStorage.setItem(k, JSON.stringify({ at: Date.now(), o }));
+      } catch (e) { /* storage blocked */ }
+    },
+    all() {
+      const out = [];
+      try {
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (!k || !k.startsWith('upc-todo:')) continue;
+          const v = JSON.parse(localStorage.getItem(k) || 'null');
+          if (v && v.o) out.push(Object.assign({ key: k.slice(9), at: v.at }, v.o));
+        }
+      } catch (e) { /* storage blocked */ }
+      return out;
     },
   };
 
@@ -2829,7 +2863,7 @@
   window.addEventListener('storage', (e) => { if (e.key === 'upc-settings:values') { try { document.dispatchEvent(new CustomEvent('upc-settings-changed')); } catch (x) { /* ignore */ } } });
 
   window.UPC = Object.freeze({
-    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, invoice, appointment, forms, notes, followUps, patient, tasks, surveys, reports, dayLabel, parseDay, rebate, files, deposits, orgFiles, adminNotes, shared, sharedResult, settings, load, ui,
+    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, todo, invoice, appointment, forms, notes, followUps, patient, tasks, surveys, reports, dayLabel, parseDay, rebate, files, deposits, orgFiles, adminNotes, shared, sharedResult, settings, load, ui,
     user, storage, calendar, wording, background,
   });
 })();

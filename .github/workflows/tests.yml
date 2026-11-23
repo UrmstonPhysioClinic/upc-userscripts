@@ -17,7 +17,7 @@ jobs:
       matrix:
         group:
           - invoice-funder old-balances branding
-          - portal-fill clinic-settings
+          - portal-fill clinic-settings to-do
           - bank-statement remittances
           - review-requests loader patient-statuses ready-to-bill rebate-sync
           - alerts block-reporting calendar-controls charge-excess core email-html feedback-alerts forecourt-lights health-check insurer-payments-due missing-details mobile-layout open-ended-patients outstanding-actions patient-forms script-settings task-stamps appointment-reminders

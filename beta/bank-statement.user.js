@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Bank statement (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.8
+// @version      0.2.9
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
@@ -50,7 +50,7 @@
   if (window.__hxBankStatement) return;
   window.__hxBankStatement = true;
 
-  const VERSION = '0.2.8';
+  const VERSION = '0.2.9';
   const ROUTE = 'upc-bank-statement';
   const MENU_CLS = 'upc-bank-menu';
   const ALLOWED = () => rule('bankStatement.people', ['Carl Healy']);
@@ -663,6 +663,8 @@
     const a = document.querySelector('a.' + MENU_CLS);
     if (!a) return;
     const due = store.get('due', null);
+    const missingNow = !!(due && due.missing && due.month === monthDue(Date.now()));
+    if (U().todo) U().todo.publish('bank-statement', { title: 'Bank statement', cls: MENU_CLS, href: a.getAttribute('href'), count: missingNow ? 1 : 0, rows: missingNow ? [monthName(due.month) + '\'s statement to read'] : [] });
     let b = a.querySelector('.upc-bank-badge');
     if (!due || !due.missing || due.month !== monthDue(Date.now())) { if (b) b.remove(); return; }
     if (!b) { b = document.createElement('span'); b.className = 'upc-bank-badge'; b.textContent = '1'; a.appendChild(b); }
@@ -673,8 +675,6 @@
   const CSS = `
     .upc-bank-badge { display: inline-block; min-width: 18px; margin-left: 6px; padding: 0 5px; border-radius: 9px; font-size: .75em; line-height: 18px;
       text-align: center; font-weight: 600; color: #fff; background: var(--vs-notification-badge-bg-color, #ec6b65); vertical-align: middle; }
-    .upc-bank { max-width: 1200px; }
-    .upc-bank h1 { margin: 0 0 16px; }
     .upc-bank .card { margin-bottom: 24px; }
     .upc-bank .card-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .upc-bank .card-header h2 { margin: 0; }
@@ -699,7 +699,7 @@
     if (!root) return;
     const st = state.statement, rs = state.results;
     // Laid out as Remittances (CH, 13 Nov 2026): a "Read ..." card with what it does, the drop box, progress and notes.
-    let h = '<div class="upc-bank"><h1>Bank statement</h1>' +
+    let h = '<div class="upc-bank">' + U().ui.page.bar('Bank statement', '', '') +
       '<div class="card"><div class="card-header"><h2>Read a bank statement</h2></div><div class="card-body">' +
       '<div class="upc-bank-drop" tabindex="0" role="button" data-a="choose">' + (state.busy ? 'Reading...' : 'Drop a Starling statement PDF here, or click to choose one') + '<input type="file" accept="application/pdf" hidden></div>';
     // While it works: a progress bar and the current step; the results once it has finished (CH, 13 Nov 2026).
