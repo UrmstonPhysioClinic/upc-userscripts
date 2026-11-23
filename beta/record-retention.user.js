@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Record retention (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.0
+// @version      0.1.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/record-retention.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/record-retention.user.js
@@ -38,7 +38,7 @@
   if (window.__hxRecordRetention) return;
   window.__hxRecordRetention = true;
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
   const ROUTE = 'upc-record-retention';
   const MENU_CLS = 'upc-rr8-menu';
   const FRESH = 24 * 3600e3;
@@ -117,14 +117,14 @@
       say('Reading the patient list' + (total ? ' (' + Math.min(start, total) + ' of about ' + total + ')' : '') + '...');
       const j = await U().http.list('/patient/list-data', {}, [], start, start + BLOCK);
       const got = j && Array.isArray(j.rowData) ? j.rowData : null;
-      if (!got) throw new U().Error('The patient list has changed, so it could not be read.');
+      if (!got) throw new (U().Error)('The patient list has changed, so it could not be read.');
       if (typeof j.lastRow === 'number' && j.lastRow >= 0) total = j.lastRow;
       rows.push(...got);
       start += got.length;
       if (!got.length || (total !== null && start >= total)) break;
     }
     if (rows.length && !rows.some((r) => 'lastAppointment' in r && 'dateOfBirth' in r && 'status' in r)) {
-      throw new U().Error('The patient list has changed (last appointment, date of birth or status not found), so nothing was checked.');
+      throw new (U().Error)('The patient list has changed (last appointment, date of birth or status not found), so nothing was checked.');
     }
     const out = [];
     rows.forEach((r) => {

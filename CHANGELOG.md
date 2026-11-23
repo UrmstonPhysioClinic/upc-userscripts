@@ -1,5 +1,11 @@
 # Changelog
 
+## Stored cards 0.1.0 (new), Arrived button 0.1.0 (new), Record retention 0.1.1, core 0.1.75, Health check 1.1.60, 23 Nov 2026 (beta)
+- New: Patients > Stored cards (CH). Cards on file that are no longer needed: nothing booked, no unpaid invoice of the patient's own, no unpaid insurer invoice in their name, last appointment at least 28 days ago (Clinic settings). Tick and "Remove N": asked once, then each card removed through Halaxy's Delete credit card pop-up, one at a time, and checked. Read from Halaxy's Credit Card Expiry report, the patient list and the Unpaid Invoices report.
+- New: Arrived button. "Arrived" at the top of an appointment's right-click menu (it uses Halaxy's own Update status > Arrived), and an "Arrived" button in its sidebar, for appointments today that are Booked or Confirmed.
+- Record retention 0.1.1: an error from the patient list is reported properly (it failed with "U is not a constructor").
+- Core: UPC.reports.storedCards, UPC.patient.listAll, cards and deleteCard; Clinic settings for Stored cards and Record retention; menu order.
+
 ## Record retention 0.1.0 (new), Health check 1.1.59, 23 Nov 2026 (beta)
 - New: Patients > Record retention (CH). Patients past the time their records are kept: 8 years after the last appointment, children until their 25th birthday (26th if 17 at the last appointment). Cards: Due, No date of birth, Deceased, No appointments; booked, Deleted and Contact records left out. Tick and "Set N to Deleted": asked once, then one at a time at Halaxy's pace. Nothing changes without that. Read from Halaxy's patient list when the page opens (kept for a day) and with Check now.
 
