@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Review requests (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.5.16
+// @version      0.5.17
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
@@ -47,7 +47,7 @@
   if (window.__hxReviewRequests) return;
   window.__hxReviewRequests = true;
 
-  const VERSION = '0.5.16';
+  const VERSION = '0.5.17';
   const ROUTE = 'upc-review-requests';
   const MENU_CLS = 'upc-rr-menu';
   const ALLOWED = () => rule('reviewRequests.people', ['Carl Healy']);   // CH, 10 Nov 2026: just me for now
@@ -370,6 +370,7 @@
     const r = store.get('result', null);
     const head = '<thead><tr><th>Patient</th><th>Last visit</th><th>Status</th><th>Check first</th><th></th></tr></thead>';
     let h = '<div class="upc-rr">' + U().ui.page.bar('Review requests', '<button type="button" class="btn btn-outline-primary" data-a="refresh"' + (state.running ? ' disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>', (state.running ? U().ui.run.inline(state.status) : U().ui.page.checked(r && r.at)));
+    h += U().ui.batch('review-requests', 'Working through the list', 'done', jobs.length + (jobBusy !== null ? 1 : 0), [...done.values()].filter((d) => d && d.error).length);
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     if (r) {
       const ready = r.rows.filter((x) => x.verdict === 'ready'), rest = r.rows.filter((x) => x.verdict !== 'ready');

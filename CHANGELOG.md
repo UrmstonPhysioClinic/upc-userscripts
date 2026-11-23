@@ -3,6 +3,7 @@
 ## Core 0.1.72, Ready to bill, 23 Nov 2026 (beta)
 - Progress bars show real progress where the count is known ("Reading notes (12 of 40)": Missing details, Open-ended recalls, Review requests, Ready to bill, Bank statement, Remittances, Invoice Funder) and fill smoothly between steps instead of jumping. Single-step waits keep the moving bar.
 - Ready to bill counts the patients it reads.
+- Queued actions: with two or more queued, one bar under the title bar ("Writing off (3 of 12)") and, when the batch is over, one line saying how it went ("12 written off.", or "11 written off. 1 not changed."). Old balances, Ready to bill, Review requests, Open-ended recalls and To do (core UPC.ui.batch).
 
 ## To do 0.2.0, core 0.1.71, 23 Nov 2026 (beta)
 - To do rebuilt after CH's review: a task opens in Halaxy's own Edit task pop-up (its date picker, several assignees, time, templates, Revert); New task finds the patient, invoice or organisation with Halaxy's search, then opens Halaxy's own add-task pop-up. Done takes effect at once with Undo (Halaxy's Revert); ticked rows done or moved to a date from Halaxy's date picker, with Undo. Filters (for whom, linked to what) remembered for each person. Week view: Monday to Friday, drag tasks onto a day, a tray of overdue and undated tasks. Our lists in a side column. The three buttons on each row are gone.

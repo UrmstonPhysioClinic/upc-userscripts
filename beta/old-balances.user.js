@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Old balances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.1
+// @version      0.2.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/old-balances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/old-balances.user.js
@@ -30,7 +30,7 @@
   if (window.__hxOldBalances) return;
   window.__hxOldBalances = true;
 
-  const VERSION = '0.2.1';
+  const VERSION = '0.2.2';
   const ROUTE = 'upc-old-balances';
   const MENU_CLS = 'upc-ob-menu';
   const DAY = 864e5;
@@ -161,6 +161,7 @@
     const r = store.get('result', null);
     const btn = '<button type="button" class="btn btn-outline-primary" data-a="refresh"' + (state.running ? ' disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>';
     let h = '<div class="upc-ob">' + U().ui.page.bar('Old balances', btn, state.running ? U().ui.run.inline(state.status) : U().ui.page.checked(r && r.at));
+    h += U().ui.batch('old-balances', 'Writing off', 'written off', jobs.length + (jobBusy !== null ? 1 : 0), state.errors.length);
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     state.errors.forEach((m) => { h += '<div class="alert alert-danger upc-err">' + esc(m) + '</div>'; });
     if (r) {

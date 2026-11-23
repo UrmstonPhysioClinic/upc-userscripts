@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Open-ended recalls (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.5
+// @version      0.4.6
 // @upc-was      check-ins.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/open-ended-patients.user.js
@@ -41,7 +41,7 @@
   if (window.__hxCheckIns) return;
   window.__hxCheckIns = true;
 
-  const VERSION = '0.4.5';
+  const VERSION = '0.4.6';
   const ROUTE = 'upc-check-ins';
   const MENU_CLS = 'upc-ci-menu';
   const ALLOWED = () => rule('openEnded.people', ['Carl Healy']);
@@ -262,6 +262,7 @@
     const r = store.get('result', null);
     const base = U().base();
     let h = '<div class="upc-ci">' + U().ui.page.bar('Open-ended recalls', '<button type="button" class="btn btn-outline-primary" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>', (state.running ? U().ui.run.inline(state.status) : U().ui.page.checked(r && r.at)));
+    h += U().ui.batch('open-ended-recalls', 'Working through the list', 'done', state.queue.length + (state.busy ? 1 : 0), state.errors.length);
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     state.errors.forEach((m) => { h += '<div class="alert alert-danger upc-err">' + esc(m) + '</div>'; });
     if (r) {

@@ -135,7 +135,12 @@ async def main():
         await pg.click('[data-upc-ob-confirm] [data-c=yes]')
         queued = await pg.evaluate("[...document.querySelectorAll('[data-upc-old-balances] tbody tr')].filter((tr) => tr.cells[1].textContent.trim() === 'UPC-01002').map((tr) => tr.cells[6].textContent.trim())")
         check('a second Write off pressed straight away waits its turn', queued == ['Queued'], queued)
+        bar = await pg.evaluate("(document.querySelector('[data-upc-old-balances] .upc-batch') || {}).textContent")
+        check('two queued: one bar for the batch under the title bar', bar == 'Writing off (0 of 2)', bar)
         await pg.wait_for_function("[...document.querySelectorAll('[data-upc-old-balances] tbody tr .upc-ok')].length === 2", timeout=30000)
+        await pg.wait_for_function("document.querySelector('[data-upc-old-balances] .alert-success')", timeout=10000)
+        msg = await pg.evaluate("document.querySelector('[data-upc-old-balances] .alert-success').textContent")
+        check('the batch over: one line saying how it went', msg == '2 written off.' and not await pg.evaluate("!!document.querySelector('[data-upc-old-balances] .upc-batch')"), msg)
         check('status set to Write-off in the invoice settings, other fields as Halaxy filled them, one after the other',
               [x[0] for x in S['posts']] == [1001, 1002] and all(x[1].get('form[status]') == 'write-off' and x[1].get('form[_token]') == 'T' and x[1].get('form[displayDate]') == '03-Mar-2019' for x in S['posts']), S['posts'])
         await pg.check("[data-upc-list=mid] tr[data-upc-id='2059'] input[data-upc-tick]")

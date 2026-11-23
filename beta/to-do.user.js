@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Schedule: To do (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.0
+// @version      0.2.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
@@ -35,7 +35,7 @@
   if (window.__hxToDo) return;
   window.__hxToDo = true;
 
-  const VERSION = '0.2.0';
+  const VERSION = '0.2.1';
   const ROUTE = 'upc-to-do';
   const MENU_CLS = 'upc-todo-menu';
   const DAY = 864e5, MIN = 60e3;
@@ -362,6 +362,7 @@
     const actions = '<button type="button" class="btn btn-primary" data-a="new">New task</button>' +
       '<button type="button" class="btn btn-outline-primary" data-a="refresh"' + (state.loading ? ' disabled' : '') + '>' + (state.loading ? 'Checking...' : 'Check now') + '</button>';
     let h = '<div class="upc-todo">' + U().ui.page.bar('To do', actions, state.loading ? U().ui.run.inline('Reading tasks...') : U().ui.page.checked(c && c.at));
+    h += U().ui.batch('to-do', 'Updating tasks', 'done', jobs.length + (busy !== null ? 1 : 0), state.errors.length);
     if (state.undo) h += '<div class="alert alert-success upc-ok">' + esc(state.undo.text) + ' <button type="button" class="btn btn-outline-primary-light" data-a="undo">Undo</button></div>';
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     state.errors.forEach((m) => { h += '<div class="alert alert-danger upc-err">' + esc(m) + '</div>'; });

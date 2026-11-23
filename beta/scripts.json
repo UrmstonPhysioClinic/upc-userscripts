@@ -89,12 +89,12 @@
     {
       "file": "old-balances.user.js",
       "name": "UPC Billing: Old balances (beta)",
-      "version": "0.2.1"
+      "version": "0.2.2"
     },
     {
       "file": "open-ended-patients.user.js",
       "name": "UPC Patients: Open-ended recalls (beta)",
-      "version": "0.4.5",
+      "version": "0.4.6",
       "was": "check-ins.user.js"
     },
     {
@@ -120,7 +120,7 @@
     {
       "file": "ready-to-bill.user.js",
       "name": "UPC Billing: Ready to bill (beta)",
-      "version": "0.4.11"
+      "version": "0.4.12"
     },
     {
       "file": "rebate-sync.user.js",
@@ -135,7 +135,7 @@
     {
       "file": "review-requests.user.js",
       "name": "UPC Patients: Review requests (beta)",
-      "version": "0.5.16"
+      "version": "0.5.17"
     },
     {
       "file": "script-settings.user.js",
@@ -156,7 +156,7 @@
     {
       "file": "to-do.user.js",
       "name": "UPC Schedule: To do (beta)",
-      "version": "0.2.0"
+      "version": "0.2.1"
     },
     {
       "file": "toast-alerts.user.js",

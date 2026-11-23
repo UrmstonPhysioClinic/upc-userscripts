@@ -1863,6 +1863,8 @@
     .upc-native th.upc-pick, .upc-native td.upc-pick { width: 1%; text-align: center; }
     .upc-native .upc-list-more { padding: 12px; }
     .upc-native .upc-list-more .btn { margin: 0; }
+    .upc-native .upc-batch { display: flex; margin: 0 0 16px; }
+    .upc-native .upc-batch .progress { width: 240px; }
     .upc-dialog { position: fixed; inset: 0; z-index: 2990; overflow-y: auto; }
     .upc-dialog > .upc-backdrop { position: fixed; inset: 0; background: #000; opacity: .5; }
     .upc-dialog > .modal-dialog { position: relative; margin: 28px auto; width: calc(100% - 32px); max-width: 800px; pointer-events: auto; }
@@ -1917,6 +1919,30 @@
     const hasBar = (n) => n.nodeType === 1 && (n.matches('.upc-bar[data-upc-to]') || !!n.querySelector('.upc-bar[data-upc-to]'));
     const watch = () => new MutationObserver((list) => { if (list.some((m) => [...m.addedNodes].some(hasBar))) slideBars(document); }).observe(document.body || document.documentElement, { childList: true, subtree: true });
     if (document.body) watch(); else document.addEventListener('DOMContentLoaded', watch, { once: true });
+  }
+
+  // A batch of queued actions on a page (CH, 23 Nov 2026): while two or more are queued, one bar under the title bar
+  // ("Writing off (3 of 12)"), filling smoothly; when the batch is over, one line saying how it went ("12 written off.",
+  // or "11 written off. 1 not changed."), kept until the next batch. A single action keeps only its row's spinner.
+  // pending: actions queued or running now; errs: the page's running count of actions that failed.
+  const batches = new Map();
+  function batch(key, verb, past, pending, errs) {
+    let b = batches.get(key);
+    if (pending > 0) {
+      if (!b || b.over) { b = { total: pending, last: pending, start: errs, over: false }; batches.set(key, b); }
+      if (pending > b.last) b.total += pending - b.last;
+      b.last = pending;
+      if (b.total < 2) return '';
+      const done = b.total - pending;
+      return '<div class="upc-batch upc-run-inline"><span class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="' + b.total + '" aria-valuenow="' + done + '">' +
+        barHtml('batch:' + key, 100 * done / b.total) + '</span><span class="text-muted">' + esc(verb + ' (' + done + ' of ' + b.total + ')') + '</span></div>';
+    }
+    if (!b) return '';
+    if (!b.over) { b.over = true; b.failed = Math.max(0, Math.min(b.total, errs - b.start)); }
+    if (b.total < 2) return '';
+    const ok = b.total - b.failed;
+    return b.failed ? '<div class="alert alert-warning upc-warn">' + esc(ok + ' ' + past + '. ' + b.failed + ' not changed.') + '</div>'
+      : '<div class="alert alert-success upc-ok">' + esc(ok + ' ' + past + '.') + '</div>';
   }
 
   const run = {
@@ -2145,6 +2171,7 @@
   const ui = {
     nativeStyles,
     run,
+    batch,
     page,
     list,
     // A pop-up that looks like Halaxy's own. Returns { root, body, close, setTitle }. `onClose` runs when

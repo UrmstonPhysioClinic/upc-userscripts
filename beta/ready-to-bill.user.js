@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Ready to bill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.11
+// @version      0.4.12
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
@@ -46,7 +46,7 @@
   if (window.__hxReadyToBill) return;
   window.__hxReadyToBill = true;
 
-  const VERSION = '0.4.11';
+  const VERSION = '0.4.12';
   const ROUTE = 'upc-ready-to-bill';
   const MENU_CLS = 'upc-rtb-menu';
   const ALLOWED = () => rule('readyToBill.people', ['Carl Healy', 'Wendy Pritchard']);   // CH, 7 Nov 2026: only the two of them
@@ -449,6 +449,7 @@
     const r = store.get('result', null);
     const head = (withAction) => '<thead><tr><th>Patient</th><th>Funder</th><th class="number">Unbilled</th><th>Oldest fee</th><th>Status</th><th>Invoices</th>' + (withAction ? '<th></th>' : '') + '</tr></thead>';
     let h = '<div class="upc-rtb">' + U().ui.page.bar('Ready to bill', '<button type="button" class="btn btn-outline-primary" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>', (state.running ? U().ui.run.inline(state.status) : U().ui.page.checked(r && r.at)));
+    h += U().ui.batch('ready-to-bill', 'Setting fees to £ 0.00', 'set to £ 0.00', jobs.length + (jobBusy !== null ? 1 : 0), [...zeroed.values()].filter((z) => !z.ok).length);
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     if (r) {
       const due = r.rows.filter((x) => x.state === 'due'), rest = r.rows.filter((x) => x.state !== 'due');
