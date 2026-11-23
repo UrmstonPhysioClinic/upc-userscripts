@@ -517,7 +517,7 @@ async def main():
         reg = S['notes'].get(78812, [])
         rc = note_text(78812)
         check('statement register: one Admin Note on the Starling Bank profile, the statement first, fingerprint, balances and each insurer payment',
-              len(reg) == 1 and rc.strip().startswith('Starling statement 2026-10-01 to 2026-10-30') and 'Fingerprint ' in rc and '14 transactions' in rc and 'opening £ 1000.00, closing ' in rc
+              len(reg) == 1 and rc.strip().startswith('Starling statement 2026-10-01 to 2026-10-30') and 'Fingerprint ' in rc and '14 transactions' in rc and 'opening £ 1,000.00, closing ' in rc
               and 'First read 11-Nov-2026 by Carl Healy' in rc and '05-Oct-2026 Bupa £ 120.00 ref 2455419: deposit applied to UPC-0902, UPC-0901' in rc and '12-Oct-2026 AXA £ 75.00 ref GB33AXA0001: deposit added, waiting for the remittance' in rc
               and 'Energy' not in rc and 'Landlord' not in rc, reg)
         check('no file uploaded for the register; the note keeps only the insurer payments', not S['uploads'] and not S['orgfiles'].get(78812) and 'Software Co' not in rc, S['uploads'])

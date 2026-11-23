@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Ready to bill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.8
+// @version      0.4.9
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
@@ -46,7 +46,7 @@
   if (window.__hxReadyToBill) return;
   window.__hxReadyToBill = true;
 
-  const VERSION = '0.4.8';
+  const VERSION = '0.4.9';
   const ROUTE = 'upc-ready-to-bill';
   const MENU_CLS = 'upc-rtb-menu';
   const ALLOWED = () => rule('readyToBill.people', ['Carl Healy', 'Wendy Pritchard']);   // CH, 7 Nov 2026: only the two of them
@@ -244,7 +244,7 @@
         : g.state === 'held' ? (excess !== null
           ? 'Held: excess ' + fmt(excess) + ', fees so far ' + fmt(g.total)
           : 'Held: new claim, ' + g.billable.length + ' of ' + MIN_FEES_NO_EXCESS() + ' fees')
-          : g.state === 'later' ? (g.mid ? (afterVisit ? 'After the visit on ' + label(g.nextBooked) : 'Not due yet' + (when ? ': ' + when : ''))
+          : g.state === 'later' ? (g.mid ? (afterVisit ? 'After the visit on ' + label(g.nextBooked) : when ? when[0].toUpperCase() + when.slice(1) : '')
             : 'End of treatment' + (when ? ': ' + when : '')) : '';
     }
     const order = { due: 0, check: 1, held: 2, later: 3 };
@@ -447,7 +447,7 @@
   function render() {
     if (!root) return;
     const r = store.get('result', null);
-    const head = (withAction) => '<thead><tr><th>Patient</th><th>Funder</th><th class="number">Unbilled</th><th>Oldest fee</th><th>Why</th><th>Invoices</th>' + (withAction ? '<th></th>' : '') + '</tr></thead>';
+    const head = (withAction) => '<thead><tr><th>Patient</th><th>Funder</th><th class="number">Unbilled</th><th>Oldest fee</th><th>Status</th><th>Invoices</th>' + (withAction ? '<th></th>' : '') + '</tr></thead>';
     let h = '<div class="upc-rtb"><h1>Ready to bill</h1><div class="upc-rtb-bar">' +
       '<button type="button" class="btn btn-outline-primary-light" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>' +
       (state.running ? U().ui.run.inline(state.status) : '<span class="text-muted">' + esc(r ? 'Checked at ' + new Date(r.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + label(r.at) + '.' : '') + '</span>') + '</div>';
@@ -456,7 +456,7 @@
       const due = r.rows.filter((x) => x.state === 'due'), rest = r.rows.filter((x) => x.state !== 'due');
       h += '<div class="card"><div class="card-header"><h2>Due to bill (' + due.length + ')</h2></div><div class="card-body p-0">' +
         (due.length ? '<table class="table table-striped table-bordered w-100 m-0">' + head(true) + '<tbody>' + due.map((x) => rowHtml(x, true)).join('') + '</tbody></table>'
-          : '<p class="text-muted m-3">Nothing is due to bill.</p>') + '</div></div>';
+          : '<p class="text-muted m-3">None.</p>') + '</div></div>';
       if (rest.length) {
         h += '<div class="card"><div class="card-header"><h2>Not due yet (' + rest.length + ')</h2></div><div class="card-body p-0">' +
           '<table class="table table-striped table-bordered w-100 m-0">' + head(false) + '<tbody>' + rest.map((x) => rowHtml(x, false)).join('') + '</tbody></table></div></div>';

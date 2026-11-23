@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Missing details (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.7
+// @version      0.2.8
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/missing-details.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/missing-details.user.js
@@ -44,7 +44,7 @@
   if (window.__hxMissingDetails) return;
   window.__hxMissingDetails = true;
 
-  const VERSION = '0.2.7';
+  const VERSION = '0.2.8';
   const ROUTE = 'upc-missing-details';
   const MENU_CLS = 'upc-md-menu';
   const ADMINS = () => rule('missingDetails.people', ['Carl Healy', 'Wendy Pritchard']);   // who sees the page (CH, 15 Nov 2026: CH and WP)
@@ -334,9 +334,9 @@
     const r = store.get('result', null);
     const base = U().base();
     const next = (x) => x.next ? label(x.next) + ' ' + new Date(x.next).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + (x.prac ? ' with ' + x.prac : '') : '';
-    const row = (x) => '<tr><td><a href="' + esc(base + '/patient/' + x.id) + '" target="_blank" rel="noopener">' + esc(x.name || 'Patient') + '</a></td>' +
+    const row = (x, seenCol) => '<tr><td><a href="' + esc(base + '/patient/' + x.id) + '" target="_blank" rel="noopener">' + esc(x.name || 'Patient') + '</a></td>' +
       '<td>' + esc(x.missing.length ? missingText(x) + (x.email ? '' : ', email') : 'email') + '</td>' +
-      '<td class="upc-md-date">' + esc(next(x)) + '</td><td class="upc-md-date">' + esc(x.lastSeen ? label(x.lastSeen) : '') + '</td>' +
+      '<td class="upc-md-date">' + esc(next(x)) + '</td>' + (seenCol ? '<td class="upc-md-date">' + esc(x.lastSeen ? label(x.lastSeen) : '') + '</td>' : '') +
       '<td><a href="' + esc(base + '/patient/' + x.id + '/edit') + '" target="_blank" rel="noopener">Edit details</a></td></tr>';
     let h = '<div class="upc-md"><h1>Missing details</h1><div class="upc-md-bar">' +
       '<button type="button" class="btn btn-outline-primary-light" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>' +
@@ -345,12 +345,13 @@
     if (r) {
       const seen = (x) => x.seen !== false;   // results from before the split: treated as ongoing
       const need = r.rows.filter((x) => x.missing.length && seen(x)), notYet = r.rows.filter((x) => x.missing.length && !seen(x)), email = r.rows.filter((x) => !x.missing.length);
-      const table = (rows) => '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th>Patient</th><th>Missing</th><th>Next appointment</th><th>Last seen</th><th></th></tr></thead><tbody>' + rows.map(row).join('') + '</tbody></table>';
+      // Not seen yet: no Last seen column (always empty there; UI/UX audit, 23 Nov 2026).
+      const table = (rows, seenCol = true) => '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th>Patient</th><th>Missing</th><th>Next appointment</th>' + (seenCol ? '<th>Last seen</th>' : '') + '<th></th></tr></thead><tbody>' + rows.map((x) => row(x, seenCol)).join('') + '</tbody></table>';
       h += '<div class="card"><div class="card-header"><h2>Ongoing patients (' + need.length + ')</h2></div><div class="card-body p-0">' +
-        (need.length ? table(need) : '<p class="text-muted m-3">None missing.</p>') + '</div></div>';
-      if (notYet.length) h += '<div class="card"><div class="card-header"><h2>Not seen yet (' + notYet.length + ')</h2></div><div class="card-body p-0">' + table(notYet) + '</div></div>';
+        (need.length ? table(need) : '<p class="text-muted m-3">None.</p>') + '</div></div>';
+      if (notYet.length) h += '<div class="card"><div class="card-header"><h2>Not seen yet (' + notYet.length + ')</h2></div><div class="card-body p-0">' + table(notYet, false) + '</div></div>';
       if (email.length) h += '<div class="card"><div class="card-header"><h2>No email address (' + email.length + ')</h2></div><div class="card-body p-0">' + table(email) + '</div></div>';
-      h += '<p class="text-muted">Booked in the next ' + AHEAD_DAYS() + ' days or seen in the last ' + BACK_DAYS() + '.' + (r.unchecked ? ' ' + r.unchecked + ' still to check.' : '') + '</p>';
+      h += '<p class="text-muted">Booked in the next ' + AHEAD_DAYS() + ' days' + (BACK_DAYS() ? ' or seen in the last ' + BACK_DAYS() + ' days' : '') + '.' + (r.unchecked ? ' ' + r.unchecked + ' still to check.' : '') + '</p>';
     }
     h += '</div>';
     root.innerHTML = h;

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Open-ended recalls (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.2
+// @version      0.4.3
 // @upc-was      check-ins.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/open-ended-patients.user.js
@@ -41,7 +41,7 @@
   if (window.__hxCheckIns) return;
   window.__hxCheckIns = true;
 
-  const VERSION = '0.4.2';
+  const VERSION = '0.4.3';
   const ROUTE = 'upc-check-ins';
   const MENU_CLS = 'upc-ci-menu';
   const ALLOWED = () => rule('openEnded.people', ['Carl Healy']);
@@ -275,7 +275,7 @@
       const todo = ok.filter((x) => !recallFor(x, recs)), done = ok.filter((x) => { const k = recallFor(x, recs); return k && k.kind !== 'skip'; });
       const notRecalled = ok.filter((x) => { const k = recallFor(x, recs); return k && k.kind === 'skip'; });
       const open = todo.filter((x) => x.kind !== 'cancelled'), cancelled = todo.filter((x) => x.kind === 'cancelled');
-      const head = '<thead><tr><th>Patient</th><th>Last seen</th><th class="number">Weeks</th><th>Practitioner</th><th>Why</th><th></th></tr></thead>';
+      const head = '<thead><tr><th>Patient</th><th>Last seen</th><th class="number">Weeks</th><th>Practitioner</th><th>Status</th><th></th></tr></thead>';
       const row = (x) => {
         const rc = recallFor(x, recs);
         const act = rc && rc.kind === 'skip' ? (state.busy === x.id ? U().ui.run.inline('') : state.queue.some((q) => q.id === x.id) ? 'Queued'

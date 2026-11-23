@@ -232,7 +232,7 @@ async def main():
               and 'forecourtLights.remind = Carl Healy' in lines and 'branding.font = halaxy' in lines and 'alerts.chatAlarm = everyone' in lines, lines)
         mine = await pg.evaluate("[UPC.settings.forMe('alerts.arrivalChime'), UPC.settings.forMe('alerts.chatAlarm'), UPC.settings.forMe('forecourtLights.remind'), JSON.parse(localStorage.getItem('upc-settings:mine'))]")
         check('for whoever is signed in (Carl): chime off, chat alarm on, forecourt on; kept for early scripts', mine[:3] == [False, True, True] and mine[3]['user'] == 'Carl Healy'
-              and mine[3]['values'] == {'forecourtLights.remind': True, 'alerts.arrivalChime': False, 'alerts.chatAlarm': True, 'branding.on': True, 'branding.font': 'halaxy', 'blockReporting.userpilot': False, 'patientForms.send': 'late', 'patientForms.chase': 'on'}, mine)
+              and mine[3]['values'] == {'forecourtLights.remind': True, 'alerts.arrivalChime': False, 'alerts.chatAlarm': True, 'branding.on': True, 'branding.polish': True, 'branding.font': 'halaxy', 'blockReporting.userpilot': False, 'patientForms.send': 'late', 'patientForms.chase': 'on'}, mine)
         # A script saving one value leaves the others as they are
         res = await pg.evaluate("UPC.settings.save({ 'readyToBill.maxExcess': 400 }).then(() => [UPC.settings.get('readyToBill.maxExcess'), UPC.settings.get('forecourtLights.days'), UPC.settings.get('readyToBill.people')], (e) => e.message)")
         check('saving one value keeps the rest', res == [400, ['Tue', 'Thu'], ['Carl Healy', 'Physio One']], res)
