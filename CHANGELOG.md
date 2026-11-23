@@ -1,5 +1,8 @@
 # Changelog
 
+## Record retention 0.1.0 (new), Health check 1.1.59, 23 Nov 2026 (beta)
+- New: Patients > Record retention (CH). Patients past the time their records are kept: 8 years after the last appointment, children until their 25th birthday (26th if 17 at the last appointment). Cards: Due, No date of birth, Deceased, No appointments; booked, Deleted and Contact records left out. Tick and "Set N to Deleted": asked once, then one at a time at Halaxy's pace. Nothing changes without that. Read from Halaxy's patient list when the page opens (kept for a day) and with Check now.
+
 ## Script settings 0.3.0, Task stamps 0.2.1, core 0.1.74, 23 Nov 2026 (beta)
 - Script settings is a page (UI/UX audit step 3): Halaxy's title bar with the tab's buttons on the right, tabs This PC, Clinic settings and Options, a card for each group. Opened from the account menu over whatever page is showing; Close goes back to it. "Saved.", "Read again." and "Everything is up to date." are toasts.
 - Clinic settings labels made plainer ("Ignore an excess over", "Dates to skip", "Portal fill: AXA payee").
