@@ -1,5 +1,8 @@
 # Changelog
 
+## Patient forms 0.1.7, 23 Nov 2026 (beta)
+- A patient with no email address is no longer an error: the form and its reminder are noted as "No email address" and looked at again an hour later (Missing details lists them). Seen live: Halaxy refused a reminder with "The recipient must have a valid email address."
+
 ## Core 0.1.72, Ready to bill, 23 Nov 2026 (beta)
 - Progress bars show real progress where the count is known ("Reading notes (12 of 40)": Missing details, Open-ended recalls, Review requests, Ready to bill, Bank statement, Remittances, Invoice Funder) and fill smoothly between steps instead of jumping. Single-step waits keep the moving bar.
 - Ready to bill counts the patients it reads.

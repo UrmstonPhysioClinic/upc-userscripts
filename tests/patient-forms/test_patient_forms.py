@@ -54,9 +54,10 @@ def setup():
         ev(9006, 506, 'Patient Six', ts(1, 14), 11, 7006, 'cancelled'),
         ev(9007, 507, 'Patient Seven', ts(1, 15), 12, 7007),          # an MOT fee: no form
         ev(9008, 508, 'Patient Eight', ts(1, 16), 12, 7008),          # FU: campaign form already filled in
+        ev(9009, 509, 'Patient Nine', ts(1, 17), 12, 7009),           # IA, no email address
     ]
     S['invoices'] = {7001: ('Bup-IA (AA360)', ''), 7002: ('AXA-FU', '(10th of 10 appts)'), 7003: ('Bup-FU', '(3rd of 10 appts)'), 7005: ('IA-IA', ''),
-                     7006: ('IA-IA', ''), 7007: ('MOT-1', ''), 7008: ('FU-FU', '')}
+                     7006: ('IA-IA', ''), 7007: ('MOT-1', ''), 7008: ('FU-FU', ''), 7009: ('IA-IA', '')}
     S['history'] = {503: [('Progress Update', '17-Nov-2026 05:04', 'No', 'https://eu.halaxy.com/a/online/form/503/AbCdEfGhIjKlMnOpQrStUvWx')],
                     508: [('Progress Update', '17-Nov-2026 05:06', '17-Nov-2026 07:40', '')],
                     501: [('Initial Assessment Form - Standard', '05-Oct-2022 14:02', '05-Oct-2022 14:06', '')]}
@@ -100,7 +101,7 @@ def compose(pid, patient_form):
             "<textarea name='form[body]'></textarea><input type='hidden' name='form[_token]' value='tok'>"
             "<input name='form[scheduleDetails][scheduleDate]' value=''><select name='form[scheduleDetails][scheduleTime][hour]'>%s</select>"
             "<select name='form[scheduleDetails][scheduleTime][minute]'>%s</select></form>%s") % (
-        top, sel('form[fromEmail]', [('admin@urmstonphysioclinic.com', 'admin')], 'admin@urmstonphysioclinic.com'), 'p%d@example.com' % pid, sel('form[template]', TEMPLATES), hours, mins, hist)
+        top, sel('form[fromEmail]', [('admin@urmstonphysioclinic.com', 'admin')], 'admin@urmstonphysioclinic.com'), '' if pid == 509 else 'p%d@example.com' % pid, sel('form[template]', TEMPLATES), hours, mins, hist)
 
 
 def invoice_html(iid):
@@ -239,6 +240,7 @@ async def main():
         check('subject from the template; no template chosen in the pop-up', f.get('form[subject]') == 'Before your appointment' and f.get('form[template]') == '', (f.get('form[subject]'), f.get('form[template]')))
         check('not sent: campaign form already gone, no fee yet, MOT fee, cancelled', not any(x in sent for x in (503, 504, 506, 507, 508)), sorted(sent))
         v = note_values()
+        check('no email address: noted, nothing sent, not an error', v.get('a.9009', '').startswith('noemail ') and 509 not in sent, v.get('a.9009'))
         check('shared note: what happened to each', v.get('a.9001', '').startswith('sent ') and v.get('a.9003', '').startswith('had ') and v.get('a.9004', '').startswith('wait ')
               and v.get('a.9007') == 'none' and 'a.9006' not in v, v)
 
@@ -272,7 +274,8 @@ async def main():
               and tom.get('Patient One', [''] * 5)[3].startswith('Sent') and 'Initial Assessment Form - Bupa' in tom.get('Patient One', [''] * 5)[3]
               and tom.get('Patient Four', [''] * 5)[3] == 'Waiting for a fee' and tom.get('Patient Seven', [''] * 5)[3] == 'No form for this fee'
               and tom.get('Patient Three', [''] * 5)[4] == 'Filled in' and tom.get('Patient One', [''] * 5)[2] == 'Carl Healy', rows)
-        check('page: "Don\'t send" only where nothing has gone', await pg.evaluate("[...document.querySelectorAll('[data-upc-patient-forms] [data-a=skip]')].length") == 1, rows)
+        check('page: "Don\'t send" only where nothing has gone; no email address shown as such', await pg.evaluate("[...document.querySelectorAll('[data-upc-patient-forms] [data-a=skip]')].length") == 2
+              and tom.get('Patient Nine', [''] * 5)[3] == 'No email address', rows)
         check('no page errors', not errors, errors)
         await ctx.close()
 
