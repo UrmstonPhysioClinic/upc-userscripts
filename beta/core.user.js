@@ -1862,9 +1862,9 @@
     .upc-native .upc-list-more { padding: 12px; }
     .upc-native .upc-list-more .btn { margin: 0; }
     .upc-native .upc-batch .progress { width: 240px; }
-    #upc-toasts { position: fixed; right: 20px; bottom: 60px; z-index: 2995; width: 380px; max-width: calc(100vw - 40px); }
-    #alerts > .upc-toast, #upc-toasts > .upc-toast { display: flex; align-items: center; gap: 12px; }
-    #alerts > .upc-toast .upc-toast-act, #upc-toasts > .upc-toast .upc-toast-act { margin: 0 0 0 auto; }
+    .upc-native.upc-toasts { position: fixed; right: 20px; bottom: 60px; z-index: 2995; width: 380px; max-width: calc(100vw - 40px); }
+    .upc-native.upc-toast { display: flex; align-items: center; gap: 12px; }
+    .upc-native.upc-toast .upc-toast-act { margin: 0 0 0 auto; }
     .upc-dialog { position: fixed; inset: 0; z-index: 2990; overflow-y: auto; }
     .upc-dialog > .upc-backdrop { position: fixed; inset: 0; background: #000; opacity: .5; }
     .upc-dialog > .modal-dialog { position: relative; margin: 28px auto; width: calc(100% - 32px); max-width: 800px; pointer-events: auto; }
@@ -1929,10 +1929,10 @@
     let box = document.getElementById('alerts');
     if (!box) {
       box = document.getElementById('upc-toasts');
-      if (!box) { box = document.createElement('div'); box.id = 'upc-toasts'; box.className = 'upc-native'; document.body.appendChild(box); }
+      if (!box) { box = document.createElement('div'); box.id = 'upc-toasts'; box.className = 'upc-native upc-toasts'; document.body.appendChild(box); }
     }
     const el = document.createElement('div');
-    el.className = 'alert alert-' + (opts.kind || 'success') + ' upc-toast';
+    el.className = 'alert alert-' + (opts.kind || 'success') + ' upc-native upc-toast';
     el.setAttribute('role', 'status');
     el.textContent = text;
     let timer = null;
