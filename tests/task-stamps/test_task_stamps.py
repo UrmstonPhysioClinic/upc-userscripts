@@ -169,6 +169,26 @@ async def main():
         await pg.click('textarea')
         check('no signed-in name: nothing added', await val() == '')
 
+        # The task page opened from the bell: the plain top Mark as completed is hidden, Halaxy's ajax one stays
+        TASK = ("<!doctype html><html><body><div class='page-header'><a class='btn btn-outline-danger' href='/a/pr/555/task/77/delete'>Delete</a>"
+                "<a class='btn btn-outline-primary-light' href='/a/pr/555/task/77/complete'>Mark as completed</a></div>"
+                "<form id='form_task_edit'><textarea name='form[comment]'></textarea>"
+                "<a class='ajax btn btn-outline-primary-light' href='/a/pr/555/task/77/complete'>Mark as completed</a></form></body></html>")
+        pg2 = await browser.new_page()
+        pg2.on('pageerror', lambda e: errors.append(str(e)))
+        await pg2.route('https://eu.halaxy.com/**', lambda r: r.fulfill(body=TASK, content_type='text/html'))
+        await pg2.goto('https://eu.halaxy.com/a/pr/555/task/77')
+        await pg2.add_script_tag(content=SCRIPT)
+        await pg2.wait_for_timeout(200)
+        vis = await pg2.evaluate("[...document.querySelectorAll('a[href$=\"/complete\"]')].map((a) => [a.classList.contains('ajax'), !!a.offsetParent])")
+        check('task page: the broken top Mark as completed hidden, the working one kept', vis == [[False, False], [True, True]], vis)
+        await pg2.goto('https://eu.halaxy.com/a/pr/555/task/77')
+        await pg2.evaluate("document.querySelector('form a.ajax').remove()")
+        await pg2.add_script_tag(content=SCRIPT)
+        await pg2.wait_for_timeout(200)
+        vis = await pg2.evaluate("[...document.querySelectorAll('a[href$=\"/complete\"]')].map((a) => !!a.offsetParent)")
+        check('task page without the working one: the top one left alone', vis == [True], vis)
+
         check('no page errors', not errors, errors)
         await browser.close()
     print('\n%d failed' % len(FAILS) if FAILS else '\nAll passed')

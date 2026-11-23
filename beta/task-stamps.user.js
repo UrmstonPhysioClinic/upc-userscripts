@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         UPC Calendar: Task stamps (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.5
+// @version      0.1.6
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/task-stamps.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/task-stamps.user.js
-// @description  Date, time and initials stamps ("2026-11-11 15:49 CH") and "- " bullets in task comments and appointment comments, added when you click into the box.
+// @description  Date, time and initials stamps ("2026-11-11 15:49 CH") and "- " bullets in task comments and appointment comments, added when you click into the box. Hides the task page's broken top Mark as completed.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
 // @grant        none
@@ -27,6 +27,10 @@
  *    redrawing the pop-up, or a quick second edit).
  *  - Initials: the first letters of the signed-in user's first and last names (Carl Healy: CH).
  *  - Tasks the scripts add carry the script's name instead (core's UPC.tasks.comment).
+ *  - The task page (/task/{id}, opened from the bell) has two Mark as completed links to /task/{id}/complete. The
+ *    lower one is Halaxy's ajax link (Task Completion pop-up, then Complete). The top one is a plain link that opens a
+ *    bare page whose buttons do nothing useful (CH, 23 Nov 2026: "please can we remove it"). The plain one is hidden,
+ *    only while the working ajax one is there.
  */
 
 (function () {
@@ -34,7 +38,7 @@
   if (window.__hxTaskStamps) return;
   window.__hxTaskStamps = true;
 
-  const VERSION = '0.1.5';
+  const VERSION = '0.1.6';
   const RECENT = 5 * 60e3;
   // Task comments (add-task and edit-task pop-ups), and an appointment's Comments in the calendar (form#pr-appointment,
   // a plain box form[description]; capture, 11 Nov 2026). Both plain text, line breaks kept.
@@ -163,7 +167,14 @@
       document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: 'task-stamps.user.js', message: 'The appointment pop-up has changed (its Comments box, form[description], was not found).' }) }));
     }
   }
-  const scan = () => { queued = false; document.querySelectorAll(FIELD + ':not([data-upc-stamp-done])').forEach(prepare); checkLayout(); };
+  function hideBrokenComplete() {
+    const m = location.pathname.match(/\/task\/(\d+)\/?$/);
+    if (!m) return;
+    const links = [...document.querySelectorAll('a[href]')].filter((a) => new RegExp('/task/' + m[1] + '/complete/?$').test(a.getAttribute('href')));
+    if (!links.some((a) => a.classList.contains('ajax'))) return;
+    links.filter((a) => !a.classList.contains('ajax') && !a.hidden).forEach((a) => { a.hidden = true; a.style.setProperty('display', 'none', 'important'); });
+  }
+  const scan = () => { queued = false; document.querySelectorAll(FIELD + ':not([data-upc-stamp-done])').forEach(prepare); checkLayout(); hideBrokenComplete(); };
   new MutationObserver(() => { if (!queued) { queued = true; requestAnimationFrame(scan); } }).observe(document.body, { childList: true, subtree: true });
   scan();
 
