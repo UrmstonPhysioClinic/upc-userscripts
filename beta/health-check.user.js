@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.59
+// @version      1.1.60
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.59';
+  const VERSION = '1.1.60';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -45,11 +45,11 @@
     'invoice-funder.user.js': 'Invoice Funder', 'ready-to-bill.user.js': 'Ready to bill', 'portal-fill.user.js': 'Portal fill', 'remittances.user.js': 'Remittances',
     'rebate-sync.user.js': 'Rebate sync', 'bank-statement.user.js': 'Bank statement', 'insurer-payments-due.user.js': 'Insurer payments due', 'charge-excess.user.js': 'Schedule excess',
     // Patients
-    'patient-statuses.user.js': 'Patient statuses', 'open-ended-patients.user.js': 'Open-ended recalls', 'missing-details.user.js': 'Missing details', 'patient-forms.user.js': 'Patient forms', 'old-balances.user.js': 'Old balances', 'record-retention.user.js': 'Record retention',
+    'patient-statuses.user.js': 'Patient statuses', 'open-ended-patients.user.js': 'Open-ended recalls', 'missing-details.user.js': 'Missing details', 'patient-forms.user.js': 'Patient forms', 'old-balances.user.js': 'Old balances', 'record-retention.user.js': 'Record retention', 'stored-cards.user.js': 'Stored cards',
     'review-requests.user.js': 'Review requests',
     'feedback-alerts.user.js': 'Feedback alerts',
     // Calendar
-    'calendar-controls.user.js': 'Calendar controls', 'outstanding-actions.user.js': 'Outstanding actions', 'task-stamps.user.js': 'Task stamps', 'appointment-reminders.user.js': 'Appointment reminders', 'to-do.user.js': 'To do',
+    'calendar-controls.user.js': 'Calendar controls', 'outstanding-actions.user.js': 'Outstanding actions', 'task-stamps.user.js': 'Task stamps', 'appointment-reminders.user.js': 'Appointment reminders', 'to-do.user.js': 'To do', 'arrived-button.user.js': 'Arrived button',
     'alerts.user.js': 'Alerts', 'forecourt-lights.user.js': 'Forecourt lights',
     // Look
     'branding.user.js': 'Branding', 'mobile-layout.user.js': 'Mobile layout', 'text-boxes.user.js': 'Auto-expanding text boxes',

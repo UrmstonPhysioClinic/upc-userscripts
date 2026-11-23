@@ -3,7 +3,7 @@
     {
       "file": "health-check.user.js",
       "name": "UPC System: Health check (beta)",
-      "version": "1.1.59"
+      "version": "1.1.60"
     },
     {
       "file": "block-reporting.user.js",
@@ -14,7 +14,7 @@
     {
       "file": "core.user.js",
       "name": "UPC System: Core library (beta)",
-      "version": "0.1.74"
+      "version": "0.1.75"
     },
     {
       "file": "alerts.user.js",
@@ -24,6 +24,11 @@
     {
       "file": "appointment-reminders.user.js",
       "name": "UPC Calendar: Appointment reminders (beta)",
+      "version": "0.1.0"
+    },
+    {
+      "file": "arrived-button.user.js",
+      "name": "UPC Calendar: Arrived button (beta)",
       "version": "0.1.0"
     },
     {
@@ -130,7 +135,7 @@
     {
       "file": "record-retention.user.js",
       "name": "UPC Patients: Record retention (beta)",
-      "version": "0.1.0"
+      "version": "0.1.1"
     },
     {
       "file": "remittances.user.js",
@@ -146,6 +151,11 @@
       "file": "script-settings.user.js",
       "name": "UPC System: Script settings (beta)",
       "version": "0.3.0"
+    },
+    {
+      "file": "stored-cards.user.js",
+      "name": "UPC Patients: Stored cards (beta)",
+      "version": "0.1.0"
     },
     {
       "file": "task-stamps.user.js",

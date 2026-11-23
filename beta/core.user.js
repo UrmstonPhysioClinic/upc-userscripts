@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.74
+// @version      0.1.75
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.74';
+  const VERSION = '0.1.75';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -1331,6 +1331,33 @@
       });
       return out;
     },
+    // Every card on file (Finance report type 26, "Credit Card Expiry", capture 23 Nov 2026: columns Patient (linking
+    // the patient's Funding tab /patient/{linkPaGId}/funding), Status (the patient's), Card (XXXX-XXXX-XXXX-1234), Type,
+    // Expiry ("Mar 2029"); one row per card). Expiry from Jan 2000 to Dec 2060, so every card is listed.
+    // Returns [{ patientId, patient, status, last4, type, expiry (ms, the 1st of the month), expiryText }].
+    async storedCards() {
+      const p = new URLSearchParams([['type', '26'], ['tyropm', '19'], ['start', ''], ['stop', ''], ['altDate', ''], ['transferStart', ''], ['transferStop', ''],
+        ['transferAltDate', ''], ['startExpiry', '01-2000'], ['stopExpiry', '12-2060'], ['aa', ''], ['pr', ''], ['loc', ''], ['clinic', ''], ['overdueDays', ''],
+        ['payer', 'All'], ['patient', ''], ['organisation', ''], ['autopm', ''], ['showTotalMode', '0'], ['ecat', ''], ['aob', ''], ['incomeType', 'paymentMethods'],
+        ['displayNames', '1'], ['rstat', ''], ['rtype', ''], ['rstype', ''], ['xc', ''], ['rc', ''], ['qc', ''], ['plTaxTypeStatus', 'exclusive'],
+        ['lineStatus', 'write-off'], ['lineStatus', 'voided'], ['usedDepositOption', 'all'], ['creditSummaryOption', 'summary'], ['clicked', String(Date.now())]]);
+      const { names, grid } = await reportTable('/report/finance/0?' + p.toString(), 'Credit Card Expiry');
+      const col = (n) => names.indexOf(n);
+      const missing = ['Patient', 'Status', 'Card', 'Type', 'Expiry'].filter((n) => col(n) < 0);
+      if (missing.length) throw new UPCError('Halaxy\'s Credit Card Expiry report has changed (' + missing.join(', ') + ' not found).');
+      const out = [];
+      grid.forEach((row) => {
+        const cell = (n) => clean(row[col(n)] && row[col(n)].textContent);
+        const a = row[col('Patient')] && row[col('Patient')].querySelector('a[href*="/patient/"]');
+        const id = a ? (a.getAttribute('href').match(/\/patient\/(\d+)/) || [])[1] : null;
+        if (!id) return;
+        const m = cell('Expiry').match(/^([A-Za-z]{3})[a-z]*\s+(\d{4})$/);
+        const mi = m ? MONTHS.findIndex((x) => x.toLowerCase() === m[1].toLowerCase()) : -1;
+        out.push({ patientId: String(id), patient: cell('Patient'), status: cell('Status'), last4: (cell('Card').match(/(\d{4})\s*$/) || [])[1] || '',
+          type: cell('Type'), expiry: mi >= 0 ? new Date(+m[2], mi, 1).getTime() : null, expiryText: cell('Expiry') });
+      });
+      return out;
+    },
     // Every payment recorded in Halaxy between two days (Halaxy's Income report, Finance type 1, filtered by the payment's
     // date; capture 12 Nov 2026): one entry per payment, { invoiceId, invoice, payer, funder, date (dd-Mon-yyyy, the
     // payment's), method, amount (pence) }. An invoice with several fees has a row per fee; its first row links the
@@ -1670,6 +1697,52 @@
       const changed = was.filter(([k]) => k !== FIELD).map((x) => x.join('=')).filter((x) => !now.includes(x));
       if (changed.length) throw new UPCError('The label was added, but these details now read differently on the Edit page: ' + changed.map((x) => x.split('=')[0]).join(', ') + '. Please check the patient.');
       return true;
+    },
+    // Halaxy's whole patient list (POST /patient/list-data, Patients > Patient List), read in blocks of 100. Rows:
+    // id (linkPaGId), givenName, preferredName, surname, patientNum, status, created, dateOfBirth, lastAppointment,
+    // nextAppointment (as the retired Custom Reports read them). say(text) gets "(300 of about 4200)" for a progress bar.
+    async listAll(say) {
+      const rows = [];
+      let start = 0, total = null;
+      for (;;) {
+        if (say) say('Reading the patient list' + (total ? ' (' + Math.min(start, total) + ' of about ' + total + ')' : '') + '...');
+        const j = await http.list('/patient/list-data', {}, [], start, start + 100);
+        const got = j && Array.isArray(j.rowData) ? j.rowData : null;
+        if (!got) throw new UPCError('The patient list has changed, so it could not be read.');
+        if (typeof j.lastRow === 'number' && j.lastRow >= 0) total = j.lastRow;
+        rows.push(...got);
+        start += got.length;
+        if (!got.length || (total !== null && start >= total)) break;
+      }
+      if (rows.length && !rows.some((r) => 'lastAppointment' in r && 'nextAppointment' in r && 'status' in r)) {
+        throw new UPCError('The patient list has changed (last or next appointment, or status, not found).');
+      }
+      return rows;
+    },
+    // The cards on a patient's Funding tab (/patient/{linkPaGId}/funding, a page; capture 23 Nov 2026): each card's delete
+    // link a.deleteCreditCardBtn /patient/{linkPaGId}/creditcard/{card}/delete, near its number XXXX-XXXX-XXXX-1234.
+    // Returns [{ id, last4 }].
+    async cards(linkPaGId) {
+      const doc = await http.html('/patient/' + encodeURIComponent(linkPaGId) + '/funding');
+      if (!doc.querySelector('#pageContent, body')) throw new UPCError('The patient\'s Funding tab could not be read.');
+      return [...doc.querySelectorAll('a.deleteCreditCardBtn[href*="/creditcard/"]')].map((a) => {
+        const id = (a.getAttribute('href').match(/\/creditcard\/(\d+)\/delete/) || [])[1] || null;
+        let last4 = '';
+        for (let el = a.parentElement, i = 0; el && i < 8 && !last4; el = el.parentElement, i++) last4 = (el.textContent.match(/X{4}-X{4}-X{4}-(\d{4})/i) || [])[1] || '';
+        if (!id || !last4) throw new UPCError('The patient\'s Funding tab has changed (a card\'s number or delete link not found), so nothing was removed.');
+        return { id, last4 };
+      });
+    },
+    // Removes one card: Halaxy's "Delete credit card" pop-up, whose Delete button is a link
+    // /patient/{linkPaGId}/creditcard/{card}/delete/<hex> (capture 23 Nov 2026); then the Funding tab is read again
+    // to check it has gone.
+    async deleteCard(linkPaGId, cardId) {
+      const del = '/patient/' + encodeURIComponent(linkPaGId) + '/creditcard/' + encodeURIComponent(cardId) + '/delete';
+      const { doc } = await http.popup(del);
+      const link = [...doc.querySelectorAll('a[href]')].find((a) => a.getAttribute('href').split('?')[0].replace(/^.*\/a\/pr\/\d+/, '').startsWith(del + '/'));
+      if (!link) throw new UPCError('Halaxy\'s Delete credit card pop-up has changed, so the card was not removed.');
+      await http.json(link.getAttribute('href').replace(/^.*\/a\/pr\/\d+/, ''));
+      if ((await patient.cards(linkPaGId)).some((c) => c.id === String(cardId))) throw new UPCError('Halaxy still shows the card after removing it.');
     },
     // Sets the patient's status on their Edit page (select patientdetailmain[linkPaG][customStatus], options valued
     // by name: current, claimant, discharged, review...; capture 11 Nov 2026), sending the form exactly as Halaxy
@@ -2215,7 +2288,7 @@
 
   // Our menu items, in the order they appear under Halaxy's own in each section.
   const MENU_ORDER = ['To do', 'My tasks', 'Patient forms', 'Review requests', 'Missing details', 'Open-ended recalls',
-    'Ready to bill', 'Remittances', 'Bank statement', 'Insurer payments due', 'Old balances'];
+    'Record retention', 'Stored cards', 'Ready to bill', 'Remittances', 'Bank statement', 'Insurer payments due', 'Old balances'];
 
   const ui = {
     nativeStyles,
@@ -2805,6 +2878,7 @@
     { key: 'missingDetails.backDays', script: 'Missing details', label: 'and those seen in the last', unit: 'days', def: 30, min: 0, max: 180 },
     { key: 'bankStatement.lingerDays', script: 'Bank statement', label: 'Task when a deposit and its remittance are still not matched after', unit: 'days', def: 10, min: 3, max: 60 },
     { key: 'bankStatement.dueFromDay', script: 'Bank statement', label: 'Remind about last month\'s statement from day', unit: 'of the month', def: 15, min: 1, max: 28 },
+    { key: 'storedCards.afterDays', script: 'Stored cards', label: 'Remove a card once the last appointment was', unit: 'days ago', def: 28, min: 7, max: 365 },
     // People (stage 2, CH 15 Nov 2026). A page's list also decides on whose sign-in its background checks run.
     { key: 'readyToBill.people', script: 'Who sees what', label: 'Ready to bill', type: 'people', def: [CARL, WENDY] },
     { key: 'missingDetails.people', script: 'Who sees what', label: 'Missing details list', type: 'people', def: [CARL, WENDY] },
@@ -2816,6 +2890,8 @@
     { key: 'feedbackAlerts.people', script: 'Who sees what', label: 'Feedback alerts', type: 'people', def: [CARL] },
     { key: 'patientStatuses.people', script: 'Who sees what', label: 'Patient statuses', type: 'people', def: [CARL] },
     { key: 'bankStatement.people', script: 'Who sees what', label: 'Bank statement', type: 'people', def: [CARL] },
+    { key: 'recordRetention.people', script: 'Who sees what', label: 'Record retention', type: 'people', def: [CARL] },
+    { key: 'storedCards.people', script: 'Who sees what', label: 'Stored cards', type: 'people', def: [CARL] },
     { key: 'feedbackAlerts.taskFor', script: 'Who gets tasks', label: 'Feedback to look at', type: 'person', def: CARL },
     { key: 'remittances.taskFor', script: 'Who gets tasks', label: 'Remittances', type: 'person', def: CARL },
     { key: 'bankStatement.taskFor', script: 'Who gets tasks', label: 'Bank statement', type: 'person', def: CARL },
