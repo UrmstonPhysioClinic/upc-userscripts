@@ -14,7 +14,7 @@
     {
       "file": "core.user.js",
       "name": "UPC System: Core library (beta)",
-      "version": "0.1.71"
+      "version": "0.1.72"
     },
     {
       "file": "alerts.user.js",
@@ -120,7 +120,7 @@
     {
       "file": "ready-to-bill.user.js",
       "name": "UPC Billing: Ready to bill (beta)",
-      "version": "0.4.10"
+      "version": "0.4.11"
     },
     {
       "file": "rebate-sync.user.js",

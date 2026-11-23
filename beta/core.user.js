@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.71
+// @version      0.1.72
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.71';
+  const VERSION = '0.1.72';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -1892,6 +1892,33 @@
     const d = e.target;
     if (d && d.matches && d.matches('details[data-upc-run]')) runOpen.set(d.getAttribute('data-upc-run'), d.open);
   }, true);
+  // A bar that fills smoothly: pages redraw it on every step, so each new bar starts where the last one was drawn and
+  // slides to the new point over about the time a step has been taking (at most 2 seconds), so it keeps moving
+  // rather than jumping.
+  const bars = new Map();   // key -> { pct, at, ms }
+  function barHtml(key, pct, tag) {
+    const now = Date.now(), b = bars.get(key);
+    const from = b && pct >= b.pct ? b.pct : pct;
+    const ms = b && pct > b.pct ? Math.min(2000, Math.max(300, b.ms ? (b.ms + (now - b.at)) / 2 : now - b.at)) : 0;
+    bars.set(key, { pct, at: now, ms: b && pct > b.pct ? ms : (b ? b.ms : 0) });
+    const t = tag || 'span';
+    return '<' + t + ' class="progress-bar upc-bar" data-upc-to="' + pct.toFixed(1) + '" data-upc-ms="' + Math.round(ms) + '" style="display:block;transition:none;width:' + from.toFixed(1) + '%"></' + t + '>';
+  }
+  function slideBars(rootEl) {
+    (rootEl || document).querySelectorAll('.upc-bar[data-upc-to]').forEach((el) => {
+      const to = el.getAttribute('data-upc-to'), ms = +el.getAttribute('data-upc-ms');
+      el.removeAttribute('data-upc-to');
+      void el.offsetWidth;   // the starting width counts before the slide
+      el.style.transition = ms ? 'width ' + ms + 'ms linear' : 'none';
+      el.style.width = to + '%';
+    });
+  }
+  if (typeof MutationObserver === 'function') {
+    const hasBar = (n) => n.nodeType === 1 && (n.matches('.upc-bar[data-upc-to]') || !!n.querySelector('.upc-bar[data-upc-to]'));
+    const watch = () => new MutationObserver((list) => { if (list.some((m) => [...m.addedNodes].some(hasBar))) slideBars(document); }).observe(document.body || document.documentElement, { childList: true, subtree: true });
+    if (document.body) watch(); else document.addEventListener('DOMContentLoaded', watch, { once: true });
+  }
+
   const run = {
     // total: the number of units of work (0 when unknown: the bar just moves)
     start(total) { return { id: 'r' + (++runSeq), total: total || 0, done: 0, now: '', lines: [], finished: false }; },
@@ -1899,7 +1926,14 @@
     tick(r, n) { if (r) r.done = Math.min(r.total || Infinity, r.done + (n || 1)); },
     end(r, text) { if (!r) return; r.finished = true; r.done = r.total; if (text) r.lines.push({ t: String(text), err: false }); r.now = text || ''; },
     // A small moving bar with a short status, for a page's header line while it checks.
+    // When the status says how far along it is ("(12 of 40)", "(12 of about 40)"), the bar shows it and fills
+    // smoothly (CH, 23 Nov 2026); otherwise it is a moving "working" bar.
     inline(text) {
+      const m = /\((\d+) of (?:about )?(\d+)\)/.exec(String(text || ''));
+      if (m && +m[2] > 0) {
+        return '<span class="upc-run-inline"><span class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="' + m[2] + '" aria-valuenow="' + m[1] + '">' +
+          barHtml('inline' + m[2], Math.min(100, 100 * (+m[1]) / (+m[2]))) + '</span><span class="text-muted">' + esc(text) + '</span></span>';
+      }
       return '<span class="upc-run-inline"><span class="progress" role="progressbar"><span class="progress-bar progress-bar-striped progress-bar-animated" style="width:100%"></span></span><span class="text-muted">' + esc(text) + '</span></span>';
     },
     html(r) {
@@ -1910,7 +1944,7 @@
         const pct = r.total ? Math.round(100 * r.done / r.total) : 0;
         // Unknown length: Halaxy's own striped, moving bar (Bootstrap) at full width.
         h += '<div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100"' + (r.total ? ' aria-valuenow="' + pct + '"' : '') + '>' +
-          '<div class="progress-bar' + (r.total ? '' : ' progress-bar-striped progress-bar-animated') + '" style="width:' + (r.total ? pct : 100) + '%"></div></div>' +
+          (r.total ? barHtml(r.id, pct, 'div') : '<div class="progress-bar progress-bar-striped progress-bar-animated" style="width:100%"></div>') + '</div>' +
           '<div class="upc-run-now text-muted" aria-live="polite">' + esc(r.now || 'Working...') + '</div>';
       } else {
         if (r.now) h += '<div class="upc-run-now">' + esc(r.now) + '</div>';

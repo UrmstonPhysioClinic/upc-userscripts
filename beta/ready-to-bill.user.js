@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Ready to bill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.10
+// @version      0.4.11
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
@@ -46,7 +46,7 @@
   if (window.__hxReadyToBill) return;
   window.__hxReadyToBill = true;
 
-  const VERSION = '0.4.10';
+  const VERSION = '0.4.11';
   const ROUTE = 'upc-ready-to-bill';
   const MENU_CLS = 'upc-rtb-menu';
   const ALLOWED = () => rule('readyToBill.people', ['Carl Healy', 'Wendy Pritchard']);   // CH, 7 Nov 2026: only the two of them
@@ -176,11 +176,14 @@
     }
 
     const list = [];
+    let gi = 0;
     for (const g of groups.values()) {
+      gi += 1;
+      const sayN = (t) => say(t.replace(/\.\.\.$/, '') + ' (' + gi + ' of ' + groups.size + ')...');   // a count for the progress bar
       g.invoices.sort((a, b) => (a.when || 0) - (b.when || 0));
       const first = g.invoices[0], last = g.invoices[g.invoices.length - 1];
-      const fFirst = await invoiceFacts(first.id, say);
-      const fLast = last === first ? fFirst : await invoiceFacts(last.id, say);
+      const fFirst = await invoiceFacts(first.id, sayN);
+      const fLast = last === first ? fFirst : await invoiceFacts(last.id, sayN);
       g.patientId = fLast.patientId || fFirst.patientId;
       g.lastInvoice = last;
       g.referral = fLast.referral;
