@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.70
+// @version      0.1.71
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.70';
+  const VERSION = '0.1.71';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -1845,6 +1845,8 @@
     .upc-native .upc-run-log > summary { display: inline-block; list-style: none; margin-top: 8px; }
     .upc-native .upc-run-log > summary::-webkit-details-marker { display: none; }
     .upc-native .upc-run-log .upc-box { max-height: 300px; overflow: auto; margin-top: 8px; }
+    [data-upc-page] > .upc-native { max-width: 1200px; }
+    [data-upc-page] > .upc-native.upc-page-wide { max-width: 1640px; }
     .upc-native .upc-page-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px solid var(--vs-card-border-color, #dee2e6); }
     .upc-native .upc-page-bar h1 { margin: 0; }
     .upc-native .upc-page-bar .upc-page-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -1930,13 +1932,14 @@
   //  - page.card(): a group as a card, its count (and total) in the heading, "None." when empty.
   //  - Lists: a table marked data-upc-list="<id>" gets, from list.enhance(root):
   //      search (over 10 rows; filters the rows on the page, "12 of 171"), sorting by any column heading (amounts and
-  //      dates sort as such; a cell's data-sort wins), "Show 50 more" past 50 rows, and, with data-upc-pick, a tick box
+  //      dates sort as such; a cell's data-sort wins), "Show 25 more" past 25 rows (CH, 23 Nov 2026), and, with data-upc-pick, a tick box
   //      per row (rows with data-upc-id; data-upc-nopick for rows that can't be picked now) and one in the heading for
   //      every row showing. A [data-upc-bulk-for="<id>"] element in the page is moved into the list's tool row.
   //    The page re-renders as it likes; the list keeps its search, sort, rows shown and ticks (and the search box its
   //    focus) across re-renders. list.picked(id) gives the ticked ids, list.unpick(id, ids) clears them.
+  const PAGE_ROWS = 25;
   const lists = new Map();   // list id -> { q, col, dir, shown, picked: Set, focus, caret }
-  const listState = (id) => { if (!lists.has(id)) lists.set(id, { q: '', col: -1, dir: 1, shown: 50, picked: new Set(), focus: false, caret: 0 }); return lists.get(id); };
+  const listState = (id) => { if (!lists.has(id)) lists.set(id, { q: '', col: -1, dir: 1, shown: PAGE_ROWS, picked: new Set(), focus: false, caret: 0 }); return lists.get(id); };
   const MON = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
   function sortKey(td) {
     const raw = td ? (td.hasAttribute('data-sort') ? td.getAttribute('data-sort') : clean(td.textContent)) : '';
@@ -1971,7 +1974,7 @@
           const box = e.target.closest && e.target.closest('input[data-upc-search]');
           if (!box) return;
           const s = listState(box.getAttribute('data-upc-search'));
-          s.q = box.value; s.shown = 50; s.caret = box.selectionStart || 0;
+          s.q = box.value; s.shown = PAGE_ROWS; s.caret = box.selectionStart || 0;
           list.enhance(root, root.__upcListOpts);
         });
         root.addEventListener('focusin', (e) => { const b = e.target.closest && e.target.closest('input[data-upc-search]'); if (b) listState(b.getAttribute('data-upc-search')).focus = true; });
@@ -1985,7 +1988,7 @@
             return;
           }
           const more = e.target.closest && e.target.closest('[data-upc-more]');
-          if (more) { listState(more.getAttribute('data-upc-more')).shown += 50; list.enhance(root, root.__upcListOpts); }
+          if (more) { listState(more.getAttribute('data-upc-more')).shown += PAGE_ROWS; list.enhance(root, root.__upcListOpts); }
         });
         root.addEventListener('change', (e) => {
           const box = e.target.closest && e.target.closest('input[data-upc-tick]');
@@ -2064,11 +2067,11 @@
         if (tools && bulk && bulk.parentNode !== tools) { bulk.classList.add('upc-bulk'); tools.appendChild(bulk); }
         const count = tools && tools.querySelector('[data-upc-count]');
         if (count) count.textContent = q ? match.length + ' of ' + rows.length : '';
-        // "Show 50 more"
+        // "Show 25 more"
         let more = table.nextElementSibling && table.nextElementSibling.classList.contains('upc-list-more') ? table.nextElementSibling : null;
         if (match.length > s.shown) {
           if (!more) { more = document.createElement('div'); more.className = 'upc-list-more'; table.parentNode.insertBefore(more, table.nextSibling); }
-          more.innerHTML = '<button type="button" class="btn btn-outline-primary-light" data-upc-more="' + esc(id) + '">Show ' + Math.min(50, match.length - s.shown) + ' more</button> <span class="text-muted">' + s.shown + ' of ' + match.length + ' shown</span>';
+          more.innerHTML = '<button type="button" class="btn btn-outline-primary-light" data-upc-more="' + esc(id) + '">Show ' + Math.min(PAGE_ROWS, match.length - s.shown) + ' more</button> <span class="text-muted">' + s.shown + ' of ' + match.length + ' shown</span>';
         } else if (more) more.remove();
       });
     },
@@ -2196,6 +2199,43 @@
     // Shows `root` as a page of its own inside Halaxy: it covers the whole content area between
     // the side menu, the top bar and the footer, whatever Halaxy page is underneath, and sits
     // below Halaxy's own pop-ups and menus. Returns an unmount function.
+    // Opens one of Halaxy's own pop-ups (Edit task, add task...) the way its own links do: a link carrying Halaxy's
+    // "ajax" behaviour class, clicked. The one deliberate use of a behaviour class (CH, 23 Nov 2026: Halaxy's own
+    // pop-up is the native way to edit, with its date picker, assignees and search), so Halaxy's code acting on it is
+    // the point. onClose runs once the pop-up has opened and closed. Halaxy may instead reload the page (it answers
+    // some saves with REFRESH and an address): halaxyPopupReturn() then gives the page (#hash) that opened it.
+    // Returns false if no pop-up opened within 5 seconds.
+    halaxyPopup(path, onClose) {
+      return new Promise((resolve) => {
+        const a = document.createElement('a');
+        a.className = 'ajax';
+        a.href = url(path);
+        a.style.display = 'none';
+        a.setAttribute('data-upc-halaxy-popup', '');
+        document.body.appendChild(a);
+        try { sessionStorage.setItem('upc-halaxy-popup', JSON.stringify({ at: Date.now(), from: location.hash })); } catch (e) { /* fine */ }
+        let seen = false;
+        const t0 = Date.now();
+        const isOpen = () => !!document.querySelector('.bootbox');
+        const done = (ok) => { mo.disconnect(); clearInterval(timer); a.remove(); resolve(ok); };
+        const look = () => {
+          if (isOpen()) { if (!seen) { seen = true; } return; }
+          if (seen) { done(true); if (onClose) onClose(); } else if (Date.now() - t0 > 5000) { try { sessionStorage.removeItem('upc-halaxy-popup'); } catch (e) { /* fine */ } done(false); }
+        };
+        const mo = new MutationObserver(look);
+        mo.observe(document.body, { childList: true, subtree: true });
+        const timer = setInterval(look, 500);
+        const $ = window.jQuery;
+        if ($ && $.fn) $(a).trigger('click'); else a.click();
+      });
+    },
+    halaxyPopupReturn() {
+      try {
+        const v = JSON.parse(sessionStorage.getItem('upc-halaxy-popup') || 'null');
+        sessionStorage.removeItem('upc-halaxy-popup');
+        return v && Date.now() - v.at < 10 * 60e3 ? v.from : null;
+      } catch (e) { return null; }
+    },
     mountPage(title, root, menuCls) {
       const undo = [];
       const shell = document.createElement('div');
@@ -2238,6 +2278,15 @@
         shell.style.right = '0';
         shell.style.bottom = Math.round(footerHeight()) + 'px';
       };
+      // Halaxy's page underneath must not scroll while ours is shown: it would slide up under the top bar (CH,
+      // 23 Nov 2026). Its scroll position is put back when ours closes; our page scrolls on its own and doesn't hand
+      // the scroll on to Halaxy's when it reaches the end.
+      const scrollY = window.scrollY, html = document.documentElement, body = document.body;
+      const oldHtml = html.style.overflow, oldBody = body.style.overflow;
+      window.scrollTo(0, 0);
+      html.style.overflow = 'hidden'; body.style.overflow = 'hidden';
+      shell.style.overscrollBehavior = 'contain';
+      undo.push(() => { html.style.overflow = oldHtml; body.style.overflow = oldBody; window.scrollTo(0, scrollY); });
       place();
       window.addEventListener('resize', place);
       undo.push(() => window.removeEventListener('resize', place));

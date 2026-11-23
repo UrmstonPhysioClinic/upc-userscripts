@@ -5,7 +5,7 @@ Checks: one Unpaid Invoices report from 2000; one row per invoice with its balan
 6 months old and paid-off ones left out; "Over 6 years" and "6 months to 6 years" cards with counts and totals;
 Write off asks first, then sets the invoice's status to Write-off in its settings (every other field as Halaxy filled
 it); a second Write off pressed straight away waits its turn ("Queued"); the page kit (title bar, search, sorting,
-Show 50 more); ticking rows and "Write off 2" asks once and queues both; only CH sees the page; Halaxy look.
+Show 25 more); ticking rows and "Write off 2" asks once and queues both; only CH sees the page; Halaxy look.
 
 Run:  python3 tests/old-balances/test_old_balances.py
 """
@@ -115,7 +115,7 @@ async def main():
         vis = "[...document.querySelectorAll('[data-upc-list=mid] tbody tr')].filter((tr) => tr.style.display !== 'none').map((tr) => tr.cells[1].textContent.trim())"
         shown = await pg.evaluate(vis)
         more = await pg.evaluate("(document.querySelector('[data-upc-more=mid]') || {}).textContent")
-        check('a long list shows 50 rows, then "Show 11 more"', len(shown) == 50 and more == 'Show 11 more', (len(shown), more))
+        check('a long list shows 25 rows, then "Show 25 more"', len(shown) == 25 and more == 'Show 25 more', (len(shown), more))
         await pg.fill('input[data-upc-search=mid]', 'X2007')
         shown = await pg.evaluate(vis)
         cnt = await pg.evaluate("document.querySelector('[data-upc-list=mid]').previousElementSibling.querySelector('[data-upc-count]').textContent")
