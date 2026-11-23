@@ -135,7 +135,7 @@
     {
       "file": "record-retention.user.js",
       "name": "UPC Patients: Record retention (beta)",
-      "version": "0.1.2"
+      "version": "0.1.3"
     },
     {
       "file": "remittances.user.js",

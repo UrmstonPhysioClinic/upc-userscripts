@@ -80,12 +80,12 @@ async def halaxy(route):
     p = urllib.parse.urlparse(req.url).path
     if p.endswith('/patient/list-data') and req.method == 'POST':
         b = json.loads(req.post_data or '{}')
-        if not b.get('filterModel'):
-            S['lists'].append((b['startRow'], b['endRow']))
-        allp = [dict(x, status=S['status'].get(x['id'], x['status']).title()) for x in PATIENTS]
+        S['lists'].append((b['startRow'], b['endRow']))
+        # Halaxy leaves Deleted patients out of the list, whatever the filter (live, 23 Nov 2026).
+        allp = [dict(x, status=S['status'].get(x['id'], x['status'].lower())) for x in PATIENTS]
+        allp = [x for x in allp if x['status'].lower() != 'deleted']
         if b.get('filterModel', {}).get('status'):
             S['filtered'] += 1
-            allp = [x for x in allp if x['status'].lower() == 'deleted']
         rows = allp[b['startRow']:b['endRow']]
         return await route.fulfill(body=json.dumps({'rowData': rows, 'lastRow': len(allp)}), content_type='application/json')
     if p.endswith('/report/patient/0'):
@@ -173,7 +173,7 @@ async def main():
         check('the batch bar in the line under the title bar', bool(bq) and bq.startswith('Setting to Deleted ('), bq)
         await pg.wait_for_function("[...document.querySelectorAll('[data-upc-record-retention] tbody tr .upc-ok')].length === 2", timeout=30000)
         check('one Update patient status for both, with every practitioner pairing; the Case Load report read once', S['bulk'] == [('deleted', ['50101', '50104', '60101'], 'B')] and S['caseloads'] == 1 and not S['posts'], (S['bulk'], S['caseloads']))
-        check('then the Deleted patients read back', S['filtered'] >= 1, S['filtered'])
+        check('then the patient list read again (Deleted patients drop out of it)', S['lists'][2:] == [(0, 100), (100, 200)] and not S['filtered'], (S['lists'], S['filtered']))
         await pg.wait_for_function("document.querySelector('.upc-toast')", timeout=10000)
         msg = await pg.evaluate("document.querySelector('.upc-toast').textContent")
         check('a toast when the batch is over', msg == '2 set to Deleted.', msg)

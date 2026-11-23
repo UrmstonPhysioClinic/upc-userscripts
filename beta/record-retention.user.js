@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Record retention (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.2
+// @version      0.1.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/record-retention.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/record-retention.user.js
@@ -38,7 +38,7 @@
   if (window.__hxRecordRetention) return;
   window.__hxRecordRetention = true;
 
-  const VERSION = '0.1.2';
+  const VERSION = '0.1.3';
   const ROUTE = 'upc-record-retention';
   const MENU_CLS = 'upc-rr8-menu';
   const FRESH = 24 * 3600e3;
@@ -137,8 +137,8 @@
   // Patients go to Halaxy in batches of 50 through the Case Load report's Update patient status (core
   // UPC.patient.setStatusMany; CH, 23 Nov 2026: 875 at once would otherwise be about 2,600 requests). The report gives
   // each patient's practitioner pairings (read once). A patient not in it is changed on their own Edit page. When the
-  // queue is empty, the Deleted patients are read from the patient list, and each patient sent shows Deleted or
-  // Not changed by what Halaxy now says.
+  // queue is empty, the patient list is read again: Deleted patients drop out of it, so each patient sent shows Deleted
+  // (gone, or shown as Deleted) or Not changed.
 
   const state = { unmount: null, running: false, status: '', error: '', errors: [], failed: 0 };
   const done = new Map();   // patient id -> 'ok' | error text
@@ -186,10 +186,12 @@
     checking = true;
     render();
     try {
-      const rows = await U().patient.listAll(null, { status: { filterType: 'text', type: 'contains', filter: 'Deleted' } });
-      const gone = new Set(rows.filter((r) => /^deleted$/i.test(String(r.status || '').replace(/<[^>]*>/g, ' ').trim())).map((r) => String(r.id)));
+      // Halaxy's patient list leaves Deleted patients out, even when asked for them (live, 23 Nov 2026): a patient sent
+      // who is no longer in it, or shows as Deleted, has been changed.
+      const rows = await U().patient.listAll(null);
+      const now = new Map(rows.map((r) => [String(r.id), String(r.status || '').replace(/<[^>]*>/g, ' ').trim()]));
       let missed = 0;
-      sent.forEach((id) => { if (gone.has(id)) done.set(id, 'ok'); else { fail(id, 'Halaxy still shows the old status'); missed += 1; } });
+      sent.forEach((id) => { if (!now.has(id) || /^deleted$/i.test(now.get(id))) done.set(id, 'ok'); else { fail(id, 'Halaxy still shows the old status'); missed += 1; } });
       if (missed) state.errors.push('Not changed: ' + missed + ' patient' + (missed === 1 ? '' : 's') + ' (Halaxy still shows the old status). Check now lists them again.');
     } catch (e) {
       sent.forEach((id) => fail(id, 'not checked'));
@@ -248,7 +250,7 @@
         const act = q === 'busy' ? U().ui.run.inline('') : q === 'queued' ? 'Queued' : d === 'ok' ? '<span class="upc-ok">Deleted</span>' : d ? '<span class="upc-err">Not changed</span>' : '';
         const when = never ? x.created : x.last;
         return '<tr data-upc-id="' + esc(x.id) + '"' + (q || d === 'ok' ? ' data-upc-nopick' : '') + '><td><a href="' + esc(base + '/patient/' + x.id) + '" target="_blank" rel="noopener">' + esc(x.name) + '</a></td>' +
-          '<td>' + esc(x.status) + '</td><td class="upc-ret-date">' + esc(label(x.dob)) + '</td><td class="upc-ret-date">' + esc(label(when)) + '</td>' +
+          '<td>' + esc(x.status.charAt(0).toUpperCase() + x.status.slice(1)) + '</td><td class="upc-ret-date">' + esc(label(x.dob)) + '</td><td class="upc-ret-date">' + esc(label(when)) + '</td>' +
           '<td class="upc-ret-date">' + esc(x.group === 'due' || x.group === 'never' ? label(x.until) : '') + '</td><td class="upc-ret-act">' + act + '</td></tr>';
       }).join('') + '</tbody></table>';
   }
