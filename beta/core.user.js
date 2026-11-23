@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.75
+// @version      0.1.76
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.75';
+  const VERSION = '0.1.76';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -1701,12 +1701,14 @@
     // Halaxy's whole patient list (POST /patient/list-data, Patients > Patient List), read in blocks of 100. Rows:
     // id (linkPaGId), givenName, preferredName, surname, patientNum, status, created, dateOfBirth, lastAppointment,
     // nextAppointment (as the retired Custom Reports read them). say(text) gets "(300 of about 4200)" for a progress bar.
-    async listAll(say) {
+    // filterModel narrows it as the list's own filters do (e.g. { status: { filterType: 'text', type: 'contains',
+    // filter: 'Deleted' } }); callers still check each row, in case Halaxy ignores it.
+    async listAll(say, filterModel) {
       const rows = [];
       let start = 0, total = null;
       for (;;) {
         if (say) say('Reading the patient list' + (total ? ' (' + Math.min(start, total) + ' of about ' + total + ')' : '') + '...');
-        const j = await http.list('/patient/list-data', {}, [], start, start + 100);
+        const j = await http.list('/patient/list-data', filterModel || {}, [], start, start + 100);
         const got = j && Array.isArray(j.rowData) ? j.rowData : null;
         if (!got) throw new UPCError('The patient list has changed, so it could not be read.');
         if (typeof j.lastRow === 'number' && j.lastRow >= 0) total = j.lastRow;
@@ -1718,6 +1720,59 @@
         throw new UPCError('The patient list has changed (last or next appointment, or status, not found).');
       }
       return rows;
+    },
+    // Halaxy's Case Load report (Reports > Patient, type 13; capture 23 Nov 2026), every status and practitioner: one
+    // table row per patient and practitioner, with a tick box input[name=link-pr-pa-g] valued with that pairing's number
+    // (a linkPrPaG, not the patient's own number) and a link to the patient (/patient/{linkPaGId}).
+    // Returns Map linkPaGId -> [linkPrPaG, ...].
+    async caseLoad() {
+      const keys = ['referralDateStart', 'referralDateStop', 'start', 'stop', 'date-range-expiry', 'patientFormExpiryFrom', 'patientFormExpiryTo', 'dateRangePatientFormExpiry',
+        'patientFormSentFrom', 'patientFormSentTo', 'dateRangePatientFormSent', 'noteStatus', 'referralRecipient', 'referralLimitType', 'referralLimitOperator', 'referralLimit',
+        'altDate', 'dayMonthStartDay', 'dayMonthStartMonth', 'dayMonthStopDay', 'dayMonthStopMonth', 'daysSince', 'daysSinceUnit', 'appointmentOffsetOperator',
+        'appointmentOffsetAmount', 'appointmentOffsetUnit', 'appointmentOffsetTense', 'checkFuture', 'appointmentCount', 'minAge', 'maxAge', 'patientStatus', 'patient',
+        'organisation', 'linkSpecialistClinic', 'accessStatus', 'pr', 'medicareDvaFunder', 'medicareVerificationStatus', 'clinic', 'introSource', 'appointmentSource', 'campaign',
+        'internal-campaign', 'cstat', 'ctype', 'rstat', 'sstat', 'estat', 'faxDirection', 'phoneDirection', 'faxStatus', 'rtype', 'etype', 'rstype', 'clinicalQuestion',
+        'clinicalQuestionOperator', 'clinicalQuestionValue', 'clinicalQuestionDateValue', 'clinicalQuestionLookupAnswer', 'nextApptStart', 'nextApptStop', 'nextApptAltDate',
+        'nextApptDaysSince', 'nextApptDaysSinceUnit'];
+      const p = new URLSearchParams([['type', '13']].concat(keys.map((k) => [k, k === 'referralLimitType' ? 'appointment' : k === 'appointmentSource' ? '0' : ''])));
+      const read = async () => {
+        const doc = await http.html('/report/patient/0?' + p.toString() + '&clicked=' + Date.now());
+        return [...doc.querySelectorAll('input[name="link-pr-pa-g"]')];
+      };
+      let boxes = await read();
+      if (!boxes.length) { await sleep(20000); boxes = await read(); }   // a big report can take Halaxy a moment
+      if (!boxes.length) throw new UPCError('Halaxy\'s Case Load report has changed (no patient tick boxes found).');
+      const map = new Map();
+      boxes.forEach((b) => {
+        const row = b.closest('tr');
+        const a = row && row.querySelector('a[href*="/patient/"]');
+        const id = a ? (a.getAttribute('href').match(/\/patient\/(\d+)/) || [])[1] : null;
+        if (!id || !/^\d+$/.test(b.value)) return;
+        if (!map.has(id)) map.set(id, []);
+        if (!map.get(id).includes(b.value)) map.get(id).push(b.value);
+      });
+      if (!map.size) throw new UPCError('Halaxy\'s Case Load report has changed (no patient links by its tick boxes).');
+      return map;
+    },
+    // Changes the status of many patients at once, as the Case Load report's Actions > Update patient status does
+    // (capture 23 Nov 2026): GET /patient/bulk-update-status/LinkPaG?linkPrPaGs[]=... gives form#patient-bulk-update
+    // (form[_token], select form[patientStatus] valued by lower-case name, select form[linkPrPaGs][] of the pairings
+    // asked for); POST it back, answered REFRESH. Callers read the patients back to see which changed.
+    async setStatusMany(linkPrPaGs, status) {
+      if (!linkPrPaGs.length) return;
+      const q = linkPrPaGs.map((x) => 'linkPrPaGs%5B%5D=' + encodeURIComponent(x)).join('&');
+      const { doc } = await http.popup('/patient/bulk-update-status/LinkPaG?' + q);
+      const form = doc.querySelector('form#patient-bulk-update');
+      const token = form && form.querySelector('[name="form[_token]"]');
+      const sel = form && form.querySelector('select[name="form[patientStatus]"]');
+      const ids = form ? [...form.querySelectorAll('select[name="form[linkPrPaGs][]"] option')].map((o) => o.value) : [];
+      if (!token || !sel) throw new UPCError('Halaxy\'s Update patient status pop-up has changed, so nothing was changed.');
+      const opt = [...sel.options].find((o) => o.value.toLowerCase() === String(status).toLowerCase());
+      if (!opt) throw new UPCError('There is no "' + status + '" status in Halaxy\'s list, so nothing was changed.');
+      const missing = linkPrPaGs.filter((x) => !ids.includes(String(x)));
+      if (missing.length) throw new UPCError('Halaxy\'s Update patient status pop-up did not list ' + missing.length + ' of the patients, so nothing was changed.');
+      const pairs = [['form[_token]', token.value], ['form[patientStatus]', opt.value]].concat(linkPrPaGs.map((x) => ['form[linkPrPaGs][]', String(x)]));
+      http.expectRefresh(await http.postForm('/patient/bulk-update-status/LinkPaG', pairs), 'The status change');
     },
     // The cards on a patient's Funding tab (/patient/{linkPaGId}/funding, a page; capture 23 Nov 2026): each card's delete
     // link a.deleteCreditCardBtn /patient/{linkPaGId}/creditcard/{card}/delete, near its number XXXX-XXXX-XXXX-1234.

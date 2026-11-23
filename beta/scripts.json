@@ -14,7 +14,7 @@
     {
       "file": "core.user.js",
       "name": "UPC System: Core library (beta)",
-      "version": "0.1.75"
+      "version": "0.1.76"
     },
     {
       "file": "alerts.user.js",
@@ -135,7 +135,7 @@
     {
       "file": "record-retention.user.js",
       "name": "UPC Patients: Record retention (beta)",
-      "version": "0.1.1"
+      "version": "0.1.2"
     },
     {
       "file": "remittances.user.js",

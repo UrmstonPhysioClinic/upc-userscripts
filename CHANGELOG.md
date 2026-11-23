@@ -1,5 +1,9 @@
 # Changelog
 
+## Record retention 0.1.2, core 0.1.76, 23 Nov 2026 (beta)
+- Record retention sends patients to Halaxy in batches of 50 through the Case Load report's Update patient status (CH, 23 Nov 2026: 875 due, which one at a time would be about 2,600 requests), then reads the Deleted patients back and shows each as Deleted or Not changed. "Set all N to Deleted" on Due. A patient not in the Case Load report is changed on their own Edit page.
+- Core: UPC.patient.caseLoad (Case Load report, type 13: patient to practitioner pairings) and setStatusMany (/patient/bulk-update-status/LinkPaG); UPC.patient.listAll takes a filter.
+
 ## Stored cards 0.1.0 (new), Arrived button 0.1.0 (new), Record retention 0.1.1, core 0.1.75, Health check 1.1.60, 23 Nov 2026 (beta)
 - New: Patients > Stored cards (CH). Cards on file that are no longer needed: nothing booked, no unpaid invoice of the patient's own, no unpaid insurer invoice in their name, last appointment at least 28 days ago (Clinic settings). Tick and "Remove N": asked once, then each card removed through Halaxy's Delete credit card pop-up, one at a time, and checked. Read from Halaxy's Credit Card Expiry report, the patient list and the Unpaid Invoices report.
 - New: Arrived button. "Arrived" at the top of an appointment's right-click menu (it uses Halaxy's own Update status > Arrived), and an "Arrived" button in its sidebar, for appointments today that are Booked or Confirmed.
