@@ -2,7 +2,7 @@
 Test for Script settings (beta/script-settings.user.js) with the real loader and core library.
 
 Checks: "Script settings" sits in Halaxy's account menu above Log Out; scripts' options are listed in
-its pop-up (grouped by script) and run from there; they stay out of the Tampermonkey menu, while the
+its page (a card per script, Options tab) and run from there; they stay out of the Tampermonkey menu, while the
 loader's own entry stays; the scripts on this PC with their versions; switching a script off, stable
 or beta, checking for updates; the Halaxy look; without the account menu the Tampermonkey menu is used.
 
@@ -91,37 +91,44 @@ async def main():
         check('scripts\' options left out of the Tampermonkey menu; the loader\'s own entry stays', tm == ['UPC scripts: settings and updates'], tm)
 
         await pg.click('.upc-script-settings')
-        await pg.wait_for_selector('[data-upc-dialog="upc-script-settings"] table')
-        root = "document.querySelector('[data-upc-dialog=\"upc-script-settings\"]')"
-        groups = await pg.evaluate("[..." + root + ".querySelectorAll('.upc-ss-group')].map(g => g.innerText.replace(/\\s+/g, ' ').trim())")
-        check('options grouped under the script name', groups == ['Fixture options Fixture: show results Fixture: on (click to turn off)'], groups)
-        rows = await pg.evaluate("[..." + root + ".querySelectorAll('tbody tr:not(.upc-ss-grp)')].map(r => r.innerText.replace(/\\s+/g, ' ').trim())")
-        check('scripts on this PC with versions', any('Fixture options' in r and '1.0 · running on this page' in r for r in rows) and len(rows) == 3, rows)
-        heads = await pg.evaluate("[..." + root + ".querySelectorAll('tbody tr.upc-ss-grp')].map(r => r.innerText.trim())")
-        check('listed under their groups ("UPC <Group>: <Name>"), shown by name only', heads == ['System', 'Other'] and any(r.startswith('Core library 0.1') for r in rows), (heads, rows))
+        await pg.wait_for_selector('.upc-ss table')
+        root = "document.querySelector('.upc-ss')"
+        page = await pg.evaluate("[location.hash, document.querySelector('.upc-ss .upc-page-bar h1').textContent, [...document.querySelectorAll('.upc-ss .nav-link')].map(a => a.textContent + (a.classList.contains('active') ? '*' : ''))]")
+        check('a page of ours (title bar, tabs), opened on the page that was showing', page[0] == '#upc-script-settings' and page[1] == 'Script settings' and page[2] == ['This PC*', 'Clinic settings', 'Options'], page)
+        rows = await pg.evaluate("[..." + root + ".querySelectorAll('.card tbody tr')].map(r => r.innerText.replace(/\\s+/g, ' ').trim())")
+        check('scripts on this PC with versions', any('Fixture options' in r and '1.0 running on this page' in r for r in rows) and len(rows) == 3, rows)
+        heads = await pg.evaluate("[..." + root + ".querySelectorAll('.card-header h2')].map(r => r.innerText.trim())")
+        check('a card per group ("UPC <Group>: <Name>"), shown by name only', heads == ['This PC', 'System (2)', 'Other (1)'] and any(r.startswith('Core library 0.1') for r in rows), (heads, rows))
         look = await pg.evaluate("(() => { const r = " + root + "; return { native: r.classList.contains('upc-native'), shadow: !!r.shadowRoot, table: r.querySelector('table').className,"
                                  " radio: [...r.querySelectorAll('input[name=upc-ss-chan]')].filter(x => x.checked).map(x => x.value) }; })()")
         check('Halaxy look, stable ticked', look['native'] and not look['shadow'] and look['table'].startswith('table table-striped table-bordered') and look['radio'] == ['stable'], look)
 
-        await pg.click('[data-upc-dialog="upc-script-settings"] [data-item]')
-        check('an option runs from the pop-up', await pg.evaluate('window.__fixtureRan === 1') and await pg.evaluate("!" + root))
+        await pg.click('.upc-ss [data-a=options]')
+        groups = await pg.evaluate("[..." + root + ".querySelectorAll('.card')].map(g => g.innerText.replace(/\\s+/g, ' ').trim())")
+        check('options: a card per script', groups == ['Fixture options (2) Fixture: show results Fixture: on (click to turn off)'], groups)
+        await pg.click('.upc-ss [data-item]')
+        check('an option runs from the page', await pg.evaluate('window.__fixtureRan === 1'))
 
-        await pg.click('.upc-script-settings')
-        await pg.wait_for_selector('[data-upc-dialog="upc-script-settings"] table')
-        await pg.click('[data-upc-dialog="upc-script-settings"] input[data-file="fixture.user.js"]')
-        await pg.wait_for_selector('[data-upc-dialog="upc-script-settings"] .upc-warn')
+        await pg.click('.upc-ss [data-a=pc]')
+        await pg.wait_for_selector('.upc-ss input[data-file="fixture.user.js"]')
+        await pg.click('.upc-ss input[data-file="fixture.user.js"]')
+        await pg.wait_for_selector('.upc-ss .upc-warn')
         off = await pg.evaluate("JSON.parse(localStorage.getItem('upc-loader:off'))")
-        check('switching a script off is saved and asks for a refresh', off == {'fixture.user.js': True}, off)
-        await pg.click('[data-upc-dialog="upc-script-settings"] input[data-file="fixture.user.js"]')
-        await pg.check('[data-upc-dialog="upc-script-settings"] input[value=beta]')
+        refresh = await pg.evaluate("!!document.querySelector('.upc-ss .upc-page-actions [data-a=reload]')")
+        check('switching a script off is saved and asks for a refresh', off == {'fixture.user.js': True} and refresh, (off, refresh))
+        await pg.click('.upc-ss input[data-file="fixture.user.js"]')
+        await pg.check('.upc-ss input[value=beta]')
         await pg.wait_for_timeout(300)
         chan = await pg.evaluate("JSON.parse(localStorage.getItem('upc-loader:channel'))")
         check('beta chosen', chan == 'beta', chan)
-        await pg.check('[data-upc-dialog="upc-script-settings"] input[value=stable]')
+        await pg.check('.upc-ss input[value=stable]')
         await pg.wait_for_timeout(300)
-        await pg.click('[data-upc-dialog="upc-script-settings"] [data-a=check]')
-        await pg.wait_for_function(root + ".innerText.includes('Everything is up to date.')", timeout=20000)
+        await pg.click('.upc-ss [data-a=check]')
+        await pg.wait_for_function("[...document.querySelectorAll('.upc-toast')].some(t => t.textContent.includes('Everything is up to date.'))", timeout=20000)
         check('check for updates', True)
+        await pg.click('.upc-ss [data-a=close]')
+        gone = await pg.evaluate("[!!document.querySelector('.upc-ss'), location.hash, document.querySelector('h1').textContent]")
+        check('Close: back to the page underneath', gone == [False, '', 'Calendar'], gone)
         check('no page errors', not errors, errors)
         await ctx.close()
 

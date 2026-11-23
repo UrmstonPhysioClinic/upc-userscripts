@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.73
+// @version      0.1.74
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.73';
+  const VERSION = '0.1.74';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -2778,7 +2778,7 @@
   // An empty list is kept in the note as "none".
   const CARL = 'Carl Healy', WENDY = 'Wendy Pritchard';
   const CLINIC_SETTINGS = [
-    { key: 'readyToBill.maxExcess', script: 'Ready to bill', label: 'Highest excess to believe', unit: '£', def: 500, min: 50, max: 5000 },
+    { key: 'readyToBill.maxExcess', script: 'Ready to bill', label: 'Ignore an excess over', unit: '£', def: 500, min: 50, max: 5000 },
     { key: 'readyToBill.rollingDays', script: 'Ready to bill', label: 'Bill once the oldest unbilled fee is', unit: 'days old', def: 28, min: 7, max: 90 },
     { key: 'readyToBill.soonDays', script: 'Ready to bill', label: 'Unless the next appointment is within', unit: 'days', def: 7, min: 0, max: 28 },
     { key: 'readyToBill.quietDays', script: 'Ready to bill', label: 'Bill when nothing is booked and no visit for', unit: 'days', def: 14, min: 3, max: 90 },
@@ -2827,12 +2827,12 @@
     { key: 'forecourtLights.offTime', script: 'Forecourt lights', label: 'Lights off at', type: 'time', def: '20:45', min: '17:00', max: '23:45' },
     { key: 'forecourtLights.offset', script: 'Forecourt lights', label: 'Lights on before sunset', unit: 'minutes', def: 30, min: 0, max: 120 },
     { key: 'forecourtLights.noticeTime', script: 'Forecourt lights', label: 'Show the reminder from', type: 'time', def: '09:00', min: '06:00', max: '20:00' },
-    { key: 'forecourtLights.skip', script: 'Forecourt lights', label: 'Dates to skip (bank holidays, closures)', type: 'dates', def: [] },
+    { key: 'forecourtLights.skip', script: 'Forecourt lights', label: 'Dates to skip', type: 'dates', def: [] },
     { key: 'scheduleExcess.template', script: 'Schedule excess', label: 'Email template', type: 'text', def: 'Chase - Excess Due', max: 80, re: /^[^<>\[\]]+$/ },
-    { key: 'portalFill.payee', script: 'Portal fill (AXA payee details)', label: 'Name of payee', type: 'text', def: 'Urmston Physio Clinic', max: 60, re: /^[A-Za-z0-9][A-Za-z0-9 &'.,()-]*$/ },
-    { key: 'portalFill.providerCode', script: 'Portal fill (AXA payee details)', label: 'AXA provider code', type: 'text', def: 'ZZ03779', max: 20, re: /^[A-Za-z0-9]+$/ },
-    { key: 'portalFill.email', script: 'Portal fill (AXA payee details)', label: 'Payee email address', type: 'text', def: 'admin@urmstonphysioclinic.com', max: 80, re: /^[^\s@,]+@[^\s@,]+\.[A-Za-z]{2,}$/ },
-    { key: 'portalFill.phone', script: 'Portal fill (AXA payee details)', label: 'Payee phone number', type: 'text', def: '01617484100', max: 20, re: /^\+?[0-9 ()]{6,20}$/ },
+    { key: 'portalFill.payee', script: 'Portal fill: AXA payee', label: 'Name of payee', type: 'text', def: 'Urmston Physio Clinic', max: 60, re: /^[A-Za-z0-9][A-Za-z0-9 &'.,()-]*$/ },
+    { key: 'portalFill.providerCode', script: 'Portal fill: AXA payee', label: 'AXA provider code', type: 'text', def: 'ZZ03779', max: 20, re: /^[A-Za-z0-9]+$/ },
+    { key: 'portalFill.email', script: 'Portal fill: AXA payee', label: 'Payee email address', type: 'text', def: 'admin@urmstonphysioclinic.com', max: 80, re: /^[^\s@,]+@[^\s@,]+\.[A-Za-z]{2,}$/ },
+    { key: 'portalFill.phone', script: 'Portal fill: AXA payee', label: 'Payee phone number', type: 'text', def: '01617484100', max: 20, re: /^\+?[0-9 ()]{6,20}$/ },
     { key: 'calendar.order', script: 'Calendar', label: 'Column order for All practitioners', type: 'order', def: ['Roxanna Healy', CARL, 'Diana Satalova', 'Stephen Sharples'] },
     { key: 'calendar.hideProfessions', script: 'Calendar', label: 'Professions left out of All practitioners', type: 'words', def: ['Administrator'] },
     // Per person (CH, 15 Nov 2026: settings follow the account, not the PC; only CH changes them). Until saved here,
