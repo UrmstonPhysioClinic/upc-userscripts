@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Patient forms (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.6
+// @version      0.1.7
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-forms.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-forms.user.js
@@ -51,7 +51,7 @@
   if (window.__hxPatientForms) return;
   window.__hxPatientForms = true;
 
-  const VERSION = '0.1.6';
+  const VERSION = '0.1.7';
   // Sending and reminders held (0.1.1): 0.1.0 read the form history as a table, but Halaxy lays it out in divs (live,
   // 17 Nov 2026), so it saw no forms and sent Progress Updates the campaign had already sent. 0.1.2 reads the divs and
   // stops if any sent form can't be read. While held, Check now works out what would happen (reads only).
@@ -213,7 +213,7 @@
     const formId = pick(sf.forms, c.form), templateId = pick(sf.templates, c.template);
     if (!formId) throw new (U().Error)('"' + c.form + '" is not in the Send Patient form list.');
     if (!templateId) throw new (U().Error)('No "' + c.template + '" template in Halaxy\'s communication templates.');
-    if (!sf.to) throw new (U().Error)('No email address for ' + a.name + '.');
+    if (!sf.to) return 'noemail ' + now;   // looked at again in an hour (Missing details lists them)
     const pracName = (await lookups()).pracs.get(a.pracId) || '';
     const sender = pick(sf.senders, pracName);
     if (!pracName || !sender) throw new (U().Error)('The practitioner for ' + a.name + '\'s appointment isn\'t in the Sender list.');
@@ -254,6 +254,7 @@
     if (h.completed) return 'done';
     if (h.sent > chaseTime(a.start) - 6 * 3600e3) return 'late';     // sent after midday: a reminder that evening would only crowd it
     if (!h.link) return 'nolink';
+    if (!sf.to) return 'noemail ' + now;   // no email address now (CH, 23 Nov 2026): looked at again in an hour
     const due = chaseTime(a.start);
     const pracName = (await lookups()).pracs.get(a.pracId) || '';
     const templateId = pick(sf.templates, TEMPLATE_FOR(h.form));
@@ -328,7 +329,7 @@
         const due = list.filter((a) => {
           const v = val('a.' + a.id);
           if (/^(had|sent|sched|none|skip|check)/.test(v)) return false;
-          if (/^(wait|fail) (\d+)/.test(v) && now - Number(v.split(' ')[1]) < (v.startsWith('fail') ? 60 : 30) * MIN) return false;
+          if (/^(wait|fail|noemail) (\d+)/.test(v) && now - Number(v.split(' ')[1]) < (v.startsWith('wait') ? 30 : 60) * MIN) return false;
           return mode === 'all' || sendTime(a.start) <= now;
         });
         const mine = due.length ? await sh.claim(due.slice(0, PER_RUN).map((a) => 'a.' + a.id)) : [];
@@ -344,7 +345,7 @@
         const toSchedule = tomorrow.filter((a) => {
           const v = val('r.' + a.id);
           if (/^(sched|done|nolink|late|cancelled|check)/.test(v)) return false;
-          if (/^fail (\d+)/.test(v) && now - Number(v.split(' ')[1]) < 60 * MIN) return false;
+          if (/^(fail|noemail) (\d+)/.test(v) && now - Number(v.split(' ')[1]) < 60 * MIN) return false;
           return now >= sendTime(a.start) + 15 * MIN;   // the form has had time to go
         }).slice(0, Math.max(0, PER_RUN - done));
         const mineR = toSchedule.length ? await sh.claim(toSchedule.map((a) => 'r.' + a.id)) : [];
@@ -423,6 +424,7 @@
     if (/^wait/.test(v)) return 'Waiting for a fee';
     if (v === 'none') return 'No form for this fee';
     if (v === 'skip') return 'Not sending';
+    if (/^noemail/.test(v)) return 'No email address';
     if (/^fail/.test(v)) return 'Not sent yet';
     const due = sendTime(a.start);
     return due > Date.now() ? 'Due ' + when(due) + (MODE() === 'late' ? ' (campaign)' : '') : '';
@@ -434,6 +436,7 @@
     if (v === 'done') return 'Filled in';
     if (v === 'cancelled') return 'Reminder cancelled';
     if (v === 'nolink') return 'No link to send';
+    if (/^noemail/.test(v)) return 'No email address';
     if (v === 'late') return 'No reminder';
     if (/^check/.test(v)) return 'Check in Halaxy';
     if (v === 'would') return 'Would remind at ' + hhmm(chaseTime(a.start));
