@@ -2,6 +2,7 @@
 
 ## Record retention 0.1.2, core 0.1.76, 23 Nov 2026 (beta)
 - Record retention sends patients to Halaxy in batches of 50 through the Case Load report's Update patient status (CH, 23 Nov 2026: 875 due, which one at a time would be about 2,600 requests), then reads the Deleted patients back and shows each as Deleted or Not changed. "Set all N to Deleted" on Due. A patient not in the Case Load report is changed on their own Edit page.
+- Stored cards: the cards on a Funding tab are found by their Remove credit card link's address (Halaxy gives every such link the same id, not a class, so none were found and nothing was removed; live, 23 Nov 2026).
 - Core: UPC.patient.caseLoad (Case Load report, type 13: patient to practitioner pairings) and setStatusMany (/patient/bulk-update-status/LinkPaG); UPC.patient.listAll takes a filter.
 
 ## Stored cards 0.1.0 (new), Arrived button 0.1.0 (new), Record retention 0.1.1, core 0.1.75, Health check 1.1.60, 23 Nov 2026 (beta)

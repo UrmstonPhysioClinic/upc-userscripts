@@ -78,9 +78,10 @@ def funding(pid):
     cards = next((c for p in PEOPLE if p[0] == pid for c in [p[7]]), [])
     left = [c for c in cards if c[0] not in S['deleted'] and c[0] not in S['vanished']]
     items = ''.join("<div class='card'><div class='card-body'><div>Visa</div><div>Number XXXX-XXXX-XXXX-%s</div><div>Expiry %s</div>"
-                    "<a class='ajax' href='/a/pr/555/patient/linkpag/%d/creditcard/%d'>Edit</a><a class='deleteCreditCardBtn ajax' href='/a/pr/555/patient/%d/creditcard/%d/delete'>Delete</a></div></div>"
+                    "<a id='replaceCardBtn' class='ajax btn icon' href='/a/pr/555/patient/linkpag/%d/creditcard/%d'><i></i></a><a id='deleteCreditCardBtn' class='ajax btn icon' title='Remove credit card' href='/a/pr/555/patient/%d/creditcard/%d/delete'><i class='icon-trash'></i></a></div></div>"
                     % (last4, exp, pid, cid, pid, cid) for cid, last4, typ, exp in left)
-    return "<html><body><div id='pageContent'><h1>Funding</h1>%s</div></body></html>" % items
+    return ("<html><body><div id='pageContent'><h1>Funding</h1>%s<a id='createCreditCardDetailsBtn' class='btn btn-outline-primary-light ajax' href='/a/pr/555/patient/linkpag/%d/creditcard'>Add card</a></div></body></html>"
+            % (items, pid))
 
 
 def page_html(user):

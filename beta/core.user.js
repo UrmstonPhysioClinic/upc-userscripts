@@ -1775,12 +1775,15 @@
       http.expectRefresh(await http.postForm('/patient/bulk-update-status/LinkPaG', pairs), 'The status change');
     },
     // The cards on a patient's Funding tab (/patient/{linkPaGId}/funding, a page; capture 23 Nov 2026): each card's delete
-    // link a.deleteCreditCardBtn /patient/{linkPaGId}/creditcard/{card}/delete, near its number XXXX-XXXX-XXXX-1234.
+    // link (a#deleteCreditCardBtn, "Remove credit card") /patient/{linkPaGId}/creditcard/{card}/delete, in the same
+    // card-body as its number XXXX-XXXX-XXXX-1234.
     // Returns [{ id, last4 }].
     async cards(linkPaGId) {
       const doc = await http.html('/patient/' + encodeURIComponent(linkPaGId) + '/funding');
       if (!doc.querySelector('#pageContent, body')) throw new UPCError('The patient\'s Funding tab could not be read.');
-      return [...doc.querySelectorAll('a.deleteCreditCardBtn[href*="/creditcard/"]')].map((a) => {
+      // Halaxy gives each card's link the same id (a#deleteCreditCardBtn), not a class (live, 23 Nov 2026), so the
+      // links are found by their address.
+      return [...doc.querySelectorAll('a[href*="/creditcard/"]')].filter((a) => /\/creditcard\/\d+\/delete\/?$/.test(a.getAttribute('href').split('?')[0])).map((a) => {
         const id = (a.getAttribute('href').match(/\/creditcard\/(\d+)\/delete/) || [])[1] || null;
         let last4 = '';
         for (let el = a.parentElement, i = 0; el && i < 8 && !last4; el = el.parentElement, i++) last4 = (el.textContent.match(/X{4}-X{4}-X{4}-(\d{4})/i) || [])[1] || '';
