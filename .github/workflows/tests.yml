@@ -18,7 +18,7 @@ jobs:
         group:
           - invoice-funder old-balances branding record-retention
           - portal-fill clinic-settings to-do
-          - bank-statement remittances stored-cards arrived-button
+          - bank-statement remittances cards-on-file arrived-button
           - review-requests loader patient-statuses ready-to-bill rebate-sync
           - alerts block-reporting calendar-controls charge-excess core email-html feedback-alerts forecourt-lights health-check insurer-payments-due missing-details mobile-layout open-ended-patients outstanding-actions patient-forms script-settings task-stamps appointment-reminders
     name: tests (${{ matrix.group }})

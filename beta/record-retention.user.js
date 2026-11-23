@@ -137,8 +137,8 @@
   // Patients go to Halaxy in batches of 50 through the Case Load report's Update patient status (core
   // UPC.patient.setStatusMany; CH, 23 Nov 2026: 875 at once would otherwise be about 2,600 requests). The report gives
   // each patient's practitioner pairings (read once). A patient not in it is changed on their own Edit page. When the
-  // queue is empty, the patient list is read again: Deleted patients drop out of it, so each patient sent shows Deleted
-  // (gone, or shown as Deleted) or Not changed.
+  // queue is empty, the Deleted patients are read (Introduction Source report; the patient list leaves them out), and
+  // each patient sent shows Deleted or Not changed.
 
   const state = { unmount: null, running: false, status: '', error: '', errors: [], failed: 0 };
   const done = new Map();   // patient id -> 'ok' | error text
@@ -186,12 +186,11 @@
     checking = true;
     render();
     try {
-      // Halaxy's patient list leaves Deleted patients out, even when asked for them (live, 23 Nov 2026): a patient sent
-      // who is no longer in it, or shows as Deleted, has been changed.
-      const rows = await U().patient.listAll(null);
-      const now = new Map(rows.map((r) => [String(r.id), String(r.status || '').replace(/<[^>]*>/g, ' ').trim()]));
+      // Halaxy's patient list leaves Deleted patients out (live, 23 Nov 2026), so they are looked for in the one list
+      // that shows them: the Introduction Source report for Deleted patients (core UPC.patient.deletedIds).
+      const gone = await U().patient.deletedIds();
       let missed = 0;
-      sent.forEach((id) => { if (!now.has(id) || /^deleted$/i.test(now.get(id))) done.set(id, 'ok'); else { fail(id, 'Halaxy still shows the old status'); missed += 1; } });
+      sent.forEach((id) => { if (gone.has(id)) done.set(id, 'ok'); else { fail(id, 'Halaxy still shows the old status'); missed += 1; } });
       if (missed) state.errors.push('Not changed: ' + missed + ' patient' + (missed === 1 ? '' : 's') + ' (Halaxy still shows the old status). Check now lists them again.');
     } catch (e) {
       sent.forEach((id) => fail(id, 'not checked'));

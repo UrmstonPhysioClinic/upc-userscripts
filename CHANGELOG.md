@@ -1,8 +1,9 @@
 # Changelog
 
 ## Record retention 0.1.3, 23 Nov 2026 (beta)
-- After a batch, patients are checked against the whole patient list: Halaxy leaves Deleted patients out of it, even when asked for them, so every patient sent showed "Not changed" although Halaxy had changed them (live, 23 Nov 2026). Gone from the list, or shown as Deleted, now counts as done.
+- After a batch, the Deleted patients are read from the Introduction Source report (CH, 23 Nov 2026: the only list that shows them). The patient list leaves Deleted patients out, even when asked for them, so every patient sent showed "Not changed" although Halaxy had changed them (live, 23 Nov 2026). Core UPC.patient.deletedIds.
 - Statuses shown with a capital letter, as Halaxy shows them.
+- Stored cards renamed Cards on file (CH, 23 Nov 2026); core 0.1.77 and Health check names to match.
 
 ## Record retention 0.1.2, core 0.1.76, 23 Nov 2026 (beta)
 - Record retention sends patients to Halaxy in batches of 50 through the Case Load report's Update patient status (CH, 23 Nov 2026: 875 due, which one at a time would be about 2,600 requests), then reads the Deleted patients back and shows each as Deleted or Not changed. "Set all N to Deleted" on Due. A patient not in the Case Load report is changed on their own Edit page.

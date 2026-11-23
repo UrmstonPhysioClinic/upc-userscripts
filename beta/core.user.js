@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.76
+// @version      0.1.77
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.76';
+  const VERSION = '0.1.77';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -1754,6 +1754,27 @@
       if (!map.size) throw new UPCError('Halaxy\'s Case Load report has changed (no patient links by its tick boxes).');
       return map;
     },
+    // Every Deleted patient's linkPaGId, from the Introduction Source report (Reports > Patient, type 12) filtered to
+    // Deleted (CH, 23 Nov 2026: the only list that still shows them; the patient list leaves them out). One request.
+    async deletedIds() {
+      const q = 'type=12&referralDateStart=&referralDateStop=&start=&stop=&date-range-expiry=&patientFormExpiryFrom=&patientFormExpiryTo=&dateRangePatientFormExpiry=' +
+        '&patientFormSentFrom=&patientFormSentTo=&dateRangePatientFormSent=&noteStatus=&referralRecipient=&referralLimitType=appointment&referralLimitOperator=&referralLimit=' +
+        '&altDate=&dayMonthStartMonth=&dayMonthStopMonth=&daysSince=&daysSinceUnit=&appointmentOffsetOperator=&appointmentOffsetAmount=&appointmentOffsetUnit=' +
+        '&appointmentOffsetTense=&checkFuture=&appointmentCount=&minAge=&maxAge=&patientStatus=&patientStatusMulti=deleted&patient=&organisation=&linkSpecialistClinic=' +
+        '&accessStatus=&pr=&medicareDvaFunder=&medicareVerificationStatus=&clinic=&introSource=&appointmentSource=0&campaign=&internal-campaign=&cstat=&ctype=&rstat=' +
+        '&sstat=&estat=&faxDirection=&phoneDirection=&faxStatus=&rtype=&etype=&rstype=&clinicalQuestion=&clinicalQuestionOperator=&clinicalQuestionValue=' +
+        '&clinicalQuestionDateValue=&clinicalQuestionLookupAnswer=&nextApptStart=&nextApptStop=&nextApptAltDate=&nextApptDaysSince=&nextApptDaysSinceUnit=';
+      const doc = await http.html('/report/patient/0?' + q + '&clicked=' + Date.now());
+      const rows = [...doc.querySelectorAll('table tr')];
+      if (!rows.length) throw new UPCError('Halaxy\'s Introduction Source report has changed (no table found).');
+      const ids = new Set();
+      rows.forEach((tr) => {
+        const a = tr.querySelector('a[href*="/patient/"]');
+        const id = a ? (a.getAttribute('href').match(/\/patient\/(\d+)/) || [])[1] : null;
+        if (id && /deleted/i.test(tr.textContent)) ids.add(id);
+      });
+      return ids;
+    },
     // Changes the status of many patients at once, as the Case Load report's Actions > Update patient status does
     // (capture 23 Nov 2026): GET /patient/bulk-update-status/LinkPaG?linkPrPaGs[]=... gives form#patient-bulk-update
     // (form[_token], select form[patientStatus] valued by lower-case name, select form[linkPrPaGs][] of the pairings
@@ -2346,7 +2367,7 @@
 
   // Our menu items, in the order they appear under Halaxy's own in each section.
   const MENU_ORDER = ['To do', 'My tasks', 'Patient forms', 'Review requests', 'Missing details', 'Open-ended recalls',
-    'Record retention', 'Stored cards', 'Ready to bill', 'Remittances', 'Bank statement', 'Insurer payments due', 'Old balances'];
+    'Record retention', 'Cards on file', 'Ready to bill', 'Remittances', 'Bank statement', 'Insurer payments due', 'Old balances'];
 
   const ui = {
     nativeStyles,
@@ -2936,7 +2957,7 @@
     { key: 'missingDetails.backDays', script: 'Missing details', label: 'and those seen in the last', unit: 'days', def: 30, min: 0, max: 180 },
     { key: 'bankStatement.lingerDays', script: 'Bank statement', label: 'Task when a deposit and its remittance are still not matched after', unit: 'days', def: 10, min: 3, max: 60 },
     { key: 'bankStatement.dueFromDay', script: 'Bank statement', label: 'Remind about last month\'s statement from day', unit: 'of the month', def: 15, min: 1, max: 28 },
-    { key: 'storedCards.afterDays', script: 'Stored cards', label: 'Remove a card once the last appointment was', unit: 'days ago', def: 28, min: 7, max: 365 },
+    { key: 'storedCards.afterDays', script: 'Cards on file', label: 'Remove a card once the last appointment was', unit: 'days ago', def: 28, min: 7, max: 365 },
     // People (stage 2, CH 15 Nov 2026). A page's list also decides on whose sign-in its background checks run.
     { key: 'readyToBill.people', script: 'Who sees what', label: 'Ready to bill', type: 'people', def: [CARL, WENDY] },
     { key: 'missingDetails.people', script: 'Who sees what', label: 'Missing details list', type: 'people', def: [CARL, WENDY] },
@@ -2949,7 +2970,7 @@
     { key: 'patientStatuses.people', script: 'Who sees what', label: 'Patient statuses', type: 'people', def: [CARL] },
     { key: 'bankStatement.people', script: 'Who sees what', label: 'Bank statement', type: 'people', def: [CARL] },
     { key: 'recordRetention.people', script: 'Who sees what', label: 'Record retention', type: 'people', def: [CARL] },
-    { key: 'storedCards.people', script: 'Who sees what', label: 'Stored cards', type: 'people', def: [CARL] },
+    { key: 'storedCards.people', script: 'Who sees what', label: 'Cards on file', type: 'people', def: [CARL] },
     { key: 'feedbackAlerts.taskFor', script: 'Who gets tasks', label: 'Feedback to look at', type: 'person', def: CARL },
     { key: 'remittances.taskFor', script: 'Who gets tasks', label: 'Remittances', type: 'person', def: CARL },
     { key: 'bankStatement.taskFor', script: 'Who gets tasks', label: 'Bank statement', type: 'person', def: CARL },

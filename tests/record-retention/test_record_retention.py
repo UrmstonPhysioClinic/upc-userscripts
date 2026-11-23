@@ -88,6 +88,12 @@ async def halaxy(route):
             S['filtered'] += 1
         rows = allp[b['startRow']:b['endRow']]
         return await route.fulfill(body=json.dumps({'rowData': rows, 'lastRow': len(allp)}), content_type='application/json')
+    if p.endswith('/report/patient/0') and urllib.parse.parse_qs(urllib.parse.urlparse(req.url).query).get('type') == ['12']:
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(req.url).query)
+        S['deletedReads'].append(q.get('patientStatusMulti', [''])[0])
+        gone = [x for x in PATIENTS if S['status'].get(x['id'], x['status'].lower()) == 'deleted']
+        body = ''.join("<tr><td><a href='/a/pr/555/patient/%d'>%s</a></td><td>17-Aug-2015</td><td></td><td></td><td></td><td>Deleted</td></tr>" % (x['id'], x['givenName']) for x in gone)
+        return await route.fulfill(body="<html><body><table class='table'><thead><tr><th>Patient</th><th>Created</th><th>Introduction Source</th><th>Phone</th><th>Email</th><th>Status</th></tr></thead><tbody>%s</tbody></table></body></html>" % body, content_type='text/html')
     if p.endswith('/report/patient/0'):
         S['caseloads'] += 1
         rows = ''.join("<tr><td><div class='custom-control custom-checkbox'><input type='checkbox' class='custom-control-input' name='link-pr-pa-g' value='%d'></div></td>"
@@ -125,7 +131,7 @@ async def halaxy(route):
 async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch()
-        S.update({'lists': [], 'posts': [], 'status': {}, 'bulk': [], 'caseloads': 0, 'filtered': 0, 'user': 'Carl Healy'})
+        S.update({'lists': [], 'posts': [], 'status': {}, 'bulk': [], 'caseloads': 0, 'filtered': 0, 'deletedReads': [], 'user': 'Carl Healy'})
         ctx = await browser.new_context(viewport={'width': 1400, 'height': 900}, timezone_id='Europe/London')
         await ctx.clock.install(time=NOW.isoformat())
         await ctx.route('https://eu.halaxy.com/**', halaxy)
@@ -173,7 +179,7 @@ async def main():
         check('the batch bar in the line under the title bar', bool(bq) and bq.startswith('Setting to Deleted ('), bq)
         await pg.wait_for_function("[...document.querySelectorAll('[data-upc-record-retention] tbody tr .upc-ok')].length === 2", timeout=30000)
         check('one Update patient status for both, with every practitioner pairing; the Case Load report read once', S['bulk'] == [('deleted', ['50101', '50104', '60101'], 'B')] and S['caseloads'] == 1 and not S['posts'], (S['bulk'], S['caseloads']))
-        check('then the patient list read again (Deleted patients drop out of it)', S['lists'][2:] == [(0, 100), (100, 200)] and not S['filtered'], (S['lists'], S['filtered']))
+        check('then the Deleted patients read from the Introduction Source report (the patient list leaves them out)', S['deletedReads'] == ['deleted'] and S['lists'] == [(0, 100), (100, 200)], (S['deletedReads'], S['lists']))
         await pg.wait_for_function("document.querySelector('.upc-toast')", timeout=10000)
         msg = await pg.evaluate("document.querySelector('.upc-toast').textContent")
         check('a toast when the batch is over', msg == '2 set to Deleted.', msg)
