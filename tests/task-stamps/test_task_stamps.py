@@ -28,6 +28,13 @@ function appointment(value) {
   document.querySelector('textarea').value = value || '';
   document.getElementById('apptSave').addEventListener('click', () => { window.saved.push(document.querySelector('textarea').value); });
 }
+function cancelPopup(value) {
+  document.getElementById('modals').innerHTML = "<div class='modal bootbox'><form id='frmCancelAppointment'><input type='radio' name='form[action]' value='cancel' checked>" +
+    "<select name='form[cancellations]'><option value='35'>Practitioner cancelled</option></select><textarea class='form-control' name='form[description]'></textarea>" +
+    "<button type='button' class='btn btn-primary btn-submit'>Save</button></form></div>";
+  document.querySelector('textarea').value = value || '';
+  document.querySelector('.btn-submit').addEventListener('click', () => { window.saved.push(document.querySelector('textarea').value); });
+}
 </script></body></html>"""
 
 STAMP = r'\d{4}-\d{2}-\d{2} \d{2}:\d{2} CH'
@@ -162,6 +169,20 @@ async def main():
         await pg.click('textarea')
         await pg.click('#apptSave')
         check('appointment Comments clicked into but nothing typed: left empty', (await pg.evaluate('saved'))[-1] == '')
+
+        # The Cancel or Delete Appointment pop-up's comment
+        await pg.evaluate("cancelPopup('')")
+        await pg.wait_for_timeout(200)
+        await pg.click('textarea')
+        await pg.keyboard.type('RH off ill')
+        await pg.keyboard.press('Enter')
+        await pg.click('.btn-submit')
+        s = (await pg.evaluate('saved'))[-1]
+        check('cancellation comment: stamped, bullets, empty bullet taken off on Save', re.fullmatch(STAMP + r'\n- RH off ill', s) is not None, repr(s))
+        await pg.evaluate("cancelPopup('')")
+        await pg.wait_for_timeout(200)
+        await pg.click('.btn-submit')
+        check('cancellation saved without touching the comment: left empty', (await pg.evaluate('saved'))[-1] == '')
 
         # No name known: left alone
         await pg.evaluate("window.HkUser = {}; document.getElementById('activeUser').textContent = ''; popup('')")

@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         UPC Calendar: Task stamps (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.0
+// @version      0.2.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/task-stamps.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/task-stamps.user.js
-// @description  Date, time and initials stamps ("2026-11-11 15:49 CH") and "- " bullets in task comments and appointment comments, added when you click into the box. Hides the task page's broken top Mark as completed. Every task needs a due date: new ones start on today, and none saves without one.
+// @description  Date, time and initials stamps ("2026-11-11 15:49 CH") and "- " bullets in task comments, appointment comments and the cancellation comment, added when you click into the box. Hides the task page's broken top Mark as completed. Every task needs a due date: new ones start on today, and none saves without one.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
 // @grant        none
@@ -18,7 +18,9 @@
  *
  *  - Halaxy's add-task and edit-task pop-ups are form#form_task_edit, with a plain text box form[comment]
  *    (line breaks kept; capture, 11 Nov 2026).
- *  - Also an appointment's Comments in the calendar (CH, 11 Nov 2026: "we use the same system there").
+ *  - Also an appointment's Comments in the calendar (CH, 11 Nov 2026: "we use the same system there"), and the
+ *    comment in the Cancel or Delete Appointment pop-up (form#frmCancelAppointment, form[description]; the clinic's own
+ *    cancellations are recorded there with a stamped comment such as "RH off ill", CH 23 Nov 2026).
  *  - When the box is first clicked into: an empty box gets "2026-11-11 15:49 CH" and a new line starting "- ";
  *    one with text gets a blank line and a new stamp under what's there. The cursor goes under the stamp.
  *  - "- " bullets behave like a rich text list (see bullets()).
@@ -42,11 +44,12 @@
   if (window.__hxTaskStamps) return;
   window.__hxTaskStamps = true;
 
-  const VERSION = '0.2.0';
+  const VERSION = '0.2.1';
   const RECENT = 5 * 60e3;
   // Task comments (add-task and edit-task pop-ups), and an appointment's Comments in the calendar (form#pr-appointment,
   // a plain box form[description]; capture, 11 Nov 2026). Both plain text, line breaks kept.
-  const FIELD = 'form#form_task_edit textarea[name="form[comment]"], form#pr-appointment textarea[name="form[description]"]';
+  // The Cancel or Delete Appointment pop-up's comment too (form#frmCancelAppointment, form[description]; capture, 23 Nov 2026).
+  const FIELD = 'form#form_task_edit textarea[name="form[comment]"], form#pr-appointment textarea[name="form[description]"], form#frmCancelAppointment textarea[name="form[description]"]';
 
   function userName() {
     try {
@@ -234,6 +237,11 @@
     if (appt && appt.querySelector('select, input:not([type=hidden])') && !appt.querySelector('textarea[name="form[description]"]')) {
       told = true;
       document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: 'task-stamps.user.js', message: 'The appointment pop-up has changed (its Comments box, form[description], was not found).' }) }));
+    }
+    const cancel = document.querySelector('form#frmCancelAppointment');
+    if (!told && cancel && cancel.querySelector('select') && !cancel.querySelector('textarea[name="form[description]"]')) {
+      told = true;
+      document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: 'task-stamps.user.js', message: 'The cancel appointment pop-up has changed (its comment box, form[description], was not found).' }) }));
     }
   }
   function hideBrokenComplete() {

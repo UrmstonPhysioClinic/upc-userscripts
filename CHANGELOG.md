@@ -1,5 +1,10 @@
 # Changelog
 
+## Script settings 0.3.0, Task stamps 0.2.1, core 0.1.74, 23 Nov 2026 (beta)
+- Script settings is a page (UI/UX audit step 3): Halaxy's title bar with the tab's buttons on the right, tabs This PC, Clinic settings and Options, a card for each group. Opened from the account menu over whatever page is showing; Close goes back to it. "Saved.", "Read again." and "Everything is up to date." are toasts.
+- Clinic settings labels made plainer ("Ignore an excess over", "Dates to skip", "Portal fill: AXA payee").
+- Task stamps: the comment in Halaxy's Cancel or Delete Appointment pop-up gets the stamp and "- " bullets too (CH, 23 Nov 2026: the clinic's own cancellations are recorded there, "RH off ill").
+
 ## Core 0.1.73, To do 0.2.3 and the queue pages, 23 Nov 2026 (beta)
 - Undo and "batch finished" messages are toasts (in Halaxy's own alert area, which Toast alerts lifts out of the page), not bars across the page, so nothing moves (CH, 23 Nov 2026).
 - The batch bar ("Updating tasks (3 of 12)") sits in the line under the title bar, in place of "Checked at", while the batch runs.

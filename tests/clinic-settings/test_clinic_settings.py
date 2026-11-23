@@ -103,6 +103,13 @@ async def open_clinic(pg):
     await pg.click("[data-a=clinic]")
     await pg.wait_for_selector(".upc-ss-clinic", timeout=10000)
 
+
+async def save_ok(pg):
+    # "Saved." is a toast; earlier ones are cleared first so the wait is for this save.
+    await pg.evaluate("document.querySelectorAll('.upc-toast').forEach((t) => t.remove())")
+    await pg.click("[data-a=save]")
+    await pg.wait_for_function("[...document.querySelectorAll('.upc-toast')].some((t) => t.textContent === 'Saved.')", timeout=15000)
+
 GET = "Object.fromEntries(['readyToBill.maxExcess', 'readyToBill.rollingDays', 'reviewRequests.sendAt', 'missingDetails.aheadDays'].map((k) => [k, UPC.settings.get(k)]))"
 
 
@@ -127,8 +134,8 @@ async def main():
         check('Carl: a box per number or time, empty (default shown)', len(boxes) >= 20 and all(v == '' for _, v, _ in boxes) and dict((k, ph) for k, _, ph in boxes)['readyToBill.maxExcess'] == '500', boxes[:3])
         await pg.wait_for_function("document.querySelectorAll('[data-people=\"forecourtLights.staff\"] input').length >= 6", timeout=10000)
         fit = await pg.evaluate("(() => { const t = document.querySelector('.upc-ss-clinic table'); return [t.scrollWidth, t.parentElement.clientWidth]; })()")
-        check('the table fits the pop-up (long lists wrap)', fit[0] <= fit[1] + 1, fit)
-        check('Halaxy look: inside the dialog, Halaxy table and form classes', await pg.evaluate("!!document.querySelector('.upc-ss-clinic table.table.table-striped.table-bordered input.form-control')"))
+        check('the table fits the page (long lists wrap)', fit[0] <= fit[1] + 1, fit)
+        check('Halaxy look: Halaxy table and form classes', await pg.evaluate("!!document.querySelector('.upc-ss-clinic table.table.table-striped.table-bordered input.form-control')"))
         # A value outside its limits: refused, nothing saved
         await pg.fill("input[data-key='readyToBill.rollingDays']", '500')
         await pg.click("[data-a=save]")
@@ -140,8 +147,7 @@ async def main():
         await pg.fill("input[data-key='readyToBill.rollingDays']", '28')
         await pg.fill("input[data-key='readyToBill.maxExcess']", '300')
         await pg.fill("input[data-key='reviewRequests.sendAt']", '09:15')
-        await pg.click("[data-a=save]")
-        await pg.wait_for_function("document.querySelector('.upc-ss-clinic .upc-ok')", timeout=15000)
+        await save_ok(pg)
         lines = note_lines()
         ndefs = await pg.evaluate("UPC.settings.defs.length")
         check('saved to the note: heading, then every setting (so no PC falls back to its own)', lines[:2] == ['UPC clinic settings', 'Changed in Script settings > Clinic settings. Please do not edit here: a line that is changed by hand is ignored.']
@@ -155,8 +161,7 @@ async def main():
         check('Ready to bill\'s excess limit follows it (pence)', rule == 30000, rule)
         # Back to the default by emptying the box
         await pg.fill("input[data-key='readyToBill.maxExcess']", '')
-        await pg.click("[data-a=save]")
-        await pg.wait_for_function("document.querySelector('.upc-ss-clinic .upc-ok')", timeout=15000)
+        await save_ok(pg)
         check('an empty box: back to the default', 'readyToBill.maxExcess = 500' in note_lines() and 'reviewRequests.sendAt = 09:15' in note_lines() and await pg.evaluate("UPC.settings.get('readyToBill.maxExcess')") == 500, note_lines())
         check('one note only, although Halaxy\'s list lagged after it was made', len(S['notes'][78842]) == 1, S['notes'])
         S['lag'] = False
@@ -181,8 +186,7 @@ async def main():
         check('a refused save keeps the changes on screen', kept == [True, 'Physio One'], kept)
         check('nobody ticked: refused, nothing saved', 'Open-ended recalls" must be at least one person' in err and 'readyToBill.people = Carl Healy, Wendy Pritchard' in note_lines(), err)
         await pg.check("[data-people='openEnded.people'] input[value='Carl Healy']")
-        await pg.click("[data-a=save]")
-        await pg.wait_for_function("document.querySelector('.upc-ss-clinic .upc-ok')", timeout=15000)
+        await save_ok(pg)
         lines = note_lines()[2:]
         check('people saved as names', 'readyToBill.people = Carl Healy, Physio One' in lines and 'remittances.taskFor = Physio One' in lines and 'openEnded.people = Carl Healy' in lines, lines)
         got = await pg.evaluate("[UPC.settings.get('readyToBill.people'), UPC.settings.get('remittances.taskFor'), UPC.settings.get('openEnded.people')]")
@@ -209,8 +213,7 @@ async def main():
         order = await pg.evaluate("[...document.querySelectorAll('[data-order=\"calendar.order\"] [data-name]')].map((x) => x.dataset.name)")
         check('calendar order: the clinic\'s order first, then others offered', order[:4] == ['Roxanna Healy', 'Carl Healy', 'Diana Satalova', 'Stephen Sharples'], order)
         await pg.click("[data-order='calendar.order'] [data-name='Carl Healy'] [data-a=up]")
-        await pg.click("[data-a=save]")
-        await pg.wait_for_function("document.querySelector('.upc-ss-clinic .upc-ok')", timeout=15000)
+        await save_ok(pg)
         got = await pg.evaluate("['forecourtLights.days', 'forecourtLights.skip', 'portalFill.email', 'calendar.hideProfessions', 'calendar.order'].map((k) => UPC.settings.get(k))")
         check('saved and read back: days, dates (as dates), text, words, order', got[0] == ['Tue', 'Thu'] and got[1] == ['2026-12-25', '2027-01-01'] and got[2] == 'office@urmstonphysioclinic.com'
               and got[3] == ['Administrator', 'Receptionist'] and got[4][:2] == ['Carl Healy', 'Roxanna Healy'], got)
@@ -225,8 +228,7 @@ async def main():
         await pg.uncheck("[data-audience='alerts.arrivalChime'] input[value='Carl Healy']")
         await pg.check("[data-audience='forecourtLights.remind'] input[value='Carl Healy']")
         await pg.select_option("select[data-key='branding.font']", 'halaxy')
-        await pg.click("[data-a=save]")
-        await pg.wait_for_function("document.querySelector('.upc-ss-clinic .upc-ok')", timeout=15000)
+        await save_ok(pg)
         lines = note_lines()
         check('per person saved: names (Carl left out of the chime), the choice', any(l.startswith('alerts.arrivalChime = ') and 'Carl Healy' not in l and 'Wendy Pritchard' in l for l in lines)
               and 'forecourtLights.remind = Carl Healy' in lines and 'branding.font = halaxy' in lines and 'alerts.chatAlarm = everyone' in lines, lines)
@@ -237,7 +239,7 @@ async def main():
         res = await pg.evaluate("UPC.settings.save({ 'readyToBill.maxExcess': 400 }).then(() => [UPC.settings.get('readyToBill.maxExcess'), UPC.settings.get('forecourtLights.days'), UPC.settings.get('readyToBill.people')], (e) => e.message)")
         check('saving one value keeps the rest', res == [400, ['Tue', 'Thu'], ['Carl Healy', 'Physio One']], res)
         await pg.evaluate("UPC.settings.save({ 'readyToBill.maxExcess': '' })")
-        await pg.click("[data-a=back]")
+        await pg.click("[data-a=pc]")
         await pg.click("[data-a=clinic]")
         await pg.wait_for_selector(".upc-ss-clinic input[data-key='readyToBill.maxExcess']", timeout=10000)
         check('no page errors (Carl)', not errors, errors)
