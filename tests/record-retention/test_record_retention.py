@@ -4,8 +4,10 @@ Test for Record retention, against a mock Halaxy (invented patients). Clock: 22-
 Checks: the whole patient list is read in blocks; an adult last seen over 8 years ago is due, one seen since is not;
 a child is kept until their 25th birthday, or 26th if 17 at the last appointment, when that is later; no date of
 birth, Deceased and never-seen patients have their own cards; booked, Deleted and Contact records are left out; dates
-read whichever way Halaxy writes them; ticking and "Set 2 to Deleted" asks once, then sets each patient's status to
-Deleted on their Edit page (every other field as Halaxy filled it), one after the other, with the batch bar and a
+read whichever way Halaxy writes them; ticking and "Set 2 to Deleted" asks once, then the Case Load report is read
+once and both go to Halaxy in one Update patient status (with every practitioner pairing), then the Deleted patients
+are read back; "Set all N to Deleted" on Due does the rest: a patient not in the Case Load report is changed on their
+Edit page (every other field as Halaxy filled it), and one Halaxy didn't change shows Not changed; the batch bar and a
 toast; only CH sees the page; Halaxy look.
 
 Run:  python3 tests/record-retention/test_record_retention.py
@@ -50,6 +52,11 @@ PATIENTS = [
 ] + [pt(1000 + i, 'Filler %03d' % i, dob='01/01/1990', last='01/01/2024 10:00') for i in range(150)]
 
 
+# Case Load pairings (patient -> practitioner pairings); 113 is not in the report, Halaxy ignores 105's change.
+CASELOAD = {101: [50101, 60101], 104: [50104], 105: [50105], 102: [50102]}
+IGNORED = {105}
+
+
 def edit_form(pid):
     st = S['status'].get(pid, next(p['status'] for p in PATIENTS if p['id'] == pid).lower())
     opts = ''.join("<option value='%s'%s>%s</option>" % (v, ' selected' if v == st else '', v.title()) for v in
@@ -73,9 +80,35 @@ async def halaxy(route):
     p = urllib.parse.urlparse(req.url).path
     if p.endswith('/patient/list-data') and req.method == 'POST':
         b = json.loads(req.post_data or '{}')
-        S['lists'].append((b['startRow'], b['endRow']))
-        rows = PATIENTS[b['startRow']:b['endRow']]
-        return await route.fulfill(body=json.dumps({'rowData': rows, 'lastRow': len(PATIENTS)}), content_type='application/json')
+        if not b.get('filterModel'):
+            S['lists'].append((b['startRow'], b['endRow']))
+        allp = [dict(x, status=S['status'].get(x['id'], x['status']).title()) for x in PATIENTS]
+        if b.get('filterModel', {}).get('status'):
+            S['filtered'] += 1
+            allp = [x for x in allp if x['status'].lower() == 'deleted']
+        rows = allp[b['startRow']:b['endRow']]
+        return await route.fulfill(body=json.dumps({'rowData': rows, 'lastRow': len(allp)}), content_type='application/json')
+    if p.endswith('/report/patient/0'):
+        S['caseloads'] += 1
+        rows = ''.join("<tr><td><div class='custom-control custom-checkbox'><input type='checkbox' class='custom-control-input' name='link-pr-pa-g' value='%d'></div></td>"
+                       "<td><a href='/a/pr/555/patient/%d'>Patient</a></td><td>Current</td></tr>" % (lp, pid) for pid, lps in CASELOAD.items() for lp in lps)
+        return await route.fulfill(body="<html><body><table class='table'><thead><tr><th><input type='checkbox' class='custom-control-input'></th><th>Patient</th></tr></thead><tbody>"
+                                   "<tr><td colspan='3'>Carl Healy</td></tr>%s</tbody></table></body></html>" % rows, content_type='text/html')
+    if p.endswith('/patient/bulk-update-status/LinkPaG'):
+        if req.method == 'GET':
+            ids = urllib.parse.parse_qs(urllib.parse.urlparse(req.url).query).get('linkPrPaGs[]', [])
+            opts = ''.join("<option value='%s' selected>%s</option>" % (x, x) for x in ids)
+            st = ''.join("<option value='%s'>%s</option>" % (v, v.title()) for v in ['', 'current', 'deleted', 'archived', 'deceased', 'discharged'])
+            return await route.fulfill(body=json.dumps({'status': 'FORM', 'message': "<form id='patient-bulk-update' method='post'><input type='hidden' name='form[_token]' value='B'>"
+                                                        "<select name='form[patientStatus]'>%s</select><select name='form[linkPrPaGs][]' multiple>%s</select><button>Save</button></form>" % (st, opts)}), content_type='application/json')
+        f = urllib.parse.parse_qs(req.post_data or '')
+        S['bulk'].append((f.get('form[patientStatus]', [''])[0], sorted(f.get('form[linkPrPaGs][]', [])), f.get('form[_token]', [''])[0]))
+        await asyncio.sleep(0.5)
+        for lp in f.get('form[linkPrPaGs][]', []):
+            pid = next(k for k, v in CASELOAD.items() if int(lp) in v)
+            if pid not in IGNORED:
+                S['status'][pid] = f['form[patientStatus]'][0]
+        return await route.fulfill(body=json.dumps({'status': 'REFRESH'}), content_type='application/json')
     m = re.search(r'/patient/(\d+)/edit$', p)
     if m:
         pid = int(m.group(1))
@@ -92,7 +125,7 @@ async def halaxy(route):
 async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch()
-        S.update({'lists': [], 'posts': [], 'status': {}, 'user': 'Carl Healy'})
+        S.update({'lists': [], 'posts': [], 'status': {}, 'bulk': [], 'caseloads': 0, 'filtered': 0, 'user': 'Carl Healy'})
         ctx = await browser.new_context(viewport={'width': 1400, 'height': 900}, timezone_id='Europe/London')
         await ctx.clock.install(time=NOW.isoformat())
         await ctx.route('https://eu.halaxy.com/**', halaxy)
@@ -124,6 +157,8 @@ async def main():
         check('title bar: title left, Check now right', bar == ['Record retention', 'Check now'], bar)
         check('nothing changed without asking', not S['posts'], S['posts'])
 
+        allbtn = await pg.evaluate("(document.querySelector('[data-upc-bulk-for=due]') || {}).textContent")
+        check('nothing ticked: "Set all 4 to Deleted" on Due', allbtn == 'Set all 4 to Deleted', allbtn)
         await pg.check("[data-upc-list=due] tr[data-upc-id='101'] input[data-upc-tick]")
         await pg.check("[data-upc-list=due] tr[data-upc-id='104'] input[data-upc-tick]")
         tick = await pg.evaluate("(document.querySelector('[data-upc-bulk-for=due]') || {}).textContent")
@@ -131,18 +166,37 @@ async def main():
         await pg.click('[data-a=bulk][data-list=due]')
         await pg.wait_for_selector('[data-upc-ret-confirm]')
         conf = await pg.evaluate("document.querySelector('[data-upc-ret-confirm]').innerText")
-        check('asks once: how many and who', 'Set 2 patients to Deleted?' in conf and 'Teen Seventeen Test' in conf and 'Adult Old Test' in conf and not S['posts'], conf)
+        check('asks once: how many and who', 'Set 2 patients to Deleted?' in conf and 'Teen Seventeen Test' in conf and 'Adult Old Test' in conf and not S['bulk'], conf)
         await pg.click('[data-upc-ret-confirm] [data-c=yes]')
         await pg.wait_for_timeout(300)
         bq = await pg.evaluate("(document.querySelector('[data-upc-record-retention] .upc-page-sub .upc-batch') || {}).textContent")
         check('the batch bar in the line under the title bar', bool(bq) and bq.startswith('Setting to Deleted ('), bq)
         await pg.wait_for_function("[...document.querySelectorAll('[data-upc-record-retention] tbody tr .upc-ok')].length === 2", timeout=30000)
+        check('one Update patient status for both, with every practitioner pairing; the Case Load report read once', S['bulk'] == [('deleted', ['50101', '50104', '60101'], 'B')] and S['caseloads'] == 1 and not S['posts'], (S['bulk'], S['caseloads']))
+        check('then the Deleted patients read back', S['filtered'] >= 1, S['filtered'])
         await pg.wait_for_function("document.querySelector('.upc-toast')", timeout=10000)
         msg = await pg.evaluate("document.querySelector('.upc-toast').textContent")
         check('a toast when the batch is over', msg == '2 set to Deleted.', msg)
-        check('status set to Deleted on the Edit page, other fields as Halaxy filled them, one after the other',
-              sorted(x[0] for x in S['posts']) == [101, 104] and all(x[1].get('patientdetailmain[linkPaG][customStatus]') == 'deleted' and x[1].get('patientdetailmain[_token]') == 'T'
-                                                                   and x[1].get('patientdetailmain[contactEmail]') == 'a@example.com' for x in S['posts']), S['posts'])
+        await pg.evaluate("document.querySelectorAll('.upc-toast').forEach((t) => t.remove())")
+
+        allbtn = await pg.evaluate("(document.querySelector('[data-upc-bulk-for=due]') || {}).textContent")
+        check('"Set all" now counts only those left', allbtn == 'Set all 2 to Deleted', allbtn)
+        await pg.click('[data-a=all][data-list=due]')
+        await pg.wait_for_selector('[data-upc-ret-confirm]')
+        conf = await pg.evaluate("document.querySelector('[data-upc-ret-confirm]').innerText")
+        check('Set all asks once too', 'Set 2 patients to Deleted?' in conf, conf)
+        await pg.click('[data-upc-ret-confirm] [data-c=yes]')
+        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-record-retention] tbody tr')].filter((tr) => /Deleted|Not changed/.test(tr.cells[6].textContent)).length === 4", timeout=30000)
+        res = await pg.evaluate("Object.fromEntries([...document.querySelectorAll('[data-upc-list=due] tbody tr')].map((tr) => [tr.dataset.upcId, tr.cells[6].textContent.trim()]))")
+        check('a patient not in the Case Load report: changed on their Edit page; one Halaxy did not change: Not changed',
+              res.get('113') == 'Deleted' and res.get('105') == 'Not changed' and [x[0] for x in S['posts']] == [113] and S['bulk'][1][1] == ['50105'] and S['caseloads'] == 1, (res, S['posts'], S['bulk']))
+        errs = await pg.evaluate("[...document.querySelectorAll('[data-upc-record-retention] .alert-danger')].map((x) => x.textContent)")
+        check('said above the list', errs == ['Not changed: 1 patient (Halaxy still shows the old status). Check now lists them again.'], errs)
+        await pg.wait_for_function("document.querySelector('.upc-toast')", timeout=10000)
+        msg = await pg.evaluate("document.querySelector('.upc-toast').textContent")
+        check('the toast says how it went', msg == '1 set to Deleted. 1 not changed.', msg)
+        check('the Edit page change: other fields as Halaxy filled them', all(x[1].get('patientdetailmain[linkPaG][customStatus]') == 'deleted' and x[1].get('patientdetailmain[_token]') == 'T'
+                                                                                and x[1].get('patientdetailmain[contactEmail]') == 'a@example.com' for x in S['posts']), S['posts'])
         look = await pg.evaluate("(() => { const r = document.querySelector('[data-upc-record-retention]'); return r.classList.contains('upc-native') && !r.shadowRoot && r.querySelector('table').className.startsWith('table table-striped table-bordered'); })()")
         check('Halaxy look', look)
         check('no page errors', not errors, errors)

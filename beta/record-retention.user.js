@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Record retention (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.1
+// @version      0.1.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/record-retention.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/record-retention.user.js
@@ -29,8 +29,8 @@
  *  - Cards: Due (past the rule), No date of birth (last appointment over 8 years ago but no date of birth, so whether
  *    the child rule applies can't be told), Deceased (last appointment over 8 years ago), No appointments (record made
  *    over 8 years ago and never seen). Anyone booked ahead, and Deleted and Contact records, are left out.
- *  - Tick, then "Set N to Deleted": confirmed once, then queued (Queue, don't block), one at a time at Halaxy's pace.
- *    Nothing is changed without that.
+ *  - Tick, then "Set N to Deleted" (or "Set all N to Deleted" on Due): confirmed once, then sent in batches of 50
+ *    (see below). Nothing is changed without that.
  *  - Checked when the page opens (kept on this PC for a day) and with Check now. Nothing runs in the background.
  */
 (() => {
@@ -38,11 +38,11 @@
   if (window.__hxRecordRetention) return;
   window.__hxRecordRetention = true;
 
-  const VERSION = '0.1.1';
+  const VERSION = '0.1.2';
   const ROUTE = 'upc-record-retention';
   const MENU_CLS = 'upc-rr8-menu';
   const FRESH = 24 * 3600e3;
-  const BLOCK = 100;
+  const BATCH = 50;   // patients per status change
   const YEARS = 8;
   const U = () => window.UPC;
   const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
@@ -111,21 +111,8 @@
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const now = today.getTime();
     const cut = addYears(now, -YEARS);
-    const rows = [];
-    let start = 0, total = null;
-    for (;;) {
-      say('Reading the patient list' + (total ? ' (' + Math.min(start, total) + ' of about ' + total + ')' : '') + '...');
-      const j = await U().http.list('/patient/list-data', {}, [], start, start + BLOCK);
-      const got = j && Array.isArray(j.rowData) ? j.rowData : null;
-      if (!got) throw new (U().Error)('The patient list has changed, so it could not be read.');
-      if (typeof j.lastRow === 'number' && j.lastRow >= 0) total = j.lastRow;
-      rows.push(...got);
-      start += got.length;
-      if (!got.length || (total !== null && start >= total)) break;
-    }
-    if (rows.length && !rows.some((r) => 'lastAppointment' in r && 'dateOfBirth' in r && 'status' in r)) {
-      throw new (U().Error)('The patient list has changed (last appointment, date of birth or status not found), so nothing was checked.');
-    }
+    const rows = await U().patient.listAll(say);
+    if (rows.length && !rows.some((r) => 'dateOfBirth' in r)) throw new (U().Error)('The patient list has changed (date of birth not found), so nothing was checked.');
     const out = [];
     rows.forEach((r) => {
       const status = String(r.status || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
@@ -145,30 +132,76 @@
     return result;
   }
 
-  // ------------------------------------------------------------------ set to Deleted (queued)
+  // ------------------------------------------------------------------ set to Deleted (in batches)
+  //
+  // Patients go to Halaxy in batches of 50 through the Case Load report's Update patient status (core
+  // UPC.patient.setStatusMany; CH, 23 Nov 2026: 875 at once would otherwise be about 2,600 requests). The report gives
+  // each patient's practitioner pairings (read once). A patient not in it is changed on their own Edit page. When the
+  // queue is empty, the Deleted patients are read from the patient list, and each patient sent shows Deleted or
+  // Not changed by what Halaxy now says.
 
-  const state = { unmount: null, running: false, status: '', error: '', errors: [] };
+  const state = { unmount: null, running: false, status: '', error: '', errors: [], failed: 0 };
   const done = new Map();   // patient id -> 'ok' | error text
   const jobs = [];
-  let jobBusy = null, root = null;
-  const queuedOf = (id) => (jobBusy === id ? 'busy' : jobs.some((j) => j.id === id) ? 'queued' : null);
+  const sent = new Set();   // sent to Halaxy, waiting to be checked
+  let busy = null, checking = false, caseMap = null, root = null;
+  const queuedOf = (id) => (busy && busy.has(id) ? 'busy' : sent.has(id) ? 'busy' : jobs.some((j) => j.id === id) ? 'queued' : null);
+  const pending = () => jobs.length + (busy ? busy.size : 0) + sent.size;
+  const fail = (id, why) => { done.set(id, why); state.failed += 1; };
+
   async function pump() {
-    if (jobBusy !== null || !jobs.length) return;
-    const j = jobs.shift();
-    jobBusy = j.id;
+    if (busy || checking) return;
+    if (!jobs.length) { if (sent.size) verify(); return; }
+    const batch = jobs.splice(0, BATCH);
+    busy = new Set(batch.map((j) => j.id));
     render();
     try {
-      await U().patient.setStatus(j.id, j.status, 'deleted');
-      done.set(j.id, 'ok');
+      if (!caseMap) caseMap = await U().patient.caseLoad();
+      const inReport = batch.filter((j) => caseMap.has(j.id)), own = batch.filter((j) => !caseMap.has(j.id));
+      if (inReport.length) {
+        try {
+          await U().patient.setStatusMany(inReport.flatMap((j) => caseMap.get(j.id)), 'deleted');
+          inReport.forEach((j) => sent.add(j.id));
+        } catch (e) {
+          inReport.forEach((j) => fail(j.id, e.message || String(e)));
+          state.errors.push('Not changed: ' + inReport.length + ' patient' + (inReport.length === 1 ? '' : 's') + ' (' + (e.message || e) + ')');
+          tellHealthCheck(e);
+        }
+      }
+      for (const j of own) {
+        try { await U().patient.setStatus(j.id, j.status, 'deleted'); done.set(j.id, 'ok'); } catch (e) {
+          if (e && e.statusChanged) done.set(j.id, 'ok'); else fail(j.id, e.message || String(e));
+          state.errors.push('Not changed: ' + j.name + ' (' + (e.message || e) + ')');
+          tellHealthCheck(e);
+        }
+      }
     } catch (e) {
-      // The status itself changed but something else read differently afterwards: it is Deleted, and said.
-      if (e && e.statusChanged) done.set(j.id, 'ok');
-      else done.set(j.id, e.message || String(e));
-      state.errors.push('Not changed: ' + j.name + ' (' + (e.message || e) + ')');
+      batch.forEach((j) => fail(j.id, e.message || String(e)));
+      state.errors.push('Not changed: ' + batch.length + ' patient' + (batch.length === 1 ? '' : 's') + ' (' + (e.message || e) + ')');
       tellHealthCheck(e);
-    } finally { jobBusy = null; render(); pump(); }
+    } finally { busy = null; render(); pump(); }
   }
-  window.addEventListener('beforeunload', (e) => { if (jobBusy !== null || jobs.length) { e.preventDefault(); e.returnValue = ''; } });
+
+  async function verify() {
+    checking = true;
+    render();
+    try {
+      const rows = await U().patient.listAll(null, { status: { filterType: 'text', type: 'contains', filter: 'Deleted' } });
+      const gone = new Set(rows.filter((r) => /^deleted$/i.test(String(r.status || '').replace(/<[^>]*>/g, ' ').trim())).map((r) => String(r.id)));
+      let missed = 0;
+      sent.forEach((id) => { if (gone.has(id)) done.set(id, 'ok'); else { fail(id, 'Halaxy still shows the old status'); missed += 1; } });
+      if (missed) state.errors.push('Not changed: ' + missed + ' patient' + (missed === 1 ? '' : 's') + ' (Halaxy still shows the old status). Check now lists them again.');
+    } catch (e) {
+      sent.forEach((id) => fail(id, 'not checked'));
+      state.errors.push('Could not check the changes: ' + (e.message || e) + ' Check now shows where things stand.');
+      tellHealthCheck(e);
+    }
+    sent.clear();
+    checking = false;
+    render();
+    pump();
+  }
+  window.addEventListener('beforeunload', (e) => { if (pending()) { e.preventDefault(); e.returnValue = ''; } });
 
   function confirmBox(title, html, yes) {
     return new Promise((resolve) => {
@@ -181,10 +214,11 @@
     });
   }
 
-  async function deleteTicked(listId) {
+  const open = (x) => !queuedOf(x.id) && done.get(x.id) !== 'ok';
+  async function deleteRows(listId, all) {
     const r = store.get('result', null);
-    const ids = U().ui.list.picked(listId);
-    const xs = (r ? r.rows : []).filter((y) => ids.includes(y.id) && !queuedOf(y.id) && done.get(y.id) !== 'ok');
+    const ids = all ? null : U().ui.list.picked(listId);
+    const xs = (r ? r.rows : []).filter((y) => y.group === listId && (all || ids.includes(y.id)) && open(y));
     if (!xs.length) return;
     const names = xs.slice(0, 10).map((y) => y.name).join(', ') + (xs.length > 10 ? ' and ' + (xs.length - 10) + ' more' : '');
     const n = xs.length + ' patient' + (xs.length === 1 ? '' : 's');
@@ -219,19 +253,21 @@
       }).join('') + '</tbody></table>';
   }
 
+  // The tool row: "Set 3 to Deleted" for the ticked rows; on Due, "Set all 875 to Deleted" when none are ticked.
   function bulk(listId, rows) {
     const ids = U().ui.list.picked(listId);
     const n = rows.filter((x) => ids.includes(x.id)).length;
-    if (!n) return '';
-    return '<span data-upc-bulk-for="' + listId + '"><span class="text-muted">' + n + ' ticked</span>' +
-      '<button type="button" class="btn btn-primary" data-a="bulk" data-list="' + listId + '">Set ' + n + ' to Deleted</button></span>';
+    const left = rows.filter(open).length;
+    if (!n && !(listId === 'due' && left)) return '';
+    return '<span data-upc-bulk-for="' + listId + '">' + (n ? '<span class="text-muted">' + n + ' ticked</span><button type="button" class="btn btn-primary" data-a="bulk" data-list="' + listId + '">Set ' + n + ' to Deleted</button>'
+      : '<button type="button" class="btn btn-primary" data-a="all" data-list="' + listId + '">Set all ' + left + ' to Deleted</button>') + '</span>';
   }
 
   function render() {
     if (!root) return;
     const r = store.get('result', null);
     const btn = '<button type="button" class="btn btn-outline-primary" data-a="refresh"' + (state.running ? ' disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>';
-    const bq = U().ui.batch('record-retention', 'Setting to Deleted', 'set to Deleted', jobs.length + (jobBusy !== null ? 1 : 0), state.errors.length);
+    const bq = U().ui.batch('record-retention', checking ? 'Checking the changes' : 'Setting to Deleted', 'set to Deleted', pending(), state.failed);
     let h = '<div class="upc-ret">' + U().ui.page.bar('Record retention', btn, bq || (state.running ? U().ui.run.inline(state.status) : U().ui.page.checked(r && r.at)));
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     state.errors.forEach((m) => { h += '<div class="alert alert-danger upc-err">' + esc(m) + '</div>'; });
@@ -253,7 +289,7 @@
     state.running = true;
     state.error = '';
     state.status = 'Reading the patient list...';
-    if (!jobs.length && jobBusy === null) { state.errors = []; done.clear(); }
+    if (!pending()) { state.errors = []; state.failed = 0; done.clear(); caseMap = null; }
     render();
     try { await check((t) => { state.status = t; render(); }); } catch (e) { state.error = 'Could not check: ' + (e.message || e); tellHealthCheck(e); }
     state.running = false;
@@ -268,8 +304,8 @@
     root.setAttribute('data-upc-record-retention', '');
     root.addEventListener('click', (e) => {
       if (e.target.closest('[data-a=refresh]')) run();
-      const k = e.target.closest('[data-a=bulk]');
-      if (k) deleteTicked(k.dataset.list);
+      const k = e.target.closest('[data-a=bulk], [data-a=all]');
+      if (k) deleteRows(k.dataset.list, k.dataset.a === 'all');
     });
     state.unmount = U().ui.mountPage('Record retention', root, MENU_CLS);
     render();
