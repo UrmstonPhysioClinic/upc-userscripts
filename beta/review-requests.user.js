@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Review requests (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.5.15
+// @version      0.5.16
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
@@ -47,7 +47,7 @@
   if (window.__hxReviewRequests) return;
   window.__hxReviewRequests = true;
 
-  const VERSION = '0.5.15';
+  const VERSION = '0.5.16';
   const ROUTE = 'upc-review-requests';
   const MENU_CLS = 'upc-rr-menu';
   const ALLOWED = () => rule('reviewRequests.people', ['Carl Healy']);   // CH, 10 Nov 2026: just me for now
@@ -313,6 +313,7 @@
     if (!a) return;
     const r = store.get('result', null);
     const n = r ? r.rows.filter((x) => x.verdict === 'ready' && !done.has(x.id)).length : 0;
+    if (U().todo) U().todo.publish('review-requests', { title: 'Review requests', cls: MENU_CLS, href: a.getAttribute('href'), count: n, rows: r ? r.rows.filter((x) => x.verdict === 'ready' && !done.has(x.id)).slice(0, 3).map((x) => x.name) : [] });
     let b = a.querySelector('.upc-rr-badge');
     if (!n) { if (b) b.remove(); return; }
     if (!b) { b = document.createElement('span'); b.className = 'upc-rr-badge'; a.appendChild(b); }
@@ -325,12 +326,9 @@
   const CSS = `
     .upc-rr-badge { display: inline-block; min-width: 18px; margin-left: 6px; padding: 0 5px; border-radius: 9px; font-size: .75em; line-height: 18px;
       text-align: center; font-weight: 600; color: #fff; background: var(--vs-notification-badge-bg-color, #ec6b65); vertical-align: middle; }
-    .upc-rr { max-width: 1200px; }
-    .upc-rr h1 { margin: 0 0 16px; }
     .upc-rr .card { margin-bottom: 24px; }
     .upc-rr .card-header h2 { margin: 0; }
-    .upc-rr .upc-rr-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
-    .upc-rr .upc-rr-bar .btn, .upc-rr td .btn { margin: 0; }
+    .upc-rr td .btn { margin: 0; }
     .upc-rr td.upc-rr-acts { white-space: nowrap; }
     .upc-rr td.upc-rr-acts .upc-err { display: inline-block; white-space: normal; max-width: 340px; }
     .upc-rr td.upc-rr-acts .btn + .btn { margin-left: 6px; }
@@ -371,9 +369,7 @@
     if (!root) return;
     const r = store.get('result', null);
     const head = '<thead><tr><th>Patient</th><th>Last visit</th><th>Status</th><th>Check first</th><th></th></tr></thead>';
-    let h = '<div class="upc-rr"><h1>Review requests</h1><div class="upc-rr-bar">' +
-      '<button type="button" class="btn btn-outline-primary-light" data-a="refresh"' + (state.running ? ' disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>' +
-      (state.running ? U().ui.run.inline(state.status) : '<span class="text-muted">' + esc(r ? 'Checked at ' + new Date(r.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + label(r.at) + '.' : '') + '</span>') + '</div>';
+    let h = '<div class="upc-rr">' + U().ui.page.bar('Review requests', '<button type="button" class="btn btn-outline-primary" data-a="refresh"' + (state.running ? ' disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>', (state.running ? U().ui.run.inline(state.status) : U().ui.page.checked(r && r.at)));
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     if (r) {
       const ready = r.rows.filter((x) => x.verdict === 'ready'), rest = r.rows.filter((x) => x.verdict !== 'ready');
@@ -387,6 +383,7 @@
     }
     h += '</div>';
     root.innerHTML = h;
+    U().ui.list.enhance(root, { auto: true });
   }
 
   function confirm(title, html, yes) {

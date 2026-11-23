@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Open-ended recalls (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.3
+// @version      0.4.4
 // @upc-was      check-ins.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/open-ended-patients.user.js
@@ -41,7 +41,7 @@
   if (window.__hxCheckIns) return;
   window.__hxCheckIns = true;
 
-  const VERSION = '0.4.3';
+  const VERSION = '0.4.4';
   const ROUTE = 'upc-check-ins';
   const MENU_CLS = 'upc-ci-menu';
   const ALLOWED = () => rule('openEnded.people', ['Carl Healy']);
@@ -231,6 +231,7 @@
     const r = store.get('result', null);
     const recs = (() => { try { return recalls().cached(); } catch (e) { return {}; } })();
     const n = r ? r.rows.filter((x) => !x.error && !recallFor(x, recs)).length : 0;
+    if (U().todo) U().todo.publish('open-ended-recalls', { title: 'Open-ended recalls', cls: MENU_CLS, href: a.getAttribute('href'), count: n, rows: r ? r.rows.filter((x) => !x.error && !recallFor(x, recs)).slice(0, 3).map((x) => x.name) : [] });
     let b = a.querySelector('.upc-ci-badge');
     if (!n) { if (b) b.remove(); return; }
     if (!b) { b = document.createElement('span'); b.className = 'upc-ci-badge'; a.appendChild(b); }
@@ -245,12 +246,8 @@
   const CSS = `
     .upc-ci-badge { display: inline-block; min-width: 18px; margin-left: 6px; padding: 0 5px; border-radius: 9px; font-size: .75em; line-height: 18px;
       text-align: center; font-weight: 600; color: #fff; background: var(--vs-notification-badge-bg-color, #ec6b65); vertical-align: middle; }
-    .upc-ci { max-width: 1100px; }
-    .upc-ci h1 { margin: 0 0 16px; }
     .upc-ci .card { margin-bottom: 24px; }
     .upc-ci .card-header h2 { margin: 0; }
-    .upc-ci .upc-ci-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
-    .upc-ci .upc-ci-bar .btn { margin: 0; }
     .upc-ci td.upc-ci-date { white-space: nowrap; }
     .upc-ci td.upc-ci-act { white-space: nowrap; }
     .upc-ci-when { display: flex; align-items: center; gap: 8px; }
@@ -264,9 +261,7 @@
     if (!root) return;
     const r = store.get('result', null);
     const base = U().base();
-    let h = '<div class="upc-ci"><h1>Open-ended recalls</h1><div class="upc-ci-bar">' +
-      '<button type="button" class="btn btn-outline-primary-light" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>' +
-      (state.running ? U().ui.run.inline(state.status) : '<span class="text-muted">' + esc(r ? 'Checked at ' + new Date(r.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + label(r.at) + '.' : '') + '</span>') + '</div>';
+    let h = '<div class="upc-ci">' + U().ui.page.bar('Open-ended recalls', '<button type="button" class="btn btn-outline-primary" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>', (state.running ? U().ui.run.inline(state.status) : U().ui.page.checked(r && r.at)));
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     state.errors.forEach((m) => { h += '<div class="alert alert-danger upc-err">' + esc(m) + '</div>'; });
     if (r) {
@@ -303,6 +298,7 @@
     }
     h += '</div>';
     root.innerHTML = h;
+    U().ui.list.enhance(root, { auto: true });
   }
 
   // ------------------------------------------------------------------ send recall

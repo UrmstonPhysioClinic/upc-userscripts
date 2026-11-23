@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Insurer payments due (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.11
+// @version      0.1.12
 // @upc-was      funder-chaser.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/insurer-payments-due.user.js
@@ -31,7 +31,7 @@
   if (window.__hxFunderChaser) return;
   window.__hxFunderChaser = true;
 
-  const VERSION = '0.1.11';
+  const VERSION = '0.1.12';
   const ROUTE = 'upc-funder-chaser';
   const MENU_CLS = 'upc-fc-menu';
   const ALLOWED = () => rule('insurerPayments.people', ['Carl Healy']);
@@ -121,6 +121,7 @@
     const a = document.querySelector('a.' + MENU_CLS);
     if (!a) return;
     const r = store.get('result', null);
+    if (U().todo) U().todo.publish('insurer-payments-due', { title: 'Insurer payments due', cls: MENU_CLS, href: a.getAttribute('href'), count: n, rows: r ? r.rows.filter((x) => x.issued).slice(0, 3).map((x) => x.funder + ', ' + x.number + ', ' + fmt(x.balance === null ? x.amount : x.balance)) : [] });
     let b = a.querySelector('.upc-fc-badge');
     const n = r ? r.overdue : 0;
     if (!n) { if (b) b.remove(); return; }
@@ -136,12 +137,8 @@
   const CSS = `
     .upc-fc-badge { display: inline-block; min-width: 18px; margin-left: 6px; padding: 0 5px; border-radius: 9px; font-size: .75em; line-height: 18px;
       text-align: center; font-weight: 600; color: #fff; background: var(--vs-notification-badge-bg-color, #ec6b65); vertical-align: middle; }
-    .upc-fc { max-width: 1100px; }
-    .upc-fc h1 { margin: 0 0 16px; }
     .upc-fc .card { margin-bottom: 24px; }
     .upc-fc .card-header h2 { margin: 0; }
-    .upc-fc .upc-fc-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
-    .upc-fc .upc-fc-bar .btn { margin: 0; }
     .upc-fc td.upc-fc-date { white-space: nowrap; }
   `;
   const state = { unmount: null, running: false, status: '', error: '' };
@@ -160,9 +157,7 @@
   function render() {
     if (!root) return;
     const r = store.get('result', null);
-    let h = '<div class="upc-fc"><h1>Insurer payments due</h1><div class="upc-fc-bar">' +
-      '<button type="button" class="btn btn-outline-primary-light" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>' +
-      (state.running ? U().ui.run.inline(state.status) : '<span class="text-muted">' + esc(r ? 'Checked at ' + new Date(r.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + label(r.at) + '.' : '') + '</span>') + '</div>';
+    let h = '<div class="upc-fc">' + U().ui.page.bar('Insurer payments due', '<button type="button" class="btn btn-outline-primary" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>', (state.running ? U().ui.run.inline(state.status) : U().ui.page.checked(r && r.at)));
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     if (r) {
       const due = r.rows.filter((x) => x.issued), active = r.rows.filter((x) => !x.issued);
@@ -177,6 +172,7 @@
     }
     h += '</div>';
     root.innerHTML = h;
+    U().ui.list.enhance(root, { auto: true });
   }
 
   async function run() {

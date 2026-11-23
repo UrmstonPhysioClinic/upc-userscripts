@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Ready to bill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.9
+// @version      0.4.10
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
@@ -46,7 +46,7 @@
   if (window.__hxReadyToBill) return;
   window.__hxReadyToBill = true;
 
-  const VERSION = '0.4.9';
+  const VERSION = '0.4.10';
   const ROUTE = 'upc-ready-to-bill';
   const MENU_CLS = 'upc-rtb-menu';
   const ALLOWED = () => rule('readyToBill.people', ['Carl Healy', 'Wendy Pritchard']);   // CH, 7 Nov 2026: only the two of them
@@ -296,6 +296,7 @@
     const a = document.querySelector('a.' + MENU_CLS);
     if (!a) return;
     const r = store.get('result', null);
+    if (U().todo) U().todo.publish('ready-to-bill', { title: 'Ready to bill', cls: MENU_CLS, href: a.getAttribute('href'), count: n, rows: r ? r.rows.filter((x) => x.state === 'due').slice(0, 3).map((x) => x.payer + ', ' + x.funder + ', ' + fmt(x.total)) : [] });
     let b = a.querySelector('.upc-rtb-badge');
     const n = r ? r.due : 0;
     if (!n) { if (b) b.remove(); return; }
@@ -311,13 +312,9 @@
   const CSS = `
     .upc-rtb-badge { display: inline-block; min-width: 18px; margin-left: 6px; padding: 0 5px; border-radius: 9px; font-size: .75em; line-height: 18px;
       text-align: center; font-weight: 600; color: #fff; background: var(--vs-notification-badge-bg-color, #ec6b65); vertical-align: middle; }
-    .upc-rtb { max-width: 1300px; }
-    .upc-rtb h1 { margin: 0 0 16px; }
     .upc-rtb .card { margin-bottom: 24px; }
     .upc-rtb .card-header { display: flex; align-items: center; justify-content: space-between; }
     .upc-rtb .card-header h2 { margin: 0; }
-    .upc-rtb .upc-rtb-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
-    .upc-rtb .upc-rtb-bar .btn { margin: 0; }
     .upc-rtb ul.upc-rtb-why { margin: 0; padding-left: 16px; }
     .upc-rtb .upc-rtb-invs a { margin-right: 8px; white-space: nowrap; }
     .upc-rtb td.upc-rtb-date { white-space: nowrap; }
@@ -448,9 +445,7 @@
     if (!root) return;
     const r = store.get('result', null);
     const head = (withAction) => '<thead><tr><th>Patient</th><th>Funder</th><th class="number">Unbilled</th><th>Oldest fee</th><th>Status</th><th>Invoices</th>' + (withAction ? '<th></th>' : '') + '</tr></thead>';
-    let h = '<div class="upc-rtb"><h1>Ready to bill</h1><div class="upc-rtb-bar">' +
-      '<button type="button" class="btn btn-outline-primary-light" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>' +
-      (state.running ? U().ui.run.inline(state.status) : '<span class="text-muted">' + esc(r ? 'Checked at ' + new Date(r.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + label(r.at) + '.' : '') + '</span>') + '</div>';
+    let h = '<div class="upc-rtb">' + U().ui.page.bar('Ready to bill', '<button type="button" class="btn btn-outline-primary" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>', (state.running ? U().ui.run.inline(state.status) : U().ui.page.checked(r && r.at)));
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     if (r) {
       const due = r.rows.filter((x) => x.state === 'due'), rest = r.rows.filter((x) => x.state !== 'due');
@@ -465,6 +460,7 @@
     }
     h += '</div>';
     root.innerHTML = h;
+    U().ui.list.enhance(root, { auto: true });
   }
 
   async function run() {

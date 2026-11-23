@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Old balances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.0
+// @version      0.2.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/old-balances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/old-balances.user.js
@@ -30,7 +30,7 @@
   if (window.__hxOldBalances) return;
   window.__hxOldBalances = true;
 
-  const VERSION = '0.2.0';
+  const VERSION = '0.2.1';
   const ROUTE = 'upc-old-balances';
   const MENU_CLS = 'upc-ob-menu';
   const DAY = 864e5;
@@ -76,6 +76,8 @@
       .map((x) => Object.assign(x, { old: x.date < sixYears.getTime() })).sort((a, b) => a.date - b.date);
     const result = { at: Date.now(), by: VERSION, rows, since: sixMonths.getTime(), cut: sixYears.getTime() };
     store.set('result', result);
+    const a = document.querySelector('a.' + MENU_CLS), old6 = rows.filter((x) => x.old);
+    if (a && U().todo) U().todo.publish('old-balances', { title: 'Old balances', cls: MENU_CLS, href: a.getAttribute('href'), count: old6.length, rows: old6.slice(0, 3).map((x) => x.number + ', ' + x.payer + ', ' + fmt(x.balance)) });
     return result;
   }
 

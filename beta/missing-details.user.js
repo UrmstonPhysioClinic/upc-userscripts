@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Missing details (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.8
+// @version      0.2.9
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/missing-details.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/missing-details.user.js
@@ -44,7 +44,7 @@
   if (window.__hxMissingDetails) return;
   window.__hxMissingDetails = true;
 
-  const VERSION = '0.2.8';
+  const VERSION = '0.2.9';
   const ROUTE = 'upc-missing-details';
   const MENU_CLS = 'upc-md-menu';
   const ADMINS = () => rule('missingDetails.people', ['Carl Healy', 'Wendy Pritchard']);   // who sees the page (CH, 15 Nov 2026: CH and WP)
@@ -304,6 +304,7 @@
     if (!a) return;
     const r = store.get('result', null);
     const n = r ? r.count : 0;
+    if (U().todo) U().todo.publish('missing-details', { title: 'Missing details', cls: MENU_CLS, href: a.getAttribute('href'), count: n, rows: r ? r.rows.filter((x) => x.missing.length && x.seen !== false).slice(0, 3).map((x) => (x.name || 'Patient') + ': ' + missingText(x)) : [] });
     let b = a.querySelector('.upc-md-badge');
     if (!n) { if (b) b.remove(); return; }
     if (!b) { b = document.createElement('span'); b.className = 'upc-md-badge'; a.appendChild(b); }
@@ -318,12 +319,8 @@
       text-align: center; font-weight: 600; color: #fff; background: var(--vs-notification-badge-bg-color, #ec6b65); vertical-align: middle; }
     .upc-native.upc-md-banner { margin: 12px 24px 16px; }
     .upc-native.upc-md-banner a { margin-left: 8px; }
-    .upc-md { max-width: 1100px; }
-    .upc-md h1 { margin: 0 0 16px; }
     .upc-md .card { margin-bottom: 24px; }
     .upc-md .card-header h2 { margin: 0; }
-    .upc-md .upc-md-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
-    .upc-md .upc-md-bar .btn { margin: 0; }
     .upc-md td.upc-md-date { white-space: nowrap; }
   `;
   const state = { unmount: null, running: false, status: '', error: '' };
@@ -338,9 +335,7 @@
       '<td>' + esc(x.missing.length ? missingText(x) + (x.email ? '' : ', email') : 'email') + '</td>' +
       '<td class="upc-md-date">' + esc(next(x)) + '</td>' + (seenCol ? '<td class="upc-md-date">' + esc(x.lastSeen ? label(x.lastSeen) : '') + '</td>' : '') +
       '<td><a href="' + esc(base + '/patient/' + x.id + '/edit') + '" target="_blank" rel="noopener">Edit details</a></td></tr>';
-    let h = '<div class="upc-md"><h1>Missing details</h1><div class="upc-md-bar">' +
-      '<button type="button" class="btn btn-outline-primary-light" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>' +
-      (state.running ? U().ui.run.inline(state.status) : '<span class="text-muted">' + esc(r ? 'Checked at ' + new Date(r.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + label(r.at) + '.' : '') + '</span>') + '</div>';
+    let h = '<div class="upc-md">' + U().ui.page.bar('Missing details', '<button type="button" class="btn btn-outline-primary" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>', (state.running ? U().ui.run.inline(state.status) : U().ui.page.checked(r && r.at)));
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     if (r) {
       const seen = (x) => x.seen !== false;   // results from before the split: treated as ongoing
@@ -355,6 +350,7 @@
     }
     h += '</div>';
     root.innerHTML = h;
+    U().ui.list.enhance(root, { auto: true });
   }
   async function run() {
     if (state.running) return;
