@@ -35,7 +35,8 @@ def task(i, title, due, status, who=('Carl Healy',), typ='', pri='Low'):
 
 TASKS = [task(1, 'Bank transfer', '2021-04-13T00:00:00+01:00', 'Overdue'), task(2, 'Call insurer', '2026-11-23T10:00:00+00:00', 'Pending', typ='Patient', pri='High'),
          task(3, 'Send report', '2026-11-26T00:00:00+00:00', 'Pending', typ='Invoice'), task(4, 'Renew licence', '2026-12-10T00:00:00+00:00', 'Pending', typ='Organisation'),
-         task(5, 'Tidy files', '', 'Pending'), task(6, 'Old done', '2026-11-01T00:00:00+00:00', 'Completed'), task(7, 'Not mine', '2026-11-23T00:00:00+00:00', 'Pending', who=('Wendy Pritchard',))]
+         task(5, 'Tidy files', '', 'Pending'), task(6, 'Old done', '2026-11-01T00:00:00+00:00', 'Completed'), task(7, 'Not mine', '2026-11-23T00:00:00+00:00', 'Pending', who=('Wendy Pritchard',)),
+         task(8, 'Old student task', '2019-01-01T00:00:00+00:00', 'Overdue', who=('Old Student',))]
 
 
 def edit_form(tid, title='Task'):
@@ -154,12 +155,13 @@ async def main():
         await pg.select_option('#upc-tn-link', 'patient')
         await pg.fill('#upc-tn-term', 'john')
         await ctx.clock.run_for(600)
-        await pg.wait_for_selector('[data-upc-tn-found] [data-pick]')
-        await pg.click('[data-upc-tn-found] [data-pick]')
+        await pg.wait_for_selector('[data-upc-tn-found] [data-i]')
+        await pg.keyboard.press('Enter')
+        picked = await pg.evaluate("document.querySelector('#upc-tn-term').value")
         await pg.click('[data-upc-todo-new] [data-c=yes]')
         await pg.wait_for_function("window.popups.length === 2")
         pop = await pg.evaluate("window.popups[1]")
-        check("New task: the patient found with Halaxy's search, then Halaxy's add-task pop-up for them", pop.endswith('/a/pr/555/task/new/linkPaG/663'), pop)
+        check("New task: the patient found with Halaxy's search (dropdown, Enter picks), then Halaxy's add-task pop-up for them", pop.endswith('/a/pr/555/task/new/linkPaG/663') and picked.startswith('John Doe'), (pop, picked))
         await pg.evaluate("document.querySelector('.bootbox').remove()")
 
         await pg.select_option('select[data-f=who]', 'all')
@@ -169,6 +171,8 @@ async def main():
         await pg.reload()
         await pg.wait_for_selector('[data-upc-to-do] [data-upc-list=overdue]', timeout=20000)
         check('filters remembered', await pg.evaluate("document.querySelector('select[data-f=who]').value") == 'all')
+        opts = await pg.evaluate("[...document.querySelectorAll('select[data-f=who] option')].map((o) => o.textContent)")
+        check("'For' lists Halaxy's active users only, not people named on old tasks", opts == ['For me', 'For Wendy Pritchard', 'For everyone'], opts)
 
         await pg.click('[data-a=view][data-view=week]')
         await pg.wait_for_selector('.upc-todo-week')

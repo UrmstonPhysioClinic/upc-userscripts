@@ -1845,8 +1845,6 @@
     .upc-native .upc-run-log > summary { display: inline-block; list-style: none; margin-top: 8px; }
     .upc-native .upc-run-log > summary::-webkit-details-marker { display: none; }
     .upc-native .upc-run-log .upc-box { max-height: 300px; overflow: auto; margin-top: 8px; }
-    .upc-native.upc-page-root { max-width: 1200px; }
-    .upc-native.upc-page-root.upc-page-wide { max-width: 1640px; }
     .upc-native .upc-page-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px solid var(--vs-card-border-color, #dee2e6); }
     .upc-native .upc-page-bar h1 { margin: 0; }
     .upc-native .upc-page-bar .upc-page-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

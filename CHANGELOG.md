@@ -3,6 +3,7 @@
 ## Core 0.1.72, Ready to bill, 23 Nov 2026 (beta)
 - Progress bars show real progress where the count is known ("Reading notes (12 of 40)": Missing details, Open-ended recalls, Review requests, Ready to bill, Bank statement, Remittances, Invoice Funder) and fill smoothly between steps instead of jumping. Single-step waits keep the moving bar.
 - Ready to bill counts the patients it reads.
+- To do 0.2.2: New task's search shows its results in a dropdown under the box (arrow keys and Enter, or click), like Halaxy's top search; "For" lists Halaxy's active users only. Our pages are full width again, like Halaxy's.
 - Queued actions: with two or more queued, one bar under the title bar ("Writing off (3 of 12)") and, when the batch is over, one line saying how it went ("12 written off.", or "11 written off. 1 not changed."). Old balances, Ready to bill, Review requests, Open-ended recalls and To do (core UPC.ui.batch).
 
 ## To do 0.2.0, core 0.1.71, 23 Nov 2026 (beta)
