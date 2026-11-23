@@ -2229,6 +2229,20 @@
         if ($ && $.fn) $(a).trigger('click'); else a.click();
       });
     },
+    // Halaxy's date picker (flatpickr, which its pages load; CH, 23 Nov 2026) on one of our date boxes. The box is
+    // written as <input type="date"> with an ISO value (and min), and keeps that ISO value, so code reading it is the
+    // same either way; the person sees and picks dates as Halaxy shows them (05-Nov-2026). Without flatpickr (tests,
+    // other pages) the browser's own date box stays. Returns the picker, or null.
+    datePicker(input, opts) {
+      const $ = window.jQuery;
+      const fp = typeof window.flatpickr === 'function' ? (el, o) => window.flatpickr(el, o) : $ && $.fn && $.fn.flatpickr ? (el, o) => $(el).flatpickr(o) : null;
+      if (!fp || !input || input.__upcPicker) return null;
+      const value = input.value, min = input.getAttribute('min'), max = input.getAttribute('max');
+      input.type = 'text';
+      const p = fp(input, Object.assign({ dateFormat: 'Y-m-d', altInput: true, altFormat: 'd-M-Y', defaultDate: value || null, minDate: min || null, maxDate: max || null }, opts || {}));
+      input.__upcPicker = p;
+      return p;
+    },
     halaxyPopupReturn() {
       try {
         const v = JSON.parse(sessionStorage.getItem('upc-halaxy-popup') || 'null');

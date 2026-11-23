@@ -94,7 +94,7 @@
     {
       "file": "open-ended-patients.user.js",
       "name": "UPC Patients: Open-ended recalls (beta)",
-      "version": "0.4.4",
+      "version": "0.4.5",
       "was": "check-ins.user.js"
     },
     {

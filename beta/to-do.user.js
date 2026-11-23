@@ -379,9 +379,9 @@
     // Move to: Halaxy's date picker (flatpickr, which its pages load), or the browser's where it isn't there.
     root.querySelectorAll('input[data-upc-move]').forEach((inp) => {
       const go = (ms) => { if (ms !== null) act('move', U().ui.list.picked(inp.dataset.upcMove), dayStart(ms)); };
-      const fp = window.flatpickr || (window.jQuery && window.jQuery.fn && window.jQuery.fn.flatpickr ? (el, o) => window.jQuery(el).flatpickr(o) : null);
-      if (fp) fp(inp, { dateFormat: 'd-M-Y', minDate: 'today', onChange: (sel) => { if (sel && sel[0]) go(sel[0].getTime()); } });
-      else { inp.type = 'date'; inp.addEventListener('change', () => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(inp.value); if (m) go(new Date(+m[1], +m[2] - 1, +m[3]).getTime()); }); }
+      inp.type = 'date';
+      const p = U().ui.datePicker(inp, { minDate: 'today', onChange: (sel) => { if (sel && sel[0]) go(sel[0].getTime()); } });
+      if (!p) inp.addEventListener('change', () => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(inp.value); if (m) go(new Date(+m[1], +m[2] - 1, +m[3]).getTime()); });
     });
   }
 
