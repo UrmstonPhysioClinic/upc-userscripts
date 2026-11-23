@@ -3,7 +3,7 @@
     {
       "file": "health-check.user.js",
       "name": "UPC System: Health check (beta)",
-      "version": "1.1.58"
+      "version": "1.1.59"
     },
     {
       "file": "block-reporting.user.js",
@@ -126,6 +126,11 @@
       "file": "rebate-sync.user.js",
       "name": "UPC Billing: Rebate sync (beta)",
       "version": "0.3.5"
+    },
+    {
+      "file": "record-retention.user.js",
+      "name": "UPC Patients: Record retention (beta)",
+      "version": "0.1.0"
     },
     {
       "file": "remittances.user.js",
