@@ -40,6 +40,15 @@ async def main():
         b2 = await pg.evaluate(bar)
         check('the next step starts where the last bar was and slides on over about a step\'s time', b2[1] == '60%' and b2[2].startswith('width') and 'linear' in b2[2]
               and 300 <= int(b2[2].split(' ')[1].rstrip('ms')) <= 2000, (start, b2))
+        # A redraw mid-step (same count) carries on from where the slide has got to, not from its end.
+        mid = await pg.evaluate("(() => { document.getElementById('box').innerHTML = UPC.ui.run.inline('Reading notes (6 of about 10)...'); return document.querySelector('#box .progress-bar').style.width; })()")
+        await pg.wait_for_timeout(50)
+        b2b = await pg.evaluate(bar)
+        check('a redraw mid-step carries on the slide rather than snapping to its end', 30 < float(mid.rstrip('%')) < 60 and b2b[1] == '60%'
+              and b2b[2].startswith('width') and 0 < int(b2b[2].split(' ')[1].rstrip('ms')) < 2000, (mid, b2b))
+        await pg.wait_for_timeout(2100)
+        done = await pg.evaluate("(() => { const b = document.querySelector('#box .progress-bar'); b.parentElement.style.cssText = 'display:block;width:200px'; return Math.round(100 * b.getBoundingClientRect().width / b.parentElement.getBoundingClientRect().width); })()")
+        check('the slide ends at the step\'s point', done == 60, done)
         await pg.evaluate("document.getElementById('box').innerHTML = UPC.ui.run.inline('Reading the report...')")
         b3 = await pg.evaluate(bar)
         check('no count: a moving working bar', 'progress-bar-striped' in b3[0] and b3[1] == '100%', b3)

@@ -1896,13 +1896,28 @@
   }, true);
   // A bar that fills smoothly: pages redraw it on every step, so each new bar starts where the last one was drawn and
   // slides to the new point over about the time a step has been taking (at most 2 seconds), so it keeps moving
-  // rather than jumping.
-  const bars = new Map();   // key -> { pct, at, ms }
+  // rather than jumping. A redraw that doesn't move the point (pages redraw for other reasons mid-step) carries on the
+  // slide already under way from where it has got to, rather than snapping to its end (CH, 23 Nov 2026: it jumped).
+  const bars = new Map();   // key -> { from, to, t0, dur, stepAt, stepMs }
   function barHtml(key, pct, tag) {
-    const now = Date.now(), b = bars.get(key);
-    const from = b && pct >= b.pct ? b.pct : pct;
-    const ms = b && pct > b.pct ? Math.min(2000, Math.max(300, b.ms ? (b.ms + (now - b.at)) / 2 : now - b.at)) : 0;
-    bars.set(key, { pct, at: now, ms: b && pct > b.pct ? ms : (b ? b.ms : 0) });
+    const now = Date.now();
+    let b = bars.get(key), from = pct, ms = 0;
+    if (!b || pct < b.to) {
+      b = { from: pct, to: pct, t0: now, dur: 0, stepAt: now, stepMs: b ? b.stepMs : 0 };
+    } else {
+      const cur = b.dur ? b.from + (b.to - b.from) * Math.min(1, (now - b.t0) / b.dur) : b.to;
+      from = cur;
+      if (pct > b.to) {
+        const gap = now - b.stepAt;
+        b.stepMs = b.stepMs ? (b.stepMs + gap) / 2 : gap;
+        b.stepAt = now;
+        ms = Math.min(2000, Math.max(300, b.stepMs));
+        Object.assign(b, { from: cur, to: pct, t0: now, dur: ms });
+      } else {
+        ms = b.dur ? Math.max(0, b.t0 + b.dur - now) : 0;
+      }
+    }
+    bars.set(key, b);
     const t = tag || 'span';
     return '<' + t + ' class="progress-bar upc-bar" data-upc-to="' + pct.toFixed(1) + '" data-upc-ms="' + Math.round(ms) + '" style="display:block;transition:none;width:' + from.toFixed(1) + '%"></' + t + '>';
   }
