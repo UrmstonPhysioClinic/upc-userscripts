@@ -4,6 +4,7 @@
 - To do rebuilt after CH's review: a task opens in Halaxy's own Edit task pop-up (its date picker, several assignees, time, templates, Revert); New task finds the patient, invoice or organisation with Halaxy's search, then opens Halaxy's own add-task pop-up. Done takes effect at once with Undo (Halaxy's Revert); ticked rows done or moved to a date from Halaxy's date picker, with Undo. Filters (for whom, linked to what) remembered for each person. Week view: Monday to Friday, drag tasks onto a day, a tray of overdue and undated tasks. Our lists in a side column. The three buttons on each row are gone.
 - Core: every page of ours one width (1200 px); lists show 25 rows, then "Show 25 more"; Halaxy's page underneath no longer scrolls up under the top bar while ours is shown; UPC.ui.halaxyPopup opens Halaxy's own pop-ups.
 - Open-ended recalls: the send date in the Send recall pop-up uses Halaxy's date picker (core UPC.ui.datePicker).
+- Task stamps 0.2.0: every task needs a due date, anywhere in Halaxy. The Task Due Date is marked required like Title, a new task starts on today, and Save is stopped ("Task Due Date is required.") while it's empty.
 - CLAUDE.md: the pop-up and Undo exceptions, and the page layout.
 
 ## To do 0.1.0 (new), our pages on the page kit, core 0.1.70, 23 Nov 2026 (beta)
