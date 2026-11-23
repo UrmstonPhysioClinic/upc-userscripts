@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Open-ended recalls (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.4
+// @version      0.4.5
 // @upc-was      check-ins.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/open-ended-patients.user.js
@@ -41,7 +41,7 @@
   if (window.__hxCheckIns) return;
   window.__hxCheckIns = true;
 
-  const VERSION = '0.4.4';
+  const VERSION = '0.4.5';
   const ROUTE = 'upc-check-ins';
   const MENU_CLS = 'upc-ci-menu';
   const ALLOWED = () => rule('openEnded.people', ['Carl Healy']);
@@ -311,6 +311,8 @@
       const dlg = U().ui.dialog({ title, small: true, onClose: () => doneWith(false) });
       dlg.root.setAttribute('data-upc-ci-confirm', '');
       dlg.body.innerHTML = html + '<div class="alert alert-danger upc-err" data-c-err hidden></div><div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-c="no">Cancel</button><button type="button" class="btn btn-primary" data-c="yes">' + esc(yes) + '</button></div>';
+      // Halaxy's own date picker on the send date (CH, 23 Nov 2026).
+      dlg.body.querySelectorAll('input[type=date]').forEach((i) => U().ui.datePicker(i));
       dlg.body.addEventListener('click', (e) => {
         const b = e.target.closest('[data-c]'); if (!b) return;
         if (b.dataset.c === 'yes' && check) { const m = check(dlg.body); if (m) { const el = dlg.body.querySelector('[data-c-err]'); el.textContent = m; el.hidden = false; return; } }

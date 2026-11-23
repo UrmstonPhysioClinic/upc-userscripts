@@ -14,7 +14,7 @@
     {
       "file": "core.user.js",
       "name": "UPC System: Core library (beta)",
-      "version": "0.1.70"
+      "version": "0.1.71"
     },
     {
       "file": "alerts.user.js",
@@ -94,7 +94,7 @@
     {
       "file": "open-ended-patients.user.js",
       "name": "UPC Patients: Open-ended recalls (beta)",
-      "version": "0.4.4",
+      "version": "0.4.5",
       "was": "check-ins.user.js"
     },
     {
@@ -145,7 +145,7 @@
     {
       "file": "task-stamps.user.js",
       "name": "UPC Calendar: Task stamps (beta)",
-      "version": "0.1.6"
+      "version": "0.2.0"
     },
     {
       "file": "text-boxes.user.js",
@@ -156,7 +156,7 @@
     {
       "file": "to-do.user.js",
       "name": "UPC Schedule: To do (beta)",
-      "version": "0.1.0"
+      "version": "0.2.0"
     },
     {
       "file": "toast-alerts.user.js",

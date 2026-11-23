@@ -1,11 +1,11 @@
 // ==UserScript==
 // @name         UPC Calendar: Task stamps (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.6
+// @version      0.2.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/task-stamps.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/task-stamps.user.js
-// @description  Date, time and initials stamps ("2026-11-11 15:49 CH") and "- " bullets in task comments and appointment comments, added when you click into the box. Hides the task page's broken top Mark as completed.
+// @description  Date, time and initials stamps ("2026-11-11 15:49 CH") and "- " bullets in task comments and appointment comments, added when you click into the box. Hides the task page's broken top Mark as completed. Every task needs a due date: new ones start on today, and none saves without one.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
 // @grant        none
@@ -31,6 +31,10 @@
  *    lower one is Halaxy's ajax link (Task Completion pop-up, then Complete). The top one is a plain link that opens a
  *    bare page whose buttons do nothing useful (CH, 23 Nov 2026: "please can we remove it"). The plain one is hidden,
  *    only while the working ajax one is there.
+ *  - Due dates (CH, 23 Nov 2026: "tasks without due dates do not get done"): in every task form (form#form_task_edit,
+ *    pop-up or page, anywhere in Halaxy) the Task Due Date is marked required like Title; a new task (no Delete or
+ *    Mark as completed for it yet) starts on today; Save is stopped with "Task Due Date is required." while it's empty,
+ *    for new and existing tasks alike.
  */
 
 (function () {
@@ -38,7 +42,7 @@
   if (window.__hxTaskStamps) return;
   window.__hxTaskStamps = true;
 
-  const VERSION = '0.1.6';
+  const VERSION = '0.2.0';
   const RECENT = 5 * 60e3;
   // Task comments (add-task and edit-task pop-ups), and an appointment's Comments in the calendar (form#pr-appointment,
   // a plain box form[description]; capture, 11 Nov 2026). Both plain text, line breaks kept.
@@ -137,6 +141,71 @@
     box.addEventListener('keydown', () => { toEndOnUp = false; });
   }
 
+  // ------------------------------------------------------------------ due dates
+
+  const DUE = 'form#form_task_edit [name="form[displayDueDate]"]';
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const todayLabel = () => { const d = new Date(); return p2(d.getDate()) + '-' + MONTHS[d.getMonth()] + '-' + d.getFullYear(); };
+  const holder = (form) => form.closest('.modal-content, .bootbox, [role=dialog]') || document.body;
+  const isNewTask = (form) => !holder(form).querySelector('a[href*="/task/"][href$="/delete"], a[href*="/task/"][href*="/complete"], a[href*="/task/"][href*="/revert"]');
+  function setDue(input, text) {
+    if (input._flatpickr && typeof input._flatpickr.setDate === 'function') input._flatpickr.setDate(text, true, 'd-M-Y');
+    else { input.value = text; fire(input); input.dispatchEvent(new Event('change', { bubbles: true })); }
+  }
+  function prepareDue(form) {
+    if (form.hasAttribute('data-upc-due')) return;
+    const due = form.querySelector('[name="form[displayDueDate]"]');
+    if (!due) return;
+    form.setAttribute('data-upc-due', '');
+    due.required = true;
+    // Marked required as Halaxy marks Title: the same label classes and its "*".
+    const tl = form.querySelector('label[for="form_title"]'), dl = form.querySelector('label[for="' + due.id + '"]');
+    if (tl && dl && !dl.hasAttribute('data-upc-req')) {
+      dl.setAttribute('data-upc-req', '');
+      tl.classList.forEach((c) => dl.classList.add(c));
+      const star = [...tl.childNodes].find((n) => n.nodeType === 1 && n.textContent.trim() === '*');
+      if (star && !dl.textContent.trim().startsWith('*')) dl.insertBefore(star.cloneNode(true), dl.firstChild);
+    }
+    if (isNewTask(form) && !due.value.trim()) setDue(due, todayLabel());
+    const clear = () => { if (due.value.trim()) dueError(form, false); };
+    due.addEventListener('change', clear);
+    due.addEventListener('input', clear);
+  }
+  function dueError(form, on) {
+    const due = form.querySelector('[name="form[displayDueDate]"]');
+    let el = form.querySelector('.upc-due-err');
+    if (!on) { if (el) el.remove(); if (due) due.classList.remove('is-invalid'); return; }
+    if (due) due.classList.add('is-invalid');
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'text-danger upc-due-err';
+      el.setAttribute('role', 'alert');
+      el.textContent = 'Task Due Date is required.';
+      const group = due && (due.closest('.input-group, .form-group, .row') || due.parentElement);
+      if (group && group.parentNode) group.parentNode.insertBefore(el, group.nextSibling); else form.appendChild(el);
+    }
+  }
+  // Save (or Enter) with no due date: stopped before Halaxy sees it.
+  function guardDue(e) {
+    const t = e.target;
+    let form = null;
+    if (e.type === 'submit') form = t.matches && t.matches('form#form_task_edit') ? t : null;
+    else {
+      const b = t && t.closest && t.closest('button, input[type=submit], a');
+      if (!b || !(b.classList.contains('btn-submit') || /^\s*save\b/i.test(b.textContent || b.value || ''))) return;
+      form = b.closest('form#form_task_edit') || holder(b).querySelector('form#form_task_edit');
+    }
+    if (!form) return;
+    const due = form.querySelector('[name="form[displayDueDate]"]');
+    if (!due || due.value.trim()) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    dueError(form, true);
+    due.focus();
+  }
+  document.addEventListener('click', guardDue, true);
+  document.addEventListener('submit', guardDue, true);
+
   // Before Halaxy reads the form on Save: empty "- " lines at the end go, and so does a stamp with nothing after it.
   // Only boxes this script has been in are touched.
   function tidy(box) {
@@ -174,7 +243,7 @@
     if (!links.some((a) => a.classList.contains('ajax'))) return;
     links.filter((a) => !a.classList.contains('ajax') && !a.hidden).forEach((a) => { a.hidden = true; a.style.setProperty('display', 'none', 'important'); });
   }
-  const scan = () => { queued = false; document.querySelectorAll(FIELD + ':not([data-upc-stamp-done])').forEach(prepare); checkLayout(); hideBrokenComplete(); };
+  const scan = () => { queued = false; document.querySelectorAll(FIELD + ':not([data-upc-stamp-done])').forEach(prepare); document.querySelectorAll('form#form_task_edit:not([data-upc-due])').forEach(prepareDue); checkLayout(); hideBrokenComplete(); };
   new MutationObserver(() => { if (!queued) { queued = true; requestAnimationFrame(scan); } }).observe(document.body, { childList: true, subtree: true });
   scan();
 

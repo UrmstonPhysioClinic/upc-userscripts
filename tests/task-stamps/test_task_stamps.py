@@ -189,6 +189,37 @@ async def main():
         vis = await pg2.evaluate("[...document.querySelectorAll('a[href$=\"/complete\"]')].map((a) => !!a.offsetParent)")
         check('task page without the working one: the top one left alone', vis == [True], vis)
 
+        # Due dates: every task form needs one; a new task starts on today; Save is stopped without one
+        def form_page(edit):
+            return ("<!doctype html><html><body><div class='modal-content'><form id='form_task_edit'><label for='form_title'><span class='text-danger'>*</span> Title</label>"
+                    "<input name='form[title]' id='form_title' value='x'><label for='form_displayDueDate'>Task Due Date</label><div class='input-group'>"
+                    "<input name='form[displayDueDate]' id='form_displayDueDate' value=''></div><textarea name='form[comment]'></textarea></form>%s"
+                    "<button type='button' class='btn btn-primary btn-submit'>Save</button></div>"
+                    "<script>window.saves = []; document.addEventListener('click', (e) => { if (e.target.closest('.btn-submit')) window.saves.push(document.querySelector('#form_displayDueDate').value); });</script></body></html>"
+                    ) % ("<a class='btn ajax' href='/a/pr/555/task/9/delete'>Delete</a>" if edit else '')
+        for edit in (False, True):
+            pg3 = await browser.new_page()
+            pg3.on('pageerror', lambda e: errors.append(str(e)))
+            body = form_page(edit)
+            await pg3.route('https://eu.halaxy.com/**', lambda r: r.fulfill(body=body, content_type='text/html'))
+            await pg3.goto('https://eu.halaxy.com/a/pr/555/task/')
+            await pg3.add_script_tag(content=SCRIPT)
+            await pg3.wait_for_timeout(200)
+            due = await pg3.evaluate("document.querySelector('#form_displayDueDate').value")
+            star = await pg3.evaluate("document.querySelector('label[for=form_displayDueDate]').textContent.trim()")
+            if not edit:
+                check('a new task starts on today; its due date marked required like Title', re.fullmatch(r'\d{2}-[A-Z][a-z]{2}-\d{4}', due) is not None and star.startswith('*'), (due, star))
+                await pg3.fill('#form_displayDueDate', '')
+            else:
+                check('an existing task with no due date is not filled in for you', due == '', due)
+            await pg3.click('.btn-submit')
+            err = await pg3.evaluate("(document.querySelector('.upc-due-err') || {}).textContent")
+            check(('existing' if edit else 'new') + ' task: Save stopped without a due date', await pg3.evaluate('window.saves') == [] and err == 'Task Due Date is required.', (await pg3.evaluate('window.saves'), err))
+            await pg3.fill('#form_displayDueDate', '25-Nov-2026')
+            await pg3.click('.btn-submit')
+            check(('existing' if edit else 'new') + ' task: saves once it has one', await pg3.evaluate('window.saves') == ['25-Nov-2026'] and not await pg3.evaluate("!!document.querySelector('.upc-due-err')"))
+            await pg3.close()
+
         check('no page errors', not errors, errors)
         await browser.close()
     print('\n%d failed' % len(FAILS) if FAILS else '\nAll passed')

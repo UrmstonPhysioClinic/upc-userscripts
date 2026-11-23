@@ -1,12 +1,13 @@
 """
 To do, against a mock Halaxy (invented tasks). Clock: 16:00 on Monday 23-Nov-2026 (UK).
 
-Checks: Schedule > To do with a badge for overdue and today's tasks; the signed-in person's open tasks grouped Overdue,
-Today, This week, Later, No date (completed ones and other people's left out); Done asks first, then uses Halaxy's
-Mark as completed and its Complete link; Tomorrow saves the Edit task form with only the due date changed; ticking
-rows and "Move to Monday"; New task linked to a patient (Halaxy's patient search), for the chosen person, with a
-stamped comment, through Halaxy's add-task form; a card for each list page this person can open, with its count and
-top rows, and none for lists they can't open; Halaxy look.
+Checks: Schedule > To do with a badge for overdue and today's tasks; my open tasks grouped Overdue, Today, This week,
+Later, No date (completed ones and other people's left out); Done takes effect at once (Halaxy's Mark as completed and
+its Complete link) with Undo (Halaxy's Revert); ticked rows moved to a date (the Edit task form saved with only the
+due date changed); a task opens in Halaxy's own Edit task pop-up and the list is read again when it closes; New task
+finds a patient with Halaxy's search, then opens Halaxy's add-task pop-up for them; filters (for everyone) remembered;
+the week view, dragging a task onto a day; a card for each list page I can open, none for lists I can't; Halaxy's
+page underneath doesn't scroll; Halaxy look.
 
 Run:  python3 tests/to-do/test_to_do.py
 """
@@ -54,7 +55,10 @@ def page_html():
             "<li class='mainmenu-item'><a class='mainmenu-link'><span class='mainmenu-link-label'>Finances</span></a><ul><li><a class='mainmenu-sublink' href='/a/pr/555/invoice/'>Invoices</a></li>"
             "<li><a class='mainmenu-sublink upc-rtb-menu' href='/a/pr/555/invoice/#upc-ready-to-bill'>Ready to bill</a></li></ul></li></ul></nav></div>"
             "<div id='headerWrapper' style='height:50px'></div><div id='pageContent'><h1>Tasks</h1></div>"
-            "<script>window.HkUser = { linkPrG: 11, pracID: 11, pracName: 'Carl Healy' }; window.Hk = { jwt: 'j' };</script></body></html>")
+            "<script>window.HkUser = { linkPrG: 11, pracID: 11, pracName: 'Carl Healy' }; window.Hk = { jwt: 'j' };"
+            "window.popups = []; document.addEventListener('click', (e) => { const a = e.target.closest && e.target.closest('a.ajax'); if (!a) return; e.preventDefault();"
+            " window.popups.push(a.getAttribute('href')); const d = document.createElement('div'); d.className = 'bootbox modal'; d.textContent = 'Halaxy pop-up'; document.body.appendChild(d); });</script>"
+            "<div style='height:3000px'></div></body></html>")
 
 
 async def halaxy(route):
@@ -66,6 +70,13 @@ async def halaxy(route):
     if p == '/a/pr/555/task/data':
         S['reads'] += 1
         return await js(TASKS)
+    m = re.match(r'^/a/pr/555/task/(\d+)/revert/(\w+)$', p)
+    if m:
+        S['reverted'].append(int(m.group(1)))
+        return await js({'status': 'REFRESH', 'message': '/a/pr/555/task/'})
+    m = re.match(r'^/a/pr/555/task/(\d+)/revert$', p)
+    if m:
+        return await js({'status': 'FORM', 'title': 'Revert Task', 'message': "<button class='btn btn-cancel'>Cancel</button><a class='btn ajax' href='/a/pr/555/task/%s/revert/def456'>Revert</a>" % m.group(1)})
     m = re.match(r'^/a/pr/555/task/(\d+)/complete/(\w+)$', p)
     if m:
         S['completed'].append(int(m.group(1)))
@@ -87,7 +98,7 @@ async def halaxy(route):
 async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch()
-        S.update({'reads': 0, 'completed': [], 'posts': []})
+        S.update({'reads': 0, 'completed': [], 'reverted': [], 'posts': []})
         ctx = await browser.new_context(viewport={'width': 1400, 'height': 900}, timezone_id='Europe/London')
         await ctx.clock.install(time=NOW.isoformat())
         await ctx.route('https://eu.halaxy.com/**', halaxy)
@@ -109,51 +120,67 @@ async def main():
         badge = await pg.evaluate("(document.querySelector('a.upc-todo-menu .upc-todo-badge') || {}).textContent")
         check('badge: overdue and due today', badge == '2', badge)
         check('a card for each list I can open, with count and top rows; none for lists I can\'t', 'Ready to bill (4)' in heads and 'Old balances (9)' not in heads
-              and 'Patient C, Bupa, £ 1,200.00' in await pg.evaluate("document.querySelector('.upc-todo-lists').innerText") and 'and 1 more' in await pg.evaluate("document.querySelector('.upc-todo-lists').innerText"), heads)
+              and 'Patient C, Bupa, £ 1,200.00' in await pg.evaluate("document.querySelector('.upc-todo-side').innerText") and 'and 1 more' in await pg.evaluate("document.querySelector('.upc-todo-side').innerText"), heads)
 
+        check("Halaxy's page underneath doesn't scroll", await pg.evaluate("document.documentElement.style.overflow") == 'hidden')
         await pg.click("[data-a=done][data-id='2']")
-        await pg.wait_for_selector('[data-upc-todo-confirm]')
-        conf = await pg.evaluate("document.querySelector('[data-upc-todo-confirm]').innerText")
-        check('Done asks first', 'Mark "Call insurer" as completed?' in conf and not S['completed'], conf)
-        await pg.click('[data-upc-todo-confirm] [data-c=yes]')
-        await pg.click("[data-a=tomorrow][data-id='1']")
-        await pg.click('[data-upc-todo-confirm] [data-c=yes]')
-        await pg.wait_for_function("document.querySelectorAll('[data-upc-to-do] .upc-ok').length >= 2", timeout=20000)
-        check("Done: Halaxy's Mark as completed, then its Complete link", S['completed'] == [2], S['completed'])
-        post = dict(S['posts'][0][1]) if S['posts'] else {}
-        check('Tomorrow: the Edit task form saved with only the due date changed',
-              S['posts'][0][0] == '1' and post.get('form[displayDueDate]') == '24-Nov-2026' and post.get('form[title]') == 'Task 1' and post.get('form[_token]') == 'tt'
-              and post.get('form[comment]') == '2026-11-01 10:00 RH\n- note' and ('form[linkPrGs][]', '11') in S['posts'][0][1], S['posts'])
+        await pg.wait_for_function("document.querySelector('[data-upc-to-do] .alert-success [data-a=undo]')", timeout=10000)
+        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-to-do] .upc-ok')].some((x) => x.textContent === 'Completed')", timeout=20000)
+        check("Done at once, no question: Halaxy's Mark as completed, then its Complete link", S['completed'] == [2] and not await pg.evaluate("!!document.querySelector('[data-upc-todo-confirm]')"), S['completed'])
+        await pg.click('[data-upc-to-do] [data-a=undo]')
+        await pg.wait_for_function("document.querySelector(\"[data-a=done][data-id='2']\")", timeout=20000)
+        check("Undo: Halaxy's Revert", S['reverted'] == [2], S['reverted'])
 
         await pg.check("[data-upc-list=later] tr[data-upc-id='4'] input[data-upc-tick]")
-        await pg.click('[data-a=bulk-monday][data-list=later]')
-        conf = await pg.evaluate("document.querySelector('[data-upc-todo-confirm]').innerText")
-        check('ticked rows: one question', 'Move "Renew licence" to 30-Nov-2026?' in conf, conf)
-        await pg.click('[data-upc-todo-confirm] [data-c=yes]')
-        await pg.wait_for_function("document.querySelectorAll('[data-upc-to-do] .upc-ok').length >= 3", timeout=20000)
-        check('moved to Monday', [x[0] for x in S['posts']] == ['1', '4'] and dict(S['posts'][1][1]).get('form[displayDueDate]') == '30-Nov-2026', S['posts'])
+        await pg.fill("input[data-upc-move=later]", '2026-11-30')
+        await pg.wait_for_function("document.querySelector('[data-upc-to-do] .alert-success')", timeout=10000)
+        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-to-do] .upc-ok')].some((x) => x.textContent === 'Moved')", timeout=20000)
+        post = dict(S['posts'][0][1]) if S['posts'] else {}
+        check('ticked rows moved to a date: the Edit task form saved with only the due date changed',
+              S['posts'][0][0] == '4' and post.get('form[displayDueDate]') == '30-Nov-2026' and post.get('form[title]') == 'Task 4' and post.get('form[_token]') == 'tt'
+              and post.get('form[comment]') == '2026-11-01 10:00 RH\n- note' and ('form[linkPrGs][]', '11') in S['posts'][0][1], S['posts'])
+
+        n = S['reads']
+        await pg.click("[data-upc-list=overdue] a[data-a=edit][data-id='1']")
+        await pg.wait_for_function("window.popups.length === 1")
+        pop = await pg.evaluate("window.popups[0]")
+        await pg.evaluate("document.querySelector('.bootbox').remove()")
+        await pg.wait_for_function("!document.querySelector('[data-upc-halaxy-popup]')", timeout=10000)
+        await pg.wait_for_timeout(1500)
+        check("a task opens in Halaxy's own Edit task pop-up; read again when it closes", pop.endswith('/a/pr/555/task/1') and S['reads'] > n, (pop, S['reads'], n))
 
         await pg.click('[data-a=new]')
-        await pg.wait_for_selector('[data-upc-todo-new] #upc-tn-title')
-        await pg.fill('#upc-tn-title', 'Chase referral letter')
+        await pg.wait_for_selector('[data-upc-todo-new] #upc-tn-link')
         await pg.select_option('#upc-tn-link', 'patient')
         await pg.fill('#upc-tn-term', 'john')
         await ctx.clock.run_for(600)
         await pg.wait_for_selector('[data-upc-tn-found] [data-pick]')
         await pg.click('[data-upc-tn-found] [data-pick]')
-        await pg.select_option('#upc-tn-who', '12')
-        await pg.fill('#upc-tn-due', '2026-11-25')
-        await pg.select_option('#upc-tn-pri', '3')
-        await pg.fill('#upc-tn-comment', 'Ask the GP surgery')
         await pg.click('[data-upc-todo-new] [data-c=yes]')
-        await pg.wait_for_function("!document.querySelector('[data-upc-todo-new]')", timeout=20000)
-        last = S['posts'][-1]
-        f = dict(last[1])
-        check('New task: linked to the patient, for the chosen person, priority, due date, stamped comment, through Halaxy\'s form',
-              last[0] == 'new/linkPaG/663' and f.get('form[title]') == 'Chase referral letter' and [v for k, v in last[1] if k == 'form[linkPrGs][]'] == ['12']
-              and f.get('form[priority]') == '3' and f.get('form[displayDueDate]') == '25-Nov-2026' and re.fullmatch(r'2026-11-23 16:\d\d CH\n- Ask the GP surgery', f.get('form[comment]', '')) is not None, last)
-        look = await pg.evaluate("(() => { const r = document.querySelector('[data-upc-to-do]'); return r.classList.contains('upc-native') && !!r.querySelector('.upc-page-bar h1') && r.querySelector('table').className.startsWith('table table-striped table-bordered'); })()")
-        check('Halaxy look: title bar, cards, tables', look)
+        await pg.wait_for_function("window.popups.length === 2")
+        pop = await pg.evaluate("window.popups[1]")
+        check("New task: the patient found with Halaxy's search, then Halaxy's add-task pop-up for them", pop.endswith('/a/pr/555/task/new/linkPaG/663'), pop)
+        await pg.evaluate("document.querySelector('.bootbox').remove()")
+
+        await pg.select_option('select[data-f=who]', 'all')
+        heads = await pg.evaluate("[...document.querySelectorAll('[data-upc-to-do] .card h2')].map((h) => h.textContent)")
+        has_for = await pg.evaluate("[...document.querySelectorAll('[data-upc-list=today] th')].map((t) => t.textContent.trim()).includes('For')")
+        check("for everyone: other people's tasks and a For column", 'Today (2)' in heads and has_for, heads)
+        await pg.reload()
+        await pg.wait_for_selector('[data-upc-to-do] [data-upc-list=overdue]', timeout=20000)
+        check('filters remembered', await pg.evaluate("document.querySelector('select[data-f=who]').value") == 'all')
+
+        await pg.click('[data-a=view][data-view=week]')
+        await pg.wait_for_selector('.upc-todo-week')
+        days = await pg.evaluate("[...document.querySelectorAll('.upc-todo-week .card h2')].map((h) => h.textContent)")
+        check('week view: a tray, then Monday to Friday', len(days) == 6 and days[1].startswith('Monday 23-Nov') and days[5].startswith('Friday 27-Nov'), days)
+        nposts = len(S['posts'])
+        await pg.drag_and_drop("[data-chip='3']", ".upc-todo-drop[data-day]:nth-child(3)")
+        await pg.wait_for_function("document.querySelector('[data-upc-to-do] .alert-success')", timeout=10000)
+        await pg.wait_for_timeout(2500)
+        check('a task dragged onto Tuesday is moved there', len(S['posts']) == nposts + 1 and dict(S['posts'][-1][1]).get('form[displayDueDate]') == '24-Nov-2026', S['posts'][nposts:])
+        look = await pg.evaluate("(() => { const r = document.querySelector('[data-upc-to-do]'); return r.classList.contains('upc-native') && !!r.querySelector('.upc-page-bar h1') && !!r.querySelector('.card .card-header h2') && !r.shadowRoot; })()")
+        check('Halaxy look: title bar, cards', look)
         check('no page errors', not errors, errors)
         await browser.close()
     print('\n' + ('All passed' if not FAILS else '%d failed' % len(FAILS)))

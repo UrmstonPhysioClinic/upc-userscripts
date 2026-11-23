@@ -150,6 +150,8 @@ async def context(browser):
     ctx = await browser.new_context(viewport={'width': 1400, 'height': 900}, timezone_id='Europe/London')
     await ctx.clock.install(time=NOW.isoformat())
     await ctx.route('https://eu.halaxy.com/**', halaxy)
+    # Halaxy's date picker (flatpickr), as a stand-in that records how it was set up.
+    await ctx.add_init_script("window.fpCalls = []; window.flatpickr = (el, o) => { window.fpCalls.push({ type: el.type, value: el.value, o: { dateFormat: o.dateFormat, altInput: o.altInput, altFormat: o.altFormat, minDate: o.minDate, defaultDate: o.defaultDate } }); return {}; };")
     await ctx.add_init_script(CORE)
     await ctx.add_init_script("document.addEventListener('DOMContentLoaded', function () {\n" + CI + "\n});")
     return ctx
@@ -222,6 +224,9 @@ async def main():
         q = await pg.evaluate("document.querySelector('[data-upc-ci-confirm]').textContent")
         when = await pg.evaluate("document.querySelector('[data-upc-ci-confirm] #upc-ci-when').value")
         check('confirm: who and the practitioner named; send date chosen there, the next weekday by default', 'Patient A' in q and 'Diana' in q and 'at 10:30' in q and when == '2026-11-12', (q, when))
+        fp = await pg.evaluate("window.fpCalls")
+        check("the send date uses Halaxy's date picker, shown as Halaxy writes dates, from the first allowed day",
+              len(fp) == 1 and fp[0]['o'] == {'dateFormat': 'Y-m-d', 'altInput': True, 'altFormat': 'd-M-Y', 'minDate': '2026-11-12', 'defaultDate': '2026-11-12'}, fp)
         await pg.click('[data-upc-ci-confirm] [data-c=yes]')
         await pg.wait_for_function("[...document.querySelectorAll('[data-upc-check-ins] .card')].some((c) => /Recalled/.test(c.textContent))", timeout=30000)
         f = S['posts'][0][1] if S['posts'] else {}
