@@ -1,5 +1,5 @@
 """
-Test for Stored cards, against a mock Halaxy (invented patients and cards). Clock: 22-Nov-2026.
+Test for Cards on file, against a mock Halaxy (invented patients and cards). Clock: 22-Nov-2026.
 
 Checks: the Credit Card Expiry report, the patient list and the Unpaid Invoices report are read; a card comes off the
 list only when its patient has nothing booked, no unpaid invoice of their own (by patient number), no unpaid insurer
@@ -8,7 +8,7 @@ patients and patients not in the patient list are left out; the line under the l
 ticking and "Remove 2" asks once, then each card is removed through Halaxy's Delete credit card pop-up and the Funding
 tab is read again; a card no longer on the Funding tab is reported, not guessed; only CH sees the page.
 
-Run:  python3 tests/stored-cards/test_stored_cards.py
+Run:  python3 tests/cards-on-file/test_cards_on_file.py
 """
 import asyncio, datetime, json, re, sys, urllib.parse
 from pathlib import Path
@@ -16,7 +16,7 @@ from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
 CORE = (ROOT / 'beta' / 'core.user.js').read_text().replace('perMinute: 45,', 'perMinute: 100000,')
-SCRIPT = (ROOT / 'beta' / 'stored-cards.user.js').read_text()
+SCRIPT = (ROOT / 'beta' / 'cards-on-file.user.js').read_text()
 NOW = datetime.datetime(2026, 11, 22, 12, 0, tzinfo=datetime.timezone.utc)
 FAILS = []
 S = {}
@@ -182,7 +182,7 @@ async def main():
         await ctx.add_init_script(CORE)
         await ctx.add_init_script("document.addEventListener('DOMContentLoaded', function () {\n" + SCRIPT + "\n});")
         pg = await ctx.new_page()
-        await pg.goto('https://eu.halaxy.com/a/pr/555/patient/#upc-stored-cards')
+        await pg.goto('https://eu.halaxy.com/a/pr/555/patient/#upc-cards-on-file')
         await pg.wait_for_timeout(3000)
         check('someone else: no menu item, no page, nothing read', not await pg.evaluate("!!document.querySelector('a.upc-sc-menu, [data-upc-stored-cards]')") and not S['reports'])
         await browser.close()

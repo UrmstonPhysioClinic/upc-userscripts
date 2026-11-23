@@ -325,6 +325,13 @@ async def main():
         # 8. No patient details stored
         dump = await pg.evaluate("JSON.stringify(Object.keys(localStorage).filter(k => k.startsWith('upc-health:')).map(k => localStorage.getItem(k)))")
         check('nothing stored contains patient details', 'Patient 09' not in dump and 'name-text' not in dump, dump[:300])
+        # A request that never reached Halaxy is not Halaxy changing: an old result of that kind is dropped, a new one ignored.
+        await pg.evaluate("""(() => { const r = JSON.parse(localStorage.getItem('upc-health:results') || '{}');
+          r['data-patient-tasks'] = { title: 'Patient tasks', scripts: ['Feedback alerts'], problems: ['NetworkError when attempting to fetch resource.'], at: Date.now(), page: 'data' };
+          localStorage.setItem('upc-health:results', JSON.stringify(r)); })()""")
+        probs, pill = await load()
+        net = await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:results') || '{}')['data-patient-tasks'] || null")
+        check('a network failure is not reported as Halaxy changing (old one dropped)', net is None and not any('Patient tasks' in str(x) for x in probs), (net, probs))
         check('no page errors', not errors, errors)
         await browser.close()
 

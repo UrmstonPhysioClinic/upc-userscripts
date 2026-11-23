@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.60
+// @version      1.1.62
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.60';
+  const VERSION = '1.1.62';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -45,7 +45,7 @@
     'invoice-funder.user.js': 'Invoice Funder', 'ready-to-bill.user.js': 'Ready to bill', 'portal-fill.user.js': 'Portal fill', 'remittances.user.js': 'Remittances',
     'rebate-sync.user.js': 'Rebate sync', 'bank-statement.user.js': 'Bank statement', 'insurer-payments-due.user.js': 'Insurer payments due', 'charge-excess.user.js': 'Schedule excess',
     // Patients
-    'patient-statuses.user.js': 'Patient statuses', 'open-ended-patients.user.js': 'Open-ended recalls', 'missing-details.user.js': 'Missing details', 'patient-forms.user.js': 'Patient forms', 'old-balances.user.js': 'Old balances', 'record-retention.user.js': 'Record retention', 'stored-cards.user.js': 'Stored cards',
+    'patient-statuses.user.js': 'Patient statuses', 'open-ended-patients.user.js': 'Open-ended recalls', 'missing-details.user.js': 'Missing details', 'patient-forms.user.js': 'Patient forms', 'old-balances.user.js': 'Old balances', 'record-retention.user.js': 'Record retention', 'cards-on-file.user.js': 'Cards on file', 'stored-cards.user.js': 'Cards on file',
     'review-requests.user.js': 'Review requests',
     'feedback-alerts.user.js': 'Feedback alerts',
     // Calendar
@@ -70,11 +70,18 @@
   };
   // Save one result. Read and written in one step, so several Halaxy tabs checking at the
   // same time can't overwrite each other's results.
+  // A request that never reached Halaxy (the network dropped, or the page was left while it ran: Firefox's
+  // "NetworkError when attempting to fetch resource.") says nothing about Halaxy changing: the last result stands and
+  // the check runs again next time (CH's notice, 23 Nov 2026). An old result of that kind is dropped.
+  const NETWORK = /NetworkError|Failed to fetch|Load failed|network error|aborted/i;
+  const onlyNetwork = (v) => !!v && Array.isArray(v.problems) && v.problems.length > 0 && v.problems.every((x) => NETWORK.test(String(x)));
   function saveResult(id, value) {
     const all = store.get('results', {});
+    if (onlyNetwork(value)) { if (onlyNetwork(all[id])) { delete all[id]; store.set('results', all); } return; }
     all[id] = value;
     store.set('results', all);
   }
+  (() => { const all = store.get('results', {}); const bad = Object.keys(all).filter((k) => onlyNetwork(all[k])); if (bad.length) { bad.forEach((k) => delete all[k]); store.set('results', all); } })();
   const group = () => (location.pathname.match(/\/a\/pr\/(\d+)\//) || [])[1];
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

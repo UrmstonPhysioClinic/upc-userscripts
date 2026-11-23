@@ -1,11 +1,12 @@
 // ==UserScript==
-// @name         UPC Patients: Stored cards (beta)
+// @name         UPC Patients: Cards on file (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.0
+// @version      0.1.1
+// @upc-was      stored-cards.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/stored-cards.user.js
-// @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/stored-cards.user.js
-// @description  Patients > Stored cards (CH only for now): cards on file that are no longer needed (nothing booked or owed, last appointment a while ago), to remove after confirming.
+// @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/cards-on-file.user.js
+// @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/cards-on-file.user.js
+// @description  Patients > Cards on file (CH only for now): cards on file that are no longer needed (nothing booked or owed, last appointment a while ago), to remove after confirming.
 // @match        https://*.halaxy.com/a/pr/*
 // @run-at       document-idle
 // @grant        none
@@ -13,7 +14,7 @@
 // ==/UserScript==
 
 /*
- * Stored cards (CH, 23 Nov 2026: option 1, "once nothing more can be owed"; a page a person works through, not
+ * Cards on file (CH, 23 Nov 2026; first called Stored cards: option 1, "once nothing more can be owed"; a page a person works through, not
  * automatic, until it has proved itself).
  *
  *  - A card is due to come off when its patient has nothing booked, no unpaid invoice of their own, no unpaid insurer
@@ -33,8 +34,8 @@
   if (window.__hxStoredCards) return;
   window.__hxStoredCards = true;
 
-  const VERSION = '0.1.0';
-  const ROUTE = 'upc-stored-cards';
+  const VERSION = '0.1.1';
+  const ROUTE = 'upc-cards-on-file';
   const MENU_CLS = 'upc-sc-menu';
   const DAY = 864e5;
   const FRESH = 24 * 3600e3;
@@ -48,7 +49,7 @@
   const label = (ms) => (ms === null || ms === undefined ? '' : U().dayLabel(ms));
   const tellHealthCheck = (e) => {
     if (!/has changed/.test((e && e.message) || '')) return;
-    document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: 'stored-cards.user.js', message: e.message }) }));
+    document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: 'cards-on-file.user.js', message: e.message }) }));
   };
   const CSS = `
     .upc-sc .card { margin-bottom: 24px; }
@@ -113,7 +114,7 @@
     const result = { at: now, by: VERSION, after, cut, total: cards.length, kept, unknown, rows: due };
     store.set('result', result);
     const a = document.querySelector('a.' + MENU_CLS);
-    if (a && U().todo) U().todo.publish('stored-cards', { title: 'Stored cards', cls: MENU_CLS, href: a.getAttribute('href'), count: due.length, rows: due.slice(0, 3).map((x) => x.patient + ', ' + x.type + ' ending ' + x.last4) });
+    if (a && U().todo) U().todo.publish('stored-cards', { title: 'Cards on file', cls: MENU_CLS, href: a.getAttribute('href'), count: due.length, rows: due.slice(0, 3).map((x) => x.patient + ', ' + x.type + ' ending ' + x.last4) });
     return result;
   }
 
@@ -195,7 +196,7 @@
     const r = store.get('result', null);
     const btn = '<button type="button" class="btn btn-outline-primary" data-a="refresh"' + (state.running ? ' disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>';
     const bq = U().ui.batch('stored-cards', 'Removing cards', 'removed', jobs.length + (jobBusy !== null ? 1 : 0), state.errors.length);
-    let h = '<div class="upc-sc">' + U().ui.page.bar('Stored cards', btn, bq || (state.running ? U().ui.run.inline(state.status) : U().ui.page.checked(r && r.at)));
+    let h = '<div class="upc-sc">' + U().ui.page.bar('Cards on file', btn, bq || (state.running ? U().ui.run.inline(state.status) : U().ui.page.checked(r && r.at)));
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     state.errors.forEach((m) => { h += '<div class="alert alert-danger upc-err">' + esc(m) + '</div>'; });
     if (r) {
@@ -230,7 +231,7 @@
       if (e.target.closest('[data-a=refresh]')) run();
       if (e.target.closest('[data-a=bulk]')) removeTicked();
     });
-    state.unmount = U().ui.mountPage('Stored cards', root, MENU_CLS);
+    state.unmount = U().ui.mountPage('Cards on file', root, MENU_CLS);
     render();
     const r = store.get('result', null);
     if (!r || Date.now() - r.at > FRESH || r.by !== VERSION) run();
@@ -244,10 +245,10 @@
   const route = () => (location.hash === '#' + ROUTE ? mount() : unmount());
 
   function start() {
-    if (!U() || !U().reports.storedCards || !U().patient.listAll) { console.error('[UPC stored cards] needs the core library'); return; }
+    if (!U() || !U().reports.storedCards || !U().patient.listAll) { console.error('[UPC cards on file] needs the core library'); return; }
     U().user.whenAllowed(PEOPLE(), () => {
       if (!document.getElementById('upc-cards-css')) { const st = document.createElement('style'); st.id = 'upc-cards-css'; st.textContent = CSS; document.head.appendChild(st); }
-      U().ui.ensureMenuItem('Stored cards', (section) => {
+      U().ui.ensureMenuItem('Cards on file', (section) => {
         const list = section && [...section.querySelectorAll('a.mainmenu-sublink')].find((a) => /^patient list$/i.test(U().clean(a.textContent)));
         return (list ? list.getAttribute('href').split('#')[0] : U().base() + '/patient/') + '#' + ROUTE;
       }, MENU_CLS, /^patients?$/i);
