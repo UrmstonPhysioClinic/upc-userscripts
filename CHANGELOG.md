@@ -1,5 +1,9 @@
 # Changelog
 
+## Core 0.1.73, To do 0.2.3 and the queue pages, 23 Nov 2026 (beta)
+- Undo and "batch finished" messages are toasts (in Halaxy's own alert area, which Toast alerts lifts out of the page), not bars across the page, so nothing moves (CH, 23 Nov 2026).
+- The batch bar ("Updating tasks (3 of 12)") sits in the line under the title bar, in place of "Checked at", while the batch runs.
+
 ## Patient forms 0.1.7, 23 Nov 2026 (beta)
 - A patient with no email address is no longer an error: the form and its reminder are noted as "No email address" and looked at again an hour later (Missing details lists them). Seen live: Halaxy refused a reminder with "The recipient must have a valid email address."
 

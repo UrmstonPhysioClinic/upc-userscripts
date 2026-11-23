@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Schedule: To do (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.2
+// @version      0.2.3
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
@@ -35,7 +35,7 @@
   if (window.__hxToDo) return;
   window.__hxToDo = true;
 
-  const VERSION = '0.2.2';
+  const VERSION = '0.2.3';
   const ROUTE = 'upc-to-do';
   const MENU_CLS = 'upc-todo-menu';
   const DAY = 864e5, MIN = 60e3;
@@ -202,8 +202,12 @@
       else { jobs.push({ id: t.id, title: t.title, kind: 'move', day: dayMs }); undo.push({ id: t.id, title: t.title, kind: 'move', day: t.due === null ? null : dayStart(t.due), undo: true }); }
     });
     const what = ts.length === 1 ? '"' + ts[0].title + '"' : ts.length + ' tasks';
-    state.undo = { text: kind === 'done' ? 'Marked as completed: ' + what + '.' : 'Moved ' + what + ' to ' + label(dayMs) + '.', jobs: undo, until: Date.now() + UNDO_FOR };
-    setTimeout(() => { if (state.undo && Date.now() >= state.undo.until) { state.undo = null; render(); } }, UNDO_FOR + 50);
+    if (state.undo && state.undo.toast) state.undo.toast.close();
+    state.undo = { jobs: undo };
+    // Undo in a toast (CH, 23 Nov 2026: not a bar across the page).
+    state.undo.toast = U().ui.toast(kind === 'done' ? 'Marked as completed: ' + what + '.' : 'Moved ' + what + ' to ' + label(dayMs) + '.', { action: { label: 'Undo', fn: undoLast }, ms: UNDO_FOR });
+    const mine = state.undo;
+    setTimeout(() => { if (state.undo === mine) state.undo = null; }, UNDO_FOR + 50);
     ['overdue', 'today', 'week', 'later', 'nodate'].forEach((l) => U().ui.list.unpick(l, ts.map((t) => t.id)));
     render();
     pump();
@@ -370,9 +374,8 @@
     const c = store().get('open', null), f = filters();
     const actions = '<button type="button" class="btn btn-primary" data-a="new">New task</button>' +
       '<button type="button" class="btn btn-outline-primary" data-a="refresh"' + (state.loading ? ' disabled' : '') + '>' + (state.loading ? 'Checking...' : 'Check now') + '</button>';
-    let h = '<div class="upc-todo">' + U().ui.page.bar('To do', actions, state.loading ? U().ui.run.inline('Reading tasks...') : U().ui.page.checked(c && c.at));
-    h += U().ui.batch('to-do', 'Updating tasks', 'done', jobs.length + (busy !== null ? 1 : 0), state.errors.length);
-    if (state.undo) h += '<div class="alert alert-success upc-ok">' + esc(state.undo.text) + ' <button type="button" class="btn btn-outline-primary-light" data-a="undo">Undo</button></div>';
+    const bq = U().ui.batch('to-do', 'Updating tasks', 'done', jobs.length + (busy !== null ? 1 : 0), state.errors.length);
+    let h = '<div class="upc-todo">' + U().ui.page.bar('To do', actions, bq || (state.loading ? U().ui.run.inline('Reading tasks...') : U().ui.page.checked(c && c.at)));
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     state.errors.forEach((m) => { h += '<div class="alert alert-danger upc-err">' + esc(m) + '</div>'; });
     // Who tasks can be for: Halaxy's own list of active users (the add-task form's assignees), not everyone named on an

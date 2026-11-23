@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.72
+// @version      0.1.73
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.72';
+  const VERSION = '0.1.73';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -1861,8 +1861,10 @@
     .upc-native th.upc-pick, .upc-native td.upc-pick { width: 1%; text-align: center; }
     .upc-native .upc-list-more { padding: 12px; }
     .upc-native .upc-list-more .btn { margin: 0; }
-    .upc-native .upc-batch { display: flex; margin: 0 0 16px; }
     .upc-native .upc-batch .progress { width: 240px; }
+    #upc-toasts { position: fixed; right: 20px; bottom: 60px; z-index: 2995; width: 380px; max-width: calc(100vw - 40px); }
+    #alerts > .upc-toast, #upc-toasts > .upc-toast { display: flex; align-items: center; gap: 12px; }
+    #alerts > .upc-toast .upc-toast-act, #upc-toasts > .upc-toast .upc-toast-act { margin: 0 0 0 auto; }
     .upc-dialog { position: fixed; inset: 0; z-index: 2990; overflow-y: auto; }
     .upc-dialog > .upc-backdrop { position: fixed; inset: 0; background: #000; opacity: .5; }
     .upc-dialog > .modal-dialog { position: relative; margin: 28px auto; width: calc(100% - 32px); max-width: 800px; pointer-events: auto; }
@@ -1919,10 +1921,41 @@
     if (document.body) watch(); else document.addEventListener('DOMContentLoaded', watch, { once: true });
   }
 
-  // A batch of queued actions on a page (CH, 23 Nov 2026): while two or more are queued, one bar under the title bar
-  // ("Writing off (3 of 12)"), filling smoothly; when the batch is over, one line saying how it went ("12 written off.",
-  // or "11 written off. 1 not changed."), kept until the next batch. A single action keeps only its row's spinner.
-  // pending: actions queued or running now; errs: the page's running count of actions that failed.
+  // Short-lived messages (a batch finished, Undo) as toasts: in Halaxy's own alert area (#alerts, which Toast alerts
+  // lifts out of the page), so the page never moves (CH, 23 Nov 2026: a message bar bumped the page down). Without
+  // #alerts, our own corner box in the same place. action: { label, fn } adds a button (Undo). Returns { close }.
+  function toast(text, opts) {
+    opts = opts || {};
+    let box = document.getElementById('alerts');
+    if (!box) {
+      box = document.getElementById('upc-toasts');
+      if (!box) { box = document.createElement('div'); box.id = 'upc-toasts'; box.className = 'upc-native'; document.body.appendChild(box); }
+    }
+    const el = document.createElement('div');
+    el.className = 'alert alert-' + (opts.kind || 'success') + ' upc-toast';
+    el.setAttribute('role', 'status');
+    el.textContent = text;
+    let timer = null;
+    const close = () => { clearTimeout(timer); el.remove(); };
+    if (opts.action) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'btn btn-outline-primary-light upc-toast-act';
+      b.textContent = opts.action.label;
+      b.addEventListener('click', () => { close(); opts.action.fn(); });
+      el.appendChild(document.createTextNode(' '));
+      el.appendChild(b);
+    }
+    box.appendChild(el);
+    timer = setTimeout(close, opts.ms || 8000);
+    return { close };
+  }
+
+  // A batch of queued actions on a page (CH, 23 Nov 2026): while two or more are queued, the line under the title bar
+  // shows "Writing off (3 of 12)" with a bar filling smoothly (pages pass it as the title bar's sub-line, so nothing
+  // moves); when the batch is over, a toast says how it went ("12 written off.", or "11 written off. 1 not changed.").
+  // A single action keeps only its row's spinner. pending: actions queued or running now; errs: the page's running count
+  // of actions that failed. Returns the sub-line's HTML while the batch runs, otherwise ''.
   const batches = new Map();
   function batch(key, verb, past, pending, errs) {
     let b = batches.get(key);
@@ -1932,15 +1965,18 @@
       b.last = pending;
       if (b.total < 2) return '';
       const done = b.total - pending;
-      return '<div class="upc-batch upc-run-inline"><span class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="' + b.total + '" aria-valuenow="' + done + '">' +
-        barHtml('batch:' + key, 100 * done / b.total) + '</span><span class="text-muted">' + esc(verb + ' (' + done + ' of ' + b.total + ')') + '</span></div>';
+      return '<span class="upc-batch upc-run-inline"><span class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="' + b.total + '" aria-valuenow="' + done + '">' +
+        barHtml('batch:' + key, 100 * done / b.total) + '</span><span class="text-muted">' + esc(verb + ' (' + done + ' of ' + b.total + ')') + '</span></span>';
     }
-    if (!b) return '';
-    if (!b.over) { b.over = true; b.failed = Math.max(0, Math.min(b.total, errs - b.start)); }
-    if (b.total < 2) return '';
-    const ok = b.total - b.failed;
-    return b.failed ? '<div class="alert alert-warning upc-warn">' + esc(ok + ' ' + past + '. ' + b.failed + ' not changed.') + '</div>'
-      : '<div class="alert alert-success upc-ok">' + esc(ok + ' ' + past + '.') + '</div>';
+    if (b && !b.over) {
+      b.over = true;
+      b.failed = Math.max(0, Math.min(b.total, errs - b.start));
+      if (b.total >= 2) {
+        const ok = b.total - b.failed;
+        toast(ok + ' ' + past + '.' + (b.failed ? ' ' + b.failed + ' not changed.' : ''), { kind: b.failed ? 'warning' : 'success' });
+      }
+    }
+    return '';
   }
 
   const run = {
@@ -2170,6 +2206,7 @@
     nativeStyles,
     run,
     batch,
+    toast,
     page,
     list,
     // A pop-up that looks like Halaxy's own. Returns { root, body, close, setTitle }. `onClose` runs when
