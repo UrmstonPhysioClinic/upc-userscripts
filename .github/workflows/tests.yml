@@ -20,7 +20,7 @@ jobs:
           - portal-fill clinic-settings
           - bank-statement remittances
           - review-requests loader patient-statuses ready-to-bill rebate-sync
-          - alerts block-reporting calendar-controls charge-excess core email-html feedback-alerts forecourt-lights health-check insurer-payments-due missing-details mobile-layout open-ended-patients outstanding-actions patient-forms script-settings task-stamps
+          - alerts block-reporting calendar-controls charge-excess core email-html feedback-alerts forecourt-lights health-check insurer-payments-due missing-details mobile-layout open-ended-patients outstanding-actions patient-forms script-settings task-stamps appointment-reminders
     name: tests (${{ matrix.group }})
     steps:
       - uses: actions/checkout@v4

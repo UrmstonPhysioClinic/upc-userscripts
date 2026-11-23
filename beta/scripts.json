@@ -3,7 +3,7 @@
     {
       "file": "health-check.user.js",
       "name": "UPC System: Health check (beta)",
-      "version": "1.1.56"
+      "version": "1.1.57"
     },
     {
       "file": "block-reporting.user.js",
@@ -14,12 +14,17 @@
     {
       "file": "core.user.js",
       "name": "UPC System: Core library (beta)",
-      "version": "0.1.68"
+      "version": "0.1.69"
     },
     {
       "file": "alerts.user.js",
       "name": "UPC Calendar: Alerts (beta)",
       "version": "1.0.4"
+    },
+    {
+      "file": "appointment-reminders.user.js",
+      "name": "UPC Calendar: Appointment reminders (beta)",
+      "version": "0.1.0"
     },
     {
       "file": "bank-statement.user.js",

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.68
+// @version      0.1.69
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.68';
+  const VERSION = '0.1.69';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -2585,6 +2585,9 @@
     { key: 'reviewRequests.quietDays', script: 'Review requests', label: 'Ask once there has been no visit for', unit: 'days', def: 14, min: 1, max: 60 },
     { key: 'reviewRequests.maxDays', script: 'Review requests', label: 'Stop asking after', unit: 'days since the last visit', def: 28, min: 7, max: 120 },
     { key: 'reviewRequests.minAge', script: 'Review requests', label: 'Leave out patients under', unit: 'years old', def: 16, min: 0, max: 25 },
+    { key: 'apptReminders.cancel', script: 'Appointment reminders', label: 'Cancel the reminder after a late booking', type: 'choice', def: 'on', options: { on: 'On', off: 'Off' } },
+    { key: 'apptReminders.cancelWithin', script: 'Appointment reminders', label: 'Late booking: confirmation sent within', unit: 'hours of the reminder', def: 24, min: 1, max: 72 },
+    { key: 'apptReminders.add', script: 'Appointment reminders', label: 'Add a missing reminder', type: 'choice', def: 'on', options: { on: 'On', off: 'Off' } },
     { key: 'patientForms.send', script: 'Patient forms', label: 'Send forms for', type: 'choice', def: 'late', options: { late: 'Late bookings only', all: 'All bookings', off: 'Nobody' } },
     { key: 'patientForms.sendAt', script: 'Patient forms', label: 'Send at, the day before', type: 'time', def: '05:00', min: '00:00', max: '12:00' },
     { key: 'patientForms.chase', script: 'Patient forms', label: 'Reminders', type: 'choice', def: 'on', options: { on: 'On', off: 'Off' } },
@@ -2596,6 +2599,7 @@
     // People (stage 2, CH 15 Nov 2026). A page's list also decides on whose sign-in its background checks run.
     { key: 'readyToBill.people', script: 'Who sees what', label: 'Ready to bill', type: 'people', def: [CARL, WENDY] },
     { key: 'missingDetails.people', script: 'Who sees what', label: 'Missing details list', type: 'people', def: [CARL, WENDY] },
+    { key: 'apptReminders.people', script: 'Who sees what', label: 'Appointment reminders run for', type: 'people', def: [CARL, WENDY] },
     { key: 'patientForms.people', script: 'Who sees what', label: 'Patient forms list', type: 'people', def: [CARL, WENDY] },
     { key: 'insurerPayments.people', script: 'Who sees what', label: 'Insurer payments due', type: 'people', def: [CARL] },
     { key: 'openEnded.people', script: 'Who sees what', label: 'Open-ended recalls', type: 'people', def: [CARL] },

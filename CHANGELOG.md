@@ -1,5 +1,8 @@
 # Changelog
 
+## Appointment reminders 0.1.0 (new), core 0.1.69, health check 1.1.57, 23 Nov 2026 (beta)
+- New: tidies Halaxy's own appointment reminder emails in the background (they carry the manage-booking link, so they are kept). When the booking confirmation went less than 24 hours before the reminder is due, the reminder is cancelled; an upcoming appointment with no email reminder gets one added at 06:00 two days before (none if that time has passed). Email only. Shared across PCs; "Appointment reminders: recent changes" lists what it did. Clinic settings: on or off for each, the 24 hours, and who it runs for (CH and WP).
+
 ## Branding 2.10.0, core 0.1.68, Old balances 0.2.0, and small fixes, 23 Nov 2026 (beta)
 - Branding: a modern look for Halaxy's screens, trialled on live Halaxy first. Capitals off on buttons, tabs, card headings and pop-up titles ("ADD APPOINTMENT" reads "Add appointment"); rounded corners and a faint shadow on cards; amounts line up; plain tables highlight the row under the mouse in grey; links underlined on hover; a soft highlight on the current menu item; a purple focus ring. Its own switch: "Modern look" in Clinic settings (per person) or the Tampermonkey menu.
 - Core: a page kit for our pages (Halaxy's title bar with the page's buttons on the right; search, sorting and "Show 50 more" on long lists; tick boxes for acting on several rows). Our menu items keep a fixed order. Amounts over a thousand are written with a comma (£ 1,234.00).
