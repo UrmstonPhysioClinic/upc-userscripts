@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Look: Branding (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      2.9.6
+// @version      2.10.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/branding.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/branding.user.js
@@ -42,6 +42,10 @@
  * only, or Halaxy's own font.
  *
  * Toggle on or off from the Tampermonkey menu: "Clinic branding: on/off".
+ *
+ * Modern look (CH, 23 Nov 2026, after two trials on live Halaxy): Halaxy's screens made less dated without moving
+ * anything. Its own switch ("Modern look", Clinic settings per person, or the Tampermonkey menu), so it can go off
+ * on its own if a Halaxy update ever makes a rule misfire. See polishCss below.
  */
 
 (function () {
@@ -462,11 +466,12 @@ ${S} .mainmenu-collapsed #logoWrapper { height: 2.34rem !important; }
     } catch (e) { /* this PC's own */ }
     return undefined;
   };
-  const pOn = personal('branding.on'), pFont = personal('branding.font');
+  const pOn = personal('branding.on'), pFont = personal('branding.font'), pPolish = personal('branding.polish');
   // What this PC uses now, offered to Clinic settings for settings not yet saved there (core's settings.offered).
   const offer = (key, fn) => { window.__upcSettingOffers = window.__upcSettingOffers || {}; window.__upcSettingOffers[key] = fn; };
   offer('branding.on', () => (GM_getValue('enabled', true) ? 'everyone' : []));
   offer('branding.font', () => GM_getValue('fontMode') || 'headings');
+  offer('branding.polish', () => (GM_getValue('polish', true) ? 'everyone' : []));
   const enabled = pOn !== undefined ? !!pOn : GM_getValue('enabled', true);
 
   if (pOn === undefined) {
@@ -506,18 +511,61 @@ ${S} .mainmenu-collapsed #logoWrapper { height: 2.34rem !important; }
 
   if (!enabled) return;
 
+  const polish = pPolish !== undefined ? !!pPolish : GM_getValue('polish', true);
+  if (pPolish === undefined) {
+    GM_registerMenuCommand(`Modern look: ${polish ? 'on (click to turn off)' : 'off (click to turn on)'}`, () => {
+      GM_setValue('polish', !polish);
+      location.reload();
+    });
+  }
+
   const style = document.createElement('style');
   style.id = 'upc-branding';
   style.textContent = css;
 
+  // Modern look (trialled on live Halaxy, 23 Nov 2026):
+  //  - Capitals off on buttons, tabs, card headings, pop-up titles and the footer. Status pills keep theirs.
+  //  - Buttons (and footer links) whose text Halaxy typed in capitals ("ADD APPOINTMENT", "DELETE") are rewritten by
+  //    watchPage as "Add appointment": only whole-capital text of 4+ characters, so names and short abbreviations
+  //    ("SMS") are never touched. The text itself is changed, as CSS can't do it reliably (::first-letter doesn't
+  //    work on flex buttons).
+  //  - Rounded corners: buttons, fields, cards (with a faint shadow), pop-ups. Card headings keep Halaxy's grey
+  //    (white made the profile's cards hard to tell apart, CH).
+  //  - Amounts line up (every digit the same width) in tables and Halaxy's lists.
+  //  - Plain tables highlight the row under the mouse in grey, as Halaxy's lists already do (grey, not purple:
+  //    purple means selected, CH 23 Nov 2026).
+  //  - Links in cards and tables underlined only on hover.
+  //  - The current menu item gets a soft background (its spacing left alone).
+  //  - A purple focus ring on whatever has keyboard focus: Halaxy's own misses its icon buttons (CH).
+  const polishCss = `
+${S} .btn, ${S} .btn.text-uppercase, ${S} .nav-link, ${S} .dropdown-item, ${S} .card-header,
+${S} .card-header *:not(i), ${S} .modal-title, ${S} footer, ${S} footer * { text-transform: none !important; letter-spacing: normal !important; }
+${S} .btn { border-radius: 6px; font-weight: 600; }
+${S} .card { border-radius: 8px; box-shadow: 0 1px 4px rgba(0, 0, 0, .06); }
+${S} .card > .card-header:first-child { border-top-left-radius: 8px; border-top-right-radius: 8px; font-weight: 600; }
+${S} .form-control, ${S} .custom-select, ${S} .chosen-single { border-radius: 6px; }
+${S} .modal-content { border-radius: 10px; }
+${S} td, ${S} .ag-cell { font-variant-numeric: tabular-nums; }
+${S} .table tbody tr:hover > td { background-color: rgba(0, 0, 0, .04) !important; }
+${S} .card a:not(.btn), ${S} .table a:not(.btn), ${S} .ag-cell a { text-decoration: none; }
+${S} .card a:not(.btn):hover, ${S} .table a:not(.btn):hover, ${S} .ag-cell a:hover { text-decoration: underline; }
+${S} #mainMenu a.mainmenu-sublink.active { background: rgba(255, 255, 255, .1); border-radius: 6px; }
+${S} :focus-visible { outline: 2px solid ${B.purple} !important; outline-offset: 2px; }
+`;
+  const polishStyle = document.createElement('style');
+  polishStyle.id = 'upc-branding-polish';
+  polishStyle.textContent = polishCss;
+
   // Inject immediately so there's no flash of Halaxy blue, then move to the end
   // of <head> once it exists.
   (document.head || document.documentElement).appendChild(style);
+  if (polish) (document.head || document.documentElement).appendChild(polishStyle);
 
   if (fontMode !== 'halaxy') registerWebsiteFont(fontMode);
 
   document.addEventListener('DOMContentLoaded', () => {
     document.head.appendChild(style);
+    if (polish) document.head.appendChild(polishStyle);
     if (OPTIONS.replaceFavicon) watchFavicon();
     watchPage();
   });
@@ -562,6 +610,9 @@ ${S} .mainmenu-collapsed #logoWrapper { height: 2.34rem !important; }
     });
   }
 
+  // Whole text in capitals, at least 4 characters (so "SMS" or "PDF" stay as they are).
+  const ALL_CAPS = /^(?=.{4,}$)[A-Z][A-Z &'-]*$/;
+
   function watchPage() {
     const fills = new Set([B.purple, B.purpleDark, B.purpleDeep].map(toRgb));
     const scan = () => {
@@ -569,6 +620,19 @@ ${S} .mainmenu-collapsed #logoWrapper { height: 2.34rem !important; }
         if (el.matches(':hover')) return;          // hover fills are temporary; leave as is
         el.classList.toggle('upc-filled', fills.has(getComputedStyle(el).backgroundColor));
       });
+      if (polish) {
+        document.querySelectorAll('.btn, footer a').forEach((el) => {
+          if (!ALL_CAPS.test(el.textContent.trim())) return;
+          const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+          let n, first = true;
+          while ((n = walk.nextNode())) {
+            if (!n.nodeValue.trim()) continue;
+            let v = n.nodeValue.toLowerCase();
+            if (first) { v = v.replace(/[a-z]/, (c) => c.toUpperCase()); first = false; }
+            n.nodeValue = v;
+          }
+        });
+      }
       fixAlertColours();
     };
     let queued = false;

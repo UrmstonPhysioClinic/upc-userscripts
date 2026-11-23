@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.67
+// @version      0.1.68
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.67';
+  const VERSION = '0.1.68';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -56,7 +56,8 @@
       return isNaN(n) ? null : Math.round(n * 100);
     },
     // As Halaxy writes amounts: £ 40.00 (and -£ 5.00).
-    fmt: (c) => (c === null || c === undefined ? '' : (c < 0 ? '-£ ' : '£ ') + (Math.abs(c) / 100).toFixed(2)),
+    // Thousands with commas, as Halaxy writes them (£ 1,234.00).
+    fmt: (c) => (c === null || c === undefined ? '' : (c < 0 ? '-£ ' : '£ ') + (Math.abs(c) / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')),
     plain: (c) => (c / 100).toFixed(2),
     inText(s) { const m = String(s || '').match(/£\s*(-?[\d,]+\.\d{2})/); return m ? money.cents(m[1]) : null; },
     lastInText(s) { const all = String(s || '').match(/£\s*-?[\d,]+\.\d{2}/g); return all ? money.cents(all[all.length - 1]) : null; },
@@ -1844,6 +1845,22 @@
     .upc-native .upc-run-log > summary { display: inline-block; list-style: none; margin-top: 8px; }
     .upc-native .upc-run-log > summary::-webkit-details-marker { display: none; }
     .upc-native .upc-run-log .upc-box { max-height: 300px; overflow: auto; margin-top: 8px; }
+    .upc-native .upc-page-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px solid var(--vs-card-border-color, #dee2e6); }
+    .upc-native .upc-page-bar h1 { margin: 0; }
+    .upc-native .upc-page-bar .upc-page-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .upc-native .upc-page-bar .btn { margin: 0; }
+    .upc-native .upc-page-sub { display: block; min-height: 1.5em; margin: 0 0 16px; }
+    .upc-native .upc-list-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 12px; }
+    .upc-native .upc-list-tools input[type=search] { width: 280px; max-width: 100%; }
+    .upc-native .upc-list-tools .upc-bulk { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-left: auto; }
+    .upc-native .upc-list-tools .upc-bulk .btn { margin: 0; }
+    .upc-native th[data-upc-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
+    .upc-native th[data-upc-sort]::after { content: '\\2195'; margin-left: 4px; opacity: .35; font-size: .85em; }
+    .upc-native th[aria-sort=ascending]::after { content: '\\2191'; opacity: 1; }
+    .upc-native th[aria-sort=descending]::after { content: '\\2193'; opacity: 1; }
+    .upc-native th.upc-pick, .upc-native td.upc-pick { width: 1%; text-align: center; }
+    .upc-native .upc-list-more { padding: 12px; }
+    .upc-native .upc-list-more .btn { margin: 0; }
     .upc-dialog { position: fixed; inset: 0; z-index: 2990; overflow-y: auto; }
     .upc-dialog > .upc-backdrop { position: fixed; inset: 0; background: #000; opacity: .5; }
     .upc-dialog > .modal-dialog { position: relative; margin: 28px auto; width: calc(100% - 32px); max-width: 800px; pointer-events: auto; }
@@ -1905,9 +1922,160 @@
     },
   };
 
+  // ------------------------------------------------------------------ page kit (CH, 23 Nov 2026: UI/UX audit)
+  //
+  // Every page of ours is built from the same parts, so they look and behave alike:
+  //  - page.bar(): Halaxy's title bar (title left, the page's buttons right, a rule under it) and a muted line under
+  //    it ("Checked at 13:56 on 23-Nov-2026.", or the inline progress bar while checking).
+  //  - page.card(): a group as a card, its count (and total) in the heading, "None." when empty.
+  //  - Lists: a table marked data-upc-list="<id>" gets, from list.enhance(root):
+  //      search (over 10 rows; filters the rows on the page, "12 of 171"), sorting by any column heading (amounts and
+  //      dates sort as such; a cell's data-sort wins), "Show 50 more" past 50 rows, and, with data-upc-pick, a tick box
+  //      per row (rows with data-upc-id; data-upc-nopick for rows that can't be picked now) and one in the heading for
+  //      every row showing. A [data-upc-bulk-for="<id>"] element in the page is moved into the list's tool row.
+  //    The page re-renders as it likes; the list keeps its search, sort, rows shown and ticks (and the search box its
+  //    focus) across re-renders. list.picked(id) gives the ticked ids, list.unpick(id, ids) clears them.
+  const lists = new Map();   // list id -> { q, col, dir, shown, picked: Set, focus, caret }
+  const listState = (id) => { if (!lists.has(id)) lists.set(id, { q: '', col: -1, dir: 1, shown: 50, picked: new Set(), focus: false, caret: 0 }); return lists.get(id); };
+  const MON = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+  function sortKey(td) {
+    const raw = td ? (td.hasAttribute('data-sort') ? td.getAttribute('data-sort') : clean(td.textContent)) : '';
+    let m = raw.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{4})/);
+    if (m && MON[m[2].toLowerCase()] !== undefined) return { n: Date.UTC(+m[3], MON[m[2].toLowerCase()], +m[1]) };
+    m = raw.match(/^-?£?\s*-?[\d,]+(\.\d+)?$/);
+    if (m && raw !== '') return { n: parseFloat(raw.replace(/[£,\s]/g, '')) };
+    return { s: raw.toLowerCase() };
+  }
+  const page = {
+    bar(title, actions, sub) {
+      return '<div class="upc-page-bar"><h1>' + esc(title) + '</h1><div class="upc-page-actions">' + (actions || '') + '</div></div>' +
+        '<div class="upc-page-sub">' + (sub || '') + '</div>';
+    },
+    // "Checked at 12:30 on 16-Nov-2026." for the line under the title bar.
+    checked(ms) {
+      return ms ? '<span class="text-muted">Checked at ' + new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + dayLabel(ms) + '.</span>' : '';
+    },
+    card(title, n, extra, body) {
+      return '<div class="card"><div class="card-header"><h2>' + esc(title) + ' (' + n + (extra ? ', ' + esc(extra) : '') + ')</h2></div><div class="card-body p-0">' +
+        (n ? body : '<p class="text-muted m-3">None.</p>') + '</div></div>';
+    },
+  };
+  const list = {
+    picked: (id) => [...listState(id).picked],
+    unpick(id, ids) { const s = listState(id); (ids || [...s.picked]).forEach((x) => s.picked.delete(String(x))); },
+    enhance(root, opts) {
+      opts = opts || {};
+      if (!root.__upcLists) {
+        root.__upcLists = true;
+        root.addEventListener('input', (e) => {
+          const box = e.target.closest && e.target.closest('input[data-upc-search]');
+          if (!box) return;
+          const s = listState(box.getAttribute('data-upc-search'));
+          s.q = box.value; s.shown = 50; s.caret = box.selectionStart || 0;
+          list.enhance(root, root.__upcListOpts);
+        });
+        root.addEventListener('focusin', (e) => { const b = e.target.closest && e.target.closest('input[data-upc-search]'); if (b) listState(b.getAttribute('data-upc-search')).focus = true; });
+        root.addEventListener('focusout', (e) => { const b = e.target.closest && e.target.closest('input[data-upc-search]'); if (b) { const s = listState(b.getAttribute('data-upc-search')); s.focus = false; s.caret = b.selectionStart || 0; } });
+        root.addEventListener('click', (e) => {
+          const th = e.target.closest && e.target.closest('th[data-upc-sort]');
+          if (th) {
+            const s = listState(th.closest('table').getAttribute('data-upc-list')), col = +th.getAttribute('data-upc-sort');
+            if (s.col === col) s.dir = -s.dir; else { s.col = col; s.dir = 1; }
+            list.enhance(root, root.__upcListOpts);
+            return;
+          }
+          const more = e.target.closest && e.target.closest('[data-upc-more]');
+          if (more) { listState(more.getAttribute('data-upc-more')).shown += 50; list.enhance(root, root.__upcListOpts); }
+        });
+        root.addEventListener('change', (e) => {
+          const box = e.target.closest && e.target.closest('input[data-upc-tick]');
+          if (!box) return;
+          const table = box.closest('table'), s = listState(table.getAttribute('data-upc-list'));
+          const rows = box.hasAttribute('data-upc-all') ? [...table.tBodies[0].rows].filter((tr) => tr.style.display !== 'none' && tr.querySelector('input[data-upc-tick]:not([data-upc-all]):not(:disabled)')) : [box.closest('tr')];
+          rows.forEach((tr) => { const id = tr.getAttribute('data-upc-id'); if (box.checked) s.picked.add(id); else s.picked.delete(id); });
+          if (typeof (root.__upcListOpts || {}).onPick === 'function') root.__upcListOpts.onPick(); else list.enhance(root, root.__upcListOpts);
+        });
+      }
+      root.__upcListOpts = opts;
+      root.querySelectorAll('table[data-upc-list]').forEach((table) => {
+        const id = table.getAttribute('data-upc-list'), s = listState(id), body = table.tBodies[0];
+        if (!body) return;
+        const pick = table.hasAttribute('data-upc-pick'), head = table.tHead && table.tHead.rows[0];
+        // Tick boxes (added once per render)
+        if (pick && head && !head.querySelector('th.upc-pick')) {
+          const th = document.createElement('th'); th.className = 'upc-pick';
+          th.innerHTML = '<input type="checkbox" data-upc-tick data-upc-all aria-label="Tick all">';
+          head.insertBefore(th, head.firstChild);
+          [...body.rows].forEach((tr) => {
+            const td = document.createElement('td'); td.className = 'upc-pick';
+            const rid = tr.getAttribute('data-upc-id');
+            if (rid !== null) {
+              const no = tr.hasAttribute('data-upc-nopick');
+              if (no) s.picked.delete(rid);
+              td.innerHTML = '<input type="checkbox" data-upc-tick aria-label="Tick"' + (no ? ' disabled' : '') + (s.picked.has(rid) ? ' checked' : '') + '>';
+            }
+            tr.insertBefore(td, tr.firstChild);
+          });
+        }
+        // Sortable headings
+        if (head) [...head.cells].forEach((th, i) => {
+          if (th.classList.contains('upc-pick') || th.hasAttribute('data-upc-nosort') || !clean(th.textContent)) return;
+          th.setAttribute('data-upc-sort', String(i));
+          if (s.col === i) th.setAttribute('aria-sort', s.dir > 0 ? 'ascending' : 'descending'); else th.removeAttribute('aria-sort');
+        });
+        let rows = [...body.rows];
+        rows.forEach((tr, i) => { if (!tr.hasAttribute('data-upc-order')) tr.setAttribute('data-upc-order', String(i)); });
+        if (s.col >= 0) {
+          rows.sort((a, b) => {
+            const x = sortKey(a.cells[s.col]), y = sortKey(b.cells[s.col]);
+            const r = x.n !== undefined && y.n !== undefined ? x.n - y.n : String(x.s !== undefined ? x.s : x.n).localeCompare(String(y.s !== undefined ? y.s : y.n));
+            return (r || (+a.getAttribute('data-upc-order') - +b.getAttribute('data-upc-order'))) * (r ? s.dir : 1);
+          });
+          rows.forEach((tr) => body.appendChild(tr));
+        }
+        // Search and rows shown
+        const q = clean(s.q).toLowerCase();
+        const match = rows.filter((tr) => !q || clean(tr.textContent).toLowerCase().includes(q));
+        rows.forEach((tr) => { tr.style.display = 'none'; });
+        match.slice(0, s.shown).forEach((tr) => { tr.style.display = ''; });
+        const all = table.querySelector('input[data-upc-all]');
+        if (all) {
+          const showing = match.slice(0, s.shown).filter((tr) => tr.querySelector('input[data-upc-tick]:not(:disabled)'));
+          all.checked = showing.length > 0 && showing.every((tr) => s.picked.has(tr.getAttribute('data-upc-id')));
+        }
+        // Tool row above the table: search when the list is long, and the page's bulk actions
+        let tools = table.previousElementSibling && table.previousElementSibling.classList.contains('upc-list-tools') ? table.previousElementSibling : null;
+        const min = +(table.getAttribute('data-upc-list-min') || 10);
+        const bulk = root.querySelector('[data-upc-bulk-for="' + id + '"]');
+        if (!tools && (rows.length > min || bulk)) {
+          tools = document.createElement('div'); tools.className = 'upc-list-tools';
+          if (rows.length > min) tools.innerHTML = '<input type="search" class="form-control" placeholder="Search" data-upc-search="' + esc(id) + '" aria-label="Search"><span class="text-muted" data-upc-count></span>';
+          table.parentNode.insertBefore(tools, table);
+          const box = tools.querySelector('input[data-upc-search]');
+          if (box) { box.value = s.q; if (s.focus) { box.focus(); try { box.setSelectionRange(s.caret, s.caret); } catch (e) { /* fine */ } } }
+        }
+        if (tools && bulk && bulk.parentNode !== tools) { bulk.classList.add('upc-bulk'); tools.appendChild(bulk); }
+        const count = tools && tools.querySelector('[data-upc-count]');
+        if (count) count.textContent = q ? match.length + ' of ' + rows.length : '';
+        // "Show 50 more"
+        let more = table.nextElementSibling && table.nextElementSibling.classList.contains('upc-list-more') ? table.nextElementSibling : null;
+        if (match.length > s.shown) {
+          if (!more) { more = document.createElement('div'); more.className = 'upc-list-more'; table.parentNode.insertBefore(more, table.nextSibling); }
+          more.innerHTML = '<button type="button" class="btn btn-outline-primary-light" data-upc-more="' + esc(id) + '">Show ' + Math.min(50, match.length - s.shown) + ' more</button> <span class="text-muted">' + s.shown + ' of ' + match.length + ' shown</span>';
+        } else if (more) more.remove();
+      });
+    },
+  };
+
+  // Our menu items, in the order they appear under Halaxy's own in each section.
+  const MENU_ORDER = ['To do', 'My tasks', 'Patient forms', 'Review requests', 'Missing details', 'Open-ended recalls',
+    'Ready to bill', 'Remittances', 'Bank statement', 'Insurer payments due', 'Old balances'];
+
   const ui = {
     nativeStyles,
     run,
+    page,
+    list,
     // A pop-up that looks like Halaxy's own. Returns { root, body, close, setTitle }. `onClose` runs when
     // it closes; `canClose` (optional) may return false to keep it open (for example while working).
     // `above` puts it over Halaxy's own pop-ups (for steps that start from one); `small` is 500px, `wide` 1000px.
@@ -1964,7 +2132,11 @@
         a.classList.remove('active');
         a.classList.add(cls);
         a.textContent = label;
-        host.parentNode.appendChild(copy);
+        // A fixed order after Halaxy's own items (CH, 23 Nov 2026: our items moved about with the scripts' load order).
+        const rank = MENU_ORDER.indexOf(label) < 0 ? MENU_ORDER.length : MENU_ORDER.indexOf(label);
+        copy.setAttribute('data-upc-menu-rank', String(rank));
+        const after = [...host.parentNode.children].find((n) => n.hasAttribute && n.hasAttribute('data-upc-menu-rank') && +n.getAttribute('data-upc-menu-rank') > rank);
+        host.parentNode.insertBefore(copy, after || null);
         return true;
       }
       const first = items[0];
@@ -2456,6 +2628,7 @@
     { key: 'alerts.arrivalChime', script: 'Per person', label: 'Arrival chime for', type: 'audience', def: 'everyone' },
     { key: 'alerts.chatAlarm', script: 'Per person', label: 'Chat alarm for', type: 'audience', def: 'everyone' },
     { key: 'branding.on', script: 'Per person', label: 'Clinic branding for', type: 'audience', def: 'everyone' },
+    { key: 'branding.polish', script: 'Per person', label: 'Modern look for', type: 'audience', def: 'everyone' },
     { key: 'branding.font', script: 'Per person', label: 'Branding font', type: 'choice', def: 'headings', options: { all: 'Website font everywhere', headings: 'Website font for headings only', halaxy: 'Halaxy\'s own font' } },
     { key: 'blockReporting.userpilot', script: 'Per person', label: 'Halaxy\'s tours and announcements (Userpilot) shown to', type: 'audience', def: [] },
   ];

@@ -16,7 +16,7 @@ jobs:
       fail-fast: false
       matrix:
         group:
-          - invoice-funder old-balances
+          - invoice-funder old-balances branding
           - portal-fill clinic-settings
           - bank-statement remittances
           - review-requests loader patient-statuses ready-to-bill rebate-sync

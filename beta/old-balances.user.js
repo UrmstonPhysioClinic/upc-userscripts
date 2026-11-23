@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Old balances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.0
+// @version      0.2.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/old-balances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/old-balances.user.js
@@ -22,13 +22,15 @@
  *    confirmed, queued (Queue, don't block), sets the invoice's status to Write-off in its settings (UPC.invoice.setStatus,
  *    which reads it back). Chasing is done by hand from the invoice link.
  *  - Checked when the page opens (kept on this PC for an hour) and with Check now. Nothing runs in the background.
+ *  - 0.2.0 (UI/UX audit, 23 Nov 2026): built on core's page kit (title bar, search, sorting, Show 50 more), with tick
+ *    boxes: "Write off 12 invoices" for the ticked ones, confirmed once, each then queued as a single Write off.
  */
 (() => {
   'use strict';
   if (window.__hxOldBalances) return;
   window.__hxOldBalances = true;
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.2.0';
   const ROUTE = 'upc-old-balances';
   const MENU_CLS = 'upc-ob-menu';
   const DAY = 864e5;
@@ -46,12 +48,8 @@
     document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: 'old-balances.user.js', message: e.message }) }));
   };
   const CSS = `
-    .upc-ob { max-width: 1100px; }
-    .upc-ob h1 { margin: 0 0 16px; }
     .upc-ob .card { margin-bottom: 24px; }
     .upc-ob .card-header h2 { margin: 0; }
-    .upc-ob .upc-ob-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 12px; }
-    .upc-ob .upc-ob-bar .btn { margin: 0; }
     .upc-ob td.upc-ob-date, .upc-ob td.upc-ob-act { white-space: nowrap; }
     .upc-ob td.upc-ob-act .btn { margin: 0; }
   `;
@@ -114,44 +112,66 @@
     if (!x || queuedOf(id) || done.get(id) === 'ok') return;
     if (!(await confirmBox('Write off?', '<p>Write off ' + esc(x.number) + ' (' + esc(fmt(x.balance)) + ', ' + esc(x.payer) + ', ' + esc(label(x.date)) + ')? Its status is set to Write-off.</p>', 'Write off'))) return;
     jobs.push({ id, number: x.number });
+    U().ui.list.unpick('old', [id]); U().ui.list.unpick('mid', [id]);
+    render();
+    pump();
+  }
+
+  async function writeOffTicked(listId) {
+    const r = store.get('result', null);
+    const ids = U().ui.list.picked(listId);
+    const xs = (r ? r.rows : []).filter((y) => ids.includes(String(y.id)) && !queuedOf(y.id) && done.get(y.id) !== 'ok');
+    if (!xs.length) return;
+    const total = xs.reduce((t, y) => t + y.balance, 0);
+    const nums = xs.slice(0, 10).map((y) => y.number).join(', ') + (xs.length > 10 ? ' and ' + (xs.length - 10) + ' more' : '');
+    if (!(await confirmBox('Write off?', '<p>Write off ' + xs.length + ' invoice' + (xs.length === 1 ? '' : 's') + ', ' + esc(fmt(total)) + ' in all? ' + (xs.length === 1 ? 'Its' : 'Their') + ' status is set to Write-off.</p><p class="text-muted">' + esc(nums) + '</p>', 'Write off ' + xs.length))) return;
+    xs.forEach((y) => jobs.push({ id: y.id, number: y.number }));
+    U().ui.list.unpick(listId, xs.map((y) => String(y.id)));
     render();
     pump();
   }
 
   // ------------------------------------------------------------------ the page
 
-  function table(rows) {
+  function table(listId, rows) {
     const base = U().base();
-    return '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th>Invoice</th><th>Date</th><th>Payer</th><th>Funder</th><th class="number">Balance</th><th></th></tr></thead><tbody>' +
+    return '<table class="table table-striped table-bordered w-100 m-0" data-upc-list="' + listId + '" data-upc-pick><thead><tr><th>Invoice</th><th>Date</th><th>Payer</th><th>Funder</th><th class="number">Balance</th><th data-upc-nosort></th></tr></thead><tbody>' +
       rows.map((x) => {
         const q = queuedOf(x.id), d = done.get(x.id);
         const act = q === 'busy' ? U().ui.run.inline('') : q === 'queued' ? 'Queued' : d === 'ok' ? '<span class="upc-ok">Written off</span>'
           : '<button type="button" class="btn btn-outline-primary-light" data-a="off" data-id="' + esc(x.id) + '">Write off</button>';
-        return '<tr><td><a href="' + esc(base + '/invoice/' + x.id) + '" target="_blank" rel="noopener">' + esc(x.number) + '</a></td><td class="upc-ob-date">' + esc(label(x.date)) + '</td>' +
+        return '<tr data-upc-id="' + esc(x.id) + '"' + (q || d === 'ok' ? ' data-upc-nopick' : '') + '><td><a href="' + esc(base + '/invoice/' + x.id) + '" target="_blank" rel="noopener">' + esc(x.number) + '</a></td><td class="upc-ob-date">' + esc(label(x.date)) + '</td>' +
           '<td>' + esc(x.payer) + '</td><td>' + esc(x.funder) + '</td><td class="number">' + esc(fmt(x.balance)) + '</td><td class="upc-ob-act">' + act + '</td></tr>';
       }).join('') + '</tbody></table>';
+  }
+
+  // The bulk action for a list's ticked rows, shown in its tool row.
+  function bulk(listId, rows) {
+    const ids = U().ui.list.picked(listId);
+    const xs = rows.filter((x) => ids.includes(String(x.id)));
+    if (!xs.length) return '';
+    return '<span data-upc-bulk-for="' + listId + '"><span class="text-muted">' + xs.length + ' ticked, ' + esc(fmt(xs.reduce((t, x) => t + x.balance, 0))) + '</span>' +
+      '<button type="button" class="btn btn-primary" data-a="bulk" data-list="' + listId + '">Write off ' + xs.length + '</button></span>';
   }
 
   function render() {
     if (!root) return;
     const r = store.get('result', null);
-    let h = '<div class="upc-ob"><h1>Old balances</h1><div class="upc-ob-bar">' +
-      '<button type="button" class="btn btn-outline-primary-light" data-a="refresh"' + (state.running ? ' disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>' +
-      (state.running ? U().ui.run.inline(state.status) : '<span class="text-muted">' + esc(r ? 'Checked at ' + new Date(r.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + label(r.at) + '.' : '') + '</span>') + '</div>';
+    const btn = '<button type="button" class="btn btn-outline-primary" data-a="refresh"' + (state.running ? ' disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>';
+    let h = '<div class="upc-ob">' + U().ui.page.bar('Old balances', btn, state.running ? U().ui.run.inline(state.status) : U().ui.page.checked(r && r.at));
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     state.errors.forEach((m) => { h += '<div class="alert alert-danger upc-err">' + esc(m) + '</div>'; });
     if (r) {
-      const open = r.rows;
-      const card = (title, rows) => {
+      const card = (listId, title, rows) => {
         const total = rows.reduce((t, x) => t + (done.get(x.id) === 'ok' ? 0 : x.balance), 0);
-        return '<div class="card"><div class="card-header"><h2>' + title + ' (' + rows.length + (rows.length ? ', ' + fmt(total) : '') + ')</h2></div><div class="card-body p-0">' +
-          (rows.length ? table(rows) : '<p class="text-muted m-3">None.</p>') + '</div></div>';
+        return U().ui.page.card(title, rows.length, rows.length ? fmt(total) : '', bulk(listId, rows) + table(listId, rows));
       };
-      h += card('Over 6 years', open.filter((x) => x.old)) + card('6 months to 6 years', open.filter((x) => !x.old));
+      h += card('old', 'Over 6 years', r.rows.filter((x) => x.old)) + card('mid', '6 months to 6 years', r.rows.filter((x) => !x.old));
       h += '<p class="text-muted">Active and Issued invoices dated before ' + esc(label(r.since)) + ' with a balance.</p>';
     }
     h += '</div>';
     root.innerHTML = h;
+    U().ui.list.enhance(root, { onPick: render });
   }
 
   async function run() {
@@ -176,6 +196,8 @@
       if (e.target.closest('[data-a=refresh]')) run();
       const b = e.target.closest('[data-a=off]');
       if (b) writeOff(b.dataset.id);
+      const k = e.target.closest('[data-a=bulk]');
+      if (k) writeOffTicked(k.dataset.list);
     });
     state.unmount = U().ui.mountPage('Old balances', root, MENU_CLS);
     render();

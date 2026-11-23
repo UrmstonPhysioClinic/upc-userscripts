@@ -302,7 +302,7 @@ async def main():
         check('greyed at the bottom: did-not-attend only, held, not due yet', off[:4] == ['Patient F', 'Patient R', 'Patient C', 'Patient P'] and set(off) == {'Patient F', 'Patient C', 'Patient P', 'Patient R', 'Patient M', 'Patient L', 'Patient N', 'Patient Q', 'Patient E', 'Patient T', 'Patient W'} and rows[-11:] == [by[w] for w in off] == [by[w] for w in off], [r['who'] for r in rows])
         check('held for the excess, explained', by.get('Patient C', {}).get('why', '').startswith('Held'), by.get('Patient C'))
         check('greyed rows link to their invoices but have no button', by.get('Patient C', {}).get('invs') == ['/a/pr/555/invoice/521'] and not by.get('Patient C', {}).get('btn'), by.get('Patient C'))
-        check('not due yet shows the next booking', 'next booked 17-Nov-2026' in by.get('Patient E', {}).get('why', ''), by.get('Patient E'))
+        check('not due yet shows the next booking', by.get('Patient E', {}).get('why', '') == 'Next booked 17-Nov-2026', by.get('Patient E'))
         check('excess from the intake form: holds until the fees cover it', by.get('Patient R', {}).get('off') and
               'Held: excess £ 250.00, fees so far £ 80.00' == by['Patient R']['why'], by.get('Patient R'))
         check('excess over £ 500 on the form taken as a slip: the 2-fee rule, not held', 'Held' not in by.get('Patient W', {}).get('why', 'Held') and by['Patient W'].get('off'), by.get('Patient W'))

@@ -1,5 +1,12 @@
 # Changelog
 
+## Branding 2.10.0, core 0.1.68, Old balances 0.2.0, and small fixes, 23 Nov 2026 (beta)
+- Branding: a modern look for Halaxy's screens, trialled on live Halaxy first. Capitals off on buttons, tabs, card headings and pop-up titles ("ADD APPOINTMENT" reads "Add appointment"); rounded corners and a faint shadow on cards; amounts line up; plain tables highlight the row under the mouse in grey; links underlined on hover; a soft highlight on the current menu item; a purple focus ring. Its own switch: "Modern look" in Clinic settings (per person) or the Tampermonkey menu.
+- Core: a page kit for our pages (Halaxy's title bar with the page's buttons on the right; search, sorting and "Show 50 more" on long lists; tick boxes for acting on several rows). Our menu items keep a fixed order. Amounts over a thousand are written with a comma (£ 1,234.00).
+- Old balances: on the page kit. Tick invoices and "Write off 12" asks once, then writes them off one at a time.
+- Missing details: "Booked in the next 14 days." when no past window is set (was "seen in the last 0."); no Last seen column under Not seen yet; "None." for an empty group.
+- Ready to bill: "Status" for the "Why" column, without repeating the card ("Next booked 25-Nov-2026" under Not due yet); "None." for an empty group. "Status" also in Open-ended recalls and Review requests; "Reason" in Patient statuses' recent changes.
+
 ## Task stamps 0.1.6, 23 Nov 2026 (beta)
 - The task page opened from the bell no longer shows the top Mark as completed, which led to a page where nothing could be done. The lower one (Task Completion pop-up) stays.
 
