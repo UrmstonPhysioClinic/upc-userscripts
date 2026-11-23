@@ -121,9 +121,9 @@
     const a = document.querySelector('a.' + MENU_CLS);
     if (!a) return;
     const r = store.get('result', null);
-    if (U().todo) U().todo.publish('insurer-payments-due', { title: 'Insurer payments due', cls: MENU_CLS, href: a.getAttribute('href'), count: n, rows: r ? r.rows.filter((x) => x.issued).slice(0, 3).map((x) => x.funder + ', ' + x.number + ', ' + fmt(x.balance === null ? x.amount : x.balance)) : [] });
     let b = a.querySelector('.upc-fc-badge');
     const n = r ? r.overdue : 0;
+    if (U().todo) U().todo.publish('insurer-payments-due', { title: 'Insurer payments due', cls: MENU_CLS, href: a.getAttribute('href'), count: n, rows: r ? r.rows.filter((x) => x.issued).slice(0, 3).map((x) => x.funder + ', ' + x.number + ', ' + fmt(x.balance === null ? x.amount : x.balance)) : [] });
     if (!n) { if (b) b.remove(); return; }
     if (!b) { b = document.createElement('span'); b.className = 'upc-fc-badge'; a.appendChild(b); }
     const text = n > 99 ? '99+' : String(n);

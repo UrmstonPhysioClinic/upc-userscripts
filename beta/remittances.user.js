@@ -633,7 +633,7 @@
   function render() {
     const r = state.remit;
     const fixes = state.results.filter((x) => x.status === 'fix');
-    let html = '<div class="upc-rem">' + U().ui.page.bar('Remittances', '', '') +
+    let html = '<div class="upc-rem">' + UPC.ui.page.bar('Remittances', '', '') +
       '<div class="card"><div class="card-header"><h2>Read a remittance</h2></div><div class="card-body">' +
       '<div class="upc-rem-drop" tabindex="0" role="button">Drop a remittance PDF here, or click to choose one<input type="file" accept="application/pdf" hidden></div>' +
       '<div class="upc-rem-status" aria-live="polite"></div>';

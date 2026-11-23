@@ -296,9 +296,9 @@
     const a = document.querySelector('a.' + MENU_CLS);
     if (!a) return;
     const r = store.get('result', null);
-    if (U().todo) U().todo.publish('ready-to-bill', { title: 'Ready to bill', cls: MENU_CLS, href: a.getAttribute('href'), count: n, rows: r ? r.rows.filter((x) => x.state === 'due').slice(0, 3).map((x) => x.payer + ', ' + x.funder + ', ' + fmt(x.total)) : [] });
     let b = a.querySelector('.upc-rtb-badge');
     const n = r ? r.due : 0;
+    if (U().todo) U().todo.publish('ready-to-bill', { title: 'Ready to bill', cls: MENU_CLS, href: a.getAttribute('href'), count: n, rows: r ? r.rows.filter((x) => x.state === 'due').slice(0, 3).map((x) => x.payer + ', ' + x.funder + ', ' + fmt(x.total)) : [] });
     if (!n) { if (b) b.remove(); return; }
     if (!b) { b = document.createElement('span'); b.className = 'upc-rtb-badge'; a.appendChild(b); }
     const text = n > 99 ? '99+' : String(n);
