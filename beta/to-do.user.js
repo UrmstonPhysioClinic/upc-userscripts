@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Schedule: To do (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.0
+// @version      0.2.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
@@ -35,7 +35,7 @@
   if (window.__hxToDo) return;
   window.__hxToDo = true;
 
-  const VERSION = '0.2.0';
+  const VERSION = '0.2.2';
   const ROUTE = 'upc-to-do';
   const MENU_CLS = 'upc-todo-menu';
   const DAY = 864e5, MIN = 60e3;
@@ -75,10 +75,12 @@
     .upc-todo .upc-todo-weeknav .btn { margin: 0; }
     .upc-todo-badge { display: inline-block; min-width: 18px; margin-left: 6px; padding: 0 5px; border-radius: 9px; font-size: .75em; line-height: 18px;
       text-align: center; font-weight: 600; color: #fff; background: var(--vs-notification-badge-bg-color, #ec6b65); vertical-align: middle; }
-    .upc-todo-new .upc-todo-found { max-height: 240px; overflow: auto; margin-top: 4px; }
-    .upc-todo-new .upc-todo-found button { display: block; width: 100%; text-align: left; margin: 0 0 2px; }
+    .upc-todo-new .upc-todo-find { position: relative; }
+    .upc-todo-new .upc-todo-found { position: absolute; left: 0; right: 0; top: 100%; z-index: 5; max-height: 280px; overflow: auto; margin-top: 2px; padding: 4px 0;
+      background: var(--vs-card-bg-color, #fff); border: 1px solid var(--vs-card-border-color, #ced4da); border-radius: 6px; box-shadow: 0 6px 16px rgba(0, 0, 0, .15); }
+    .upc-todo-new .upc-todo-opt { padding: 6px 12px; cursor: pointer; }
+    .upc-todo-new .upc-todo-opt-on, .upc-todo-new .upc-todo-opt[data-i]:hover { background: var(--purple-pale, #F3EAFD); }
     .upc-todo-new label { display: block; margin: 12px 0 4px; font-weight: 600; }
-    .upc-todo-new .ui-autocomplete { z-index: 2995; max-height: 240px; overflow: auto; }
   `;
 
   // ------------------------------------------------------------------ tasks
@@ -98,6 +100,14 @@
       .map((t) => ({ id: String(t.id), title: clean(t.title), type: clean(t.type), priority: clean(t.priority), due: dueOf(t), status: t.status, who: (t.assignees || []).map(clean) }));
     const r = { at: Date.now(), open };
     store().set('open', r);
+    const st = store().get('staff', null);
+    if (!st || Date.now() - st.at > DAY) {
+      try {
+        const { doc } = await U().http.popup('/task/new');
+        const names = [...doc.querySelectorAll('select[name="form[linkPrGs][]"] option')].map((o) => clean(o.textContent)).filter(Boolean);
+        if (names.length) store().set('staff', { at: Date.now(), names });
+      } catch (e) { /* the names on the tasks will do */ }
+    }
     paintBadge();
     return r;
   }
@@ -235,44 +245,43 @@
     dlg.root.classList.add('upc-todo-new');
     dlg.root.setAttribute('data-upc-todo-new', '');
     dlg.body.innerHTML = '<label for="upc-tn-link">Linked to</label><select id="upc-tn-link" class="form-control">' + Object.entries(LINKS).map(([k, v]) => '<option value="' + k + '">' + esc(v) + '</option>').join('') + '</select>' +
-      '<div data-upc-tn-find hidden><label for="upc-tn-term">Find</label><input id="upc-tn-term" class="form-control" placeholder="Type to search" autocomplete="off"><div class="upc-todo-found" data-upc-tn-found></div></div>' +
+      '<div data-upc-tn-find hidden><label for="upc-tn-term">Find</label><div class="upc-todo-find"><input id="upc-tn-term" class="form-control" placeholder="Type to search" autocomplete="off" role="combobox"><div class="upc-todo-found" data-upc-tn-found role="listbox" hidden></div></div></div>' +
       '<div class="alert alert-danger upc-err upc-gap" data-upc-tn-err hidden></div>' +
       '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-c="no">Cancel</button><button type="button" class="btn btn-primary" data-c="yes">Continue</button></div>';
     const $q = (s) => dlg.body.querySelector(s);
     let picked = null, timer = null;
     const err = (m) => { const e = $q('[data-upc-tn-err]'); e.textContent = m; e.hidden = !m; };
     const kindNow = () => $q('#upc-tn-link').value;
-    $q('#upc-tn-link').addEventListener('change', () => { picked = null; $q('[data-upc-tn-find]').hidden = kindNow() === 'none'; $q('#upc-tn-term').value = ''; $q('[data-upc-tn-found]').innerHTML = ''; err(''); });
-    const jq = window.jQuery;
-    if (jq && jq.fn && jq.fn.autocomplete) {
-      // Halaxy's own search-as-you-type (jQuery UI's autocomplete, which Halaxy's pages load).
-      jq($q('#upc-tn-term')).autocomplete({
-        minLength: 3, delay: 400, appendTo: dlg.root,
-        source: (req, resp) => { lookup(kindNow(), req.term).then((xs) => resp(xs.map((x) => ({ label: x.text, value: x.text, id: x.id })))).catch((e) => { err('Could not search: ' + (e.message || e)); resp([]); }); },
-        select: (e, ui) => { picked = { id: ui.item.id, text: ui.item.label }; },
-        search: () => { picked = null; },
-      });
-    } else {
-      $q('#upc-tn-term').addEventListener('input', () => {
-        clearTimeout(timer); picked = null;
-        const term = clean($q('#upc-tn-term').value);
-        if (term.length < 3) { $q('[data-upc-tn-found]').innerHTML = ''; return; }
-        timer = setTimeout(async () => {
-          try {
-            const found = await lookup(kindNow(), term);
-            if (clean($q('#upc-tn-term').value) !== term) return;
-            $q('[data-upc-tn-found]').innerHTML = found.length ? found.map((x) => '<button type="button" class="btn btn-outline-primary-light" data-pick="' + esc(x.id) + '">' + esc(x.text) + '</button>').join('') : '<p class="text-muted">None.</p>';
-          } catch (e) { err('Could not search: ' + (e.message || e)); }
-        }, 400);
-      });
-      $q('[data-upc-tn-found]').addEventListener('click', (e) => {
-        const b = e.target.closest('[data-pick]');
-        if (!b) return;
-        picked = { id: b.dataset.pick, text: b.textContent };
-        $q('#upc-tn-term').value = picked.text;
-        $q('[data-upc-tn-found]').innerHTML = '';
-      });
-    }
+    $q('#upc-tn-link').addEventListener('change', () => { picked = null; $q('[data-upc-tn-find]').hidden = kindNow() === 'none'; $q('#upc-tn-term').value = ''; $q('[data-upc-tn-found]').innerHTML = ''; $q('[data-upc-tn-found]').hidden = true; err(''); });
+    // Search as you type, results in a dropdown under the box like Halaxy's top search: arrow keys and Enter, or click.
+    const box = $q('#upc-tn-term'), list = $q('[data-upc-tn-found]');
+    let found = [], active = -1;
+    const show = () => {
+      list.hidden = !found.length && !list.dataset.msg;
+      list.innerHTML = found.length ? found.map((x, i) => '<div class="upc-todo-opt' + (i === active ? ' upc-todo-opt-on' : '') + '" role="option" data-i="' + i + '">' + esc(x.text) + '</div>').join('')
+        : list.dataset.msg ? '<div class="upc-todo-opt text-muted">' + esc(list.dataset.msg) + '</div>' : '';
+    };
+    const pick = (i) => { const x = found[i]; if (!x) return; picked = x; box.value = x.text; found = []; active = -1; list.dataset.msg = ''; show(); };
+    box.addEventListener('input', () => {
+      clearTimeout(timer); picked = null; found = []; active = -1; list.dataset.msg = '';
+      const term = clean(box.value);
+      if (term.length < 3) { show(); return; }
+      list.dataset.msg = 'Searching...'; show();
+      timer = setTimeout(async () => {
+        try {
+          const xs = await lookup(kindNow(), term);
+          if (clean(box.value) !== term) return;
+          found = xs; active = xs.length ? 0 : -1; list.dataset.msg = xs.length ? '' : 'None.'; show();
+        } catch (e) { list.dataset.msg = ''; show(); err('Could not search: ' + (e.message || e)); }
+      }, 350);
+    });
+    box.addEventListener('keydown', (e) => {
+      if (!found.length) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); active = (active + (e.key === 'ArrowDown' ? 1 : found.length - 1)) % found.length; show(); }
+      else if (e.key === 'Enter') { e.preventDefault(); pick(active); }
+      else if (e.key === 'Escape') { e.stopPropagation(); found = []; show(); }
+    });
+    list.addEventListener('mousedown', (e) => { const o = e.target.closest('[data-i]'); if (o) { e.preventDefault(); pick(+o.dataset.i); } });
     dlg.body.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-c]');
       if (!b) return;
@@ -362,10 +371,14 @@
     const actions = '<button type="button" class="btn btn-primary" data-a="new">New task</button>' +
       '<button type="button" class="btn btn-outline-primary" data-a="refresh"' + (state.loading ? ' disabled' : '') + '>' + (state.loading ? 'Checking...' : 'Check now') + '</button>';
     let h = '<div class="upc-todo">' + U().ui.page.bar('To do', actions, state.loading ? U().ui.run.inline('Reading tasks...') : U().ui.page.checked(c && c.at));
+    h += U().ui.batch('to-do', 'Updating tasks', 'done', jobs.length + (busy !== null ? 1 : 0), state.errors.length);
     if (state.undo) h += '<div class="alert alert-success upc-ok">' + esc(state.undo.text) + ' <button type="button" class="btn btn-outline-primary-light" data-a="undo">Undo</button></div>';
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     state.errors.forEach((m) => { h += '<div class="alert alert-danger upc-err">' + esc(m) + '</div>'; });
-    const people = c ? [...new Set(c.open.flatMap((t) => t.who))].filter(Boolean).sort() : [];
+    // Who tasks can be for: Halaxy's own list of active users (the add-task form's assignees), not everyone named on an
+    // old task (CH, 23 Nov 2026: staff who have left).
+    const st = store().get('staff', null);
+    const people = st && st.names.length ? st.names.slice().sort() : c ? [...new Set(c.open.flatMap((t) => t.who))].filter(Boolean).sort() : [];
     const types = c ? [...new Set(c.open.map((t) => t.type).filter(Boolean))].sort() : [];
     h += '<div class="upc-todo-cols"><div>' +
       '<div class="upc-todo-filters"><ul class="nav nav-tabs"><li class="nav-item"><a href="#' + ROUTE + '" class="nav-link' + (state.view === 'list' ? ' active' : '') + '" data-a="view" data-view="list">List</a></li>' +
