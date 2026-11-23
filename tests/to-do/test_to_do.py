@@ -125,16 +125,17 @@ async def main():
 
         check("Halaxy's page underneath doesn't scroll", await pg.evaluate("document.documentElement.style.overflow") == 'hidden')
         await pg.click("[data-a=done][data-id='2']")
-        await pg.wait_for_function("document.querySelector('[data-upc-to-do] .alert-success [data-a=undo]')", timeout=10000)
+        await pg.wait_for_function("document.querySelector('.upc-toast .upc-toast-act')", timeout=10000)
         await pg.wait_for_function("[...document.querySelectorAll('[data-upc-to-do] .upc-ok')].some((x) => x.textContent === 'Completed')", timeout=20000)
         check("Done at once, no question: Halaxy's Mark as completed, then its Complete link", S['completed'] == [2] and not await pg.evaluate("!!document.querySelector('[data-upc-todo-confirm]')"), S['completed'])
-        await pg.click('[data-upc-to-do] [data-a=undo]')
+        check('Undo offered in a toast, not a bar across the page', await pg.evaluate("document.querySelector('.upc-toast').textContent") == 'Marked as completed: "Call insurer". Undo' and not await pg.evaluate("!!document.querySelector('[data-upc-to-do] .alert-success')"), await pg.evaluate("document.querySelector('.upc-toast').textContent"))
+        await pg.click('.upc-toast .upc-toast-act')
         await pg.wait_for_function("document.querySelector(\"[data-a=done][data-id='2']\")", timeout=20000)
         check("Undo: Halaxy's Revert", S['reverted'] == [2], S['reverted'])
 
         await pg.check("[data-upc-list=later] tr[data-upc-id='4'] input[data-upc-tick]")
         await pg.fill("input[data-upc-move=later]", '2026-11-30')
-        await pg.wait_for_function("document.querySelector('[data-upc-to-do] .alert-success')", timeout=10000)
+        await pg.wait_for_function("document.querySelector('.upc-toast')", timeout=10000)
         await pg.wait_for_function("[...document.querySelectorAll('[data-upc-to-do] .upc-ok')].some((x) => x.textContent === 'Moved')", timeout=20000)
         post = dict(S['posts'][0][1]) if S['posts'] else {}
         check('ticked rows moved to a date: the Edit task form saved with only the due date changed',
@@ -180,7 +181,7 @@ async def main():
         check('week view: a tray, then Monday to Friday', len(days) == 6 and days[1].startswith('Monday 23-Nov') and days[5].startswith('Friday 27-Nov'), days)
         nposts = len(S['posts'])
         await pg.drag_and_drop("[data-chip='3']", ".upc-todo-drop[data-day]:nth-child(3)")
-        await pg.wait_for_function("document.querySelector('[data-upc-to-do] .alert-success')", timeout=10000)
+        await pg.wait_for_function("document.querySelector('.upc-toast')", timeout=10000)
         await pg.wait_for_timeout(2500)
         check('a task dragged onto Tuesday is moved there', len(S['posts']) == nposts + 1 and dict(S['posts'][-1][1]).get('form[displayDueDate]') == '24-Nov-2026', S['posts'][nposts:])
         look = await pg.evaluate("(() => { const r = document.querySelector('[data-upc-to-do]'); return r.classList.contains('upc-native') && !!r.querySelector('.upc-page-bar h1') && !!r.querySelector('.card .card-header h2') && !r.shadowRoot; })()")
