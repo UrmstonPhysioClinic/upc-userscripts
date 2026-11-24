@@ -1,7 +1,7 @@
 # Runs every test on each pull request, so "merge once the checks pass" is checked by GitHub. Not again on main after
 # the merge (CH, 24 Nov 2026): the pull request's run tested the same code, and a private repository's Actions minutes
 # are limited. It can still be run by hand (Actions > tests > Run workflow).
-# The tests are split into four groups of about three minutes each, run at the same time on separate machines,
+# The tests are split into four groups of under three minutes each, run at the same time on separate machines,
 # balanced by how long each folder takes (six groups until the slow tests got a fake clock, 24 Nov 2026: each machine
 # takes about 35 seconds to set up, and a private repository's Actions minutes are counted per machine). Every test
 # folder must be in exactly one group: the "all tests in a group" job checks that. tools/run_tests.py fails a group
@@ -21,10 +21,10 @@ jobs:
       fail-fast: false
       matrix:
         group:
-          - health-check review-requests portal-fill appointment-reminders charge-excess alerts old-balances task-stamps
-          - patient-forms clinic-settings missing-details calendar-controls script-settings core record-retention arrived-button
-          - loader feedback-alerts ready-to-bill outstanding-actions bank-statement invoice-funder open-ended-patients block-reporting branding
-          - patient-statuses forecourt-lights rebate-sync remittances insurer-payments-due to-do cards-on-file email-html mobile-layout
+          - patient-statuses ready-to-bill missing-details charge-excess to-do alerts task-stamps email-html branding
+          - forecourt-lights clinic-settings health-check calendar-controls insurer-payments-due old-balances cards-on-file block-reporting mobile-layout
+          - portal-fill loader appointment-reminders remittances bank-statement core patient-forms arrived-button
+          - feedback-alerts review-requests rebate-sync outstanding-actions script-settings invoice-funder record-retention open-ended-patients
     name: tests (${{ matrix.group }})
     steps:
       - uses: actions/checkout@v4

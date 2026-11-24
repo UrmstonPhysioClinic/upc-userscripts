@@ -153,15 +153,38 @@ def check(name, ok, detail=''):
         FAILS.append(name)
 
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from fakeclock import idle   # moves the fake clock on instead of waiting in real time
+
 async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch()
-        ctx = await browser.new_context()
-        await ctx.route('https://eu.halaxy.com/**', halaxy)
-        await ctx.route('https://cdn.halaxy.com/**', halaxy)
-        await ctx.add_init_script("window.__hxHealthTest = { delay: 50 }; window.__menu = [];"
-                                  "window.GM_registerMenuCommand = (l, f) => window.__menu.push([l, f]);")
-        await ctx.add_init_script(SCRIPT.read_text())
+        async def context(**kw):
+            c = await browser.new_context(**kw)
+            await c.route('https://eu.halaxy.com/**', halaxy)
+            await c.route('https://cdn.halaxy.com/**', halaxy)
+            await c.add_init_script("window.__hxHealthTest = { delay: 50 }; window.__menu = [];"
+                                    "window.GM_registerMenuCommand = (l, f) => window.__menu.push([l, f]);")
+            await c.add_init_script(SCRIPT.read_text())
+            return c
+
+        async def wait_20s(path):
+            # A page loaded, then 21 s of its time passed on a fake clock. Each in a fresh context with the same storage:
+            # Playwright replays a context's clock moves on every page loaded after them, so a later page would look 20 s old
+            c = await context(storage_state=await ctx.storage_state())
+            await c.clock.install()
+            p2 = await c.new_page()
+            p2.on('pageerror', lambda e: errors.append(str(e)))
+            await p2.goto('https://eu.halaxy.com' + path)
+            await p2.wait_for_timeout(1200)
+            pill = lambda: p2.evaluate("(document.querySelector('[data-hx-health]').querySelector('.upc-hc-pill') || {}).textContent || ''")
+            before = await pill()
+            await idle(p2, 21000)
+            after, menu = await pill(), await p2.evaluate("window.__menu.length")
+            await c.close()
+            return before, after, menu
+
+        ctx = await context()
         pg = await ctx.new_page()
         errors = []
         pg.on('pageerror', lambda e: errors.append(str(e)))
@@ -309,15 +332,11 @@ async def main():
               await pg.evaluate("window.__menu.map(m => m[0])") == ['Health check: show results'], (pill, await pg.evaluate("window.__menu.map(m => m[0])")))
         STATE['user'] = ''
         STATE['break'] = {'login'}
-        probs, pill = await load('/a/login')
-        await pg.wait_for_timeout(21000)
-        pill = await pg.evaluate("(document.querySelector('[data-hx-health]').querySelector('.upc-hc-pill') || {}).textContent || ''")
-        check('log-in page (nobody signed in): never shown', pill == '' and await pg.evaluate("window.__menu.length") == 0, pill)
+        _, pill, menu = await wait_20s('/a/login')
+        check('log-in page (nobody signed in): never shown', pill == '' and menu == 0, pill)
         STATE['break'] = set()
-        probs, pill = await load()
-        check('signed-in page, name not read yet: hidden at first', pill == '', pill)
-        await pg.wait_for_timeout(21000)
-        pill = await pg.evaluate("(document.querySelector('[data-hx-health]').querySelector('.upc-hc-pill') || {}).textContent || ''")
+        before, pill, _ = await wait_20s('/a/pr/555/calendar')
+        check('signed-in page, name not read yet: hidden at first', before == '', before)
         check('signed-in page, name still not readable after 20 s: shown rather than hidden', pill.startswith('Clinic scripts:'), pill)
         STATE['user'] = 'Carl Healy'
         await pg.evaluate("localStorage.setItem('upc-health:errors', '[]')")

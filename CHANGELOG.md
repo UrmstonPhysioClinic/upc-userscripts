@@ -1,5 +1,10 @@
 # Changelog
 
+## Tests, 24 Nov 2026 (fake clock, part 2)
+- The next three slowest test folders wait on the fake clock too: Health check 67 to about 27 seconds, Patient forms 62 to 5, the loader 53 to about 35. Groups rebalanced: about 2.7 minutes of tests each, so a pull request's checks take about 3 minutes instead of 4.
+- Health check: its two 20-second cases each run in a fresh browser context with the same storage, as Playwright replays a context's clock moves on every page loaded after them (a later page would look 20 seconds old at once).
+- Loader: the "real repository" step waits until every script has run rather than a fixed 2.5 seconds a visit.
+
 ## Core 0.1.85, Remittances 0.4.9, 24 Nov 2026 (beta)
 - Pills have an amber kind, warn (Halaxy's badge-warning), for something part done or needing a person (CH, 24 Nov 2026).
 - Remittances: Finish and By hand are amber again (blue and grey since 0.4.8).

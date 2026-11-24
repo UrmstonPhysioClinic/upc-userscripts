@@ -205,6 +205,9 @@ def note_values():
     return out
 
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from fakeclock import until, run   # move the fake clock on instead of waiting in real time
+
 async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch()
@@ -224,7 +227,7 @@ async def main():
         check('appointment written as Halaxy does', await pg.evaluate("window.upcPatientForms.apptText(new Date(2026, 10, 18, 10, 0).getTime())") == 'Wednesday 18-Nov-2026 10:00')
 
         for _ in range(4):
-            await pg.evaluate("window.upcPatientForms.run(true)")
+            await run(pg, "window.upcPatientForms.run(true)")
         sent = {pid: f for kind, pid, f in S['posts'] if kind == 'form'}
         name = lambda f: next((t for v, t in FORMS if str(v) == f.get('form[intakeForm]')), None)
         check('Bupa IA booked late: Initial Assessment Form - Bupa, sent now', 501 in sent and name(sent[501]) == 'Initial Assessment Form - Bupa' and sent[501]['form[scheduleDetails][scheduleDate]'] == '', sent.get(501))
@@ -255,19 +258,19 @@ async def main():
 
         # A second run sends nothing more
         before = len(S['posts'])
-        await pg.evaluate("window.upcPatientForms.run(true)")
+        await run(pg, "window.upcPatientForms.run(true)")
         check('second run: nothing sent twice', len(S['posts']) == before, S['posts'][before:])
 
         # Filled in before 18:00: the reminder is cancelled (checked in the 90 minutes before it goes)
         S['history'][503] = [('Progress Update', '17-Nov-2026 05:04', '17-Nov-2026 16:40', '')]
         await ctx.clock.set_system_time((NOW + datetime.timedelta(hours=3)).isoformat())
-        await pg.evaluate("window.upcPatientForms.run(true)")
+        await run(pg, "window.upcPatientForms.run(true)")
         check('filled in before it went: reminder cancelled', S['cancelled'] and not S['scheduled'].get(503) and note_values().get('r.9003') == 'done', (S['cancelled'], note_values().get('r.9003')))
 
         # Patients > Patient forms
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/#upc-patient-forms')
-        await pg.wait_for_selector('[data-upc-patient-forms] table', timeout=20000)
-        await pg.wait_for_function("!document.querySelector('[data-upc-patient-forms] [data-a=refresh]').disabled", timeout=30000)
+        await until(pg, "!!document.querySelector('[data-upc-patient-forms] table')", timeout=20)
+        await until(pg, "!document.querySelector('[data-upc-patient-forms] [data-a=refresh]').disabled", timeout=30)
         rows = await pg.evaluate("[...document.querySelectorAll('[data-upc-patient-forms] .card')].map((c) => [c.querySelector('h2').textContent, [...c.querySelectorAll('tbody tr')].map((tr) => [...tr.cells].map((x) => x.textContent.trim()))])")
         tom = dict((r[1], r) for r in (rows[1][1] if len(rows) > 1 else []))
         check('page: tomorrow listed with each form\'s state', len(rows) == 2 and rows[1][0].startswith('Tomorrow') and 'Patient Six' not in tom
@@ -291,7 +294,7 @@ async def main():
         pg = await ctx.new_page()
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/')
         await pg.wait_for_timeout(300)
-        await pg.evaluate("window.upcPatientForms.run(true)")
+        await run(pg, "window.upcPatientForms.run(true)")
         check('template with [Practitioner Title]: not sent, recorded to try again', not [x for x in S['posts'] if x[0] == 'form'] and note_values().get('a.9005', '').startswith('fail '), (S['posts'], note_values()))
         await ctx.close()
 
@@ -311,7 +314,7 @@ async def main():
         S['events'] = [e for e in S['events'] if e['id'] in (9003, 9005)]
         S['odd_history'] = {505}
         ctx, pg = await only(None)
-        await pg.evaluate("window.upcPatientForms.run(true)")
+        await run(pg, "window.upcPatientForms.run(true)")
         check('a history entry it can\'t read: nothing sent', not [x for x in S['posts'] if x[0] == 'form'] and note_values().get('a.9005', '').startswith('fail '), (S['posts'], note_values()))
         await ctx.close()
 
@@ -320,9 +323,9 @@ async def main():
         S['events'] = [e for e in S['events'] if e['id'] == 9005]
         S['hide_new'] = True
         ctx, pg = await only(None)
-        await pg.evaluate("window.upcPatientForms.run(true)")
+        await run(pg, "window.upcPatientForms.run(true)")
         await ctx.clock.set_system_time((NOW + datetime.timedelta(minutes=90)).isoformat())
-        await pg.evaluate("window.upcPatientForms.run(true)")
+        await run(pg, "window.upcPatientForms.run(true)")
         n = len([x for x in S['posts'] if x[0] == 'form'])
         check('accepted but not in the history: sent once, not again', n == 1 and note_values().get('a.9005', '').startswith('check '), (n, note_values()))
         await ctx.close()
@@ -331,13 +334,13 @@ async def main():
         setup()
         S['notes'][78842] = [{'id': 32999, 'html': '<p>UPC shared checks: Patient forms</p><p>Kept by UPC scripts. Please do not edit: a line that is changed is dropped and checked again.</p><p>a.9001 | 2026-11-17 13:00 | fail 1794920400000</p>'}]   # left by 0.1.0
         ctx, pg = await only(None, HELD, '/a/pr/555/patient/#upc-patient-forms')
-        await pg.wait_for_selector('[data-upc-patient-forms] table', timeout=20000)
-        await pg.wait_for_function("!document.querySelector('[data-upc-patient-forms] [data-a=refresh]').disabled", timeout=60000)
+        await until(pg, "!!document.querySelector('[data-upc-patient-forms] table')", timeout=20)
+        await until(pg, "!document.querySelector('[data-upc-patient-forms] [data-a=refresh]').disabled", timeout=60)
         rows = await pg.evaluate("[...document.querySelectorAll('[data-upc-patient-forms] tbody tr')].map((tr) => [...tr.cells].map((x) => x.textContent.trim()))")
         r = dict((x[1], x) for x in rows)
         old = await pg.evaluate("((UPC.shared('Patient forms').cached() || {})['a.9001'] || {}).value || ''")
         check('held: the failed record from 0.1.0 was read (so the preview is shown over it)', old.startswith('fail '), old)
-        await pg.evaluate("window.upcPatientForms.run(false)")
+        await run(pg, "window.upcPatientForms.run(false)")
         check('held: nothing sent or scheduled, even by the background run', not S['posts'], S['posts'])
         check('held: the page says what would happen', r.get('Patient One', [''] * 5)[3] == 'Would send: Initial Assessment Form - Bupa' and r.get('Patient Three', [''] * 5)[3].startswith('Sent 17-Nov-2026 05:04')
               and r.get('Patient Three', [''] * 5)[4] == 'Would remind at 18:00' and r.get('Patient Eight', [''] * 5)[4] == 'Filled in'
