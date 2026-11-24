@@ -1,5 +1,9 @@
 # Changelog
 
+## Portal fill 0.1.24, 24 Nov 2026 (beta)
+- Fill on the portal reads the funder invoice from Halaxy afresh, not from the page on screen (CH, 24 Nov 2026: fees merged onto one patient invoice after the page was opened left it linking to patient invoices that no longer existed, which was reported as a layout change, with a task and a health check problem). The fees, amounts and patient invoice are always the current ones.
+- A patient invoice that no longer exists says "Refresh the page and try again." without a task or a health check problem.
+
 ## To do 0.2.15, 24 Nov 2026 (beta)
 - With To do on, tasks leave Halaxy's bell: its list shows the other notifications only and its count goes down to match (CH, 24 Nov 2026). Halaxy's task notifications stay switched on for Halaxy without the scripts. The bell's list is read once each time Halaxy's count changes; if Halaxy's bell changes, the health check says so and tasks show in it again.
 

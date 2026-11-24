@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Portal fill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.23
+// @version      0.1.24
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
@@ -48,7 +48,7 @@
   if (window.__hxPortalFill) return;
   window.__hxPortalFill = true;
 
-  const VERSION = '0.1.23';
+  const VERSION = '0.1.24';
   const KEY = 'portal-claim';
   const MAX_AGE = 4 * 3600e3;
   const PORTALS = {
@@ -178,8 +178,11 @@
 
     async function readClaim(say) {
       say('Reading the funder invoice...');
-      const inv = U().invoice.parse(document, invoiceId);
-      const kind = kindOf(inv.billToName || clean((document.querySelector('#card-invoice-view-organisation') || {}).textContent));
+      // Read from Halaxy afresh, not from the page on screen (CH, 24 Nov 2026): fees merged onto one patient invoice
+      // after this page was opened left it linking to patient invoices that no longer existed.
+      const fDoc = await U().http.html('/invoice/' + invoiceId);
+      const inv = U().invoice.parse(fDoc, invoiceId);
+      const kind = kindOf(inv.billToName || clean((fDoc.querySelector('#card-invoice-view-organisation') || {}).textContent));
       if (!kind) throw new (U().Error)('This isn\'t a Bupa or AXA funder invoice.');
       const lines = inv.lines.filter((l) => l.amount > 0);
       if (!lines.length) throw new (U().Error)('There are no fees above £ 0.00 on this invoice.');
@@ -188,7 +191,14 @@
       const pInv = lines[0].patientInvoiceId;
       if (!pInv) throw new (U().Error)('The fees don\'t link back to a patient invoice, so the claim couldn\'t be read.');
       say('Reading the claim...');
-      const pDoc = await U().http.html('/invoice/' + pInv);
+      let pDoc = null;
+      try { pDoc = await U().http.html('/invoice/' + pInv); } catch (e) { if (!/ 404 /.test(e.message || '')) throw e; }
+      if (!pDoc || !pDoc.querySelector('#invoiceLines')) {
+        // Gone (merged or deleted) between the two reads: not a change in Halaxy, so no task and no health check.
+        const gone = new (U().Error)('The patient invoice for these fees no longer exists. Refresh the page and try again.');
+        gone.retry = true;
+        throw gone;
+      }
       const pinv = U().invoice.parse(pDoc, pInv);
       const edit = pDoc.querySelector('#editClaimButton');
       if (!pinv.patientId || !edit) throw new (U().Error)('The patient invoice layout has changed (patient or claim not found), so the claim couldn\'t be read.');
@@ -285,6 +295,8 @@
         watch();
       } catch (e) {
         if (tab) tab.close();
+        busy = false;
+        if (e && e.retry) { note = e.message; noteErr = true; draw(); return; }
         tellHealthCheck(e);
         const number = clean(document.title).match(/UPC-?\d+/i);
         note = (e.message || String(e)) + ' ' + await notifyOwner(invoiceId, number ? number[0] : '', kindName, e.message || String(e), 'Halaxy, before the portal was opened');
