@@ -1,6 +1,8 @@
 # Runs every test on each pull request and on main, so "merge once the checks pass" is checked by GitHub.
-# The tests are split into five groups that run at the same time on separate machines (about 6 minutes instead of
-# about 17 in a row). Every test folder must be in exactly one group: the "all tests in a group" job checks that.
+# The tests are split into six groups of about four minutes each, run at the same time on separate machines (CH,
+# 24 Nov 2026: balanced by how long each folder takes). Every test folder must be in exactly one group: the "all tests
+# in a group" job checks that. tools/run_tests.py fails a group that runs over its time (tests/budgets.txt), so slow
+# tests are caught as they creep in: move a folder to a quicker group, or make the test quicker (a fake clock).
 name: tests
 on:
   pull_request:
@@ -16,11 +18,12 @@ jobs:
       fail-fast: false
       matrix:
         group:
-          - invoice-funder old-balances branding record-retention
-          - portal-fill clinic-settings to-do
-          - bank-statement remittances cards-on-file arrived-button
-          - review-requests loader patient-statuses ready-to-bill rebate-sync
-          - alerts block-reporting calendar-controls charge-excess core email-html feedback-alerts forecourt-lights health-check insurer-payments-due missing-details mobile-layout open-ended-patients outstanding-actions patient-forms script-settings task-stamps appointment-reminders
+          - portal-fill charge-excess cards-on-file email-html
+          - bank-statement appointment-reminders core branding
+          - remittances clinic-settings ready-to-bill script-settings old-balances block-reporting
+          - invoice-funder forecourt-lights review-requests outstanding-actions to-do mobile-layout
+          - open-ended-patients loader feedback-alerts missing-details insurer-payments-due record-retention arrived-button
+          - health-check patient-forms patient-statuses rebate-sync calendar-controls alerts task-stamps
     name: tests (${{ matrix.group }})
     steps:
       - uses: actions/checkout@v4
