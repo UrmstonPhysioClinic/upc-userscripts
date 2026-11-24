@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Schedule: To do (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.7
+// @version      0.2.8
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
@@ -38,7 +38,7 @@
   if (window.__hxToDo) return;
   window.__hxToDo = true;
 
-  const VERSION = '0.2.7';
+  const VERSION = '0.2.8';
   const ROUTE = 'upc-to-do';
   const MENU_CLS = 'upc-todo-menu';
   const DAY = 864e5, MIN = 60e3;
@@ -392,6 +392,60 @@
   const filters = () => Object.assign({ who: 'me', type: 'all' }, store().get('filters:' + me(), {}) || {});
   const setFilter = (k, v) => { const f = filters(); f[k] = v; store().set('filters:' + me(), f); };
 
+  // What a task is linked to, by name (CH, 24 Nov 2026: "the invoice number or patient name, not just Patient").
+  // Halaxy's task list gives only the kind (type); the task's Edit pop-up (GET /task/:id) links the record itself,
+  // e.g. "Invoice UPC-012235" -> /invoice/:id, the patient's name -> /patient/:id, "Appointment: ..." -> /appointment/:id,
+  // the organisation -> /organisation/:id, "Clinical note ..." -> /patient/:id/clinical/:id (capture 24 Nov 2026). Read
+  // once per task, only for linked tasks on screen, one at a time at Halaxy's pace, and kept on this PC (a task's link
+  // doesn't change). Tasks in the bell's list (Halaxy's own teasers, already on the page: "for <patient>") are taken from
+  // there first, at no cost.
+  const LINKED = /\/(invoice|patient|appointment|organisation)\/\d+/;
+  const links = () => store().get('links', {});
+  const linkOf = (id) => links()[id] || null;
+  function keepLink(id, v) { const m = links(); m[id] = Object.assign({ at: Date.now() }, v); store().set('links', m); }
+  function fromBell() {
+    document.querySelectorAll('#alertHeader .viewTeaser').forEach((teaser) => {
+      const task = teaser.querySelector('a[href*="/task/"]');
+      const id = task && (task.getAttribute('href').match(/\/task\/(\d+)/) || [])[1];
+      if (!id || linkOf(id)) return;
+      const rec = [...teaser.querySelectorAll('a[href]')].find((a) => a !== task && LINKED.test(a.getAttribute('href')));
+      if (rec) keepLink(id, { t: clean(rec.textContent), h: rec.getAttribute('href').replace(/^.*\/a\/pr\/\d+/, '') });
+    });
+  }
+  const linkWant = new Set();
+  let linkBusy = false;
+  async function readLinks() {
+    if (linkBusy) return;
+    linkBusy = true;
+    try {
+      while (linkWant.size && root) {
+        const id = linkWant.values().next().value;
+        linkWant.delete(id);
+        if (linkOf(id)) continue;
+        try {
+          const { doc } = await U().http.popup('/task/' + encodeURIComponent(id));
+          const a = [...doc.querySelectorAll('a[href]')].find((x) => LINKED.test(x.getAttribute('href')) && !/\/task\//.test(x.getAttribute('href')));
+          keepLink(id, a ? { t: clean(a.textContent), h: a.getAttribute('href').replace(/^.*\/a\/pr\/\d+/, '') } : { t: '', h: '' });
+        } catch (e) { /* shown by kind only; tried again next time the page opens */ }
+        paintLinks();
+      }
+    } finally { linkBusy = false; }
+  }
+  // The linked records of the tasks on screen: shown where known, the rest asked for.
+  function paintLinks() {
+    if (!root) return;
+    fromBell();
+    const base = U().base();
+    root.querySelectorAll('[data-upc-link]').forEach((el) => {
+      const id = el.getAttribute('data-upc-link'), l = linkOf(id);
+      if (l && l.t && l.h) {
+        if (el.getAttribute('data-done') !== l.h) { el.innerHTML = '<a href="' + esc(base + l.h) + '" target="_blank" rel="noopener">' + esc(l.t) + '</a>'; el.setAttribute('data-done', l.h); }
+      } else if (!l && el.offsetParent !== null) linkWant.add(id);   // only rows showing (not past "Show 25 more" or searched out)
+    });
+    if (linkWant.size) readLinks();
+  }
+  const linkCell = (t) => (t.type ? '<span data-upc-link="' + esc(t.id) + '">' + esc(t.type) + '</span>' : '');
+
   function row(t, today) {
     const q = queuedOf(t.id), d = done.get(t.id);
     const act = q === 'busy' ? U().ui.run.inline('') : q === 'queued' ? 'Queued' : t.completed ? '<span class="upc-ok">Completed</span>'
@@ -399,7 +453,7 @@
       : '<button type="button" class="btn btn-outline-primary-light" data-a="done" data-id="' + esc(t.id) + '">Done</button>';
     const f = filters();
     return '<tr data-upc-id="' + esc(t.id) + '"' + (q || t.completed ? ' data-upc-nopick' : '') + '><td><a class="upc-todo-task" href="' + esc(U().base() + '/task/' + t.id) + '" data-a="edit" data-id="' + esc(t.id) + '">' + esc(t.title || 'Task') + '</a></td>' +
-      '<td>' + esc(t.type) + '</td><td class="upc-todo-due' + (t.due !== null && t.due < today ? ' upc-todo-late' : '') + '" data-sort="' + esc(t.due === null ? '' : label(t.due)) + '">' + esc(dueText(t.due)) + '</td>' +
+      '<td>' + linkCell(t) + '</td><td class="upc-todo-due' + (t.due !== null && t.due < today ? ' upc-todo-late' : '') + '" data-sort="' + esc(t.due === null ? '' : label(t.due)) + '">' + esc(dueText(t.due)) + '</td>' +
       '<td data-sort="' + (PRIORITY[t.priority] || 0) + '">' + esc(t.priority) + '</td>' + (f.who === 'me' ? '' : '<td>' + esc(t.who.join(', ')) + '</td>') + '<td class="upc-todo-act">' + act + '</td></tr>';
   }
 
@@ -429,7 +483,8 @@
 
   function chip(t) {
     return '<div class="upc-todo-chip" draggable="true" data-chip="' + esc(t.id) + '"><a class="upc-todo-task" href="' + esc(U().base() + '/task/' + t.id) + '" data-a="edit" data-id="' + esc(t.id) + '">' + esc(t.title || 'Task') + '</a>' +
-      '<small class="text-muted">' + esc([t.type, t.priority, queuedOf(t.id) ? 'Queued' : ''].filter(Boolean).join(', ')) + '</small></div>';
+      (t.type ? '<small class="upc-todo-chiplink">' + linkCell(t) + '</small>' : '') +
+      '<small class="text-muted">' + esc([t.priority, queuedOf(t.id) ? 'Queued' : ''].filter(Boolean).join(', ')) + '</small></div>';
   }
 
   // The signed-in practitioner's appointments each day of the week shown (CH, 24 Nov 2026: to plan workload), from
@@ -503,6 +558,7 @@
     h += '</div><div class="upc-todo-side">' + side() + '</div></div></div>';
     root.innerHTML = h;
     U().ui.list.enhance(root, { onPick: render });
+    paintLinks();
     // Move to: Halaxy's date picker (flatpickr, which its pages load), or the browser's where it isn't there.
     root.querySelectorAll('input[data-upc-move]').forEach((inp) => {
       const go = (ms) => { if (ms !== null) act('move', U().ui.list.picked(inp.dataset.upcMove), dayStart(ms)); };
@@ -529,6 +585,8 @@
     root = document.createElement('div');
     root.className = 'upc-native upc-page-wide';
     root.setAttribute('data-upc-to-do', '');
+    root.addEventListener('click', () => setTimeout(paintLinks, 60));   // "Show 25 more", search and sorting show other rows
+    root.addEventListener('input', () => setTimeout(paintLinks, 300));
     root.addEventListener('click', (e) => {
       const b = e.target.closest('[data-a]');
       if (!b || b.disabled) return;

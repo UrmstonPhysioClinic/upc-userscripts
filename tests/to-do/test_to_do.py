@@ -45,7 +45,11 @@ def edit_form(tid, title='Task'):
             "<input type='radio' name='form[priority]' value='1' checked><input type='radio' name='form[priority]' value='2'><input type='radio' name='form[priority]' value='3'>"
             "<input name='form[displayDueDate]' value='13-Apr-2021'><select name='form[displayDueTime][hour]'><option value='0' selected>00</option></select><select name='form[displayDueTime][minute]'><option value='0' selected>00</option></select>"
             "<input type='hidden' name='form[isTimeSet]' value='false'><textarea name='form[comment]'>2026-11-01 10:00 RH\n- note</textarea><input type='hidden' name='form[_token]' value='tt'>"
-            "<a class='ajax btn' href='/a/pr/555/task/%s/complete'>Mark as completed</a></form>") % (title, tid)
+            "<a class='ajax btn' href='/a/pr/555/task/%s/complete'>Mark as completed</a>%s</form>") % (title, tid, LINKS.get(str(tid), ''))
+
+
+# What tasks are linked to, as their Edit pop-up shows it (capture 24 Nov 2026: a plain link to the record).
+LINKS = {'2': "<div class='col'><a href='/a/pr/555/patient/602'>Patient Two</a></div>", '3': "<div class='col'><a href='/a/pr/555/invoice/703'>Invoice UPC-012235</a></div>"}
 
 
 def page_html():
@@ -56,7 +60,7 @@ def page_html():
             "<li class='mainmenu-item'><a class='mainmenu-link'><span class='mainmenu-link-label'>Finances</span></a><ul><li><a class='mainmenu-sublink' href='/a/pr/555/invoice/'>Invoices</a></li>"
             "<li><a class='mainmenu-sublink upc-rtb-menu' href='/a/pr/555/invoice/#upc-ready-to-bill'>Ready to bill</a></li></ul></li></ul></nav></div>"
             "<div id='headerWrapper' style='height:50px'><div id='alertHeader' class='alertIconsContainer'><div id='alertIncomingMessages' class='headIcon'><a id='btn-alert-incoming-messages' class='fa-stack alertIcon' href='javascript:' title='Inbox'><i class='icon-inbox icon'></i></a></div>"
-            "<div id='alertNotifications' class='headIcon'><style>#btn-alert-notifications{position:relative}#btn-alert-notifications[data-count]::after{content:attr(data-count);position:absolute;top:-3px;right:-5px;min-width:14px;height:14px;font-size:9px;line-height:14px;border-radius:7px;background-color:rgb(10,20,30);color:rgb(250,250,250)}</style><a id='btn-alert-notifications' class='fa-stack alertIcon' href='javascript:' title='Notifications' data-count='9'><i class='icon-alarm icon'></i></a></div></div></div><div id='pageContent'><h1>Tasks</h1></div>"
+            "<div class='alertPopoverInner'><div class='teasers'><div id='alertTeaser_9' class='viewTeaser alertType-task-due'><p><a href='/a/pr/555/task/4'>Renew licence</a> for <a href='/a/pr/555/organisation/804'>Org Four</a></p></div></div></div><div id='alertNotifications' class='headIcon'><style>#btn-alert-notifications{position:relative}#btn-alert-notifications[data-count]::after{content:attr(data-count);position:absolute;top:-3px;right:-5px;min-width:14px;height:14px;font-size:9px;line-height:14px;border-radius:7px;background-color:rgb(10,20,30);color:rgb(250,250,250)}</style><a id='btn-alert-notifications' class='fa-stack alertIcon' href='javascript:' title='Notifications' data-count='9'><i class='icon-alarm icon'></i></a></div></div></div><div id='pageContent'><h1>Tasks</h1></div>"
             "<script>window.HkUser = { linkPrG: 11, pracID: 11, pracName: 'Carl Healy' }; window.Hk = { jwt: 'j' };"
             "window.popups = []; document.addEventListener('click', (e) => { const a = e.target.closest && e.target.closest('a.ajax'); if (!a) return; e.preventDefault();"
             " window.popups.push(a.getAttribute('href')); const d = document.createElement('div'); d.className = 'bootbox modal'; d.textContent = 'Halaxy pop-up'; document.body.appendChild(d); });</script>"
@@ -101,6 +105,7 @@ async def halaxy(route):
     m = re.match(r'^/a/pr/555/task/(new(?:/linkPaG/\d+)?|\d+)$', p)
     if m:
         if req.method == 'GET':
+            S.setdefault('popups', []).append(m.group(1))
             return await js({'status': 'FORM', 'title': 'Edit task', 'message': edit_form(m.group(1), 'New' if m.group(1).startswith('new') else 'Task %s' % m.group(1))})
         S['posts'].append((m.group(1), form))
         return await js({'status': 'REFRESH'})
@@ -138,6 +143,10 @@ async def main():
         check('top bar: To do in place of the Inbox (hidden), opening To do, with the same count; drawn icon when Halaxy\'s font has none', head == ['/a/pr/555/task/#upc-to-do', 'To do', badge, 'none', 'alertIncomingMessages', True], (head, badge))
         look = await pg.evaluate("(() => { const b = getComputedStyle(document.querySelector('#alertHeader a.upc-todo-head .upc-todo-headcount')); return [b.top, b.right, b.height, b.fontSize, b.backgroundColor]; })()")
         check("the top bar count looks like the bell's (copied from Halaxy's own)", look == ['-3px', '-5px', '14px', '9px', 'rgb(10, 20, 30)'], look)
+        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-link] a')].length === 3", timeout=20000)
+        linked = await pg.evaluate("Object.fromEntries([...document.querySelectorAll('[data-upc-link]')].map((e) => [e.dataset.upcLink, [e.textContent, (e.querySelector('a') || {}).getAttribute && e.querySelector('a').getAttribute('href'), (e.querySelector('a') || {}).target]]))")
+        check('Linked to: the record by name, opening in a new tab', linked == {'2': ['Patient Two', '/a/pr/555/patient/602', '_blank'], '3': ['Invoice UPC-012235', '/a/pr/555/invoice/703', '_blank'], '4': ['Org Four', '/a/pr/555/organisation/804', '_blank']}, linked)
+        check("read from each linked task's Edit pop-up once, one in the bell's list taken from there; unlinked tasks not read", sorted(x for x in S.get('popups', []) if x != 'new') == ['2', '3'], S.get('popups'))
         check('a card for each list I can open, with count and top rows; none for lists I can\'t', 'Ready to bill (4)' in heads and 'Old balances (9)' not in heads
               and 'Patient C, Bupa, £ 1,200.00' in await pg.evaluate("document.querySelector('.upc-todo-side').innerText") and 'and 1 more' in await pg.evaluate("document.querySelector('.upc-todo-side').innerText"), heads)
 
@@ -218,6 +227,7 @@ async def main():
         wk = await pg.evaluate("[document.querySelector('.nav-link.active').textContent, document.querySelector('.upc-todo-weeknav .text-muted').textContent]")
         check('after the reload: still Week view, the same week', wk == ['Week', '30-Nov-2026 to 04-Dec-2026'], wk)
         check('after the reload: the tasks read afresh', S['reads'] > reads, (reads, S['reads']))
+        check('after the reload: links known already, not read again', [x for x in S.get('popups', []) if x in ('2', '3')].count('2') == 1, S.get('popups'))
         look = await pg.evaluate("(() => { const r = document.querySelector('[data-upc-to-do]'); return r.classList.contains('upc-native') && !!r.querySelector('.upc-page-bar h1') && !!r.querySelector('.card .card-header h2') && !r.shadowRoot; })()")
         check('Halaxy look: title bar, cards', look)
         check('no page errors', not errors, errors)
