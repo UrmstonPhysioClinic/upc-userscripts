@@ -1,5 +1,9 @@
 # Changelog
 
+## Core 0.1.85, Remittances 0.4.9, 24 Nov 2026 (beta)
+- Pills have an amber kind, warn (Halaxy's badge-warning), for something part done or needing a person (CH, 24 Nov 2026).
+- Remittances: Finish and By hand are amber again (blue and grey since 0.4.8).
+
 ## To do 0.2.16, Arrived button 0.1.1, 24 Nov 2026 (beta)
 - To do's Week view: the appointment counts show as soon as the week does (CH, 24 Nov 2026: they came and went while the page loaded). Each week's counts are kept on the PC and read again when over 15 minutes old or on Check Now; the read is the signed-in practitioner's five days only, not every practitioner's calendar over months.
 - Arrived button: after pressing Arrived in the sidebar, its Status reads Arrived and the appointment is refreshed on the calendar straight away (CH, 24 Nov 2026: it still said Booked).
