@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Schedule: To do (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.15
+// @version      0.2.16
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
@@ -38,7 +38,7 @@
   if (window.__hxToDo) return;
   window.__hxToDo = true;
 
-  const VERSION = '0.2.15';
+  const VERSION = '0.2.16';
   const ROUTE = 'upc-to-do';
   const MENU_CLS = 'upc-todo-menu';
   const DAY = 864e5, MIN = 60e3;
@@ -601,35 +601,64 @@
       '<small class="text-muted">' + esc([t.priority, queuedOf(t.id) ? 'Queued' : ''].filter(Boolean).join(', ')) + '</small></div>';
   }
 
-  // The signed-in practitioner's appointments each day of the week shown (CH, 24 Nov 2026: to plan workload), from
-  // core's shared calendar read. Not counted: cancelled, did not attend, rejected, declined, rescheduled, waiting list.
-  const appts = { week: null, counts: null, busy: false };
+  // The signed-in practitioner's appointments each day of the week shown (CH, 24 Nov 2026: to plan workload). Not
+  // counted: cancelled, did not attend, rejected, declined, rescheduled, waiting list.
+  // Shown at once (0.2.16; CH, 24 Nov 2026: the counts came and went while the page loaded): each week's counts are kept
+  // on the PC and shown straight away, then read again when over 15 minutes old or on Check now. The read is only this
+  // practitioner's five days, as Halaxy's calendar asks for one person's week, not core's shared read of every
+  // practitioner over months (slow, and queued behind Linked To's reads on a first open).
+  const APPTS_FRESH = 15 * 60e3;
+  const appts = { busy: null, stale: false, failedAt: 0 };
   const NOT_ON = /^(cancelled|did-not-attend|rejected|declined|rescheduled|waiting-list)$/i;
+  const meIds = () => [window.HkUser && HkUser.pracID, window.HkUser && HkUser.linkPrG].filter((x) => x !== undefined && x !== null && x !== '').map(String);
   // Only for clinicians: the signed-in person is one of Halaxy's practitioners (the calendar's list), so administrators
-  // see no counts (CH, 24 Nov 2026). Checked once a day on the PC, per person.
-  async function clinician(me) {
+  // see no counts (CH, 24 Nov 2026). Their practitioner number (or null), checked once a day on the PC, per person.
+  async function practitionerId(me) {
     const key = 'clinician:' + me.join(','), kept = store().get(key, null);
-    if (kept && Date.now() - kept.at < DAY) return kept.yes;
+    if (kept && 'id' in kept && Date.now() - kept.at < DAY) return kept.id;
     const pracs = await U().http.json('/lookup/practitioner?clinic=&include_id=&type=');
-    const yes = Array.isArray(pracs) && pracs.some((p) => me.includes(String(p.id)));
-    store().set(key, { at: Date.now(), yes });
-    return yes;
+    const p = Array.isArray(pracs) ? pracs.find((x) => me.includes(String(x.id))) : null;
+    const id = p ? String(p.id) : null;
+    store().set(key, { at: Date.now(), id });
+    return id;
+  }
+  // Kept counts: { [person]: { [monday]: { at, counts } } }, the last 8 weeks read per person.
+  const keptCounts = (me, monday) => ((store().get('appts', {}) || {})[me.join(',')] || {})[monday] || null;
+  function keepCounts(me, monday, counts) {
+    const all = store().get('appts', {}) || {}, mine = all[me.join(',')] || {};
+    mine[monday] = { at: Date.now(), counts };
+    Object.keys(mine).sort((a, b) => mine[b].at - mine[a].at).slice(8).forEach((k) => delete mine[k]);
+    all[me.join(',')] = mine;
+    store().set('appts', all);
   }
   function apptCounts(monday) {
-    if (appts.week === monday) return appts.counts;
-    if (appts.busy) return null;
-    appts.busy = true;
-    const me = [window.HkUser && HkUser.pracID, window.HkUser && HkUser.linkPrG].filter((x) => x !== undefined && x !== null && x !== '').map(String);
-    clinician(me).then((yes) => (yes ? U().calendar.appointments(monday, monday + 5 * DAY) : null)).then((evs) => {
-      if (!evs) { Object.assign(appts, { week: monday, counts: null }); return; }
-      const counts = {};
-      evs.filter((e) => me.includes(String(e.practitionerID)) && !NOT_ON.test(String(e.appointmentStatus || '').trim())).forEach((e) => {
-        const d = dayStart(Number(e.start) * 1000);
-        counts[d] = (counts[d] || 0) + 1;
-      });
-      Object.assign(appts, { week: monday, counts });
-    }).catch(() => Object.assign(appts, { week: monday, counts: null })).finally(() => { appts.busy = false; render(); });
-    return null;
+    const me = meIds(), kept = keptCounts(me, monday);
+    const old = !kept || appts.stale || Date.now() - kept.at > APPTS_FRESH;
+    if (old && appts.busy === null && Date.now() - appts.failedAt > 60e3 && !(U().http.pausedFor && U().http.pausedFor() > 0)) {
+      appts.busy = monday;
+      appts.stale = false;
+      practitionerId(me).then(async (pid) => {
+        if (!pid) return null;
+        const qs = new URLSearchParams({ start: Math.floor(monday / 1000), end: Math.floor((monday + 5 * DAY) / 1000) });
+        qs.append('practitioners[0][id]', pid);
+        const cal = await U().http.json('/calendar/json?' + qs.toString());
+        if (!cal || !cal.payload || !Array.isArray(cal.payload.events)) throw new (U().Error)('Halaxy\'s calendar data has changed (no events list).');
+        return cal.payload.events.filter((e) => e.type === 'appointment');
+      }).then((evs) => {
+        let counts = null;
+        if (evs) {
+          counts = {};
+          evs.filter((e) => me.includes(String(e.practitionerID)) && !NOT_ON.test(String(e.appointmentStatus || '').trim())).forEach((e) => {
+            const d = dayStart(Number(e.start) * 1000);
+            counts[d] = (counts[d] || 0) + 1;
+          });
+        }
+        const was = keptCounts(me, monday);
+        keepCounts(me, monday, counts);
+        return !was || JSON.stringify(was.counts) !== JSON.stringify(counts);
+      }).catch(() => { appts.failedAt = Date.now(); return false; }).then((changed) => { appts.busy = null; if (changed && root && state.view === 'week') render(); });
+    }
+    return kept ? kept.counts : null;
   }
 
   function weekView(ts) {
@@ -701,6 +730,7 @@
   async function refresh(force, fresh) {
     if (state.loading) return;
     state.loading = true; state.error = '';
+    if (force && fresh) appts.stale = true;   // Check now: the appointment counts are read again too
     if (fresh && !jobs.length && busy === null) { state.errors = []; done.clear(); stay.clear(); before.clear(); movedTo.clear(); }
     render();
     try { await load(force); } catch (e) { state.error = 'Could not read the tasks: ' + (e.message || e); }

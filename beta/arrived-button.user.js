@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Calendar: Arrived button (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.0
+// @version      0.1.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/arrived-button.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/arrived-button.user.js
@@ -22,8 +22,8 @@
  *    Arrived link in the submenu, so Halaxy does exactly what it does now.
  *  - Sidebar (#RightHandPanel, an appointment open): an "Arrived" button by Rebook appointment. The appointment is
  *    a.editAppointment[data-appointmentid]; its patientID comes from the calendar's own event (the sidebar's patient
- *    link is a different number, checked 23 Nov 2026). It asks for the same link as Halaxy's menu; the calendar then
- *    shows the change with its next refresh (Halaxy's own, or Calendar controls' every 30 seconds).
+ *    link is a different number, checked 23 Nov 2026). It asks for the same link as Halaxy's menu, then shows Arrived as
+ *    the sidebar's Status and has the calendar read the appointment again (showArrived).
  *  - Both only for an appointment today that is Booked or Confirmed (not already arrived, attended, cancelled ...).
  */
 (() => {
@@ -31,7 +31,7 @@
   if (window.__hxArrivedButton) return;
   window.__hxArrivedButton = true;
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
   const ARRIVED = 1;   // Halaxy's status number for Arrived
   const OPEN = /^(|booked|confirmed|check-response)$/i;
   const U = () => window.UPC;
@@ -109,6 +109,7 @@
         if (!j || (j.status !== 'OK' && j.status !== 'REFRESH')) throw new (U().Error)('Halaxy did not accept it.');
         b.textContent = 'Arrived';
         b.className = 'btn btn-outline-primary upc-arrived-btn';
+        showArrived(panel, id);
       } catch (e) {
         b.disabled = false;
         b.textContent = 'Arrived';
@@ -116,6 +117,25 @@
       }
     });
     rebook.parentElement.insertBefore(b, rebook);
+  }
+
+  // After Halaxy accepts it (0.1.1; CH, 24 Nov 2026: the sidebar still said "Status: Booked"): the sidebar's Status reads
+  // Arrived, and the calendar asks Halaxy for this appointment again now (HkCalendar.updateSingleEvent, as Halaxy does
+  // when an appointment changes), instead of at its next refresh. Only a Status of Booked, Confirmed or Check response
+  // is changed, so nothing else in the sidebar is touched.
+  function showArrived(panel, id) {
+    const label = /^status\s*:?$/i, inline = /^(\s*status\s*:\s*)(booked|confirmed|check response)(\s*)$/i, open = /^(booked|confirmed|check response)$/i;
+    const walk = document.createTreeWalker(panel, NodeFilter.SHOW_TEXT);
+    let n, after = false;
+    while ((n = walk.nextNode())) {
+      const t = n.nodeValue.trim();
+      if (!t) continue;
+      if (inline.test(n.nodeValue)) { n.nodeValue = n.nodeValue.replace(inline, '$1Arrived$3'); break; }
+      if (after) { if (open.test(t)) n.nodeValue = n.nodeValue.replace(t, 'Arrived'); break; }
+      if (label.test(t)) after = true;
+    }
+    const HC = window.HkCalendar;
+    try { if (HC && typeof HC.updateSingleEvent === 'function') HC.updateSingleEvent(/^\d+$/.test(id) ? Number(id) : id); } catch (e) { /* the calendar's next refresh shows it */ }
   }
 
   let queued = false;

@@ -1,5 +1,9 @@
 # Changelog
 
+## To do 0.2.16, Arrived button 0.1.1, 24 Nov 2026 (beta)
+- To do's Week view: the appointment counts show as soon as the week does (CH, 24 Nov 2026: they came and went while the page loaded). Each week's counts are kept on the PC and read again when over 15 minutes old or on Check Now; the read is the signed-in practitioner's five days only, not every practitioner's calendar over months.
+- Arrived button: after pressing Arrived in the sidebar, its Status reads Arrived and the appointment is refreshed on the calendar straight away (CH, 24 Nov 2026: it still said Booked).
+
 ## Ready to bill 0.4.15, Old balances 0.2.5, Bank statement 0.2.11, Invoice Funder 0.8.7, Remittances 0.4.8, 24 Nov 2026 (beta)
 - A row's result is a pill, as in To do, instead of coloured text (CH, 24 Nov 2026): "Queued", "Set to £ 0.00", "Written off", "Already in Halaxy", "Deposit applied", "Deposit added", "Task added", and "Not changed" in red with the reason under it.
 - Old balances: a write-off that failed shows "Not changed" beside Write Off (it showed only the button).
