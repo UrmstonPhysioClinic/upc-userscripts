@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Schedule: To do (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.3
+// @version      0.2.4
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
@@ -19,6 +19,8 @@
  *    (me by default, a person, or everyone) and what they are linked to; the filters are remembered for each person on
  *    this PC. Read when the page opens (kept for 5 minutes) and for the menu badge (mine, overdue or due today) at most
  *    hourly in the visible tab.
+ *  - Week view (CH, 24 Nov 2026): tasks with a purple edge; under each day's heading, the signed-in practitioner's
+ *    appointments that day.
  *  - List view: cards Overdue, Today, This week, Later, No date (25 rows, then "Show 25 more"; search and sorting from
  *    the page kit). Week view: Monday to Friday of a week, tasks dragged between days, a tray of overdue and undated
  *    tasks to drag from.
@@ -35,7 +37,7 @@
   if (window.__hxToDo) return;
   window.__hxToDo = true;
 
-  const VERSION = '0.2.3';
+  const VERSION = '0.2.4';
   const ROUTE = 'upc-to-do';
   const MENU_CLS = 'upc-todo-menu';
   const DAY = 864e5, MIN = 60e3;
@@ -69,7 +71,8 @@
     .upc-todo .upc-todo-week .card { margin: 0; min-height: 160px; }
     .upc-todo .upc-todo-week .card-body { padding: 8px; }
     .upc-todo .upc-todo-week .upc-todo-drop.upc-todo-over { outline: 2px dashed #994DE6; outline-offset: -4px; }
-    .upc-todo .upc-todo-chip { border: 1px solid var(--vs-card-border-color, #dee2e6); border-radius: 6px; padding: 6px 8px; margin-bottom: 6px; background: var(--vs-card-bg-color, #fff); cursor: grab; }
+    .upc-todo .upc-todo-chip { border: 1px solid var(--vs-card-border-color, #dee2e6); border-left: 4px solid var(--purple, #994DE6); border-radius: 6px; padding: 6px 8px; margin-bottom: 6px; background: var(--vs-card-bg-color, #fff); cursor: grab; }
+    .upc-todo .upc-todo-week .upc-todo-appts { font-size: .85em; font-weight: normal; margin-top: 2px; }
     .upc-todo .upc-todo-chip small { display: block; }
     .upc-todo .upc-todo-weeknav { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
     .upc-todo .upc-todo-weeknav .btn { margin: 0; }
@@ -345,6 +348,26 @@
       '<small class="text-muted">' + esc([t.type, t.priority, queuedOf(t.id) ? 'Queued' : ''].filter(Boolean).join(', ')) + '</small></div>';
   }
 
+  // The signed-in practitioner's appointments each day of the week shown (CH, 24 Nov 2026: to plan workload), from
+  // core's shared calendar read. Not counted: cancelled, did not attend, rejected, declined, rescheduled, waiting list.
+  const appts = { week: null, counts: null, busy: false };
+  const NOT_ON = /^(cancelled|did-not-attend|rejected|declined|rescheduled|waiting-list)$/i;
+  function apptCounts(monday) {
+    if (appts.week === monday) return appts.counts;
+    if (appts.busy) return null;
+    appts.busy = true;
+    const me = [window.HkUser && HkUser.pracID, window.HkUser && HkUser.linkPrG].filter((x) => x !== undefined && x !== null && x !== '').map(String);
+    U().calendar.appointments(monday, monday + 5 * DAY).then((evs) => {
+      const counts = {};
+      evs.filter((e) => me.includes(String(e.practitionerID)) && !NOT_ON.test(String(e.appointmentStatus || '').trim())).forEach((e) => {
+        const d = dayStart(Number(e.start) * 1000);
+        counts[d] = (counts[d] || 0) + 1;
+      });
+      Object.assign(appts, { week: monday, counts });
+    }).catch(() => Object.assign(appts, { week: monday, counts: null })).finally(() => { appts.busy = false; render(); });
+    return null;
+  }
+
   function weekView(ts) {
     const monday = mondayOf(Date.now()) + state.week * 7 * DAY, today = dayStart(Date.now());
     const tray = ts.filter((t) => !t.completed && (t.due === null || t.due < Math.max(today, monday)));
@@ -353,10 +376,14 @@
       '<span class="text-muted">' + esc(label(monday) + ' to ' + label(monday + 4 * DAY)) + '</span></div><div class="upc-todo-week">';
     h += '<div class="card"><div class="card-header"><h2>Overdue or no date (' + tray.length + ')</h2></div><div class="card-body">' + (tray.slice(0, 40).map(chip).join('') || '<p class="text-muted m-0">None.</p>') +
       (tray.length > 40 ? '<p class="text-muted m-0">and ' + (tray.length - 40) + ' more</p>' : '') + '</div></div>';
+    const counts = apptCounts(monday);
     WEEKDAYS.forEach((name, i) => {
       const day = monday + i * DAY;
       const list = ts.filter((t) => !t.completed && t.due !== null && dayStart(t.due) === day);
-      h += '<div class="card upc-todo-drop" data-day="' + day + '"><div class="card-header"><h2>' + esc(name + ' ' + label(day).slice(0, 6)) + ' (' + list.length + ')</h2></div><div class="card-body">' + (list.map(chip).join('') || '') + '</div></div>';
+      const n = counts ? counts[day] || 0 : null;
+      h += '<div class="card upc-todo-drop" data-day="' + day + '"><div class="card-header"><h2>' + esc(name + ' ' + label(day).slice(0, 6)) + ' (' + list.length + ')</h2>' +
+        (n === null ? '' : '<div class="text-muted upc-todo-appts">' + (n ? n + ' appointment' + (n === 1 ? '' : 's') : 'No appointments') + '</div>') +
+        '</div><div class="card-body">' + (list.map(chip).join('') || '') + '</div></div>';
     });
     return h + '</div>';
   }
