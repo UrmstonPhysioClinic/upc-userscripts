@@ -24,6 +24,10 @@ import make_fixtures  # noqa: E402
 if not (HERE / 'node_modules' / 'tesseract.js').exists():
     subprocess.run(['npm', 'install', '--no-audit', '--no-fund', '--no-package-lock', '--silent'], cwd=HERE, check=True)
 LIBS = HERE / 'node_modules'
+sys.path.insert(0, str(ROOT / 'tests'))
+from fakeclock import until, idle, run   # waits move the fake clock on instead of waiting in real time
+# When each request to Halaxy left, in the page's own (fake) time, for the pacing check
+STAMP = "window.__upcReqAt = []; (function (f) { window.fetch = function (input) { const u = String((input && input.url) || input); if (/^\\/|^https:\\/\\/eu\\.halaxy\\.com\\//.test(u)) window.__upcReqAt.push([Date.now(), u]); return f.apply(this, arguments); }; })(window.fetch);"
 CORE = (ROOT / 'beta' / 'core.user.js').read_text().replace('perMinute: 45,', 'perMinute: 100000,')   # tests: no 45-a-minute wait (the 300 ms gap stays)
 REMIT = (ROOT / 'beta' / 'remittances.user.js').read_text()
 PG = '555'
@@ -346,8 +350,10 @@ async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         ctx = await browser.new_context(viewport={'width': 1300, 'height': 900})
+        await ctx.clock.install()   # today's time, moved on by the waits (fakeclock)
         await ctx.route('https://eu.halaxy.com/**', halaxy)
         await ctx.route('https://cdn.jsdelivr.net/**', cdn)
+        await ctx.add_init_script(STAMP)
         await ctx.add_init_script(CORE)
         await ctx.add_init_script("document.addEventListener('DOMContentLoaded', function () {\n" + REMIT + "\n});")
         pg = await ctx.new_page()
@@ -390,7 +396,7 @@ async def main():
         # Read, match and classify a typed WPA remittance
         S['current_pdf'] = pdfs['wpa'].read_bytes()
         await pg.set_input_files('[data-upc-remittances] input[type=file]', str(pdfs['wpa']))
-        await pg.wait_for_function("document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr').length === 3", timeout=60000)
+        await until(pg, "document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr').length === 3", timeout=60)
         await pg.wait_for_timeout(300)
         rows = await pg.evaluate("[...document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr')].map(r => r.innerText.replace(/\\s+/g, ' '))")
         check('fully paid invoice marked paid in full', 'Paid in full' in rows[0], rows[0])
@@ -402,7 +408,7 @@ async def main():
         S['failLineDateOnce'] = True
         await pg.evaluate("document.querySelector('[data-upc-remittances]').querySelector('[data-act=apply]').click()")
         await pg.evaluate("document.querySelector('[data-upc-remit-confirm] [data-a=yes]').click()")
-        await pg.wait_for_function("(document.querySelector('[data-upc-remittances] .upc-log') || {}).textContent && /stopped:[\\s\\S]*Task added/i.test(document.querySelector('[data-upc-remittances] .upc-log').textContent) && document.querySelector('[data-upc-remittances] .upc-log').textContent.includes('Finished')", timeout=300000)
+        await until(pg, "(document.querySelector('[data-upc-remittances] .upc-log') || {}).textContent && /stopped:[\\s\\S]*Task added/i.test(document.querySelector('[data-upc-remittances] .upc-log').textContent) && document.querySelector('[data-upc-remittances] .upc-log').textContent.includes('Finished')", timeout=300)
         log0 = await pg.evaluate("document.querySelector('[data-upc-remittances] .upc-log').textContent")
         f2, p2 = S['funders'][102], S['patients'][202]
         check('a failed move is put back: funder invoice as it was, same dates', sorted((l['amount'], l['date']) for l in f2['lines']) == [(6000, '02-Oct-2026'), (6000, '09-Oct-2026'), (6000, '16-Oct-2026')], f2['lines'])
@@ -414,7 +420,7 @@ async def main():
         check('no excess task when the move failed', 202 not in S['tasks'], S['tasks'])
         S['tasks'].clear(); S['statuses'] = []; S['linedates'] = 0
         await pg.set_input_files('[data-upc-remittances] input[type=file]', str(pdfs['wpa']))
-        await pg.wait_for_function("document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr').length === 3 && !document.querySelector('[data-upc-remittances] [data-act=apply]').disabled", timeout=60000)
+        await until(pg, "document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr').length === 3 && !document.querySelector('[data-upc-remittances] [data-act=apply]').disabled", timeout=60)
         await pg.wait_for_timeout(300)
 
         # Apply
@@ -424,11 +430,11 @@ async def main():
         check('asks before changing anything', 'Patients will owe £ 36.00' in dlg and 'UPC-40002: 02-Oct-2026 £ 60.00 to £ 24.00' in dlg, dlg)
         await pg.evaluate("document.querySelector('[data-upc-remit-confirm] [data-a=yes]').click()")
         # While it works: a progress bar and one line, no table and no step list (CH, 13 Nov 2026)
-        await pg.wait_for_function("!!document.querySelector('[data-upc-remittances] .upc-run .progress')", timeout=30000)
+        await until(pg, "!!document.querySelector('[data-upc-remittances] .upc-run .progress')", timeout=30)
         mid = await pg.evaluate("""({ table: !!document.querySelector('[data-upc-remittances] tbody'), now: (document.querySelector('[data-upc-remittances] .upc-run-now') || {}).textContent,
             logShown: !!document.querySelector('[data-upc-remittances] details.upc-run-log[open]') })""")
         check('while working: a progress bar and the current step, no table, log closed', not mid['table'] and mid['now'] and not mid['logShown'], mid)
-        await pg.wait_for_function("(document.querySelector('[data-upc-remittances]').querySelector('.upc-log') || {}).textContent && document.querySelector('[data-upc-remittances]').querySelector('.upc-log').textContent.includes('Finished')", timeout=300000)
+        await until(pg, "(document.querySelector('[data-upc-remittances]').querySelector('.upc-log') || {}).textContent && document.querySelector('[data-upc-remittances]').querySelector('.upc-log').textContent.includes('Finished')", timeout=300)
         end = await pg.evaluate("""({ bar: !!document.querySelector('[data-upc-remittances] .upc-run .progress'), table: !!document.querySelector('[data-upc-remittances] tbody'),
             btn: (document.querySelector('[data-upc-remittances] details.upc-run-log > summary') || {}).textContent, open: !!document.querySelector('[data-upc-remittances] details.upc-run-log[open]') })""")
         check('when finished: the results, and the steps behind View log', not end['bar'] and end['table'] and (end['btn'] or '').startswith('View log (') and not end['open'], end)
@@ -462,9 +468,9 @@ async def main():
               and 'Payment date 08-Oct-2026; remittance total £ 254.00 over 3 invoices; invoices UPC-40001, UPC-40002, UPC-40003; paid UPC-40001 £ 60.00, UPC-40002 £ 144.00, UPC-40003 £ 50.00' in of[0]['comments'] and of[0]['bytes'] == pdfs['wpa'].read_bytes(), of)
         check('a provider shortfall still on UPC-40003: no deposit looked for, a task to apply it by hand', 'No deposit applied: UPC-40003 shows £ 60.00 outstanding, not £ 50.00' in shown
               and [t.get('form[title]') for t in S.get('orgtasks', [])] == ['Remittance WPA remittance 2026-10-08 £ 254.00: apply the payment by hand'] and not S.get('allocs'), (shown[-500:], S.get('orgtasks')))
-        api = [t for t, m, pth in S['log'] if '/a/pr/' in pth or '/api/' in pth]
-        gaps = [round(b - a, 3) for a, b in zip(api, api[1:])]
-        check('requests are paced (at least 0.25 s apart)', gaps and min(gaps) >= 0.25, min(gaps) if gaps else None)
+        api = await pg.evaluate('window.__upcReqAt')
+        gaps = [(b[0] - a[0], a[1], b[1]) for a, b in zip(api, api[1:])]
+        check('requests are paced (300 ms apart, to the nearest 10 ms)', len(gaps) > 20 and min(gaps)[0] >= 290, min(gaps) if gaps else None)
         status = await pg.evaluate("[...document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr')][1].innerText")
         check('result shown as done', 'Done' in status, status)
         btn = await pg.evaluate("document.querySelector('[data-upc-remittances] [data-act=apply]').disabled")
@@ -477,15 +483,15 @@ async def main():
         S['deps'] = [{'id': 801, 'iso': '2026-10-10T00:00:00', 'date': '10-Oct-2026', 'amount': 25400, 'balance': 25400, 'note': 'WPA, bank 10-Oct-2026, ref WPA, Starling statement 01-Oct-2026 to 31-Oct-2026'},
                      {'id': 802, 'iso': '2026-06-10T00:00:00', 'date': '10-Jun-2026', 'amount': 25400, 'balance': 25400, 'note': 'WPA, bank 10-Jun-2026'}]   # months before: not this one
         await pg.set_input_files('[data-upc-remittances] input[type=file]', str(pdfs['wpa']))
-        await pg.wait_for_function("document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr').length === 3 && !document.querySelector('[data-upc-remittances] [data-act=apply]').disabled", timeout=60000)
+        await until(pg, "document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr').length === 3 && !document.querySelector('[data-upc-remittances] [data-act=apply]').disabled", timeout=60)
         label = await pg.evaluate("document.querySelector('[data-upc-remittances] [data-act=apply]').textContent")
         check('with nothing to fix, the button attaches the remittance', label == 'Attach remittance to 3 invoices', label)
         await pg.evaluate("document.querySelector('[data-upc-remittances] [data-act=apply]').click()")
-        await pg.wait_for_selector('[data-upc-remit-confirm]', timeout=120000)
+        await until(pg, "!!document.querySelector('[data-upc-remit-confirm]')", timeout=120)
         conf = await pg.evaluate("document.querySelector('[data-upc-remit-confirm]').textContent")
         check('asks before applying the deposit, saying what and where', 'Apply the Payment?' in conf and '(bank 10-Oct-2026)' in conf and 'UPC-40003 £ 50.00' in conf, conf)
         await pg.evaluate("document.querySelector('[data-upc-remit-confirm] [data-a=yes]').click()")
-        await pg.wait_for_function("(document.querySelector('[data-upc-remittances] .upc-log') || {}).textContent && document.querySelector('[data-upc-remittances] .upc-log').textContent.includes('Finished')", timeout=120000)
+        await until(pg, "(document.querySelector('[data-upc-remittances] .upc-log') || {}).textContent && document.querySelector('[data-upc-remittances] .upc-log').textContent.includes('Finished')", timeout=120)
         log2 = await pg.evaluate("document.querySelector('[data-upc-remittances] .upc-log').textContent")
         check('no duplicate attachments', all(len(v) == 1 for v in S['attachments'].values()) and log2.count('already attached') == 3, (S['attachments'], log2))
         check('the deposit from the bank applied to the three invoices; the old one left', S.get('allocs') == [(801, [101, 102, 103])] and S['deps'][1]['balance'] == 25400 and 'Applied the deposit to UPC-40001, UPC-40002, UPC-40003' in log2, (S.get('allocs'), log2[-600:]))
@@ -507,7 +513,7 @@ async def main():
             l['amount'] = 6000
         lines102[-1]['amount'] = 4800   # £ 12.00 of the £ 36.00 moved, on a different fee
         await pg.set_input_files('[data-upc-remittances] input[type=file]', str(pdfs['wpa']))
-        await pg.wait_for_function("/Part of the excess/.test((document.querySelector('[data-upc-remittances] tbody') || {}).innerText || '') && !document.querySelector('[data-upc-remittances] [data-act=apply]').disabled", timeout=60000)
+        await until(pg, "/Part of the excess/.test((document.querySelector('[data-upc-remittances] tbody') || {}).innerText || '') && !document.querySelector('[data-upc-remittances] [data-act=apply]').disabled", timeout=60)
         rows = await pg.evaluate("[...document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr')].map(r => r.innerText.replace(/\\s+/g, ' '))")
         r2 = next((r for r in rows if 'UPC-40002' in r), '')
         check('part of the excess moved by hand: says how much is left, not changed', 'Part of the excess is already moved: £ 12.00 of £ 36.00, so £ 24.00 is still on UPC-40002' in r2, rows)
@@ -524,9 +530,9 @@ async def main():
                             102: [{'id': 402, 'title': rdate + '.pdf', 'category': '2', 'comments': '', 'bytes': b'%PDF-1.4 some other document'}]}
         S['tasks'].pop(102, None)
         await pg.set_input_files('[data-upc-remittances] input[type=file]', str(pdfs['wpa']))
-        await pg.wait_for_function("document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr').length === 3 && !document.querySelector('[data-upc-remittances] [data-act=apply]').disabled && /Excess moved/.test(document.querySelector('[data-upc-remittances] tbody').innerText)", timeout=120000)
+        await until(pg, "document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr').length === 3 && !document.querySelector('[data-upc-remittances] [data-act=apply]').disabled && /Excess moved/.test(document.querySelector('[data-upc-remittances] tbody').innerText)", timeout=120)
         await pg.evaluate("document.querySelector('[data-upc-remittances] [data-act=apply]').click()")
-        await pg.wait_for_function("(document.querySelector('[data-upc-remittances] .upc-log') || {}).textContent && document.querySelector('[data-upc-remittances] .upc-log').textContent.includes('Finished')", timeout=180000)
+        await until(pg, "(document.querySelector('[data-upc-remittances] .upc-log') || {}).textContent && document.querySelector('[data-upc-remittances] .upc-log').textContent.includes('Finished')", timeout=180)
         log3 = await pg.evaluate("document.querySelector('[data-upc-remittances] .upc-log').textContent")
         a1, a2 = S['attachments'][101], S['attachments'][102]
         check('same file attached by hand: details added in place, no second copy', len(a1) == 1 and a1[0]['title'].startswith('WPA remittance ' + rdate) and 'payment date' in a1[0]['comments'].lower()
@@ -539,16 +545,16 @@ async def main():
 
         # "Check remittance" on a funder invoice: opens Remittances with the attached file
         await pg.goto('https://eu.halaxy.com/a/pr/555/invoice/101')
-        await pg.wait_for_selector('.upc-remit-check', timeout=30000)
+        await until(pg, "!!document.querySelector('.upc-remit-check')", timeout=30)
         await pg.click('.upc-remit-check')
-        await pg.wait_for_function("!!document.querySelector('[data-upc-remittances]') && document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr').length === 3", timeout=120000)
+        await until(pg, "!!document.querySelector('[data-upc-remittances]') && document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr').length === 3", timeout=120)
         rows = await pg.evaluate("[...document.querySelector('[data-upc-remittances]').querySelectorAll('tbody tr')].map(r => r.innerText.replace(/\\s+/g, ' '))")
         check('Check remittance opens the attached remittance and matches it', any('UPC-40002' in r and 'Excess moved' in r for r in rows), rows)
         await pg.goto('https://eu.halaxy.com/a/pr/555/invoice/#upc-remittances')
         await pg.wait_for_selector('[data-upc-remittances] input[type=file]', state='attached', timeout=30000)
 
         # The insurer paid nothing for a fee: it stays on the funder invoice at £0.00, never removed (CH, 9 Nov 2026)
-        res = await pg.evaluate("""(async () => { try { const f = await UPC.invoice.fetch('103'); const l = f.lines[0];
+        res = await run(pg, """(async () => { try { const f = await UPC.invoice.fetch('103'); const l = f.lines[0];
             const plan = await UPC.rebate.plan('103', l.lineId, 0); await UPC.rebate.apply(plan); return 'ok'; } catch (e) { return e.message; } })()""")
         f3, p3 = S['funders'][103]['lines'], S['patients'][203]
         check('fee the insurer paid nothing for stays on the funder invoice at £0.00, correctly dated',
@@ -562,17 +568,17 @@ async def main():
         move = """(to) => UPC.invoice.fetch('104').then((f) => UPC.rebate.plan('104', f.lines[0].lineId, to)).then((plan) => UPC.rebate.apply(plan))
             .then((r) => ({ ok: true, newLineId: r.newLineId }), (e) => ({ ok: false, message: e.message, undone: e.undone }))"""
         S['failClaimOnce'] = True
-        r = await pg.evaluate(move, 2400)
+        r = await run(pg, move, 2400)
         check('re-billing refused: rebate put back, fee billed back to the funder on its own date', not r['ok'] and r['undone'] is True and 'Everything was put back as it was' in r['message'] and as_was(), (r, f4, p4))
         S['failLineDateOnce'] = True
-        r = await pg.evaluate(move, 2400)
+        r = await run(pg, move, 2400)
         check('date correction refused: re-billed line taken off, rebate put back, original billed back', not r['ok'] and r['undone'] is True and as_was(), (r, f4, p4))
-        r = await pg.evaluate(move, 2400)
-        back = await pg.evaluate("""(id) => UPC.rebate.plan('104', id, 6000).then((plan) => UPC.rebate.apply(plan)).then(() => 'ok', (e) => e.message)""", r.get('newLineId'))
+        r = await run(pg, move, 2400)
+        back = await run(pg, """(id) => UPC.rebate.plan('104', id, 6000).then((plan) => UPC.rebate.apply(plan)).then(() => 'ok', (e) => e.message)""", r.get('newLineId'))
         check('a finished move can be moved back by its new line (as Remittances does when a later fee fails)', r['ok'] and back == 'ok' and as_was(), (r, back, f4, p4))
 
         posts = S.get('task_posts', 0)
-        again = await pg.evaluate("""(async () => { const t = await (await fetch('/a/pr/555/task/invoice/202/list-data')).json();
+        again = await run(pg, """(async () => { const t = await (await fetch('/a/pr/555/task/invoice/202/list-data')).json();
             return UPC.tasks.addToInvoice('202', { title: t[0].title, assignee: 'Carl Healy', priority: 2, due: '09-Nov-2026', comment: 'x' }); })()""")
         check('the same task is not added twice', again is False and S.get('task_posts') == posts and len(S['tasks'][202]) == 1, (again, S.get('task_posts'), posts))
 
@@ -589,12 +595,12 @@ async def main():
         S['statuses'] = []
         item = {'invoice': 'UPC-40001', 'claimed': 12000, 'paid': 10000, 'insurerTotal': 10000, 'patientShare': 2000, 'reason': 'excess', 'dates': ['2026-10-01', '2026-10-08'],
                 'ranges': [{'from': '2026-10-01', 'to': '2026-10-01', 'invoiced': 6000, 'paid': 4000}, {'from': '2026-10-08', 'to': '2026-10-08', 'invoiced': 6000, 'paid': 6000}]}
-        r1 = await pg.evaluate("(item) => upcRemittances.matchItem(item).then((r) => ({ status: r.status, message: r.message, resume: r.resume }))", item)
+        r1 = await run(pg, "(item) => upcRemittances.matchItem(item).then((r) => ({ status: r.status, message: r.message, resume: r.resume }))", item)
         check('part-way move found: finish it', r1['status'] == 'resume' and 'UPC-30001' in r1['message'] and r1['resume'][0]['amount'] == 4000, r1)
-        fin = await pg.evaluate("UPC.rebate.resume('101', '201', { from: '2026-10-01', to: '2026-10-01' }).then((r) => r, (e) => e.message)")
+        fin = await run(pg, "UPC.rebate.resume('101', '201', { from: '2026-10-01', to: '2026-10-01' }).then((r) => r, (e) => e.message)")
         check('finished: billed back to the same Issued invoice, its own date, Issued again, nothing waiting',
               isinstance(fin, dict) and sorted((l['amount'], l['date']) for l in f1['lines']) == [(4000, '01-Oct-2026'), (6000, '08-Oct-2026')] and not p1['pending'] and S['statuses'] == [(101, ''), (101, 'issued')] and f1['status'] == 'issued', (fin, f1, S['statuses']))
-        r2 = await pg.evaluate("(item) => upcRemittances.matchItem(item).then((r) => ({ status: r.status, message: r.message }))", item)
+        r2 = await run(pg, "(item) => upcRemittances.matchItem(item).then((r) => ({ status: r.status, message: r.message }))", item)
         check('checked again: already what the insurer paid, nothing more to do', r2['status'] == 'ok', r2)
 
         # Reading the other layouts
@@ -656,7 +662,7 @@ async def main():
 
         RS = '[data-upc-remittances]'
         await pg.set_input_files(RS + ' input[type=file]', str(pdfs['aviva']))
-        await pg.wait_for_function("document.querySelectorAll('[data-upc-remittances] input[data-line]').length === 3", timeout=120000)
+        await until(pg, "document.querySelectorAll('[data-upc-remittances] input[data-line]').length === 3", timeout=120)
         vals = await pg.evaluate("[...document.querySelectorAll('[data-upc-remittances] input[data-line]')].map((i) => i.value)")
         check('scanned remittance: each line\'s amount paid can be corrected', vals == ['55.00', '0.00', '35.00'], vals)
         await pg.fill(RS + ' input[data-line="0:2"]', '3O.00')
@@ -665,7 +671,7 @@ async def main():
         check('a mistyped amount is refused, nothing changed', 'is not an amount' in msg, msg)
         await pg.fill(RS + ' input[data-line="0:2"]', '30.00')
         await pg.press(RS + ' input[data-line="0:2"]', 'Enter')
-        await pg.wait_for_function("/Checked UPC-40031/.test(document.querySelector('[data-upc-remittances] .upc-rem-status').textContent)", timeout=120000)
+        await until(pg, "/Checked UPC-40031/.test(document.querySelector('[data-upc-remittances] .upc-rem-status').textContent)", timeout=120)
         after = await pg.evaluate("""({ status: document.querySelector('[data-upc-remittances] .upc-rem-status').textContent,
             notes: [...document.querySelectorAll('[data-upc-remittances] .upc-rem-notes li')].map((l) => l.textContent),
             vals: [...document.querySelectorAll('[data-upc-remittances] input[data-line]')].map((i) => i.value) })""")
@@ -673,13 +679,13 @@ async def main():
               and any('add up to £ 85.00 but the remittance total is £ 90.00' in n for n in after['notes']) and after['vals'] == ['55.00', '0.00', '30.00'], after)
         await pg.fill(RS + ' input[data-line="0:2"]', '35.00')
         await pg.click(RS + ' [data-act=recheck]')
-        await pg.wait_for_function("/now add up/.test(document.querySelector('[data-upc-remittances] .upc-rem-status').textContent)", timeout=120000)
+        await until(pg, "/now add up/.test(document.querySelector('[data-upc-remittances] .upc-rem-status').textContent)", timeout=120)
         notes = await pg.evaluate("[...document.querySelectorAll('[data-upc-remittances] .upc-rem-notes li')].map((l) => l.textContent)")
         check('corrected back: the amounts add up again and the warning goes', not any('add up to' in n for n in notes), notes)
 
         # A line the reading missed: added by hand from the paper copy, checked in Halaxy, totals checked again (CH, 13 Nov 2026)
         await pg.set_input_files(RS + ' input[type=file]', str(pdfs['axa']))
-        await pg.wait_for_function("!!document.querySelector('[data-upc-remittances] [data-act=addline]') && document.querySelectorAll('[data-upc-remittances] tbody tr').length === 2", timeout=120000)
+        await until(pg, "!!document.querySelector('[data-upc-remittances] [data-act=addline]') && document.querySelectorAll('[data-upc-remittances] tbody tr').length === 2", timeout=120)
         await pg.fill(RS + ' [data-add=inv]', 'UPC-40021')
         await pg.fill(RS + ' [data-add=paid]', '30.00')
         await pg.click(RS + ' [data-act=addline]')
@@ -692,7 +698,7 @@ async def main():
         check('a mistyped amount is refused', 'Enter the amount paid' in msg, msg)
         await pg.fill(RS + ' [data-add=paid]', '60.00')
         await pg.press(RS + ' [data-add=paid]', 'Enter')
-        await pg.wait_for_function("/Added UPC-40001/.test(document.querySelector('[data-upc-remittances] .upc-rem-status').textContent)", timeout=120000)
+        await until(pg, "/Added UPC-40001/.test(document.querySelector('[data-upc-remittances] .upc-rem-status').textContent)", timeout=120)
         got = await pg.evaluate("""({ status: document.querySelector('[data-upc-remittances] .upc-rem-status').textContent,
             rows: [...document.querySelectorAll('[data-upc-remittances] tbody tr')].map(r => r.innerText.replace(/\\s+/g, ' ')),
             head: document.querySelector('[data-upc-remittances] .upc-gap').textContent })""")
@@ -706,6 +712,7 @@ async def main():
                        % (time.strftime('%Y-%m-%d %H:%M', time.localtime(since / 1000)), since)}]
         before = len(S.get('orgtasks', []))
         ctx2 = await browser.new_context(viewport={'width': 1300, 'height': 900})
+        await ctx2.clock.install()
         await ctx2.route('https://eu.halaxy.com/**', halaxy)
         await ctx2.route('https://cdn.jsdelivr.net/**', cdn)
         await ctx2.add_init_script(CORE)
@@ -717,13 +724,13 @@ async def main():
         for _ in range(80):
             if 'remit.101' in note() and ' | done' in note() and 'lingerDay |' in note():
                 break
-            await pg2.wait_for_timeout(250)
+            await idle(pg2, 250)
         out = S['funders'][101].get('outstanding', None)
         tasks = [t.get('form[title]', '') for t in S.get('orgtasks', [])[before:]]
         check('another PC\'s waiting remittance checked here after 10 days, and marked done for every PC', ' | done' in note() and 'lingerDay' in note()
               and (tasks == ['Remittance Bupa remittance 2026-10-20 ref R9: no payment from the bank after 10 days'] or not tasks), (note(), tasks))
         await pg2.reload()
-        await pg2.wait_for_timeout(3000)
+        await idle(pg2, 3000)
         check('once a day for the clinic: not checked again', len(S.get('orgtasks', [])) == before + len(tasks), S.get('orgtasks', [])[before:])
         await ctx2.close()
 

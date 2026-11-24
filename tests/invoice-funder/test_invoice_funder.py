@@ -16,6 +16,8 @@ import asyncio, datetime, json, re, sys, urllib.parse
 from pathlib import Path
 from playwright.async_api import async_playwright
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from fakeclock import until   # waits move the fake clock on instead of waiting in real time
 ROOT = Path(__file__).resolve().parents[2]
 CORE = (ROOT / 'beta' / 'core.user.js').read_text().replace('perMinute: 45,', 'perMinute: 100000,')   # tests: no 45-a-minute wait (the 300 ms gap stays)
 BILL = (ROOT / 'beta' / 'invoice-funder.user.js').read_text()
@@ -229,6 +231,7 @@ def check(name, ok, detail=''):
 
 async def open_panel(browser, iid, wait='tbody', path=None):
     ctx = await browser.new_context(viewport={'width': 1300, 'height': 900})
+    await ctx.clock.install()   # today's time, moved on by the waits (fakeclock)
     await ctx.route('https://eu.halaxy.com/**', halaxy)
     await ctx.add_init_script(CORE)
     await ctx.add_init_script("document.addEventListener('DOMContentLoaded', function () {\n" + BILL + "\n});")
@@ -242,7 +245,7 @@ async def open_panel(browser, iid, wait='tbody', path=None):
     btn = await pg.evaluate("[...document.querySelectorAll('a, button')].filter((x) => /funder/i.test(x.textContent)).map((x) => x.id).join(',')")
     await pg.click('#invoiceFunderBtn')
     root = "document.querySelector('[data-upc-bill-funder]')"
-    await pg.wait_for_function(root + ".querySelector('" + wait + "')", timeout=60000)
+    await until(pg, root + ".querySelector('" + wait + "')", timeout=60)
     return ctx, pg, root, btn, errors
 
 
@@ -290,7 +293,7 @@ async def main():
         conf = await pg.evaluate(root + ".querySelector('.upc-log').innerText")
         check('confirm step explains what will happen', 'Merge 3 fees (£ 120.00)' in conf and 'on a new invoice' in conf, conf)
         await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
-        await pg.wait_for_function(root + ".querySelector('.upc-ok') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60000)
+        await until(pg, root + ".querySelector('.upc-ok') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60)
         done = await pg.evaluate(root + ".textContent")
         check('merged first, onto the latest chosen invoice, then billed once, then marked Issued', [c[0] for c in S['calls']] == ['merge', 'bill', 'status', 'linedate', 'dates'] and S['calls'][0][1] == 1009 and S['calls'][0][2] == [2001, 2003] and S['calls'][1][1] == 1009, S['calls'])
         check('the Billed line gives the funder invoice\'s total (all the fees), not one fee', '(£ 120.00), and' in done and 'Check UPC' not in done, done[-400:])
@@ -342,7 +345,7 @@ async def main():
         conf = await pg.evaluate(root + ".querySelector('.upc-log').innerText")
         check('confirmation says there is nothing to merge', 'Merge' not in conf and 'from UPC-1003' in conf, conf)
         await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
-        await pg.wait_for_function(root + ".querySelector('.upc-ok') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60000)
+        await until(pg, root + ".querySelector('.upc-ok') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60)
         check('billed without a merge', [c[0] for c in S['calls']] == ['bill', 'status', 'linedate', 'dates'], [c[0] for c in S['calls']])
         await ctx.close()
 
@@ -356,7 +359,7 @@ async def main():
             if (!c) return; c.click(); } })()""")
         await pg.evaluate(root + ".querySelector('[data-a=next]').click()")
         await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
-        await pg.wait_for_function(root + ".querySelector('[data-a=zeronext]') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60000)
+        await until(pg, root + ".querySelector('[data-a=zeronext]') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60)
         txt = await pg.evaluate(root + ".textContent")
         rows = await pg.evaluate("[...document.querySelectorAll('[data-upc-bill-funder] input[data-z]')].map((r) => r.dataset.z + ':' + r.value + ':' + r.checked)")
         check('offers Keep or Zero for each left-out cancelled / did-not-attend fee, Keep by default',
@@ -370,7 +373,7 @@ async def main():
         check('confirmation names the fee to zero', 'Set 1 fee to £ 0.00' in conf and 'UPC-1002' in conf and 'UPC-1009' not in conf, conf)
         check('nothing zeroed before confirming', len(S['calls']) == before, S['calls'][before:])
         await pg.evaluate(root + ".querySelector('[data-a=zerogo]').click()")
-        await pg.wait_for_function(root + ".querySelector('[data-a=zeronext]') || " + root + ".querySelector('[data-a=reload]')", timeout=60000)
+        await until(pg, root + ".querySelector('[data-a=zeronext]') || " + root + ".querySelector('[data-a=reload]')", timeout=60)
         zc = [c for c in S['calls'] if c[0] == 'zero']
         check('only the chosen fee is set to £0', [c[1] for c in zc] == [2002] and S['invoices'][1002]['lines'][0]['amount'] == 0, zc)
         sent = zc[0][2] if zc else {}
@@ -391,12 +394,12 @@ async def main():
             if (!c) return; c.click(); } })()""")
         await pg.evaluate(root + ".querySelector('[data-a=next]').click()")
         await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
-        await pg.wait_for_function(root + ".querySelector('[data-a=zeronext]')", timeout=60000)
+        await until(pg, root + ".querySelector('[data-a=zeronext]')", timeout=60)
         S['invoices'][1002]['billed'] = True   # someone billed it by hand meanwhile
         await pg.evaluate("[...document.querySelectorAll('[data-upc-bill-funder] input[data-z][value=zero]')].find((r) => r.dataset.z === '2002').click()")
         await pg.evaluate(root + ".querySelector('[data-a=zeronext]').click()")
         await pg.evaluate(root + ".querySelector('[data-a=zerogo]').click()")
-        await pg.wait_for_function(root + ".querySelector('[data-a=reload]')", timeout=60000)
+        await until(pg, root + ".querySelector('[data-a=reload]')", timeout=60)
         txt = await pg.evaluate(root + ".textContent")
         check('billed fee refused, unchanged', not [c for c in S['calls'] if c[0] == 'zero'] and S['invoices'][1002]['lines'][0]['amount'] == 4000 and 'may have been billed' in txt, txt[-300:])
         await ctx.close()
@@ -409,7 +412,7 @@ async def main():
         gone = await pg.evaluate("!document.querySelector('[data-upc-bill-funder]')")
         check('Use Halaxy\'s Invoice Funder closes ours and opens Halaxy\'s', gone and await pg.evaluate("window.__nativeOpens") == 1, (gone, await pg.evaluate("window.__nativeOpens")))
         await pg.click('#invoiceFunderBtn')
-        await pg.wait_for_function(root + ".querySelector('tbody')", timeout=60000)
+        await until(pg, root + ".querySelector('tbody')", timeout=60)
         check('the next click opens ours again', await pg.evaluate("window.__nativeOpens") == 1)
         check('nothing changed', S['calls'] == [], S['calls'])
         await ctx.close()
@@ -427,7 +430,7 @@ async def main():
         ctx, pg, root, btn, errors = await open_panel(browser, 1003)
         await pg.evaluate(root + ".querySelector('[data-a=next]').click()")
         await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
-        await pg.wait_for_function(root + ".querySelector('.upc-ok') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60000)
+        await until(pg, root + ".querySelector('.upc-ok') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60)
         done = await pg.evaluate(root + ".textContent")
         check('far-off fee date reported, not changed', not [c for c in S['calls'] if c[0] == 'linedate'] and 'Check the fee dates on UPC-9001' in done and '10 days' in done, done[-400:])
         await ctx.close()
@@ -444,7 +447,7 @@ async def main():
         ctx, pg, root, btn, errors = await open_panel(browser, 1003)
         await pg.evaluate(root + ".querySelector('[data-a=next]').click()")
         await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
-        await pg.wait_for_function(root + ".querySelector('.upc-ok') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60000)
+        await until(pg, root + ".querySelector('.upc-ok') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60)
         merge = [c for c in S['calls'] if c[0] == 'merge']
         check('never merges onto an invoice holding a fee you did not tick', merge and merge[0][1] == 1003 and merge[0][2] == [2001, 2009], S['calls'])
         check('the unticked fee stays unbilled on its own invoice', [l['lineId'] for l in S['invoices'][1009]['lines']] == [2099] and not S['invoices'][1009]['billed'], S['invoices'].get(1009))
@@ -456,7 +459,7 @@ async def main():
         ctx, pg, root, btn, errors = await open_panel(browser, 1003)
         await pg.evaluate(root + ".querySelector('[data-a=next]').click()")
         await pg.evaluate(root + ".querySelector('[data-a=go]').click()")
-        await pg.wait_for_function(root + ".querySelector('.upc-ok') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60000)
+        await until(pg, root + ".querySelector('.upc-ok') || " + root + ".querySelector('.upc-log .upc-err')", timeout=60)
         done = await pg.evaluate(root + ".textContent")
         check('billing still reported when the status does not stick', 'Billed.' in done and 'UPC-9001' in done, done[-300:])
         check('warns to set Issued with the cogwheel', 'could not be marked Issued' in done and 'Set it with the cogwheel' in done, done[-300:])
@@ -475,6 +478,7 @@ async def main():
         # Scenario 5: Ready to bill's link (#upc-invoice-funder) opens Invoice Funder by itself, once
         S = fresh()
         ctx = await browser.new_context(viewport={'width': 1300, 'height': 900})
+        await ctx.clock.install()
         await ctx.route('https://eu.halaxy.com/**', halaxy)
         await ctx.add_init_script(CORE)
         await ctx.add_init_script("document.addEventListener('DOMContentLoaded', function () {\n" + BILL + "\n});")
@@ -482,7 +486,7 @@ async def main():
         errors = []
         pg.on('pageerror', lambda e: errors.append(str(e)))
         await pg.goto('https://eu.halaxy.com/a/pr/555/invoice/1003#upc-invoice-funder')
-        await pg.wait_for_function("document.querySelector('[data-upc-bill-funder] tbody')", timeout=60000)
+        await until(pg, "document.querySelector('[data-upc-bill-funder] tbody')", timeout=60)
         check('Ready to bill link opens Invoice Funder', await pg.evaluate("document.querySelector('[data-upc-bill-funder] .modal-title').textContent") == 'Invoice Funder')
         check('the link is cleared, so a reload does not open it again', await pg.evaluate("location.hash") == '', await pg.evaluate("location.href"))
         check('no page errors (scenario 5)', not errors, errors)
