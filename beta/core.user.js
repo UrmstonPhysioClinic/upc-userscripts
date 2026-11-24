@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.80
+// @version      0.1.81
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.80';
+  const VERSION = '0.1.81';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -1999,6 +1999,8 @@
     .upc-native .upc-run-log .upc-box { max-height: 300px; overflow: auto; margin-top: 8px; }
     .upc-native .upc-page-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px solid var(--vs-card-border-color, #dee2e6); }
     .upc-native .upc-page-bar h1 { margin: 0; }
+    .upc-native .upc-pill { font-size: .8em; font-weight: 600; padding: .35em .75em; vertical-align: middle; white-space: nowrap; }
+    .upc-native .upc-pill.badge-light { border: 1px solid var(--vs-card-border-color, #dee2e6); }
     .upc-native .upc-divider { display: flex; align-items: center; gap: 12px; margin: 32px 0 20px; font-weight: 600; color: var(--vs-text-muted-color, #6c757d); }
     .upc-native .upc-divider::before, .upc-native .upc-divider::after { content: ''; flex: 1; border-top: 2px solid #DCC5F9; }
     .upc-native .upc-page-bar .upc-page-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -2092,7 +2094,8 @@
 
   // Short-lived messages (a batch finished, Undo) as toasts: in Halaxy's own alert area (#alerts, which Toast alerts
   // lifts out of the page), so the page never moves (CH, 23 Nov 2026: a message bar bumped the page down). Without
-  // #alerts, our own corner box in the same place. action: { label, fn } adds a button (Undo). Returns { close }.
+  // #alerts, our own corner box in the same place. action: { label, fn } adds a button (Undo). ms: 0 keeps it until
+  // closed (closeIn(ms) then sets when). Returns { close, closeIn }.
   function toast(text, opts) {
     opts = opts || {};
     let box = document.getElementById('alerts');
@@ -2116,8 +2119,8 @@
       el.appendChild(b);
     }
     box.appendChild(el);
-    timer = setTimeout(close, opts.ms || 8000);
-    return { close };
+    if (opts.ms !== 0) timer = setTimeout(close, opts.ms || 8000);
+    return { close, closeIn(ms) { clearTimeout(timer); timer = setTimeout(close, ms); } };
   }
 
   // A batch of queued actions on a page (CH, 23 Nov 2026): while two or more are queued, the line under the title bar
@@ -2224,6 +2227,12 @@
     // A line across the page with a word in it, between the groups still to act on and those already done
     // (CH, 24 Nov 2026), e.g. divider('Done').
     divider(text) { return '<div class="upc-divider"><span>' + esc(text) + '</span></div>'; },
+    // A row's outcome as a pill (CH, 24 Nov 2026: "Moved" in green text looked out of place): kind ok (done), err
+    // (not changed), wait (queued), info.
+    pill(text, kind) {
+      const k = { ok: 'success', err: 'danger', wait: 'light', info: 'info' }[kind || 'ok'] || 'success';
+      return '<span class="badge badge-pill badge-' + k + ' upc-pill">' + esc(text) + '</span>';
+    },
     card(title, n, extra, body) {
       return '<div class="card"><div class="card-header"><h2>' + esc(title) + ' (' + n + (extra ? ', ' + esc(extra) : '') + ')</h2></div><div class="card-body p-0">' +
         (n ? body : '<p class="text-muted m-3">None.</p>') + '</div></div>';

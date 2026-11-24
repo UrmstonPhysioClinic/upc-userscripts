@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Schedule: To do (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.9
+// @version      0.2.10
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
@@ -38,7 +38,7 @@
   if (window.__hxToDo) return;
   window.__hxToDo = true;
 
-  const VERSION = '0.2.9';
+  const VERSION = '0.2.10';
   const ROUTE = 'upc-to-do';
   const MENU_CLS = 'upc-todo-menu';
   const DAY = 864e5, MIN = 60e3;
@@ -62,6 +62,7 @@
     .upc-todo .upc-todo-filters .nav { margin-right: auto; }
     .upc-todo td.upc-todo-due, .upc-todo td.upc-todo-act { white-space: nowrap; }
     .upc-todo td.upc-todo-act .btn { margin: 0; }
+    .upc-todo td.upc-todo-act .upc-todo-undo { margin-left: 8px; }
     .upc-todo .upc-todo-late { color: var(--vs-balance-negative-color, #b3261e); }
     .upc-todo .upc-todo-task { cursor: pointer; }
     .upc-todo .upc-bulk input.form-control { width: 150px; }
@@ -260,7 +261,9 @@
 
   const jobs = [];
   let busy = null;
-  const done = new Map();   // task id -> 'done' | 'moved' | 'error'
+  const done = new Map();   // task id -> 'done' | 'moved' | 'back' | 'error'
+  const before = new Map(); // task id -> its due day before it was moved (for the row's Undo)
+  const movedTo = new Map(); // task id -> the day it was moved to
   const state = { unmount: null, loading: false, error: '', errors: [], undo: null, view: 'list', week: 0 };
   // List or Week, and the week shown, kept for this person on this PC (CH, 24 Nov 2026: a save in one of Halaxy's
   // pop-ups reloads the page, which went back to List).
@@ -278,9 +281,9 @@
     try {
       if (j.kind === 'done') { await complete(j.id); patch(j.id, (t) => Object.assign(t, { completed: true })); done.set(j.id, 'done'); }
       else if (j.kind === 'revert') { await revert(j.id); patch(j.id, (t) => Object.assign(t, { completed: false })); done.delete(j.id); }
-      else { await move(j.id, j.day); patch(j.id, (t) => Object.assign(t, { due: j.day, status: 'Pending' })); done.set(j.id, j.undo ? 'back' : 'moved'); }
+      else { await move(j.id, j.day); patch(j.id, (t) => Object.assign(t, { due: j.day, status: 'Pending' })); done.set(j.id, j.undo ? 'back' : 'moved'); if (!j.undo) movedTo.set(j.id, j.day); }
     } catch (e) { done.set(j.id, 'error'); state.errors.push('Not changed: ' + j.title + ' (' + (e.message || e) + ')'); }
-    finally { busy = null; render(); paintBadge(); pump(); }
+    finally { busy = null; settleUndo(); render(); paintBadge(); pump(); }
   }
   window.addEventListener('beforeunload', (e) => { if (busy !== null || jobs.length) { e.preventDefault(); e.returnValue = ''; } });
 
@@ -293,14 +296,34 @@
       if (kind === 'done') { jobs.push({ id: t.id, title: t.title, kind: 'done' }); undo.push({ id: t.id, title: t.title, kind: 'revert' }); }
       else { jobs.push({ id: t.id, title: t.title, kind: 'move', day: dayMs }); undo.push({ id: t.id, title: t.title, kind: 'move', day: t.due === null ? null : dayStart(t.due), undo: true }); }
     });
+    if (kind !== 'done') ts.forEach((t) => before.set(t.id, t.due === null ? null : dayStart(t.due)));
     const what = ts.length === 1 ? '"' + ts[0].title + '"' : ts.length + ' tasks';
     if (state.undo && state.undo.toast) state.undo.toast.close();
     state.undo = { jobs: undo };
-    // Undo in a toast (CH, 23 Nov 2026: not a bar across the page).
-    state.undo.toast = U().ui.toast(kind === 'done' ? 'Marked as completed: ' + what + '.' : 'Moved ' + what + ' to ' + label(dayMs) + '.', { action: { label: 'Undo', fn: undoLast }, ms: UNDO_FOR });
-    const mine = state.undo;
-    setTimeout(() => { if (state.undo === mine) state.undo = null; }, UNDO_FOR + 50);
+    // Undo in a toast (CH, 23 Nov 2026: not a bar across the page). It stays while the batch is still going, then for
+    // UNDO_FOR (CH, 24 Nov 2026: it went before the last task was done); each row keeps its own Undo after that.
+    state.undo.toast = U().ui.toast(kind === 'done' ? 'Marked as completed: ' + what + '.' : 'Moved ' + what + ' to ' + label(dayMs) + '.', { action: { label: 'Undo', fn: undoLast }, ms: 0 });
     ['overdue', 'today', 'week', 'later', 'nodate'].forEach((l) => U().ui.list.unpick(l, ts.map((t) => t.id)));
+    render();
+    pump();
+  }
+  // Once every task of the last batch is done, its toast goes UNDO_FOR later (and with it the batch Undo).
+  function settleUndo() {
+    const u = state.undo;
+    if (!u || u.settling || u.jobs.some((j) => queuedOf(j.id))) return;
+    u.settling = true;
+    if (u.toast) u.toast.closeIn(UNDO_FOR);
+    setTimeout(() => { if (state.undo === u) state.undo = null; }, UNDO_FOR + 50);
+  }
+  // Undo on one row: a task marked completed is reverted, a moved one goes back to its date before.
+  function undoRow(id) {
+    if (queuedOf(id)) return;
+    const c = store().get('open', null), t = (c ? c.open : []).find((x) => x.id === id);
+    if (!t) return;
+    if (t.completed) jobs.push({ id, title: t.title, kind: 'revert' });
+    else if (done.get(id) === 'moved' && before.has(id)) jobs.push({ id, title: t.title, kind: 'move', day: before.get(id), undo: true });
+    else return;
+    if (state.undo) state.undo.jobs = state.undo.jobs.filter((j) => j.id !== id);
     render();
     pump();
   }
@@ -453,9 +476,12 @@
 
   function row(t, today) {
     const q = queuedOf(t.id), d = done.get(t.id);
-    const act = q === 'busy' ? U().ui.run.inline('') : q === 'queued' ? 'Queued' : t.completed ? '<span class="upc-ok">Completed</span>'
-      : d === 'moved' ? '<span class="upc-ok">Moved</span>'
-      : '<button type="button" class="btn btn-outline-primary-light" data-a="done" data-id="' + esc(t.id) + '">Done</button>';
+    const P = U().ui.page;
+    const undoBtn = '<button type="button" class="btn btn-outline-primary-light upc-todo-undo" data-a="undo1" data-id="' + esc(t.id) + '">Undo</button>';
+    const act = q === 'busy' ? U().ui.run.inline('') : q === 'queued' ? P.pill('Queued', 'wait')
+      : t.completed ? P.pill('Completed') + undoBtn
+      : d === 'moved' ? P.pill('Moved to ' + label(movedTo.get(t.id))) + undoBtn
+      : (d === 'error' ? P.pill('Not changed', 'err') + ' ' : '') + '<button type="button" class="btn btn-outline-primary-light" data-a="done" data-id="' + esc(t.id) + '">Done</button>';
     const f = filters();
     return '<tr data-upc-id="' + esc(t.id) + '"' + (q || t.completed ? ' data-upc-nopick' : '') + '><td><a class="upc-todo-task" href="' + esc(U().base() + '/task/' + t.id) + '" data-a="edit" data-id="' + esc(t.id) + '">' + esc(t.title || 'Task') + '</a></td>' +
       '<td>' + linkCell(t) + '</td><td class="upc-todo-due' + (t.due !== null && t.due < today ? ' upc-todo-late' : '') + '" data-sort="' + esc(t.due === null ? '' : label(t.due)) + '">' + esc(dueText(t.due)) + '</td>' +
@@ -603,6 +629,7 @@
       else if (a === 'done') act('done', [b.dataset.id]);
       else if (a === 'bulk-done') act('done', U().ui.list.picked(b.dataset.list));
       else if (a === 'undo') undoLast();
+      else if (a === 'undo1') undoRow(b.dataset.id);
       else if (a === 'view') { state.view = b.dataset.view; keepView(); render(); }
       else if (a === 'week') { state.week = b.dataset.step === '0' ? 0 : state.week + Number(b.dataset.step); keepView(); render(); }
     });

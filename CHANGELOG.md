@@ -1,5 +1,10 @@
 # Changelog
 
+## To do 0.2.10, core 0.1.81, 24 Nov 2026 (beta)
+- A row's result is a pill, "Moved to 30-Nov-2026" or "Completed", with its own Undo beside it (CH, 24 Nov 2026: "Moved" in green text looked out of place, and should say where).
+- The Undo toast stays until the whole batch is done, then for 15 seconds (CH, 24 Nov 2026: it went before the last move was written).
+- Core: UPC.ui.page.pill; a toast with ms 0 stays until closed, and closeIn(ms).
+
 ## core 0.1.80, To do 0.2.9, 24 Nov 2026 (beta)
 - Menu counts look like Halaxy's own count on the bell (CH, 24 Nov 2026): size, font and colours read from the bell's count and kept on the PC; they stay after the item's name. Core UPC.ui.countLook.
 - The look was read from the first count in the top bar, which is the hidden Inbox's (grey, placed differently); now only from the bell (CH, 24 Nov 2026: To do's count was grey and covered the top of the icon). To do's top-bar link takes the bell link's size, so its count sits in the same place.

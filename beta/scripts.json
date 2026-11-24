@@ -14,7 +14,7 @@
     {
       "file": "core.user.js",
       "name": "UPC System: Core library (beta)",
-      "version": "0.1.80"
+      "version": "0.1.81"
     },
     {
       "file": "alerts.user.js",
@@ -172,7 +172,7 @@
     {
       "file": "to-do.user.js",
       "name": "UPC Schedule: To do (beta)",
-      "version": "0.2.9"
+      "version": "0.2.10"
     },
     {
       "file": "toast-alerts.user.js",

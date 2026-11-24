@@ -153,7 +153,8 @@ async def main():
         check("Halaxy's page underneath doesn't scroll", await pg.evaluate("document.documentElement.style.overflow") == 'hidden')
         await pg.click("[data-a=done][data-id='2']")
         await pg.wait_for_function("document.querySelector('.upc-toast .upc-toast-act')", timeout=10000)
-        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-to-do] .upc-ok')].some((x) => x.textContent === 'Completed')", timeout=20000)
+        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-to-do] .upc-pill')].some((x) => x.textContent === 'Completed')", timeout=20000)
+        check('a completed row: a pill and its own Undo', await pg.evaluate("!!document.querySelector(\"[data-a=undo1][data-id='2']\")"))
         check("Done at once, no question: Halaxy's Mark as completed, then its Complete link", S['completed'] == [2] and not await pg.evaluate("!!document.querySelector('[data-upc-todo-confirm]')"), S['completed'])
         check('Undo offered in a toast, not a bar across the page', await pg.evaluate("document.querySelector('.upc-toast').textContent") == 'Marked as completed: "Call insurer". Undo' and not await pg.evaluate("!!document.querySelector('[data-upc-to-do] .alert-success')"), await pg.evaluate("document.querySelector('.upc-toast').textContent"))
         await pg.click('.upc-toast .upc-toast-act')
@@ -163,11 +164,15 @@ async def main():
         await pg.check("[data-upc-list=later] tr[data-upc-id='4'] input[data-upc-tick]")
         await pg.fill("input[data-upc-move=later]", '2026-11-30')
         await pg.wait_for_function("document.querySelector('.upc-toast')", timeout=10000)
-        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-to-do] .upc-ok')].some((x) => x.textContent === 'Moved')", timeout=20000)
+        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-to-do] .upc-pill')].some((x) => x.textContent === 'Moved to 30-Nov-2026')", timeout=20000)
+        check('the toast stays once the batch is done (closes later)', await pg.evaluate("!!document.querySelector('.upc-toast')"))
         post = dict(S['posts'][0][1]) if S['posts'] else {}
         check('ticked rows moved to a date: the Edit task form saved with only the due date changed',
               S['posts'][0][0] == '4' and post.get('form[displayDueDate]') == '30-Nov-2026' and post.get('form[title]') == 'Task 4' and post.get('form[_token]') == 'tt'
               and post.get('form[comment]') == '2026-11-01 10:00 RH\n- note' and ('form[linkPrGs][]', '11') in S['posts'][0][1], S['posts'])
+        await pg.click("[data-a=undo1][data-id='4']")
+        await pg.wait_for_function("document.querySelector(\"[data-a=done][data-id='4']\")", timeout=20000)
+        check("a moved row's own Undo puts its date back", len(S['posts']) == 2 and dict(S['posts'][1][1]).get('form[displayDueDate]') == '10-Dec-2026', S['posts'][1:])
 
         n = S['reads']
         await pg.click("[data-upc-list=overdue] a[data-a=edit][data-id='1']")
