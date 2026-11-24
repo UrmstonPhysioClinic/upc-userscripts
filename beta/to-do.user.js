@@ -75,7 +75,9 @@
     .upc-todo .upc-todo-week .card-body { padding: 8px; }
     .upc-todo .upc-todo-week .upc-todo-drop.upc-todo-over { outline: 2px dashed #994DE6; outline-offset: -4px; }
     .upc-todo .upc-todo-chip { border: 1px solid var(--vs-card-border-color, #dee2e6); border-radius: 6px; box-shadow: inset 4px 0 0 #994DE6; padding: 6px 8px 6px 12px; margin-bottom: 6px; background: var(--vs-card-bg-color, #fff); cursor: grab; }
-    .upc-todo .upc-todo-week .upc-todo-appts { font-size: .85em; font-weight: normal; margin-top: 2px; }
+    .upc-todo .upc-todo-week .upc-todo-appts { border: 1px solid var(--vs-card-border-color, #dee2e6); border-radius: 6px; padding: 6px 8px; margin-bottom: 6px;
+      background: var(--vs-card-bg-color, #fff); color: var(--vs-theme-body-color, #2d2d35); }
+    .upc-todo .upc-todo-week .upc-todo-appts .icon { color: var(--vs-text-muted, #6c757d); margin-right: 4px; }
     .upc-todo .upc-todo-chip small { display: block; }
     .upc-todo .upc-todo-weeknav { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
     .upc-todo .upc-todo-weeknav .btn { margin: 0; }
@@ -534,12 +536,23 @@
   // core's shared calendar read. Not counted: cancelled, did not attend, rejected, declined, rescheduled, waiting list.
   const appts = { week: null, counts: null, busy: false };
   const NOT_ON = /^(cancelled|did-not-attend|rejected|declined|rescheduled|waiting-list)$/i;
+  // Only for clinicians: the signed-in person is one of Halaxy's practitioners (the calendar's list), so administrators
+  // see no counts (CH, 24 Nov 2026). Checked once a day on the PC, per person.
+  async function clinician(me) {
+    const key = 'clinician:' + me.join(','), kept = store().get(key, null);
+    if (kept && Date.now() - kept.at < DAY) return kept.yes;
+    const pracs = await U().http.json('/lookup/practitioner?clinic=&include_id=&type=');
+    const yes = Array.isArray(pracs) && pracs.some((p) => me.includes(String(p.id)));
+    store().set(key, { at: Date.now(), yes });
+    return yes;
+  }
   function apptCounts(monday) {
     if (appts.week === monday) return appts.counts;
     if (appts.busy) return null;
     appts.busy = true;
     const me = [window.HkUser && HkUser.pracID, window.HkUser && HkUser.linkPrG].filter((x) => x !== undefined && x !== null && x !== '').map(String);
-    U().calendar.appointments(monday, monday + 5 * DAY).then((evs) => {
+    clinician(me).then((yes) => (yes ? U().calendar.appointments(monday, monday + 5 * DAY) : null)).then((evs) => {
+      if (!evs) { Object.assign(appts, { week: monday, counts: null }); return; }
       const counts = {};
       evs.filter((e) => me.includes(String(e.practitionerID)) && !NOT_ON.test(String(e.appointmentStatus || '').trim())).forEach((e) => {
         const d = dayStart(Number(e.start) * 1000);
@@ -563,9 +576,10 @@
       const day = monday + i * DAY;
       const list = ts.filter((t) => !t.completed && t.due !== null && dayStart(t.due) === day);
       const n = counts ? counts[day] || 0 : null;
+      // The day's appointments as a card of its own at the top, without the task cards' purple edge (CH, 24 Nov 2026).
       h += '<div class="card upc-todo-drop" data-day="' + day + '"><div class="card-header"><h2>' + esc(name + ' ' + label(day).slice(0, 6)) + ' (' + list.length + ')</h2>' +
-        (n === null ? '' : '<div class="text-muted upc-todo-appts">' + (n ? n + ' appointment' + (n === 1 ? '' : 's') : 'No appointments') + '</div>') +
-        '</div><div class="card-body">' + (list.map(chip).join('') || '') + '</div></div>';
+        '</div><div class="card-body">' + (n === null ? '' : '<div class="upc-todo-appts"><i class="icon icon-calendar-full" aria-hidden="true"></i> ' + (n ? n + ' appointment' + (n === 1 ? '' : 's') : 'No appointments') + '</div>') +
+        (list.map(chip).join('') || '') + '</div></div>';
     });
     return h + '</div>';
   }

@@ -111,7 +111,10 @@ async def halaxy(route):
         return await js({'status': 'REFRESH'})
     if p == '/a/magic/lookup/patient':
         return await js({'lookup': [{'id': 9001, 'title': 'John Doe (P-000721) / 21-Aug-1994', 'payload': {'pag': {'id': 663}}}]})
-    await route.fulfill(body=page_html(), content_type='text/html')
+    html = page_html()
+    if S.get('admin'):
+        html = html.replace('linkPrG: 11, pracID: 11', 'linkPrG: 99, pracID: 99')
+    await route.fulfill(body=html, content_type='text/html')
 
 
 async def main():
@@ -217,7 +220,7 @@ async def main():
         days = await pg.evaluate("[...document.querySelectorAll('.upc-todo-week .card h2')].map((h) => h.textContent)")
         check('week view: a tray, then Monday to Friday', len(days) == 6 and days[1].startswith('Monday 23-Nov') and days[5].startswith('Friday 27-Nov'), days)
         await pg.wait_for_selector('.upc-todo-week .upc-todo-appts', timeout=10000)
-        appts = await pg.evaluate("[...document.querySelectorAll('.upc-todo-week .upc-todo-drop')].map((c) => (c.querySelector('.upc-todo-appts') || {}).textContent)")
+        appts = await pg.evaluate("[...document.querySelectorAll('.upc-todo-week .upc-todo-drop')].map((c) => ((c.querySelector('.card-body > .upc-todo-appts:first-child') || {}).textContent || '').trim())")
         check("each day: my appointments (not cancelled, not did-not-attend, not someone else's)", appts == ['2 appointments', '1 appointment', 'No appointments', '3 appointments', 'No appointments'], appts)
         edge = await pg.evaluate("getComputedStyle(document.querySelector('.upc-todo-week .upc-todo-chip')).boxShadow")
         check('week tasks have the card headers\' purple left edge (inset 4px #994DE6)', 'rgb(153, 77, 230)' in edge and 'inset' in edge and '4px 0px 0px' in edge, edge)
@@ -231,11 +234,14 @@ async def main():
         await pg.click('[data-a=week][data-step="1"]')
         reads = S['reads']
         await pg.evaluate("sessionStorage.setItem('upc-halaxy-popup', JSON.stringify({ at: Date.now(), from: '#upc-to-do' }))")
+        S['admin'] = True   # the next page is an administrator's: not one of the practitioners
         await pg.reload()
         await pg.wait_for_selector('.upc-todo-week', timeout=20000)
         await pg.wait_for_timeout(800)
         wk = await pg.evaluate("[document.querySelector('.nav-link.active').textContent, document.querySelector('.upc-todo-weeknav .text-muted').textContent]")
         check('after the reload: still Week view, the same week', wk == ['Week', '30-Nov-2026 to 04-Dec-2026'], wk)
+        await pg.wait_for_timeout(1500)
+        check('an administrator (not a practitioner) sees no appointment counts', not await pg.evaluate("!!document.querySelector('.upc-todo-appts')"))
         check('after the reload: the tasks read afresh', S['reads'] > reads, (reads, S['reads']))
         check('after the reload: links known already, not read again', [x for x in S.get('popups', []) if x in ('2', '3')].count('2') == 1, S.get('popups'))
         look = await pg.evaluate("(() => { const r = document.querySelector('[data-upc-to-do]'); return r.classList.contains('upc-native') && !!r.querySelector('.upc-page-bar h1') && !!r.querySelector('.card .card-header h2') && !r.shadowRoot; })()")
