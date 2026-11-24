@@ -1,5 +1,10 @@
 # Changelog
 
+## Ready to bill 0.4.15, Old balances 0.2.5, Bank statement 0.2.11, Invoice Funder 0.8.7, Remittances 0.4.8, 24 Nov 2026 (beta)
+- A row's result is a pill, as in To do, instead of coloured text (CH, 24 Nov 2026): "Queued", "Set to £ 0.00", "Written off", "Already in Halaxy", "Deposit applied", "Deposit added", "Task added", and "Not changed" in red with the reason under it.
+- Old balances: a write-off that failed shows "Not changed" beside Write Off (it showed only the button).
+- Remittances: each invoice's result (Paid in full, Excess, Finish, By hand, Check, Done, Failed) uses Halaxy's pills in place of the page's own coloured tags.
+
 ## Tests, 24 Nov 2026 (Portal fill steadier)
 - Portal fill's test moves the fake clock on more gently (100 ms a turn, tests/fakeclock.py STEP): at full speed the time spent opening tabs used up the fill's own 60 seconds, so its claim was cleared before Halaxy sent CH's task (failed on GitHub after #190). About 50 seconds instead of 20, still under the 90-second limit.
 - It waits for the membership tab's own answer ("Carrying on in the new tab") while the claim is still there, instead of reading it at one moment.

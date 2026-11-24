@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Bank statement (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.10
+// @version      0.2.11
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
@@ -50,7 +50,7 @@
   if (window.__hxBankStatement) return;
   window.__hxBankStatement = true;
 
-  const VERSION = '0.2.10';
+  const VERSION = '0.2.11';
   const ROUTE = 'upc-bank-statement';
   const MENU_CLS = 'upc-bank-menu';
   const ALLOWED = () => rule('bankStatement.people', ['Carl Healy']);
@@ -731,9 +731,9 @@
             const linked = () => (r.invoices || []).map((i) => (i.id ? '<a href="' + esc(U().base() + '/invoice/' + i.id) + '" target="_blank" rel="noopener">' + esc(i.number) + '</a>' : esc(i.number)) + ' ' + fmt(i.amount)).join(', ');
             const profile = r.org ? '<a href="' + esc(U().base() + '/organisation/' + r.org) + '" target="_blank" rel="noopener">' + esc(r.insurer) + ' profile</a>' : esc(r.insurer) + ' profile';
             const maybe = () => r.options.length ? '<div class="upc-bank-set">May be for: ' + r.options.map((o, j) => setHtml(r, j)).join(' <span class="text-muted">or</span> ') + '</div>' : '';
-            if (r.state === 'recorded') { inv = linked() + '<div class="text-muted">' + esc(r.how) + '</div>'; act = '<span class="upc-ok">Already in Halaxy</span>'; }
-            else if (r.state === 'applied') { inv = (r.invoices ? linked() : '') + '<div class="text-muted">Deposit on the ' + profile + ', applied' + (r.applied ? ' ' + esc(U().dayLabel(r.applied)) : '') + '</div>'; act = '<span class="upc-ok">Deposit applied</span>'; }
-            else if (r.state === 'waiting') { inv = maybe() + '<div class="text-muted">Deposit on the ' + profile + ', waiting for the remittance</div>'; act = '<span class="upc-ok">Deposit added</span>'; }
+            if (r.state === 'recorded') { inv = linked() + '<div class="text-muted">' + esc(r.how) + '</div>'; act = U().ui.page.pill('Already in Halaxy'); }
+            else if (r.state === 'applied') { inv = (r.invoices ? linked() : '') + '<div class="text-muted">Deposit on the ' + profile + ', applied' + (r.applied ? ' ' + esc(U().dayLabel(r.applied)) : '') + '</div>'; act = U().ui.page.pill('Deposit applied'); }
+            else if (r.state === 'waiting') { inv = maybe() + '<div class="text-muted">Deposit on the ' + profile + ', waiting for the remittance</div>'; act = U().ui.page.pill('Deposit added'); }
             else if (r.state === 'deposit') { inv = maybe() + '<div class="text-muted">' + esc(r.how || '') + '</div>'; act = btn('Add deposit'); }
             else if (r.state === 'matched' || r.state === 'apply') { inv = '<div class="upc-bank-set">' + setHtml(r, 0) + '</div><div class="text-muted">' + esc(r.how) + (r.deposit ? '; its deposit is on the ' + profile + ' already' : '') + '</div>'; act = btn(r.deposit ? 'Apply' : 'Record'); }
             else if (r.state === 'choose') {
@@ -742,7 +742,7 @@
             } else if (r.state === 'old') {
               inv = (r.options.length ? (r.remit ? '<div class="upc-bank-set">' + setHtml(r, r.pick || 0) + '</div>' : maybe()) : '') + '<div class="upc-err">Before ' + esc(isoLabel(CHANGEOVER)) + ' and not found in Halaxy: check before recording.</div><div class="text-muted">' + esc(r.how || '') + '</div>';
               act = btn(r.remit && r.pick !== null ? 'Record' : 'Add deposit');
-            } else if (r.state === 'check' || r.state === 'noorg') { inv = '<span class="upc-err">' + esc(r.how) + '</span>'; act = r.tasked ? '<span class="text-muted">Task added</span>' : btn('Add task'); }
+            } else if (r.state === 'check' || r.state === 'noorg') { inv = '<span class="upc-err">' + esc(r.how) + '</span>'; act = r.tasked ? U().ui.page.pill('Task added') : btn('Add task'); }
             else inv = '<span class="text-muted">Not matched: ' + esc(r.how || '') + '</span>';
             if (r.error) act += '<div class="upc-err">' + esc(r.error) + '</div>';
             return '<tr><td class="upc-bank-date">' + esc(isoLabel(r.date)) + '</td><td>' + esc(r.insurer) + '</td><td>' + esc(r.ref) + '</td>' +

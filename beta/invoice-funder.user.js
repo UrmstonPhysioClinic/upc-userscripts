@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Invoice Funder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.8.6
+// @version      0.8.7
 // @upc-was      bill-funder.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/invoice-funder.user.js
@@ -41,7 +41,7 @@
   if (window.__upcBillFunder) return;
   window.__upcBillFunder = true;
 
-  const VERSION = '0.8.6';
+  const VERSION = '0.8.7';
   const MAX_AGE_DAYS = 183;   // about 6 months
   const NOT_ATTENDED = /cancel|did-not-attend|dna|reject|declin|reschedul/i;
   const DAY = 86400e3;
@@ -346,7 +346,7 @@
           const key = String(f.lineId);
           const choice = st.zero[key] || 'keep';
           const done = st.zeroDone[key];
-          const pick = done ? (done.ok ? '<span class="upc-ok">Set to £ 0.00</span>' : '<span class="upc-err">Not changed: ' + esc(done.error) + '</span>')
+          const pick = done ? (done.ok ? U().ui.page.pill('Set to £ 0.00') : U().ui.page.pill('Not changed', 'err') + '<div class="upc-err">' + esc(done.error) + '</div>')
             : ['keep', 'zero'].map((v) => '<label class="mr-2 mb-0"><input type="radio" name="upc-z-' + key + '" data-z="' + key + '" value="' + v + '"' + (choice === v ? ' checked' : '') +
               (st.phase !== 'done' || st.zeroConfirm ? ' disabled' : '') + '> ' + (v === 'keep' ? 'Keep' : 'Set to £ 0.00') + '</label>').join('');
           h += '<tr><td>' + esc(dateLabel(f.when)) + '</td><td>' + esc(f.name) + '<div class="text-muted">' + esc(f.apptStatus.replace(/-/g, ' ')) + '</div></td>' +

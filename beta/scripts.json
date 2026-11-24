@@ -34,7 +34,7 @@
     {
       "file": "bank-statement.user.js",
       "name": "UPC Billing: Bank statement (beta)",
-      "version": "0.2.10"
+      "version": "0.2.11"
     },
     {
       "file": "branding.user.js",
@@ -83,7 +83,7 @@
     {
       "file": "invoice-funder.user.js",
       "name": "UPC Billing: Invoice Funder (beta)",
-      "version": "0.8.6",
+      "version": "0.8.7",
       "was": "bill-funder.user.js"
     },
     {
@@ -100,7 +100,7 @@
     {
       "file": "old-balances.user.js",
       "name": "UPC Billing: Old balances (beta)",
-      "version": "0.2.4"
+      "version": "0.2.5"
     },
     {
       "file": "open-ended-patients.user.js",
@@ -131,7 +131,7 @@
     {
       "file": "ready-to-bill.user.js",
       "name": "UPC Billing: Ready to bill (beta)",
-      "version": "0.4.14"
+      "version": "0.4.15"
     },
     {
       "file": "rebate-sync.user.js",
@@ -146,7 +146,7 @@
     {
       "file": "remittances.user.js",
       "name": "UPC Billing: Remittances (beta)",
-      "version": "0.4.7"
+      "version": "0.4.8"
     },
     {
       "file": "review-requests.user.js",

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Ready to bill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.14
+// @version      0.4.15
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
@@ -46,7 +46,7 @@
   if (window.__hxReadyToBill) return;
   window.__hxReadyToBill = true;
 
-  const VERSION = '0.4.14';
+  const VERSION = '0.4.15';
   const ROUTE = 'upc-ready-to-bill';
   const MENU_CLS = 'upc-rtb-menu';
   const ALLOWED = () => rule('readyToBill.people', ['Carl Healy', 'Wendy Pritchard']);   // CH, 7 Nov 2026: only the two of them
@@ -372,8 +372,9 @@
         const z = zeroed.get(f.lineId);
         const btn = '<button type="button" class="' + U().ui.btn('light') + '" data-zero="' + esc(f.lineId) + '" data-inv="' + esc(f.invoiceId) + '">Set to £ 0.00</button>';
         const q = queuedOf(f.lineId);
-        const act = q === 'busy' ? U().ui.run.inline('') : q === 'queued' ? 'Queued' : !z ? btn : z.ok ? '<span class="upc-ok">Set to £ 0.00</span>'
-          : '<span class="upc-err">Not changed: ' + esc(z.error) + '</span> ' + btn;
+        const P = U().ui.page;
+        const act = q === 'busy' ? U().ui.run.inline('') : q === 'queued' ? P.pill('Queued', 'wait') : !z ? btn : z.ok ? P.pill('Set to £ 0.00')
+          : P.pill('Not changed', 'err') + ' ' + btn + '<div class="upc-err">' + esc(z.error) + '</div>';
         return '<div class="upc-rtb-fee"><b>' + esc(f.date) + '</b> ' + esc(f.item) + ', ' + fmt(f.amount) + ' (' + esc(f.invoiceNumber) + ')' +
           (f.comment ? '<div class="upc-note">' + esc(f.comment) + '</div>' : '<div class="text-muted">' + (f.commentError ? 'Comments not read: ' + esc(f.commentError) : 'No comments') + '</div>') +
           '<div>' + act + '</div></div>';

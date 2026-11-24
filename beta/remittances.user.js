@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.7
+// @version      0.4.8
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -36,7 +36,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.4.7';
+  const VERSION = '0.4.8';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -596,6 +596,10 @@
   let root = null;
   let sh = null;
 
+  // Each line's result as a pill, as To do shows its rows' results (CH, 24 Nov 2026): done in green, something
+  // to apply in blue, waiting on a person in grey, a problem in red.
+  const PILL = { ok: 'ok', done: 'ok', fix: 'info', resume: 'info', manual: 'wait', check: 'err', failed: 'err' };
+
   // Halaxy's own classes (cards, tables, buttons, form controls) style the page; these rules only
   // cover what Halaxy has no class for, scoped to our page and using Halaxy's colour variables.
   const CSS = `
@@ -606,12 +610,6 @@
     .upc-rem .upc-rem-status { margin-top: 10px; }
     .upc-rem .upc-rem-notes { border: 1px solid #e0b400; background: #fff8db; border-radius: 4.8px; padding: 8px 12px; margin-top: 12px; }
     .upc-rem .upc-rem-notes ul { margin: 4px 0 0; padding-left: 20px; }
-    .upc-rem .upc-tag { display: inline-block; border-radius: 4.8px; padding: 0 6px; font-weight: 600; border: 1px solid transparent; }
-    .upc-rem .t-ok, .upc-rem .t-done { background: #e3f4e8; border-color: #9fd3ad; color: #14532d; }
-    .upc-rem .t-resume { background: #fff8db; border-color: #e0b400; color: #6b5200; }
-    .upc-rem .t-fix { background: var(--vs-status-badge-neutral-bg-color, #f0f0f5); border-color: var(--vs-theme-primary, #0e0793); color: var(--vs-theme-primary, #0e0793); }
-    .upc-rem .t-manual { background: #fff3e0; border-color: #ffd8a8; color: #8a4b00; }
-    .upc-rem .t-check, .upc-rem .t-failed { background: #fdecea; border-color: var(--vs-balance-negative-color, #ec6b65); color: #a01818; }
     .upc-rem .upc-rem-chg { margin-top: 2px; }
     .upc-rem .upc-rem-fix { display: inline-flex; align-items: center; gap: 4px; }
     .upc-rem .upc-rem-fix .form-control { width: 110px; height: auto; padding: 1px 6px; }
@@ -677,7 +675,7 @@
         html += '<tr><td>' + (x.status === 'fix' || x.status === 'resume' ? '<input type="checkbox" data-i="' + i + '" ' + (x.selected !== false ? 'checked' : '') + ' aria-label="Apply to ' + esc(it.invoice) + '">' : '') + '</td>' +
           '<td>' + link + '</td><td class="number">' + fmt(x.halaxyTotal) + '</td><td class="number">' + paidCell + '</td>' +
           '<td class="number">' + (x.shortfall ? fmt(x.shortfall) : '') + '</td>' +
-          '<td><span class="upc-tag t-' + x.status + '">' + label + '</span> ' + esc(x.message) +
+          '<td>' + UPC.ui.page.pill(label, PILL[x.status]) + ' ' + esc(x.message) +
           (x.changes.length ? '<div class="upc-rem-chg">' + x.changes.map((c) => esc(c.date) + ': funder ' + fmt(c.from) + ' to ' + fmt(c.to) + ', patient pays ' + fmt(c.from - c.to)).join('<br>') + '</div>' : '') +
           (x.error ? '<div class="upc-rem-chg upc-err">' + esc(x.error) + '</div>' : '') + '</td></tr>';
       });

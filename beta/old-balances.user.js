@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Old balances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.4
+// @version      0.2.5
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/old-balances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/old-balances.user.js
@@ -30,7 +30,7 @@
   if (window.__hxOldBalances) return;
   window.__hxOldBalances = true;
 
-  const VERSION = '0.2.4';
+  const VERSION = '0.2.5';
   const ROUTE = 'upc-old-balances';
   const MENU_CLS = 'upc-ob-menu';
   const DAY = 864e5;
@@ -140,8 +140,9 @@
     return '<table class="table table-striped table-bordered w-100 m-0" data-upc-list="' + listId + '" data-upc-pick><thead><tr><th>Invoice</th><th>Date</th><th>Payer</th><th>Funder</th><th class="number">Balance</th><th data-upc-nosort></th></tr></thead><tbody>' +
       rows.map((x) => {
         const q = queuedOf(x.id), d = done.get(x.id);
-        const act = q === 'busy' ? U().ui.run.inline('') : q === 'queued' ? 'Queued' : d === 'ok' ? '<span class="upc-ok">Written off</span>'
-          : '<button type="button" class="btn btn-outline-primary-light" data-a="off" data-id="' + esc(x.id) + '">Write Off</button>';
+        const P = U().ui.page;
+        const act = q === 'busy' ? U().ui.run.inline('') : q === 'queued' ? P.pill('Queued', 'wait') : d === 'ok' ? P.pill('Written off')
+          : (d ? P.pill('Not changed', 'err') + ' ' : '') + '<button type="button" class="btn btn-outline-primary-light" data-a="off" data-id="' + esc(x.id) + '">Write Off</button>';
         return '<tr data-upc-id="' + esc(x.id) + '"' + (q || d === 'ok' ? ' data-upc-nopick' : '') + '><td><a href="' + esc(base + '/invoice/' + x.id) + '" target="_blank" rel="noopener">' + esc(x.number) + '</a></td><td class="upc-ob-date">' + esc(label(x.date)) + '</td>' +
           '<td>' + esc(x.payer) + '</td><td>' + esc(x.funder) + '</td><td class="number">' + esc(fmt(x.balance)) + '</td><td class="upc-ob-act">' + act + '</td></tr>';
       }).join('') + '</tbody></table>';
