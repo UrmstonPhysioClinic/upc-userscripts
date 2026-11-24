@@ -1,0 +1,9 @@
+# Time limits for the tests on GitHub (tools/run_tests.py, only when CI is set), so slow tests are caught as they
+# creep in (CH, 24 Nov 2026). A test folder may take 90 seconds, a group 300. Folders listed here may take longer for
+# now; the aim is to bring them down (a fake clock instead of real waiting), never to raise these.
+# folder  seconds  why
+portal-fill          260  drives a fake insurer site in real time
+bank-statement       250  reads statement PDFs and waits on queued payments in real time
+remittances          180  reads remittance PDFs and waits on queued fixes in real time
+invoice-funder       160  waits on Halaxy's pacing in real time
+open-ended-patients  110  waits on queued recalls in real time

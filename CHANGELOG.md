@@ -1,5 +1,9 @@
 # Changelog
 
+## Tests, 24 Nov 2026
+- Six test groups of about four minutes each instead of five of up to eight, balanced by how long each folder takes (CH, 24 Nov 2026).
+- Time limits on GitHub: 90 seconds a test folder (longer only for the folders in tests/budgets.txt, each with why) and 300 seconds a group; over the limit fails the check, and each group lists its slowest folders in the job summary. Slow tests are caught as they creep in.
+
 ## Title Case across the scripts, core 0.1.83, To do 0.2.13, 24 Nov 2026 (beta)
 - Menu items, page titles, card headings, dividers, pop-up titles, tabs, column headers and buttons have a capital on every word, as Halaxy writes them ("Cards on File", "Ready to Bill", "Check Now"; CH, 24 Nov 2026). Sentences, messages and settings labels are unchanged. Core UPC.ui.titleCase, used by the page kit, dialogs and menu items; tests/check_scripts.py checks literal buttons and headers in beta.
 
