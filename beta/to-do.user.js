@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Schedule: To do (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.8
+// @version      0.2.9
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
@@ -38,7 +38,7 @@
   if (window.__hxToDo) return;
   window.__hxToDo = true;
 
-  const VERSION = '0.2.8';
+  const VERSION = '0.2.9';
   const ROUTE = 'upc-to-do';
   const MENU_CLS = 'upc-todo-menu';
   const DAY = 864e5, MIN = 60e3;
@@ -154,7 +154,7 @@
       let b = el.querySelector('.' + cls);
       if (!n) { if (b) b.remove(); return; }
       if (!b) { b = document.createElement('span'); b.className = cls; el.appendChild(b); }
-      if (el === head) countLook(b);
+      if (el === head) countLook(b, head);
       const text = n > 99 ? '99+' : String(n);
       if (b.textContent !== text) b.textContent = text;
       const title = n + ' task' + (n === 1 ? '' : 's') + ' overdue or due today';
@@ -186,25 +186,30 @@
     }
     return iconFound;
   }
-  // The count on To do looks like the bell's (CH, 24 Nov 2026: ours covered the icon): Halaxy draws the bell's count
-  // as its link's ::after from data-count, so its size, place and colours are copied from there when it shows one
-  // (kept for next time); until then our own small badge, close to it.
-  const LOOK = ['top', 'right', 'left', 'bottom', 'width', 'min-width', 'height', 'padding', 'border-radius', 'font-size', 'font-weight', 'line-height', 'color', 'background-color', 'border', 'font-family', 'letter-spacing'];
-  function countLook(b) {
-    let look = null;
-    const bell = document.querySelector('#btn-alert-notifications, #alertHeader a.alertIcon[data-count]');
+  // The count on To do looks like the bell's and sits in the same place (CH, 24 Nov 2026): core reads the bell's count
+  // (its link's ::after, from data-count) and our link takes the bell link's size, so the same offsets land the same.
+  // Until the bell has shown a count on this PC, our own small badge close to it.
+  const LOOK = ['top', 'right', 'left', 'bottom', 'transform', 'margin', 'min-width', 'height', 'padding', 'border-radius', 'font-size', 'font-weight', 'line-height', 'color', 'background-color', 'font-family', 'letter-spacing'];
+  const BOX = ['width', 'height', 'line-height', 'font-size', 'padding', 'vertical-align'];
+  function countLook(b, mine) {
+    const look = U().ui.countLook ? U().ui.countLook() : null;
+    const bell = U().ui.bellLink ? U().ui.bellLink() : null;
+    const box = {}, icon = {};
     if (bell) {
-      const cs = getComputedStyle(bell, '::after');
-      if (cs.content && cs.content !== 'none' && cs.content !== 'normal' && cs.position === 'absolute') {
-        look = {};
-        LOOK.forEach((k) => { look[k] = cs.getPropertyValue(k); });
-        store().set('countLook', look);
-      }
+      const cs = getComputedStyle(bell);
+      BOX.forEach((k) => { box[k] = cs.getPropertyValue(k); });
+      const i = bell.querySelector('i');
+      if (i) { const ci = getComputedStyle(i); icon['font-size'] = ci.getPropertyValue('font-size'); icon['line-height'] = ci.getPropertyValue('line-height'); }
     }
-    look = look || store().get('countLook', null);
-    if (!look || b.dataset.look === JSON.stringify(look)) return;
-    b.dataset.look = JSON.stringify(look);
-    LOOK.forEach((k) => { if (look[k] && look[k] !== 'auto' || k === 'left' || k === 'bottom') b.style.setProperty(k, look[k]); });
+    const key = JSON.stringify([look, box, icon]);
+    if (b.dataset.look === key) return;
+    b.dataset.look = key;
+    if (look) LOOK.forEach((k) => { if (look[k]) b.style.setProperty(k, look[k]); });
+    if (bell && box.width && box.width !== 'auto' && box.width !== '0px') {
+      BOX.forEach((k) => { if (box[k]) mine.style.setProperty(k, box[k]); });
+      const mi = mine.querySelector('i, svg');
+      if (mi && icon['font-size']) { mi.style.setProperty('font-size', icon['font-size']); if (mi.tagName === 'I') mi.style.setProperty('line-height', icon['line-height']); }
+    }
   }
   function topBar() {
     const inbox = document.getElementById('alertIncomingMessages');

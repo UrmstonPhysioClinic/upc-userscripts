@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.79
+// @version      0.1.80
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.79';
+  const VERSION = '0.1.80';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -3211,6 +3211,44 @@
   setTimeout(() => { settings.rememberMine(); }, 3000);   // who is signed in on this page, for the next page's early scripts
   setInterval(() => { settings.refresh().catch(() => {}); }, 10 * 60e3);
   window.addEventListener('storage', (e) => { if (e.key === 'upc-settings:values') { try { document.dispatchEvent(new CustomEvent('upc-settings-changed')); } catch (x) { /* ignore */ } } });
+
+  // ------------------------------------------------------------------ counts like the bell's
+
+  // Our counts look like Halaxy's own count on the bell (CH, 24 Nov 2026). Halaxy draws that as the bell link's ::after
+  // from data-count (#btn-alert-notifications), so its size, font and colours are read from there when it shows a count
+  // and kept on this PC for pages where it doesn't. Menu counts (ours: span.upc-...-badge in a menu item) take that look
+  // but stay where they are, after the item's name; To do's count in the top bar also takes its place on the icon.
+  const COUNT_KEY = 'upc-count-look2';   // 2: the first read the Inbox's look
+  const COUNT_LOOK = ['height', 'min-width', 'padding', 'border-radius', 'font-size', 'font-weight', 'line-height', 'color', 'background-color', 'font-family', 'letter-spacing'];
+  const COUNT_PLACE = ['top', 'right', 'left', 'bottom', 'transform', 'margin'];
+  // The bell only: the Inbox (first in the top bar) has its own grey count, placed differently (CH, 24 Nov 2026).
+  function bellLink() { return document.getElementById('btn-alert-notifications') || document.querySelector('#alertNotifications a[data-count]'); }
+  function countLook() {
+    const bell = bellLink();
+    if (bell && /[1-9]/.test(bell.getAttribute('data-count') || '')) {
+      const cs = getComputedStyle(bell, '::after');
+      if (cs.content && cs.content !== 'none' && cs.content !== 'normal' && cs.position === 'absolute') {
+        const look = {};
+        COUNT_LOOK.concat(COUNT_PLACE).forEach((k) => { look[k] = cs.getPropertyValue(k); });
+        try { localStorage.setItem(COUNT_KEY, JSON.stringify(look)); } catch (e) { /* fine */ }
+        return look;
+      }
+    }
+    try { return JSON.parse(localStorage.getItem(COUNT_KEY) || 'null'); } catch (e) { return null; }
+  }
+  function paintCounts() {
+    const look = countLook();
+    if (!look) return;
+    const decl = COUNT_LOOK.filter((k) => look[k]).map((k) => k + ': ' + look[k] + ';').join(' ');
+    const css = '#mainMenu a.mainmenu-sublink span[class^="upc-"][class$="-badge"] { ' + decl + ' display: inline-block; text-align: center; vertical-align: middle; box-sizing: border-box; }';
+    let st = document.getElementById('upc-count-look');
+    if (!st) { st = document.createElement('style'); st.id = 'upc-count-look'; (document.head || document.documentElement).appendChild(st); }
+    if (st.textContent !== css) st.textContent = css;
+  }
+  ui.countLook = countLook;
+  ui.bellLink = bellLink;
+  setTimeout(paintCounts, 2500);
+  setInterval(paintCounts, 15000);
 
   window.UPC = Object.freeze({
     version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, todo, invoice, appointment, forms, notes, followUps, patient, tasks, surveys, reports, dayLabel, parseDay, rebate, files, deposits, orgFiles, adminNotes, shared, sharedResult, settings, load, ui,

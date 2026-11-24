@@ -1,5 +1,9 @@
 # Changelog
 
+## core 0.1.80, To do 0.2.9, 24 Nov 2026 (beta)
+- Menu counts look like Halaxy's own count on the bell (CH, 24 Nov 2026): size, font and colours read from the bell's count and kept on the PC; they stay after the item's name. Core UPC.ui.countLook.
+- The look was read from the first count in the top bar, which is the hidden Inbox's (grey, placed differently); now only from the bell (CH, 24 Nov 2026: To do's count was grey and covered the top of the icon). To do's top-bar link takes the bell link's size, so its count sits in the same place.
+
 ## To do 0.2.8, 24 Nov 2026 (beta)
 - Linked to shows the record by name and opens it in a new tab: the invoice number, the patient's name, the appointment, the organisation, the clinical note (CH, 24 Nov 2026). Read from each linked task's Edit pop-up once, only for tasks on screen, at Halaxy's pace, and kept on the PC; tasks in the bell's list are taken from there.
 
