@@ -162,9 +162,11 @@
   // To do in Halaxy's top bar, in place of the Inbox (CH, 24 Nov 2026: the clinic doesn't use the Inbox). The Inbox is
   // div#alertIncomingMessages.headIcon > a#btn-alert-incoming-messages (i.icon-inbox), beside div#alertNotifications
   // (the bell), in div#alertHeader (capture, 24 Nov 2026). Ours sits where the Inbox was and opens To do; its badge
-  // counts the same as the menu's. The icon is Halaxy's own (its icon font) if it has a clipboard or checklist, else a
-  // drawing of one in the same grey.
-  const ICONS = ['icon-clipboard', 'icon-checklist', 'icon-tasks', 'icon-task', 'icon-list-check', 'icon-checkbox-checked', 'icon-check-square'];
+  // counts the same as the menu's. The icon is Halaxy's own clipboard with a tick (its icon font), else a drawing of one in
+  // the same grey.
+  // Halaxy's font ("halaxy") is the Linearicons set (it has icon-linearicons; checked 24 Nov 2026): its clipboard with a
+  // tick is icon-clipboard-check. The others are kept in case Halaxy changes the set.
+  const ICONS = ['icon-clipboard-check', 'icon-clipboard-text', 'icon-check-square', 'icon-clipboard', 'icon-checklist'];
   const DRAWN = '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
     '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4.5V3h6v1.5"/><path d="M8.5 13l2.5 2.5 4.5-5"/></svg>';
   let iconFound;
