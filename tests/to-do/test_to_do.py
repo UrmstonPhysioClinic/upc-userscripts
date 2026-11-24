@@ -62,6 +62,13 @@ def page_html():
             "<div style='height:3000px'></div></body></html>")
 
 
+# The week's calendar (Monday 23 Nov 2026 onwards, Unix seconds): practitioner 11 is the signed-in user.
+def calendar_events():
+    mon = int(datetime.datetime(2026, 11, 23, 9, 0).timestamp())
+    ev = lambda d, h, prac, st='': {'id': 800 + d * 10 + h, 'type': 'appointment', 'linkPaGId': 1, 'practitionerID': prac, 'appointmentStatus': st, 'start': mon + d * 86400 + h * 3600, 'end': mon + d * 86400 + h * 3600 + 1800}
+    return [ev(0, 0, 11), ev(0, 1, 11), ev(0, 2, 11, 'cancelled'), ev(0, 3, 22), ev(1, 0, 11), ev(1, 1, 11, 'did-not-attend'), ev(3, 0, 11), ev(3, 1, 11), ev(3, 2, 11)]
+
+
 async def halaxy(route):
     req = route.request
     u = urllib.parse.urlparse(req.url)
@@ -71,6 +78,11 @@ async def halaxy(route):
     if p == '/a/pr/555/task/data':
         S['reads'] += 1
         return await js(TASKS)
+    if p == '/a/pr/555/lookup/practitioner':
+        return await js([{'id': 11, 'name': 'Carl Healy'}, {'id': 22, 'name': 'Prac Two'}])
+    if p == '/a/pr/555/calendar/json':
+        S['calendar'] = S.get('calendar', 0) + 1
+        return await js({'payload': {'events': calendar_events()}})
     m = re.match(r'^/a/pr/555/task/(\d+)/revert/(\w+)$', p)
     if m:
         S['reverted'].append(int(m.group(1)))
@@ -179,6 +191,11 @@ async def main():
         await pg.wait_for_selector('.upc-todo-week')
         days = await pg.evaluate("[...document.querySelectorAll('.upc-todo-week .card h2')].map((h) => h.textContent)")
         check('week view: a tray, then Monday to Friday', len(days) == 6 and days[1].startswith('Monday 23-Nov') and days[5].startswith('Friday 27-Nov'), days)
+        await pg.wait_for_selector('.upc-todo-week .upc-todo-appts', timeout=10000)
+        appts = await pg.evaluate("[...document.querySelectorAll('.upc-todo-week .upc-todo-drop')].map((c) => (c.querySelector('.upc-todo-appts') || {}).textContent)")
+        check("each day: my appointments (not cancelled, not did-not-attend, not someone else's)", appts == ['2 appointments', '1 appointment', 'No appointments', '3 appointments', 'No appointments'], appts)
+        edge = await pg.evaluate("getComputedStyle(document.querySelector('.upc-todo-week .upc-todo-chip')).borderLeft")
+        check('week tasks have a purple left edge', edge.startswith('4px solid') and 'rgb(153, 77, 230)' in edge, edge)
         nposts = len(S['posts'])
         await pg.drag_and_drop("[data-chip='3']", ".upc-todo-drop[data-day]:nth-child(3)")
         await pg.wait_for_function("document.querySelector('.upc-toast')", timeout=10000)

@@ -1,5 +1,8 @@
 # Changelog
 
+## To do 0.2.4, 24 Nov 2026 (beta)
+- Week view (CH, 24 Nov 2026): tasks have a purple left edge, and each day shows how many appointments the signed-in practitioner has (not counting cancelled, did not attend, rejected, declined, rescheduled or waiting list), from the shared calendar read.
+
 ## Record retention 0.1.3, 23 Nov 2026 (beta)
 - After a batch, the Deleted patients are read from the Introduction Source report (CH, 23 Nov 2026: the only list that shows them). The patient list leaves Deleted patients out, even when asked for them, so every patient sent showed "Not changed" although Halaxy had changed them (live, 23 Nov 2026). Core UPC.patient.deletedIds.
 - Statuses shown with a capital letter, as Halaxy shows them.
