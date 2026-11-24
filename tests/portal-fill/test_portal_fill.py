@@ -23,6 +23,8 @@ from pathlib import Path
 from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / 'tests'))
+from fakeclock import until, idle   # waits move the fake clock on (every tab: it is the context's clock)
 LOADER = (ROOT / 'loader' / 'upc-loader.user.js').read_text()
 RAW = 'https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/'
 FILES = {f: (ROOT / 'beta' / f).read_text().replace('perMinute: 45,', 'perMinute: 100000,') for f in ('core.user.js', 'portal-fill.user.js')}   # tests: no 45-a-minute wait
@@ -342,6 +344,7 @@ def check(label, ok, detail=''):
 
 async def setup(browser):
     ctx = await browser.new_context(viewport={'width': 1300, 'height': 900})
+    await ctx.clock.install()   # today's time, moved on by the waits (fakeclock)
     await ctx.route(RAW + '**', github)
     await ctx.route('https://gm.test/**', gm)
     await ctx.route('https://eu.halaxy.com/**', halaxy)
@@ -372,7 +375,7 @@ async def new_form_tab(ctx):
             if t.url.endswith('/axa-health-new/') and id(t) not in SEEN_FORM_TABS:
                 SEEN_FORM_TABS.add(id(t))
                 return t
-        await asyncio.sleep(0.5)
+        await idle(ctx, 500)
     raise Exception('the AXA form tab never opened')
 
 
@@ -396,9 +399,9 @@ async def main():
         perr = []
         portal.on('pageerror', lambda e: perr.append(str(e)))
         member_tab.on('pageerror', lambda e: perr.append(str(e)))
-        await portal.wait_for_url('**/axa-health-new/', timeout=60000)
+        await until(portal, "location.pathname.endsWith('/axa-health-new/')", timeout=60)
         try:
-            await portal.wait_for_function("document.getElementById('upc-pf-panel') && /Filled:/.test(document.getElementById('upc-pf-panel').textContent)", timeout=60000)
+            await until(portal, "document.getElementById('upc-pf-panel') && /Filled:/.test(document.getElementById('upc-pf-panel').textContent)", timeout=60)
         except Exception:
             print('\n'.join(CONSOLE[-25:])); print('DEBUG loader:', await portal.evaluate("[typeof window.GM_getValue, !!window.__upcLoader, typeof window.__hxPortalFill, document.readyState, location.href]"), 'DEBUG form tab:', await portal.evaluate("(document.getElementById('upc-pf-panel') || {}).textContent || 'no panel'"), '| member tab:', await member_tab.evaluate("(document.getElementById('upc-pf-panel') || {}).textContent || 'no panel'"), perr, S['gm'].get('shared:portal-claim', {}).get('progress'))
             raise
@@ -423,14 +426,14 @@ async def main():
         check('AXA: never submitted by the script', 'submitted' not in S['axa'])
         check('AXA: the page is uncovered once filled, for checking', await portal.evaluate("!document.getElementById('upc-pf-cover') && !document.getElementById('upc-pf-panel').classList.contains('upc-pf-busy')"))
         await portal.click('button[type=submit]')
-        await portal.wait_for_function("document.getElementById('upc-pf-panel') && /Submitted to AXA/.test(document.getElementById('upc-pf-panel').textContent)", timeout=30000)
+        await until(portal, "document.getElementById('upc-pf-panel') && /Submitted to AXA/.test(document.getElementById('upc-pf-panel').textContent)", timeout=30)
         check('AXA: submitted noted', (S['gm'].get('shared:portal-claim') or {}).get('status') in ('submitted', 'issued'))
         check('AXA: "Back to Halaxy" offered', await portal.evaluate("!!document.querySelector('#upc-pf-panel [data-a=back]')"))
         mpanel = await member_tab.evaluate("(document.getElementById('upc-pf-panel') || {}).textContent || ''")
         check('AXA: the membership tab left behind steps aside (no failure, no cover, no task)', 'Carrying on in the new tab' in mpanel and 'stopped' not in mpanel
               and await member_tab.evaluate("!document.getElementById('upc-pf-cover')") and not S['tasks'].get(9001), (mpanel, S['tasks'].get(9001)))
         await member_tab.close()
-        await pg.wait_for_function("/and marked Issued/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=30000)
+        await until(pg, "/and marked Issued/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=30)
         txt = await pg.evaluate("document.querySelector('[data-upc-portal-fill]').textContent")
         check('the insurer confirmed: marked Issued straight away, no question (Halaxy tab in the background)', S['status'][9001] == 'issued' and 'Submitted to AXA (UPC-1111, £ 100.00) and marked Issued' in txt
               and not await pg.evaluate("!!document.querySelector('[data-upc-pf-confirm]')"), (S['status'], txt))
@@ -452,7 +455,7 @@ async def main():
         portal = await newp.value
         perr = []
         portal.on('pageerror', lambda e: perr.append(str(e)))
-        await portal.wait_for_timeout(3000)
+        await idle(portal, 3000)
         check('Bupa: not covered while waiting for the log-in', await portal.evaluate("!document.getElementById('upc-pf-cover')"))
         check('Bupa: leaves the log-in to the user', S['bupa'].get('logins', 0) == 0 and await portal.evaluate("!document.getElementById('upc-pf-panel') || /Log in to Bupa/.test(document.getElementById('upc-pf-panel').textContent)"))
         await portal.fill('input[name=u]', 'tester')
@@ -465,7 +468,7 @@ async def main():
         seen = await axa_tab.evaluate("window.__upcLoader ? window.__upcLoader.shared('get', 'portal-claim') : 'no loader'")
         check('the claim is only given to the portal it is for', seen is None and not await axa_tab.evaluate("!!document.getElementById('upc-pf-panel')"), seen)
         await axa_tab.close()
-        await portal.wait_for_function("document.getElementById('upc-pf-panel') && /Filled:/.test(document.getElementById('upc-pf-panel').textContent)", timeout=90000)
+        await until(portal, "document.getElementById('upc-pf-panel') && /Filled:/.test(document.getElementById('upc-pf-panel').textContent)", timeout=90)
         B = S['bupa']
         check('Bupa: cookie box closed (Reject all)', any(c['name'] == 'ot' for c in await ctx.cookies('https://providersonline.bupa.co.uk')))
         check('Bupa: set-up (invoice number without the 0, first treatment date, pre-auth number)', B.get('setup', {}).get('invoiceNumber') == 'UPC-2222'
@@ -479,8 +482,8 @@ async def main():
               and await portal.evaluate("document.getElementById('confirmation').classList.contains('upc-pf-check') && !document.getElementById('confirmation').checked"), panel)
         await portal.check('#confirmation')
         await portal.click('#btn_next')
-        await portal.wait_for_function("document.getElementById('upc-pf-panel') && /Submitted to Bupa/.test(document.getElementById('upc-pf-panel').textContent)", timeout=30000)
-        await pg2.wait_for_function("/and marked Issued/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=30000)
+        await until(portal, "document.getElementById('upc-pf-panel') && /Submitted to Bupa/.test(document.getElementById('upc-pf-panel').textContent)", timeout=30)
+        await until(pg2, "/and marked Issued/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=30)
         check('Bupa: marked Issued once Bupa confirmed', S['status'][9002] == 'issued', S['status'])
         check('no page errors (Bupa)', not errors2 and not perr, errors2 + perr)
         await portal.close()
@@ -491,10 +494,10 @@ async def main():
             await pg.click('[data-upc-portal-fill] button')
         member_tab = await newp.value
         portal = await new_form_tab(ctx)
-        await portal.wait_for_function("document.getElementById('upc-pf-panel') && /has stopped/.test(document.getElementById('upc-pf-panel').textContent)", timeout=60000)
+        await until(portal, "document.getElementById('upc-pf-panel') && /has stopped/.test(document.getElementById('upc-pf-panel').textContent)", timeout=60)
         panel = await portal.evaluate("document.getElementById('upc-pf-panel').textContent")
         check('a changed portal page stops the fill, says what, and that CH has been notified', 'treatment line 1: charge per unit not found' in panel and 'Carl has been notified' in panel, panel)
-        await pg.wait_for_function("/Carl Healy has been sent a task/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=60000)
+        await until(pg, "/Carl Healy has been sent a task/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=60)
         t = S['tasks'][9001]
         check('a task for CH on the funder invoice, with the reason', len(t) == 1 and t[0]['title'] == 'Portal fill stopped: AXA, UPC-01111' and t[0]['who'] == ['31']
               and 'charge per unit not found' in t[0]['comment'] and 'shared:portal-claim' not in S['gm'], t)
@@ -512,14 +515,14 @@ async def main():
         async with ctx.expect_page() as newp:
             await pg.click('[data-upc-portal-fill] button')
         member_tab = await newp.value
-        await member_tab.wait_for_url('**/submit-invoice-updated/**', timeout=60000)
+        await until(member_tab, "location.pathname.includes('/submit-invoice-updated/')", timeout=60)
         await pg.goto(inv_url.replace('/invoice/9001', '/invoice/9002'))
         portal = await new_form_tab(ctx)
-        await portal.wait_for_function("document.getElementById('upc-pf-panel') && /has stopped/.test(document.getElementById('upc-pf-panel').textContent)", timeout=60000)
+        await until(portal, "document.getElementById('upc-pf-panel') && /has stopped/.test(document.getElementById('upc-pf-panel').textContent)", timeout=60)
         await pg.bring_to_front()
         for _ in range(120):
             if S['tasks'].get(9001) and 'shared:portal-claim' not in S['gm']: break
-            await asyncio.sleep(0.5)
+            await idle(pg, 500)
         t = S['tasks'].get(9001) or []
         check('the funder invoice closed: another Halaxy page sends the task, on the right invoice, once', len(t) == 1 and t[0]['title'] == 'Portal fill stopped: AXA, UPC-01111'
               and 'shared:portal-claim' not in S['gm'], t)
@@ -535,13 +538,13 @@ async def main():
         async with ctx.expect_page() as newp:
             await pg2.click('[data-upc-portal-fill] button')
         portal = await newp.value
-        await portal.wait_for_function("/Pre-Auth Summary/.test(document.body.innerText) && !!document.getElementById('upc-pf-cover')", timeout=60000)
+        await until(portal, "/Pre-Auth Summary/.test(document.body.innerText) && !!document.getElementById('upc-pf-cover')", timeout=60)
         await portal.wait_for_timeout(1500)   # Next pressed; nothing happens
         blocked = await portal.evaluate("(() => { const b = [...document.querySelectorAll('button')].find(x => x.textContent.trim() === 'Next'); const r = b.getBoundingClientRect(); const top = document.elementFromPoint(r.left + 5, r.top + 5); return top && top.id; })()")
         check('while working: the page is covered and clicks land on the cover', blocked == 'upc-pf-cover', blocked)
-        await portal.wait_for_function("document.getElementById('upc-pf-panel') && /got stuck/.test(document.getElementById('upc-pf-panel').textContent) && !document.getElementById('upc-pf-cover')", timeout=90000)
+        await until(portal, "document.getElementById('upc-pf-panel') && /got stuck/.test(document.getElementById('upc-pf-panel').textContent) && !document.getElementById('upc-pf-cover')", timeout=90)
         check('stuck under the cover for a minute: the fill stops and uncovers', True)
-        await pg2.wait_for_function("/has been sent a task/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=60000)
+        await until(pg2, "/has been sent a task/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=60)
         S['bupa']['stall'] = False
         S['tasks'][9002] = []
         await portal.close()
@@ -552,10 +555,10 @@ async def main():
         async with ctx.expect_page() as newp:
             await pg2.click('[data-upc-portal-fill] button')
         portal = await newp.value
-        await portal.wait_for_function("document.getElementById('upc-pf-panel') && /has stopped/.test(document.getElementById('upc-pf-panel').textContent)", timeout=90000)
+        await until(portal, "document.getElementById('upc-pf-panel') && /has stopped/.test(document.getElementById('upc-pf-panel').textContent)", timeout=90)
         panel = await portal.evaluate("document.getElementById('upc-pf-panel').textContent")
         check('Bupa: a refused treatment stops the fill, with Bupa\'s message', 'Please enter a valid fee' in panel, panel)
-        await pg2.wait_for_function("/has been sent a task/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=60000)
+        await until(pg2, "/has been sent a task/.test(document.querySelector('[data-upc-portal-fill]').textContent)", timeout=60)
         check('and CH gets a task on that invoice', len(S['tasks'][9002]) == 1 and 'Please enter a valid fee' in S['tasks'][9002][0]['comment'], S['tasks'][9002])
         await portal.close()
 
@@ -566,11 +569,11 @@ async def main():
         async with ctx.expect_page() as newp:
             await pg2.click('[data-upc-portal-fill] button')
         portal = await newp.value
-        await portal.wait_for_function("document.getElementById('upc-pf-panel') && /Choose the procedure/.test(document.getElementById('upc-pf-panel').textContent)", timeout=90000)
+        await until(portal, "document.getElementById('upc-pf-panel') && /Choose the procedure/.test(document.getElementById('upc-pf-panel').textContent)", timeout=90)
         panel = await portal.evaluate("document.getElementById('upc-pf-panel').textContent")
         check('Bupa: code not in the list, the user is asked (uncovered), saying which code', 'AA361 not found' in panel and await portal.evaluate("!document.getElementById('upc-pf-cover')"), panel)
         await portal.select_option('select[name=procedureCode]', label='Physiotherapy group session (AA359)')
-        await portal.wait_for_function("/Confirm and Submit/.test(document.body.innerText)", timeout=60000)
+        await until(portal, "/Confirm and Submit/.test(document.body.innerText)", timeout=60)
         check('and after the choice (and Bupa\'s reload) the fill finishes the treatment with the user\'s procedure',
               len(B['treatments']) == 2 and B['treatments'][1]['procedureCode'] == 'Physiotherapy group session (AA359)' and B['treatments'][1]['chargeAmount'] == '40.00'
               and B['treatments'][1]['treatmentFromDate'] == '10/11/2026' and not S['tasks'][9002], B['treatments'])
@@ -584,7 +587,7 @@ async def main():
         async with ctx.expect_page() as newp:
             await pg2.click('[data-upc-portal-fill] button')
         portal = await newp.value
-        await portal.wait_for_function("document.getElementById('upc-pf-panel') && /has stopped/.test(document.getElementById('upc-pf-panel').textContent)", timeout=90000)
+        await until(portal, "document.getElementById('upc-pf-panel') && /has stopped/.test(document.getElementById('upc-pf-panel').textContent)", timeout=90)
         panel = await portal.evaluate("document.getElementById('upc-pf-panel').textContent")
         saves = len([x for x in S['log'] if 'method=save' in x[1]])
         check('Bupa: a form returned again and again stops the fill (no loop)', 'keeps returning treatment 1' in panel and '"*"' not in panel, panel)

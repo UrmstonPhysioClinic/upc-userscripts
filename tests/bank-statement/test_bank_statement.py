@@ -26,6 +26,8 @@ ROOT = HERE.parents[1]
 if not (HERE / 'node_modules' / 'pdfjs-dist').exists():
     subprocess.run(['npm', 'install', '--no-audit', '--no-fund', '--no-package-lock', '--silent'], cwd=HERE, check=True)
 LIBS = HERE / 'node_modules'
+sys.path.insert(0, str(ROOT / 'tests'))
+from fakeclock import until, idle, run   # waits move the fake clock on instead of waiting in real time
 CORE = (ROOT / 'beta' / 'core.user.js').read_text().replace('perMinute: 45,', 'perMinute: 100000,')   # tests: no 45-a-minute wait (the 300 ms gap stays)
 BANK_REAL = (ROOT / 'beta' / 'bank-statement.user.js').read_text()
 # The invented statement is October 2026; most tests treat it as after the switch to deposits
@@ -414,7 +416,7 @@ URL = 'https://eu.halaxy.com/a/pr/555/invoice/#upc-bank-statement'
 async def open_statement(pg, pdf):
     await pg.wait_for_selector('[data-upc-bank-statement] .upc-bank-drop', state='attached', timeout=20000)
     await pg.set_input_files('[data-upc-bank-statement] input[type=file]', str(pdf))
-    await pg.wait_for_function("document.querySelector('[data-upc-bank-statement] table') || document.querySelector('[data-upc-bank-statement] .upc-err')", timeout=60000)
+    await until(pg, "document.querySelector('[data-upc-bank-statement] table') || document.querySelector('[data-upc-bank-statement] .upc-err')", timeout=60)
     return await pg.evaluate(ROWS)
 
 
@@ -434,7 +436,7 @@ async def record_all(pg):
     await pg.click('[data-upc-bank-statement] [data-a=all]')
     await pg.wait_for_selector('[data-upc-bank-confirm]', timeout=10000)
     await pg.click('[data-upc-bank-confirm] [data-c=yes]')
-    await pg.wait_for_function("/^Finished:/.test((document.querySelector('[data-upc-bank-statement] .upc-run-now') || {}).textContent || '') && !!document.querySelector('[data-upc-bank-statement] table')", timeout=240000)
+    await until(pg, "/^Finished:/.test((document.querySelector('[data-upc-bank-statement] .upc-run-now') || {}).textContent || '') && !!document.querySelector('[data-upc-bank-statement] table')", timeout=240)
 
 
 async def main():
@@ -538,7 +540,7 @@ async def main():
         # (a new day: this PC's and the shared note's record of today's check removed)
         for n in S['notes'].get(78842, []):
             n['html'] = re.sub(r'<p[^>]*>lingerDay \|[^<]*</p>', '', n['html'])
-        lin = await pg.evaluate("(async () => { localStorage.removeItem('upc-funder-orgs:lingerDay'); localStorage.removeItem('upc-shared:insurer-profiles:cache'); const a = await UPC.deposits.lingering({ days: 10, assignee: 'Carl Healy', by: 'Bank statement' }); const b = await UPC.deposits.lingering({ days: 10, assignee: 'Carl Healy', by: 'Bank statement' }); return [a, b]; })()")
+        lin = await run(pg, "(async () => { localStorage.removeItem('upc-funder-orgs:lingerDay'); localStorage.removeItem('upc-shared:insurer-profiles:cache'); const a = await UPC.deposits.lingering({ days: 10, assignee: 'Carl Healy', by: 'Bank statement' }); const b = await UPC.deposits.lingering({ days: 10, assignee: 'Carl Healy', by: 'Bank statement' }); return [a, b]; })()")
         check('deposits waiting over 10 days: a task each on the profile, applied ones left, once a day', len(lin[0]) == 6 and 'AXA deposit 12-Oct-2026 £ 75.00: not applied after 10 days' in lin[0] and not lin[1]
               and any('not applied after 10 days' in t.get('form[title]', '') for t in S['orgtasks'].get(502, [])) and not S['orgtasks'].get(506), (lin, S['orgtasks']))
         await ctx.close()
@@ -552,7 +554,7 @@ async def main():
         await pg.click('[data-upc-bank-statement] tbody tr:nth-child(1) [data-rec]')
         await pg.wait_for_selector('[data-upc-bank-confirm]', timeout=10000)
         await pg.click('[data-upc-bank-confirm] [data-c=yes]')
-        await pg.wait_for_function("document.querySelector('[data-upc-bank-statement] tbody tr:nth-child(1) .upc-err')", timeout=60000)
+        await until(pg, "document.querySelector('[data-upc-bank-statement] tbody tr:nth-child(1) .upc-err')", timeout=60)
         err = await pg.evaluate("document.querySelector('[data-upc-bank-statement] tbody tr:nth-child(1) .upc-err').textContent")
         tk = S['orgtasks'].get(501, [])
         check('less outstanding than expected: deposit added, not applied, says why', len(S['added']) == 1 and not S['allocs'] and 'Deposit added, not applied: UPC-0901 now shows £ 30.00 outstanding, not £ 40.00' in err, (err, S['added'], S['allocs']))
@@ -568,7 +570,7 @@ async def main():
         await pg.click('[data-upc-bank-statement] tbody tr:nth-child(1) [data-rec]')
         await pg.wait_for_selector('[data-upc-bank-confirm]', timeout=10000)
         await pg.click('[data-upc-bank-confirm] [data-c=yes]')
-        await pg.wait_for_function("document.querySelector('[data-upc-bank-statement] tbody tr:nth-child(1) .upc-err')", timeout=60000)
+        await until(pg, "document.querySelector('[data-upc-bank-statement] tbody tr:nth-child(1) .upc-err')", timeout=60)
         err = await pg.evaluate("document.querySelector('[data-upc-bank-statement] tbody tr:nth-child(1) .upc-err').textContent")
         tk = S['orgtasks'].get(501, [])
         check('deposit refused: nothing added or applied, a task for CH', not S['added'] and not S['allocs'] and 'Not recorded: Halaxy did not accept the deposit: Payment could not be saved' in err and 'Task added for Carl Healy' in err
@@ -664,13 +666,13 @@ async def main():
         await pg.click('[data-upc-bank-statement] [data-a=register]')
         await pg.wait_for_selector('[data-upc-bank-confirm]', timeout=10000)
         await pg.click('[data-upc-bank-confirm] [data-c=yes]')
-        await pg.wait_for_function("/Saved to the register/.test((document.querySelector('[data-upc-bank-statement] .upc-run-now') || {}).textContent || '')", timeout=60000)
+        await until(pg, "/Saved to the register/.test((document.querySelector('[data-upc-bank-statement] .upc-run-now') || {}).textContent || '')", timeout=60)
         reg = S['notes'].get(78812, [])
         check('saved to the register: one note, no money recorded, the button gone', len(reg) == 1 and 'to check' in note_text(78812) and not S['added'] and not S['allocs'] and await reg_btn() == '', (reg, await reg_btn()))
         await pg.click('[data-upc-bank-statement] tbody tr:nth-child(2) [data-rec]')
         await pg.wait_for_selector('[data-upc-bank-confirm]', timeout=10000)
         await pg.click('[data-upc-bank-confirm] [data-c=yes]')
-        await pg.wait_for_function("/^Finished:/.test((document.querySelector('[data-upc-bank-statement] .upc-run-now') || {}).textContent || '')", timeout=60000)
+        await until(pg, "/^Finished:/.test((document.querySelector('[data-upc-bank-statement] .upc-run-now') || {}).textContent || '')", timeout=60)
         check('old line recorded on its own when asked: one deposit, the same register entry updated', [(o, f['form[amount]']) for o, f in S['added']] == [(502, '75.00')] and len(S['notes'].get(78812, [])) == 1
               and 'AXA £ 75.00 ref GB33AXA0001: deposit added' in note_text(78812)
               and 'before the switch to deposits, not found as recorded: to check' in note_text(78812) and [x[1].split('/')[-1] for x in S['notePosts'] if x[0] == 78812] == ['new', 'edit'], (S['added'], S['notes'], S.get('notePosts')))
@@ -689,10 +691,10 @@ async def main():
                 for _ in range(200):
                     if S.get('missed', 0) >= want:
                         break
-                    await asyncio.sleep(0.1)
+                    await idle(pg, 100)
                 await pg.wait_for_timeout(300)
                 await pg.clock.fast_forward(21000)
-            await pg.wait_for_function("document.querySelector('[data-upc-bank-statement] table') || document.querySelector('[data-upc-bank-statement] .upc-err')", timeout=60000)
+            await until(pg, "document.querySelector('[data-upc-bank-statement] table') || document.querySelector('[data-upc-bank-statement] .upc-err')", timeout=60)
             if miss == 1:
                 rows = await pg.evaluate(ROWS)
                 check('report page without its table once: asked again, read as normal', S['missed'] == 1 and len(rows) == 9, (S.get('missed'), len(rows)))
@@ -712,11 +714,11 @@ async def main():
         check('which month is due, and when a statement covers it', units == ['2026-10', '2026-09', '2026-12', True, False, True], units)
         badge = "(() => { const b = document.querySelector('a.upc-bank-menu .upc-bank-badge'); return b ? [b.textContent, b.title] : null; })()"
         await pg.evaluate("window.upcBankStatement.checkDue()")
-        await pg.wait_for_function("!!document.querySelector('a.upc-bank-menu .upc-bank-badge')", timeout=20000)
+        await until(pg, "!!document.querySelector('a.upc-bank-menu .upc-bank-badge')", timeout=20)
         check('no register for September (today 11 Nov): the blob shows, saying which month', await pg.evaluate(badge) == ['1', "September 2026's statement is not in the register yet"], await pg.evaluate(badge))
         S['notes'][78812] = [{'id': 8100, 'date': '2026-10-05 10:00:00', 'creator': 'Carl Healy', 'html': '<p>Starling statement 2026-09-01 to 2026-09-30</p><p>Fingerprint x</p>'}]
         await pg.evaluate("window.upcBankStatement.checkDue()")
-        await pg.wait_for_function("!document.querySelector('a.upc-bank-menu .upc-bank-badge')", timeout=20000)
+        await until(pg, "!document.querySelector('a.upc-bank-menu .upc-bank-badge')", timeout=20)
         check('once it is in the register the blob goes', await pg.evaluate(badge) is None)
         await ctx.close()
 
@@ -725,7 +727,7 @@ async def main():
         ctx = await context(browser)
         pg = await ctx.new_page()
         await pg.goto(URL)
-        await pg.wait_for_timeout(3000)
+        await idle(pg, 25000)
         check('others see nothing', await pg.evaluate("!document.querySelector('[data-upc-bank-statement]') && !document.querySelector('a.upc-bank-menu')"))
         await ctx.close()
         await browser.close()

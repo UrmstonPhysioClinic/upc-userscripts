@@ -14,6 +14,9 @@ import asyncio, datetime, json, re, sys, urllib.parse
 from pathlib import Path
 from playwright.async_api import async_playwright
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from fakeclock import until, idle   # waits move the fake clock on instead of waiting in real time
+
 ROOT = Path(__file__).resolve().parents[2]
 CORE = (ROOT / 'beta' / 'core.user.js').read_text().replace('perMinute: 45,', 'perMinute: 100000,')   # tests: no 45-a-minute wait (the 300 ms gap stays)
 CI = (ROOT / 'beta' / 'open-ended-patients.user.js').read_text()
@@ -168,7 +171,7 @@ async def main():
         errors = []
         pg.on('pageerror', lambda e: errors.append(str(e)))
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/#upc-check-ins')
-        await pg.wait_for_function("document.querySelector('[data-upc-check-ins] table') && !document.querySelector('[data-upc-check-ins] [data-a=refresh]').disabled", timeout=90000)
+        await until(pg, "document.querySelector('[data-upc-check-ins] table') && !document.querySelector('[data-upc-check-ins] [data-a=refresh]').disabled", timeout=90)
         rows = await pg.evaluate(ROWS)
         names = [r[0] for r in rows]
         cards = await pg.evaluate("[...document.querySelectorAll('[data-upc-check-ins] .card')].map((c) => [c.querySelector('h2').textContent, [...c.querySelectorAll('tbody tr')].map((tr) => [...tr.cells].map((x) => x.textContent.trim()))])")
@@ -198,7 +201,7 @@ async def main():
         check('notes read only for patients 3 weeks to 3 months quiet with nothing booked', notes_read == ['/note/menu/linkPaG/%d/items' % i for i in (201, 202, 203, 204, 208, 209, 210, 211, 212, 213, 214, 215, 216)], notes_read)
         before = len(S['log'])
         await pg.click('[data-upc-check-ins] [data-a=refresh]')
-        await pg.wait_for_function("!document.querySelector('[data-upc-check-ins] [data-a=refresh]').disabled", timeout=60000)
+        await until(pg, "!document.querySelector('[data-upc-check-ins] [data-a=refresh]').disabled", timeout=60)
         again = [x[1] for x in S['log'][before:]]
         check('checking again reuses what was read (no notes re-read)', not [x for x in again if x.startswith('/note/')] and any(x.endswith('/calendar/json') for x in again), again)
         # The shared wording, tuned on the clinic's notes (invented sentences in Heidi's layout)
@@ -228,7 +231,7 @@ async def main():
         check("the send date uses Halaxy's date picker, shown as Halaxy writes dates, from the first allowed day",
               len(fp) == 1 and fp[0]['o'] == {'dateFormat': 'Y-m-d', 'altInput': True, 'altFormat': 'd-M-Y', 'minDate': '2026-11-12', 'defaultDate': '2026-11-12'}, fp)
         await pg.click('[data-upc-ci-confirm] [data-c=yes]')
-        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-check-ins] .card h2')].some((h) => h.textContent === 'Recalled (1)')", timeout=30000)
+        await until(pg, "[...document.querySelectorAll('[data-upc-check-ins] .card h2')].some((h) => h.textContent === 'Recalled (1)')", timeout=30)
         f = S['posts'][0][1] if S['posts'] else {}
         check('scheduled for the next weekday 10:30', S['posts'] and S['posts'][0][0] == 201 and f.get('form[scheduleDetails][scheduleDate]') == '12-Nov-2026'
               and f.get('form[scheduleDetails][scheduleTime][hour]') == '10' and f.get('form[scheduleDetails][scheduleTime][minute]') == '30', f)
@@ -251,19 +254,19 @@ async def main():
         await pg.click("[data-upc-check-ins] [data-a=recall][data-id='212']")
         await pg.click('[data-upc-ci-confirm] [data-c=yes]')
         queued = await pg.evaluate("[...document.querySelectorAll('[data-upc-check-ins] tbody tr')].filter((tr) => tr.cells[0].textContent.trim() === 'Patient L').map((tr) => tr.cells[5].textContent.trim())")
-        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-check-ins] .card h2')].some((h) => h.textContent === 'Recalled (3)')", timeout=60000)
+        await until(pg, "[...document.querySelectorAll('[data-upc-check-ins] .card h2')].some((h) => h.textContent === 'Recalled (3)')", timeout=60)
         check('queue: pressed while another runs, shown as Queued, both sent', queued == ['Queued'] and [x[0] for x in S['posts']] == [201, 204, 212], (queued, [x[0] for x in S['posts']]))
         # A template with a tag the script can't fill: not sent
         S['template'] = ('How are you getting on?', '<p>Your last visit was <span class="dynamicterm">[Appointment Date]</span>.</p>')
         await pg.click("[data-upc-check-ins] [data-a=recall][data-id='202']")
         await pg.click('[data-upc-ci-confirm] [data-c=yes]')
-        await pg.wait_for_selector('[data-upc-check-ins] .alert-danger', timeout=30000)
+        await until(pg, "!!document.querySelector('[data-upc-check-ins] .alert-danger')", timeout=30)
         err = await pg.evaluate("document.querySelector('[data-upc-check-ins] .alert-danger').textContent")
         check('template with [Appointment Date]: not sent, says why', len(S['posts']) == 3 and '[Appointment Date]' in err and 'Nothing was sent' in err, (len(S['posts']), err))
         # Don't send: off the list for this visit, on every PC
         await pg.click("[data-upc-check-ins] [data-a=skip][data-id='213']")
         await pg.click('[data-upc-ci-confirm] [data-c=yes]')
-        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-check-ins] .card h2')].some((h) => h.textContent === 'Not Recalled (1)')", timeout=30000)
+        await until(pg, "[...document.querySelectorAll('[data-upc-check-ins] .card h2')].some((h) => h.textContent === 'Not Recalled (1)')", timeout=30)
         note = ' '.join(n['html'] for v in S['notes'].values() for n in v)
         cards = dict(await pg.evaluate("[...document.querySelectorAll('[data-upc-check-ins] .card')].map((c) => [c.querySelector('h2').textContent, [...c.querySelectorAll('tbody tr')].map((tr) => [...tr.cells].map((x) => x.textContent.trim()))])"))
         check("Don't send: recorded for this visit, listed under Not recalled with Undo", re.search(r'p\.213 \| [\d :-]+ \| skip 0 2026-10-07', re.sub(r'<[^>]+>', ' ', note)) is not None
@@ -272,7 +275,7 @@ async def main():
         # Undo: back on the list
         await pg.click("[data-upc-check-ins] [data-a=undo][data-id='213']")
         await pg.click('[data-upc-ci-confirm] [data-c=yes]')
-        await pg.wait_for_function("!![...document.querySelectorAll('[data-upc-check-ins] .card')].find((c) => /Cancelled, Not Rebooked \\(2\\)/.test(c.textContent))", timeout=30000)
+        await until(pg, "!![...document.querySelectorAll('[data-upc-check-ins] .card')].find((c) => /Cancelled, Not Rebooked \\(2\\)/.test(c.textContent))", timeout=30)
         check('Undo: back to recall, Not recalled empty', await pg.evaluate("[...document.querySelectorAll('[data-upc-check-ins] .card h2')].some((h) => h.textContent === 'Not Recalled (0)')")
               and await pg.evaluate("(document.querySelector('a.upc-ci-menu .upc-ci-badge') || {}).textContent") == '4', cards)
         # Send date: a later date chosen in the pop-up
@@ -283,7 +286,7 @@ async def main():
         err = await pg.evaluate("document.querySelector('[data-upc-ci-confirm] [data-c-err]').textContent")
         await pg.fill('[data-upc-ci-confirm] #upc-ci-when', '2026-11-30')
         await pg.click('[data-upc-ci-confirm] [data-c=yes]')
-        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-check-ins] .card h2')].some((h) => h.textContent === 'Recalled (4)')", timeout=60000)
+        await until(pg, "[...document.querySelectorAll('[data-upc-check-ins] .card h2')].some((h) => h.textContent === 'Recalled (4)')", timeout=60)
         f = S['posts'][-1][1]
         check('send date: earlier than allowed refused in the pop-up; a later one used', 'Choose 12-Nov-2026 or later.' == err and S['posts'][-1][0] == 213
               and f.get('form[scheduleDetails][scheduleDate]') == '30-Nov-2026' and f.get('form[scheduleDetails][scheduleTime][hour]') == '10', (err, f.get('form[scheduleDetails][scheduleDate]')))
@@ -304,7 +307,7 @@ async def main():
         ctx = await context(browser)
         pg = await ctx.new_page()
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/#upc-check-ins')
-        await pg.wait_for_timeout(7000)
+        await idle(pg, 25000)
         check('others see nothing and nothing is asked of Halaxy', await pg.evaluate("!document.querySelector('[data-upc-check-ins]') && !document.querySelector('a.upc-ci-menu')")
               and not [x for x in S['log'] if 'calendar' in x[1]], S['log'])
         await ctx.close()
