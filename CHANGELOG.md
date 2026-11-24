@@ -1,5 +1,8 @@
 # Changelog
 
+## To do 0.2.7, 24 Nov 2026 (beta)
+- The count on To do in the top bar looks like the bell's (CH, 24 Nov 2026: ours covered the icon): its size, place and colours are copied from Halaxy's own count on the bell, with a small badge close to it until the bell has shown one.
+
 ## Review requests 0.5.19, Open-ended recalls 0.4.8, Patient statuses 0.2.14, To do 0.2.6, core 0.1.79, 24 Nov 2026 (beta)
 - Review requests: a Practitioner column (who the patient last saw). Below a "Done" line, Asked (the latest Review Request follow-up, sent or scheduled, with its date) and Not asked ("Don't ask this time", with Undo); a patient acted on moves down at once (CH, 24 Nov 2026).
 - Open-ended recalls: the same "Done" line above Recalled and Not recalled, which always show.

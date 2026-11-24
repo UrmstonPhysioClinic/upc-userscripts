@@ -56,7 +56,7 @@ def page_html():
             "<li class='mainmenu-item'><a class='mainmenu-link'><span class='mainmenu-link-label'>Finances</span></a><ul><li><a class='mainmenu-sublink' href='/a/pr/555/invoice/'>Invoices</a></li>"
             "<li><a class='mainmenu-sublink upc-rtb-menu' href='/a/pr/555/invoice/#upc-ready-to-bill'>Ready to bill</a></li></ul></li></ul></nav></div>"
             "<div id='headerWrapper' style='height:50px'><div id='alertHeader' class='alertIconsContainer'><div id='alertIncomingMessages' class='headIcon'><a id='btn-alert-incoming-messages' class='fa-stack alertIcon' href='javascript:' title='Inbox'><i class='icon-inbox icon'></i></a></div>"
-            "<div id='alertNotifications' class='headIcon'><a id='btn-alert-notifications' class='fa-stack alertIcon' href='javascript:' title='Notifications'><i class='icon-alarm icon'></i></a></div></div></div><div id='pageContent'><h1>Tasks</h1></div>"
+            "<div id='alertNotifications' class='headIcon'><style>#btn-alert-notifications{position:relative}#btn-alert-notifications[data-count]::after{content:attr(data-count);position:absolute;top:-3px;right:-5px;min-width:14px;height:14px;font-size:9px;line-height:14px;border-radius:7px;background-color:rgb(10,20,30);color:rgb(250,250,250)}</style><a id='btn-alert-notifications' class='fa-stack alertIcon' href='javascript:' title='Notifications' data-count='9'><i class='icon-alarm icon'></i></a></div></div></div><div id='pageContent'><h1>Tasks</h1></div>"
             "<script>window.HkUser = { linkPrG: 11, pracID: 11, pracName: 'Carl Healy' }; window.Hk = { jwt: 'j' };"
             "window.popups = []; document.addEventListener('click', (e) => { const a = e.target.closest && e.target.closest('a.ajax'); if (!a) return; e.preventDefault();"
             " window.popups.push(a.getAttribute('href')); const d = document.createElement('div'); d.className = 'bootbox modal'; d.textContent = 'Halaxy pop-up'; document.body.appendChild(d); });</script>"
@@ -134,8 +134,10 @@ async def main():
         badge = await pg.evaluate("(document.querySelector('a.upc-todo-menu .upc-todo-badge') || {}).textContent")
         check('badge: overdue and due today', badge == '2', badge)
         head = await pg.evaluate("""(() => { const a = document.querySelector('#alertHeader a.upc-todo-head'); const inbox = document.getElementById('alertIncomingMessages');
-          return a && [a.getAttribute('href'), a.title, (a.querySelector('.upc-todo-badge') || {}).textContent, getComputedStyle(inbox).display, a.parentElement.nextElementSibling.id, !!a.querySelector('svg')]; })()""")
+          return a && [a.getAttribute('href'), a.title, (a.querySelector('.upc-todo-headcount') || {}).textContent, getComputedStyle(inbox).display, a.parentElement.nextElementSibling.id, !!a.querySelector('svg')]; })()""")
         check('top bar: To do in place of the Inbox (hidden), opening To do, with the same count; drawn icon when Halaxy\'s font has none', head == ['/a/pr/555/task/#upc-to-do', 'To do', badge, 'none', 'alertIncomingMessages', True], (head, badge))
+        look = await pg.evaluate("(() => { const b = getComputedStyle(document.querySelector('#alertHeader a.upc-todo-head .upc-todo-headcount')); return [b.top, b.right, b.height, b.fontSize, b.backgroundColor]; })()")
+        check("the top bar count looks like the bell's (copied from Halaxy's own)", look == ['-3px', '-5px', '14px', '9px', 'rgb(10, 20, 30)'], look)
         check('a card for each list I can open, with count and top rows; none for lists I can\'t', 'Ready to bill (4)' in heads and 'Old balances (9)' not in heads
               and 'Patient C, Bupa, £ 1,200.00' in await pg.evaluate("document.querySelector('.upc-todo-side').innerText") and 'and 1 more' in await pg.evaluate("document.querySelector('.upc-todo-side').innerText"), heads)
 
