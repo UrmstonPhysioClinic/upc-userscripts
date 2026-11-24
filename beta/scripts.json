@@ -136,7 +136,7 @@
     {
       "file": "rebate-sync.user.js",
       "name": "UPC Billing: Rebate sync (beta)",
-      "version": "0.3.5"
+      "version": "0.3.6"
     },
     {
       "file": "record-retention.user.js",
