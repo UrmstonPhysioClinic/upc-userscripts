@@ -660,7 +660,7 @@ async def main():
         check('old statement: every unrecorded line says to check, nothing in Record all', all('Before 01-Nov-2026' in r['cells'][4] for r in rows)
               and not await pg.evaluate("!!document.querySelector('[data-upc-bank-statement] [data-a=all]')") and rows[0]['cells'][5] == 'Record' and rows[1]['cells'][5] == 'Add deposit', [r['cells'][4:] for r in rows[:2]])
         reg_btn = lambda: pg.evaluate("(document.querySelector('[data-upc-bank-statement] [data-a=register]') || {}).textContent || ''")
-        check('nothing to record, not in the register: Save to register offered', await reg_btn() == 'Save to register' and not S['orgfiles'], await reg_btn())
+        check('nothing to record, not in the register: Save to register offered', await reg_btn() == 'Save to Register' and not S['orgfiles'], await reg_btn())
         await pg.click('[data-upc-bank-statement] [data-a=register]')
         await pg.wait_for_selector('[data-upc-bank-confirm]', timeout=10000)
         await pg.click('[data-upc-bank-confirm] [data-c=yes]')

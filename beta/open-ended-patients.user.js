@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Open-ended recalls (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.8
+// @version      0.4.9
 // @upc-was      check-ins.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/open-ended-patients.user.js
@@ -41,7 +41,7 @@
   if (window.__hxCheckIns) return;
   window.__hxCheckIns = true;
 
-  const VERSION = '0.4.8';
+  const VERSION = '0.4.9';
   const ROUTE = 'upc-check-ins';
   const MENU_CLS = 'upc-ci-menu';
   const ALLOWED = () => rule('openEnded.people', ['Carl Healy']);
@@ -264,7 +264,7 @@
     const r = store.get('result', null);
     const base = U().base();
     const bq = U().ui.batch('open-ended-recalls', 'Working through the list', 'done', state.queue.length + (state.busy ? 1 : 0), state.errors.length);
-    let h = '<div class="upc-ci">' + U().ui.page.bar('Open-ended recalls', '<button type="button" class="btn btn-outline-primary" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>', bq || ((state.running ? U().ui.run.inline(state.status) : U().ui.page.checked(r && r.at))));
+    let h = '<div class="upc-ci">' + U().ui.page.bar('Open-ended recalls', '<button type="button" class="btn btn-outline-primary" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check Now') + '</button>', bq || ((state.running ? U().ui.run.inline(state.status) : U().ui.page.checked(r && r.at))));
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     state.errors.forEach((m) => { h += '<div class="alert alert-danger upc-err">' + esc(m) + '</div>'; });
     if (r) {
@@ -273,14 +273,14 @@
       const todo = ok.filter((x) => !recallFor(x, recs)), done = ok.filter((x) => { const k = recallFor(x, recs); return k && k.kind !== 'skip'; });
       const notRecalled = ok.filter((x) => { const k = recallFor(x, recs); return k && k.kind === 'skip'; });
       const open = todo.filter((x) => x.kind !== 'cancelled'), cancelled = todo.filter((x) => x.kind === 'cancelled');
-      const head = '<thead><tr><th>Patient</th><th>Last seen</th><th class="number">Weeks</th><th>Practitioner</th><th>Status</th><th></th></tr></thead>';
+      const head = '<thead><tr><th>Patient</th><th>Last Seen</th><th class="number">Weeks</th><th>Practitioner</th><th>Status</th><th></th></tr></thead>';
       const row = (x) => {
         const rc = recallFor(x, recs);
         const act = rc && rc.kind === 'skip' ? (state.busy === x.id ? U().ui.run.inline('') : state.queue.some((q) => q.id === x.id) ? 'Queued'
             : '<button type="button" class="btn btn-outline-primary-light" data-a="undo" data-id="' + esc(x.id) + '">Undo</button>')
           : rc ? esc(rc.kind === 'sched' ? (rc.at > Date.now() ? 'Scheduled for ' : 'Sent ') + label(rc.at) + ' ' + two(new Date(rc.at).getHours()) + ':' + two(new Date(rc.at).getMinutes()) : 'Check in Halaxy')
           : state.busy === x.id ? U().ui.run.inline('') : state.queue.some((q) => q.id === x.id) ? 'Queued'
-          : '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-a="recall" data-id="' + esc(x.id) + '">Send recall</button>' +
+          : '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-a="recall" data-id="' + esc(x.id) + '">Send Recall</button>' +
             '<button type="button" class="btn btn-outline-primary-light" data-a="skip" data-id="' + esc(x.id) + '">Don\'t send</button></div>';
         return '<tr><td><a href="' + esc(base + '/patient/' + x.id) + '" target="_blank" rel="noopener">' + esc(x.name) + '</a></td>' +
           '<td class="upc-ci-date">' + esc(label(x.lastSeen)) + '</td><td class="number">' + Math.floor(Math.round((today() - new Date(x.lastSeen).setHours(0, 0, 0, 0)) / DAY) / 7) + '</td>' +
@@ -288,7 +288,7 @@
           '<td>' + esc(x.kind === 'cancelled' ? x.missed + ' ' + label(x.missedOn) : x.found.join(', ')) + (x.noteId ? ' (<a href="' + esc(base + '/patient/' + x.id + '/clinical/category/note/id/' + x.noteId) + '" target="_blank" rel="noopener">note' + (x.noteDate ? ' ' + esc(label(x.noteDate)) : '') + '</a>)' : '') + '</td>' +
           '<td class="upc-ci-act">' + act + '</td></tr>';
       };
-      const card = (title, list) => '<div class="card"><div class="card-header"><h2>' + title + ' (' + list.length + ')</h2></div><div class="card-body p-0">' +
+      const card = (title, list) => '<div class="card"><div class="card-header"><h2>' + U().ui.titleCase(title) + ' (' + list.length + ')</h2></div><div class="card-body p-0">' +
         (list.length ? '<table class="table table-striped table-bordered w-100 m-0">' + head + '<tbody>' + list.map(row).join('') + '</tbody></table>' : '<p class="text-muted m-3">None.</p>') + '</div></div>';
       h += card('Open-ended', open) + card('Cancelled, not rebooked', cancelled);
       // Below a "Done" line (CH, 24 Nov 2026): the ones already acted on.
@@ -313,7 +313,7 @@
       const doneWith = (v) => { if (!answered) { answered = true; resolve(v); } };
       const dlg = U().ui.dialog({ title, small: true, onClose: () => doneWith(false) });
       dlg.root.setAttribute('data-upc-ci-confirm', '');
-      dlg.body.innerHTML = html + '<div class="alert alert-danger upc-err" data-c-err hidden></div><div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-c="no">Cancel</button><button type="button" class="btn btn-primary" data-c="yes">' + esc(yes) + '</button></div>';
+      dlg.body.innerHTML = html + '<div class="alert alert-danger upc-err" data-c-err hidden></div><div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-c="no">Cancel</button><button type="button" class="btn btn-primary" data-c="yes">' + esc(window.UPC && UPC.ui.titleCase ? UPC.ui.titleCase(yes) : yes) + '</button></div>';
       // Halaxy's own date picker on the send date (CH, 23 Nov 2026).
       dlg.body.querySelectorAll('input[type=date]').forEach((i) => U().ui.datePicker(i));
       dlg.body.addEventListener('click', (e) => {

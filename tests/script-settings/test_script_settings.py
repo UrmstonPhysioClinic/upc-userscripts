@@ -94,7 +94,7 @@ async def main():
         await pg.wait_for_selector('.upc-ss table')
         root = "document.querySelector('.upc-ss')"
         page = await pg.evaluate("[location.hash, document.querySelector('.upc-ss .upc-page-bar h1').textContent, [...document.querySelectorAll('.upc-ss .nav-link')].map(a => a.textContent + (a.classList.contains('active') ? '*' : ''))]")
-        check('a page of ours (title bar, tabs), opened on the page that was showing', page[0] == '#upc-script-settings' and page[1] == 'Script settings' and page[2] == ['This PC*', 'Clinic settings', 'Options'], page)
+        check('a page of ours (title bar, tabs), opened on the page that was showing', page[0] == '#upc-script-settings' and page[1] == 'Script Settings' and page[2] == ['This PC*', 'Clinic Settings', 'Options'], page)
         rows = await pg.evaluate("[..." + root + ".querySelectorAll('.card tbody tr')].map(r => r.innerText.replace(/\\s+/g, ' ').trim())")
         check('scripts on this PC with versions', any('Fixture options' in r and '1.0 running on this page' in r for r in rows) and len(rows) == 3, rows)
         heads = await pg.evaluate("[..." + root + ".querySelectorAll('.card-header h2')].map(r => r.innerText.trim())")
@@ -105,7 +105,7 @@ async def main():
 
         await pg.click('.upc-ss [data-a=options]')
         groups = await pg.evaluate("[..." + root + ".querySelectorAll('.card')].map(g => g.innerText.replace(/\\s+/g, ' ').trim())")
-        check('options: a card per script', groups == ['Fixture options (2) Fixture: show results Fixture: on (click to turn off)'], groups)
+        check('options: a card per script', groups == ['Fixture Options (2) Fixture: show results Fixture: on (click to turn off)'], groups)
         await pg.click('.upc-ss [data-item]')
         check('an option runs from the page', await pg.evaluate('window.__fixtureRan === 1'))
 

@@ -383,7 +383,7 @@ async def main():
         ctx = await setup(browser)
         pg, errors = await open_halaxy(ctx, 9001)
         btn = await pg.evaluate("(document.querySelector('[data-upc-portal-fill] button') || {}).textContent")
-        check('AXA funder invoice: Fill on the AXA portal', btn == 'Fill on the AXA portal', btn)
+        check('AXA funder invoice: Fill on the AXA Portal', btn == 'Fill on the AXA Portal', btn)
         look = await pg.evaluate("(() => { const b = document.querySelector('[data-upc-portal-fill]'); return b.classList.contains('upc-native') && b.closest('#card-invoice-view-organisation') !== null && b.querySelector('button').className; })()")
         check('Halaxy look, in the Bill To box', look == 'btn btn-outline-primary-light', look)
 
@@ -446,7 +446,7 @@ async def main():
         # Bupa
         pg2, errors2 = await open_halaxy(ctx, 9002)
         S['bupa']['reopen'] = True   # the first Save brings the form back without a message, as a refresh would
-        check('Bupa funder invoice: Fill on the Bupa portal', await pg2.evaluate("document.querySelector('[data-upc-portal-fill] button').textContent") == 'Fill on the Bupa portal')
+        check('Bupa funder invoice: Fill on the Bupa Portal', await pg2.evaluate("document.querySelector('[data-upc-portal-fill] button').textContent") == 'Fill on the Bupa Portal')
         async with ctx.expect_page() as newp:
             await pg2.click('[data-upc-portal-fill] button')
         portal = await newp.value

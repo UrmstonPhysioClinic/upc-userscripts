@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Schedule: To do (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.12
+// @version      0.2.13
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
@@ -38,7 +38,7 @@
   if (window.__hxToDo) return;
   window.__hxToDo = true;
 
-  const VERSION = '0.2.12';
+  const VERSION = '0.2.13';
   const ROUTE = 'upc-to-do';
   const MENU_CLS = 'upc-todo-menu';
   const DAY = 864e5, MIN = 60e3;
@@ -504,7 +504,7 @@
 
   function table(listId, ts) {
     const today = dayStart(Date.now()), f = filters();
-    return '<table class="table table-striped table-bordered w-100 m-0" data-upc-list="' + listId + '" data-upc-pick><thead><tr><th>Task</th><th>Linked to</th><th>Due</th><th>Priority</th>' + (f.who === 'me' ? '' : '<th>For</th>') + '<th data-upc-nosort></th></tr></thead><tbody>' +
+    return '<table class="table table-striped table-bordered w-100 m-0" data-upc-list="' + listId + '" data-upc-pick><thead><tr><th>Task</th><th>Linked To</th><th>Due</th><th>Priority</th>' + (f.who === 'me' ? '' : '<th>For</th>') + '<th data-upc-nosort></th></tr></thead><tbody>' +
       ts.map((t) => row(t, today)).join('') + '</tbody></table>';
   }
 
@@ -566,10 +566,10 @@
   function weekView(ts) {
     const monday = mondayOf(Date.now()) + state.week * 7 * DAY, today = dayStart(Date.now());
     const tray = ts.filter((t) => !t.completed && (t.due === null || t.due < Math.max(today, monday)));
-    let h = '<div class="upc-todo-weeknav"><button type="button" class="btn btn-outline-primary-light" data-a="week" data-step="-1">Previous week</button>' +
-      '<button type="button" class="btn btn-outline-primary-light" data-a="week" data-step="0">This week</button><button type="button" class="btn btn-outline-primary-light" data-a="week" data-step="1">Next week</button>' +
+    let h = '<div class="upc-todo-weeknav"><button type="button" class="btn btn-outline-primary-light" data-a="week" data-step="-1">Previous Week</button>' +
+      '<button type="button" class="btn btn-outline-primary-light" data-a="week" data-step="0">This Week</button><button type="button" class="btn btn-outline-primary-light" data-a="week" data-step="1">Next Week</button>' +
       '<span class="text-muted">' + esc(label(monday) + ' to ' + label(monday + 4 * DAY)) + '</span></div><div class="upc-todo-week">';
-    h += '<div class="card"><div class="card-header"><h2>Overdue or no date (' + tray.length + ')</h2></div><div class="card-body">' + (tray.slice(0, 40).map(chip).join('') || '<p class="text-muted m-0">None.</p>') +
+    h += '<div class="card"><div class="card-header"><h2>Overdue or No Date (' + tray.length + ')</h2></div><div class="card-body">' + (tray.slice(0, 40).map(chip).join('') || '<p class="text-muted m-0">None.</p>') +
       (tray.length > 40 ? '<p class="text-muted m-0">and ' + (tray.length - 40) + ' more</p>' : '') + '</div></div>';
     const counts = apptCounts(monday);
     WEEKDAYS.forEach((name, i) => {
@@ -587,7 +587,7 @@
   function side() {
     const lists = U().todo.all().filter((x) => x.cls && document.querySelector('#mainMenu a.' + x.cls));
     return lists.sort((a, b) => String(a.title).localeCompare(String(b.title))).map((x) =>
-      '<div class="card"><div class="card-header"><h2>' + esc(x.title) + ' (' + (x.count || 0) + ')</h2><a class="btn btn-outline-primary-light" href="' + esc(x.href) + '">Open</a></div><div class="card-body">' +
+      '<div class="card"><div class="card-header"><h2>' + esc(U().ui.titleCase(x.title)) + ' (' + (x.count || 0) + ')</h2><a class="btn btn-outline-primary-light" href="' + esc(x.href) + '">Open</a></div><div class="card-body">' +
       ((x.rows || []).length ? '<ul>' + x.rows.map((r) => '<li>' + esc(r) + '</li>').join('') + '</ul>' + ((x.count || 0) > x.rows.length ? '<p class="text-muted m-0">and ' + (x.count - x.rows.length) + ' more</p>' : '') : '<p class="text-muted m-0">None.</p>') +
       '</div></div>').join('');
   }
@@ -595,8 +595,8 @@
   function render() {
     if (!root) return;
     const c = store().get('open', null), f = filters();
-    const actions = '<button type="button" class="btn btn-primary" data-a="new">New task</button>' +
-      '<button type="button" class="btn btn-outline-primary" data-a="refresh"' + (state.loading ? ' disabled' : '') + '>' + (state.loading ? 'Checking...' : 'Check now') + '</button>';
+    const actions = '<button type="button" class="btn btn-primary" data-a="new">New Task</button>' +
+      '<button type="button" class="btn btn-outline-primary" data-a="refresh"' + (state.loading ? ' disabled' : '') + '>' + (state.loading ? 'Checking...' : 'Check Now') + '</button>';
     const bq = U().ui.batch('to-do', 'Updating tasks', 'done', jobs.length + (busy !== null ? 1 : 0), state.errors.length);
     let h = '<div class="upc-todo">' + U().ui.page.bar('To do', actions, bq || (state.loading ? U().ui.run.inline('Reading tasks...') : U().ui.page.checked(c && c.at)));
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';

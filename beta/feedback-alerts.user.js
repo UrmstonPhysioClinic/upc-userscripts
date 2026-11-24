@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Feedback alerts (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.8
+// @version      0.1.9
 // @upc-was      survey-feedback.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/feedback-alerts.user.js
@@ -36,7 +36,7 @@
   if (window.__hxSurveyFeedback) return;
   window.__hxSurveyFeedback = true;
 
-  const VERSION = '0.1.8';
+  const VERSION = '0.1.9';
   // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
   const rule = (k, d) => (window.UPC && UPC.settings && UPC.settings.def(k) ? UPC.settings.get(k) : d);
   const ALLOWED = () => rule('feedbackAlerts.people', ['Carl Healy']);   // CH, 11 Nov 2026
@@ -184,7 +184,7 @@
       const shown = all.filter(([, v]) => v.outcome !== 'ok').sort((a, b) => b[1].at - a[1].at);
       const last = store.get('last', 0), err = store.get('lastError', null);
       const base = U().base();
-      let h = '<div class="upc-fb-bar"><button type="button" class="btn btn-outline-primary-light" data-a="check"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Checking...' : 'Check now') + '</button>' +
+      let h = '<div class="upc-fb-bar"><button type="button" class="btn btn-outline-primary-light" data-a="check"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Checking...' : 'Check Now') + '</button>' +
         (busy ? U().ui.run.inline(status) : '<span class="text-muted">' + esc(last ? 'Checked at ' + new Date(last).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + label(last) + '.' : 'Not checked yet.') + '</span>') + '</div>';
       if (err && err.at >= last - 60e3) h += '<div class="alert alert-danger upc-err">Last check: ' + esc(err.message) + '</div>';
       h += '<p>Responses in the last 14 days: ' + counts.excellent + ' Excellent, ' + counts.satisfactory + ' Satisfactory, ' + counts.below + ' Below expected.</p>';

@@ -173,8 +173,8 @@ async def main():
         names = [r[0] for r in rows]
         cards = await pg.evaluate("[...document.querySelectorAll('[data-upc-check-ins] .card')].map((c) => [c.querySelector('h2').textContent, [...c.querySelectorAll('tbody tr')].map((tr) => [...tr.cells].map((x) => x.textContent.trim()))])")
         cd = dict(cards)
-        check('open-ended, 3 weeks to 3 months, nothing booked: oldest visit first', [r[0] for r in cd.get('Open-ended (5)', [])] == ['Patient C', 'Patient B', 'Patient L', 'Patient A', 'Patient D'], cards)
-        canc = cd.get('Cancelled, not rebooked (2)', [])
+        check('open-ended, 3 weeks to 3 months, nothing booked: oldest visit first', [r[0] for r in cd.get('Open-Ended (5)', [])] == ['Patient C', 'Patient B', 'Patient L', 'Patient A', 'Patient D'], cards)
+        canc = cd.get('Cancelled, Not Rebooked (2)', [])
         check('cancelled or missed after the last visit, nothing rebooked: own card, whatever the note says', [r[0] for r in canc] == ['Patient M', 'Patient H']
               and canc[0][4].startswith('Cancelled 22-Oct-2026') and canc[1][4].startswith('Missed 27-Oct-2026'), cards)
         check('left out: discharged with "return if", cancelled after finishing, missed and owing money', 'Patient P' not in names and 'Patient N' not in names and 'Patient O' not in names, names)
@@ -263,17 +263,17 @@ async def main():
         # Don't send: off the list for this visit, on every PC
         await pg.click("[data-upc-check-ins] [data-a=skip][data-id='213']")
         await pg.click('[data-upc-ci-confirm] [data-c=yes]')
-        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-check-ins] .card h2')].some((h) => h.textContent === 'Not recalled (1)')", timeout=30000)
+        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-check-ins] .card h2')].some((h) => h.textContent === 'Not Recalled (1)')", timeout=30000)
         note = ' '.join(n['html'] for v in S['notes'].values() for n in v)
         cards = dict(await pg.evaluate("[...document.querySelectorAll('[data-upc-check-ins] .card')].map((c) => [c.querySelector('h2').textContent, [...c.querySelectorAll('tbody tr')].map((tr) => [...tr.cells].map((x) => x.textContent.trim()))])"))
         check("Don't send: recorded for this visit, listed under Not recalled with Undo", re.search(r'p\.213 \| [\d :-]+ \| skip 0 2026-10-07', re.sub(r'<[^>]+>', ' ', note)) is not None
-              and [r[0] for r in cards.get('Not recalled (1)', [])] == ['Patient M'] and cards['Not recalled (1)'][0][5] == 'Undo'
+              and [r[0] for r in cards.get('Not Recalled (1)', [])] == ['Patient M'] and cards['Not Recalled (1)'][0][5] == 'Undo'
               and await pg.evaluate("(document.querySelector('a.upc-ci-menu .upc-ci-badge') || {}).textContent") == '3', (cards, note[-300:]))
         # Undo: back on the list
         await pg.click("[data-upc-check-ins] [data-a=undo][data-id='213']")
         await pg.click('[data-upc-ci-confirm] [data-c=yes]')
-        await pg.wait_for_function("!![...document.querySelectorAll('[data-upc-check-ins] .card')].find((c) => /Cancelled, not rebooked \\(2\\)/.test(c.textContent))", timeout=30000)
-        check('Undo: back to recall, Not recalled empty', await pg.evaluate("[...document.querySelectorAll('[data-upc-check-ins] .card h2')].some((h) => h.textContent === 'Not recalled (0)')")
+        await pg.wait_for_function("!![...document.querySelectorAll('[data-upc-check-ins] .card')].find((c) => /Cancelled, Not Rebooked \\(2\\)/.test(c.textContent))", timeout=30000)
+        check('Undo: back to recall, Not recalled empty', await pg.evaluate("[...document.querySelectorAll('[data-upc-check-ins] .card h2')].some((h) => h.textContent === 'Not Recalled (0)')")
               and await pg.evaluate("(document.querySelector('a.upc-ci-menu .upc-ci-badge') || {}).textContent") == '4', cards)
         # Send date: a later date chosen in the pop-up
         S['template'] = ('How are you getting on?', '<p>Since you last saw <span class="dynamicterm">[Practitioner First Name]</span>.</p>')

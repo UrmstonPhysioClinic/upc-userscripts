@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.82
+// @version      0.1.83
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.82';
+  const VERSION = '0.1.83';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -2221,9 +2221,24 @@
     if (m && raw !== '') return { n: parseFloat(raw.replace(/[£,\s]/g, '')) };
     return { s: raw.toLowerCase() };
   }
+  // Headings, menu items, tabs, column headers and buttons are written as Halaxy writes them, each word with a capital
+  // ("Patient List", "Tasks & Follow-Ups"; CH, 24 Nov 2026), except short joining words inside ("Cards on File",
+  // "Ready to Bill"). Words already with capitals (AXA, HTML, UPC-012235) are left as they are. Sentences are not changed.
+  const MINOR = new Set('a an and as at but by for in nor of on or per the to vs via with'.split(' '));
+  function titleCase(text) {
+    const ws = String(text == null ? '' : text).split(' ');
+    let first = true;
+    return ws.map((w, i) => {
+      if (!/[A-Za-z]/.test(w)) return w;
+      const isFirst = first;
+      first = /:$/.test(w);
+      if (!isFirst && i < ws.length - 1 && MINOR.has(w.toLowerCase())) return w.toLowerCase();
+      return w.split('-').map((p) => (/^[a-z]/.test(p) ? p[0].toUpperCase() + p.slice(1) : p)).join('-');
+    }).join(' ');
+  }
   const page = {
-    bar(title, actions, sub) {
-      return '<div class="upc-page-bar"><h1>' + esc(title) + '</h1><div class="upc-page-actions">' + (actions || '') + '</div></div>' +
+    bar(title_, actions, sub) {
+      return '<div class="upc-page-bar"><h1>' + esc(titleCase(title_)) + '</h1><div class="upc-page-actions">' + (actions || '') + '</div></div>' +
         '<div class="upc-page-sub">' + (sub || '') + '</div>';
     },
     // "Checked at 12:30 on 16-Nov-2026." for the line under the title bar.
@@ -2232,15 +2247,15 @@
     },
     // A line across the page with a word in it, between the groups still to act on and those already done
     // (CH, 24 Nov 2026), e.g. divider('Done').
-    divider(text) { return '<div class="upc-divider"><span>' + esc(text) + '</span></div>'; },
+    divider(text) { return '<div class="upc-divider"><span>' + esc(titleCase(text)) + '</span></div>'; },
     // A row's outcome as a pill (CH, 24 Nov 2026: "Moved" in green text looked out of place): kind ok (done), err
     // (not changed), wait (queued), info.
     pill(text, kind) {
       const k = { ok: 'success', err: 'danger', wait: 'light', info: 'info' }[kind || 'ok'] || 'success';
       return '<span class="badge badge-pill badge-' + k + ' upc-pill">' + esc(text) + '</span>';
     },
-    card(title, n, extra, body) {
-      return '<div class="card"><div class="card-header"><h2>' + esc(title) + ' (' + n + (extra ? ', ' + esc(extra) : '') + ')</h2></div><div class="card-body p-0">' +
+    card(title_, n, extra, body) {
+      return '<div class="card"><div class="card-header"><h2>' + esc(titleCase(title_)) + ' (' + n + (extra ? ', ' + esc(extra) : '') + ')</h2></div><div class="card-body p-0">' +
         (n ? body : '<p class="text-muted m-3">None.</p>') + '</div></div>';
     },
   };
@@ -2352,7 +2367,7 @@
         let more = table.nextElementSibling && table.nextElementSibling.classList.contains('upc-list-more') ? table.nextElementSibling : null;
         if (match.length > s.shown) {
           if (!more) { more = document.createElement('div'); more.className = 'upc-list-more'; table.parentNode.insertBefore(more, table.nextSibling); }
-          more.innerHTML = '<button type="button" class="btn btn-outline-primary-light" data-upc-more="' + esc(id) + '">Show ' + Math.min(PAGE_ROWS, match.length - s.shown) + ' more</button> <span class="text-muted">' + s.shown + ' of ' + match.length + ' shown</span>';
+          more.innerHTML = '<button type="button" class="btn btn-outline-primary-light" data-upc-more="' + esc(id) + '">Show ' + Math.min(PAGE_ROWS, match.length - s.shown) + ' More</button> <span class="text-muted">' + s.shown + ' of ' + match.length + ' shown</span>';
         } else if (more) more.remove();
       });
     },
@@ -2392,6 +2407,7 @@
   const ui = {
     nativeStyles,
     run,
+    titleCase,
     batch,
     toast,
     page,
@@ -2406,6 +2422,7 @@
       root.className = 'upc-native upc-dialog' + (above ? ' upc-above' : '');
       root.setAttribute('role', 'dialog');
       root.setAttribute('aria-modal', 'true');
+      title = titleCase(title);
       root.setAttribute('aria-label', title);
       if (key) root.setAttribute('data-upc-dialog', key);
       root.innerHTML = '<div class="upc-backdrop"></div><div class="modal-dialog' + (small ? ' upc-small' : ' modal-lg') + (wide ? ' upc-wide' : '') + '"><div class="modal-content">' +
@@ -2423,7 +2440,7 @@
       root.addEventListener('click', (e) => { if (e.target.closest('[data-upc-close]')) close(); });
       document.addEventListener('keydown', onKey, true);
       document.body.appendChild(root);
-      return { root, body, close, setTitle: (s) => { root.querySelector('.modal-title').textContent = s; } };
+      return { root, body, close, setTitle: (s) => { root.querySelector('.modal-title').textContent = titleCase(s); } };
     },
     // Halaxy button class names: 'primary' (filled), 'outline' (pop-up secondary), 'light' (small, on pages).
     btn: (kind) => 'btn ' + ({ primary: 'btn-primary', outline: 'btn-outline-primary', light: 'btn-outline-primary-light' }[kind] || 'btn-outline-primary'),
@@ -2451,9 +2468,10 @@
         a.removeAttribute('onclick');
         a.classList.remove('active');
         a.classList.add(cls);
-        a.textContent = label;
+        a.textContent = titleCase(label);
         // A fixed order after Halaxy's own items (CH, 23 Nov 2026: our items moved about with the scripts' load order).
-        const rank = MENU_ORDER.indexOf(label) < 0 ? MENU_ORDER.length : MENU_ORDER.indexOf(label);
+        const at = MENU_ORDER.findIndex((m) => m.toLowerCase() === String(label).toLowerCase());
+        const rank = at < 0 ? MENU_ORDER.length : at;
         copy.setAttribute('data-upc-menu-rank', String(rank));
         const after = [...host.parentNode.children].find((n) => n.hasAttribute && n.hasAttribute('data-upc-menu-rank') && +n.getAttribute('data-upc-menu-rank') > rank);
         host.parentNode.insertBefore(copy, after || null);
@@ -2463,7 +2481,7 @@
       if (first && first.parentNode) {
         const li = document.createElement(first.tagName.toLowerCase());
         li.className = 'mainmenu-item';
-        li.innerHTML = '<a class="mainmenu-link ' + esc(cls) + '" href="' + esc(href) + '"><span class="mainmenu-link-label">' + esc(label) + '</span></a>';
+        li.innerHTML = '<a class="mainmenu-link ' + esc(cls) + '" href="' + esc(href) + '"><span class="mainmenu-link-label">' + esc(titleCase(label)) + '</span></a>';
         first.parentNode.appendChild(li);
         return true;
       }

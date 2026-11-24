@@ -1,5 +1,8 @@
 # Changelog
 
+## Title Case across the scripts, core 0.1.83, To do 0.2.13, 24 Nov 2026 (beta)
+- Menu items, page titles, card headings, dividers, pop-up titles, tabs, column headers and buttons have a capital on every word, as Halaxy writes them ("Cards on File", "Ready to Bill", "Check Now"; CH, 24 Nov 2026). Sentences, messages and settings labels are unchanged. Core UPC.ui.titleCase, used by the page kit, dialogs and menu items; tests/check_scripts.py checks literal buttons and headers in beta.
+
 ## To do 0.2.12, core 0.1.82, 24 Nov 2026 (beta)
 - Counts (menu and To do in the top bar) were squashed: the bell's count adds its padding to its height (content-box), ours took it from the height (CH, 24 Nov 2026, capture the same day). To do's count is placed from where Halaxy draws the bell's on its icon, measured on screen (Halaxy places it from the box around the bell, not the bell link).
 - To do's Week view: each day's appointment count is a card of its own at the top of the day, without the purple edge, and only for clinicians (the signed-in person is one of Halaxy's practitioners), not administrators (CH, 24 Nov 2026).

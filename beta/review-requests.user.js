@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Review requests (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.5.19
+// @version      0.5.20
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
@@ -50,7 +50,7 @@
   if (window.__hxReviewRequests) return;
   window.__hxReviewRequests = true;
 
-  const VERSION = '0.5.19';
+  const VERSION = '0.5.20';
   const ROUTE = 'upc-review-requests';
   const MENU_CLS = 'upc-rr-menu';
   const ALLOWED = () => rule('reviewRequests.people', ['Carl Healy']);   // CH, 10 Nov 2026: just me for now
@@ -388,7 +388,7 @@
     const acts = d && d.sent ? '<span class="upc-ok">Review request scheduled for ' + esc(d.sent) + (d.reminder ? ', reminder ' + esc(d.reminder) : '') + '</span>' +
       (d.reminderError ? '<br><span class="upc-err">Reminder not added: ' + esc(d.reminderError) + '</span>' : '') : d === 'skipped' ? '<span class="upc-ok">Not asking this time</span>' : queuedOf(r.id) === 'busy' ? U().ui.run.inline('') : queuedOf(r.id) === 'queued' ? 'Queued'
       : (d && d.error ? '<span class="upc-err">' + esc(d.error) + '</span><br>' : '') +
-        '<button type="button" class="btn btn-outline-primary-light" data-send="' + esc(r.id) + '">Send review request</button>' +
+        '<button type="button" class="btn btn-outline-primary-light" data-send="' + esc(r.id) + '">Send Review Request</button>' +
         '<button type="button" class="btn btn-outline-primary" data-skip="' + esc(r.id) + '">Don\'t ask this time</button>';
     return '<tr><td><a href="' + esc(base + '/patient/' + r.id) + '" target="_blank" rel="noopener">' + esc(r.name) + '</a></td>' +
       '<td class="upc-rr-date">' + esc(label(r.lastSeen)) + '</td><td>' + esc(r.prac || '') + '</td><td class="upc-rr-why">' + why + '</td><td class="upc-rr-links">' + linksHtml(r) + '</td><td class="upc-rr-acts">' + acts + '</td></tr>';
@@ -397,15 +397,15 @@
   function render() {
     if (!root) return;
     const r = store.get('result', null);
-    const head = '<thead><tr><th>Patient</th><th>Last visit</th><th>Practitioner</th><th>Status</th><th>Check first</th><th></th></tr></thead>';
+    const head = '<thead><tr><th>Patient</th><th>Last Visit</th><th>Practitioner</th><th>Status</th><th>Check First</th><th></th></tr></thead>';
     const bq = U().ui.batch('review-requests', 'Working through the list', 'done', jobs.length + (jobBusy !== null ? 1 : 0), [...done.values()].filter((d) => d && d.error).length);
-    let h = '<div class="upc-rr">' + U().ui.page.bar('Review requests', '<button type="button" class="btn btn-outline-primary" data-a="refresh"' + (state.running ? ' disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>', bq || ((state.running ? U().ui.run.inline(state.status) : U().ui.page.checked(r && r.at))));
+    let h = '<div class="upc-rr">' + U().ui.page.bar('Review requests', '<button type="button" class="btn btn-outline-primary" data-a="refresh"' + (state.running ? ' disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check Now') + '</button>', bq || ((state.running ? U().ui.run.inline(state.status) : U().ui.page.checked(r && r.at))));
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     if (r) {
       // Asked or not asked on this page since the last check move straight down to the log.
       const acted = (x) => { const d = done.get(x.id); return d && (d.sent || d === 'skipped'); };
       const ready = r.rows.filter((x) => x.verdict === 'ready' && !acted(x)), rest = r.rows.filter((x) => x.verdict !== 'ready' && !acted(x));
-      const card = (title, list, hd, row) => '<div class="card"><div class="card-header"><h2>' + title + ' (' + list.length + ')</h2></div><div class="card-body p-0">' +
+      const card = (title, list, hd, row) => '<div class="card"><div class="card-header"><h2>' + U().ui.titleCase(title) + ' (' + list.length + ')</h2></div><div class="card-body p-0">' +
         (list.length ? '<table class="table table-striped table-bordered w-100 m-0">' + hd + '<tbody>' + list.map(row).join('') + '</tbody></table>' : '<p class="text-muted m-3">None.</p>') + '</div></div>';
       h += card('Good outcome', ready, head, rowHtml);
       if (rest.length) h += card('Worth a look', rest, head, rowHtml);
@@ -416,10 +416,10 @@
       const askedList = nowAsked.concat((r.asked || []).filter((x) => !undone.has(x.id)));
       const skippedList = nowSkipped.concat((r.skipped || []).filter((x) => !undone.has(x.id)));
       h += U().ui.page.divider('Done');
-      h += card('Asked', askedList, '<thead><tr><th>Patient</th><th>Last visit</th><th>Practitioner</th><th>Review request</th></tr></thead>',
+      h += card('Asked', askedList, '<thead><tr><th>Patient</th><th>Last Visit</th><th>Practitioner</th><th>Review Request</th></tr></thead>',
         (x) => '<tr>' + who(x) + '<td>' + esc((/sched/i.test(x.status) ? 'Scheduled for ' : /sent/i.test(x.status) ? 'Sent ' : '') + x.when + (x.reminder ? ', reminder ' + x.reminder : '')) +
           (x.reminderError ? '<br><span class="upc-err">Reminder not added: ' + esc(x.reminderError) + '</span>' : '') + '</td></tr>');
-      h += card('Not asked', skippedList, '<thead><tr><th>Patient</th><th>Last visit</th><th>Practitioner</th><th></th></tr></thead>',
+      h += card('Not asked', skippedList, '<thead><tr><th>Patient</th><th>Last Visit</th><th>Practitioner</th><th></th></tr></thead>',
         (x) => '<tr>' + who(x) + '<td class="upc-rr-acts">' + (queuedOf(x.id) === 'busy' ? U().ui.run.inline('') : queuedOf(x.id) === 'queued' ? 'Queued'
           : '<button type="button" class="btn btn-outline-primary-light" data-undo="' + esc(x.id) + '">Undo</button>') + '</td></tr>');
       const c = r.counts;
@@ -438,7 +438,7 @@
       const doneWith = (v) => { if (!answered) { answered = true; resolve(v); } };
       const dlg = U().ui.dialog({ title, small: true, onClose: () => doneWith(false) });
       dlg.root.setAttribute('data-upc-rr-confirm', '');
-      dlg.body.innerHTML = html + '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-c="no">Cancel</button><button type="button" class="btn btn-primary" data-c="yes">' + esc(yes) + '</button></div>';
+      dlg.body.innerHTML = html + '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-c="no">Cancel</button><button type="button" class="btn btn-primary" data-c="yes">' + esc(window.UPC && UPC.ui.titleCase ? UPC.ui.titleCase(yes) : yes) + '</button></div>';
       dlg.body.addEventListener('click', (e) => { const b = e.target.closest('[data-c]'); if (!b) return; doneWith(b.dataset.c === 'yes'); dlg.close(); });
     });
   }

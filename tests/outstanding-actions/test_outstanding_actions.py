@@ -245,7 +245,7 @@ async def main():
         pill2 = await t2.evaluate(shadow + ".querySelector('.upc-oa-pill').textContent")
         check('second tab reuses the first tab\'s result', STATE['cal'] == 0 and pill2 == 'Outstanding today: 1 note · 1 unpaid · 1 to check', (STATE['cal'], pill2))
         await t2.evaluate(shadow + ".querySelector('.upc-oa-pill').click()")
-        await t2.evaluate("[..." + shadow + ".querySelectorAll('button')].find(b => b.textContent === 'Check now').click()")
+        await t2.evaluate("[..." + shadow + ".querySelectorAll('button')].find(b => b.textContent === 'Check Now').click()")
         await t2.wait_for_timeout(1500)
         a1, a2 = await t1.evaluate('hxOutstanding.state().at'), await t2.evaluate('hxOutstanding.state().at')
         check('Check now in one tab updates the other', STATE['cal'] == 1 and a1 == a2, (STATE['cal'], a1, a2))

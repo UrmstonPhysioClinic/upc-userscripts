@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Insurer payments due (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.12
+// @version      0.1.13
 // @upc-was      funder-chaser.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/insurer-payments-due.user.js
@@ -31,7 +31,7 @@
   if (window.__hxFunderChaser) return;
   window.__hxFunderChaser = true;
 
-  const VERSION = '0.1.12';
+  const VERSION = '0.1.13';
   const ROUTE = 'upc-funder-chaser';
   const MENU_CLS = 'upc-fc-menu';
   const ALLOWED = () => rule('insurerPayments.people', ['Carl Healy']);
@@ -146,8 +146,8 @@
 
   function table(rows) {
     const base = U().base();
-    return '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th>Funder</th><th>Invoice</th><th>Invoice date</th>' +
-      '<th class="number">Days</th><th class="number">Fees</th><th class="number">Amount</th><th class="number">Still to pay</th></tr></thead><tbody>' +
+    return '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th>Funder</th><th>Invoice</th><th>Invoice Date</th>' +
+      '<th class="number">Days</th><th class="number">Fees</th><th class="number">Amount</th><th class="number">Still to Pay</th></tr></thead><tbody>' +
       rows.map((r) => '<tr><td>' + esc(r.funder) + '</td><td><a href="' + esc(base + '/invoice/' + r.id) + '" target="_blank" rel="noopener">' + esc(r.number) + '</a></td>' +
         '<td class="upc-fc-date">' + esc(label(r.when)) + '</td><td class="number">' + r.days + '</td><td class="number">' + r.fees + '</td>' +
         '<td class="number">' + fmt(r.amount) + '</td><td class="number">' + (r.balance === null ? '' : fmt(r.balance)) + '</td></tr>').join('') +
@@ -157,7 +157,7 @@
   function render() {
     if (!root) return;
     const r = store.get('result', null);
-    let h = '<div class="upc-fc">' + U().ui.page.bar('Insurer payments due', '<button type="button" class="btn btn-outline-primary" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>', (state.running ? U().ui.run.inline(state.status) : U().ui.page.checked(r && r.at)));
+    let h = '<div class="upc-fc">' + U().ui.page.bar('Insurer payments due', '<button type="button" class="btn btn-outline-primary" data-a="refresh" ' + (state.running ? 'disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check Now') + '</button>', (state.running ? U().ui.run.inline(state.status) : U().ui.page.checked(r && r.at)));
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     if (r) {
       const due = r.rows.filter((x) => x.issued), active = r.rows.filter((x) => !x.issued);

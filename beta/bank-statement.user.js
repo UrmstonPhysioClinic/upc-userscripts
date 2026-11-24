@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Bank statement (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.9
+// @version      0.2.10
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/bank-statement.user.js
@@ -50,7 +50,7 @@
   if (window.__hxBankStatement) return;
   window.__hxBankStatement = true;
 
-  const VERSION = '0.2.9';
+  const VERSION = '0.2.10';
   const ROUTE = 'upc-bank-statement';
   const MENU_CLS = 'upc-bank-menu';
   const ALLOWED = () => rule('bankStatement.people', ['Carl Healy']);
@@ -700,7 +700,7 @@
     const st = state.statement, rs = state.results;
     // Laid out as Remittances (CH, 13 Nov 2026): a "Read ..." card with what it does, the drop box, progress and notes.
     let h = '<div class="upc-bank">' + U().ui.page.bar('Bank statement', '', '') +
-      '<div class="card"><div class="card-header"><h2>Read a bank statement</h2></div><div class="card-body">' +
+      '<div class="card"><div class="card-header"><h2>Read a Bank Statement</h2></div><div class="card-body">' +
       '<div class="upc-bank-drop" tabindex="0" role="button" data-a="choose">' + (state.busy ? 'Reading...' : 'Drop a Starling statement PDF here, or click to choose one') + '<input type="file" accept="application/pdf" hidden></div>';
     // While it works: a progress bar and the current step; the results once it has finished (CH, 13 Nov 2026).
     if (state.run) h += U().ui.run.html(state.run);
@@ -723,7 +723,7 @@
         : tasks.length ? 'Add ' + tasks.length + ' task' + (tasks.length === 1 ? '' : 's') : '';
       h += '<div class="card"><div class="card-header"><h2>Insurer payments (' + rs.length + ')</h2>' +
         (label ? '<button type="button" class="btn btn-primary" data-a="all"' + (state.busy ? ' disabled' : '') + '>' + label + '</button>' : '') + '</div><div class="card-body p-0">' +
-        (rs.length ? '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th>Bank date</th><th>Insurer</th><th>Reference</th><th class="number">Amount</th><th>Invoices</th><th></th></tr></thead><tbody>' +
+        (rs.length ? '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th>Bank Date</th><th>Insurer</th><th>Reference</th><th class="number">Amount</th><th>Invoices</th><th></th></tr></thead><tbody>' +
           rs.map((r, k) => {
             let inv = '', act = '';
             const dis = state.busy ? ' disabled' : '';
@@ -791,7 +791,7 @@
       const dlg = U().ui.dialog({ title, small: true, onClose: () => end(false) });
       if (!dlg) { end(false); return; }
       dlg.root.setAttribute('data-upc-bank-confirm', '');
-      dlg.body.innerHTML = html + '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-c="no">Cancel</button><button type="button" class="btn btn-primary" data-c="yes">' + esc(yes) + '</button></div>';
+      dlg.body.innerHTML = html + '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-c="no">Cancel</button><button type="button" class="btn btn-primary" data-c="yes">' + esc(window.UPC && UPC.ui.titleCase ? UPC.ui.titleCase(yes) : yes) + '</button></div>';
       dlg.body.addEventListener('click', (e) => { const b = e.target.closest('[data-c]'); if (!b) return; end(b.dataset.c === 'yes'); dlg.close(); });
     });
   }
@@ -806,8 +806,8 @@
   // Whether this statement's register entry is missing or behind what the page now shows.
   function registerNeed() {
     if (!state.statement || !state.results || state.regError) return null;
-    if (!state.register) return { label: 'Save to register', why: 'This statement is not in the register on the Starling Bank profile yet.' };
-    return state.register.text.includes(paymentsBlock(state.results)) ? null : { label: 'Update register', why: 'The register entry for this statement is out of date.' };
+    if (!state.register) return { label: 'Save to Register', why: 'This statement is not in the register on the Starling Bank profile yet.' };
+    return state.register.text.includes(paymentsBlock(state.results)) ? null : { label: 'Update Register', why: 'The register entry for this statement is out of date.' };
   }
   async function saveRegister() {
     if (state.busy || !registerNeed()) return;

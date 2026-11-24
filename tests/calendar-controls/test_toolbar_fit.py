@@ -40,7 +40,7 @@ PAGE = """<!doctype html><html><head><style>
 ADD = """(() => {
   const col = document.querySelector('#calToolbar .loading').closest('.col').nextElementSibling;
   const group = document.createElement('div'); group.id = 'upc-prac-buttons'; group.className = 'btn-group ml-2';
-  group.innerHTML = '<span class="btn" data-long="Just me" data-short="Me">Just me</span><span class="btn" data-long="All practitioners" data-short="All">All practitioners</span>';
+  group.innerHTML = '<span class="btn" data-long="Just Me" data-short="Me">Just Me</span><span class="btn" data-long="All Practitioners" data-short="All">All Practitioners</span>';
   col.prepend(group);
   const st = document.createElement('style');
   st.textContent = '#upc-prac-buttons { white-space: nowrap; } #upc-prac-row { display: flex; justify-content: flex-end; width: 100%; flex: 0 0 100%; padding: 4px 15px 0; }';
@@ -63,7 +63,7 @@ async def main():
 
         await pg.evaluate('fitButtons()')
         s = await pg.evaluate(STATE)
-        check('wide screen: full labels, in the toolbar', s['where'] == 'toolbar' and s['labels'] == ['Just me', 'All practitioners'], s)
+        check('wide screen: full labels, in the toolbar', s['where'] == 'toolbar' and s['labels'] == ['Just Me', 'All Practitioners'], s)
 
         await pg.set_viewport_size({'width': 720, 'height': 600})
         await pg.evaluate('fitButtons()')
@@ -73,7 +73,7 @@ async def main():
         await pg.set_viewport_size({'width': 560, 'height': 600})
         await pg.evaluate('fitButtons()')
         s = await pg.evaluate(STATE)
-        check('narrow: full labels on a line of their own under the toolbar', s['where'] == 'below' and s['belowToolbar'] and s['labels'] == ['Just me', 'All practitioners'], s)
+        check('narrow: full labels on a line of their own under the toolbar', s['where'] == 'below' and s['belowToolbar'] and s['labels'] == ['Just Me', 'All Practitioners'], s)
 
         await pg.set_viewport_size({'width': 1800, 'height': 600})
         await pg.evaluate('fitButtons()')
@@ -84,7 +84,7 @@ async def main():
         await pg.set_viewport_size({'width': 800, 'height': 600})
         await pg.evaluate('fitButtons()')
         s = await pg.evaluate(STATE)
-        check('mobile layout on: left to the mobile layout', s['where'] == 'toolbar' and s['labels'] == ['Just me', 'All practitioners'], s)
+        check('mobile layout on: left to the mobile layout', s['where'] == 'toolbar' and s['labels'] == ['Just Me', 'All Practitioners'], s)
         await browser.close()
     print('\n' + ('All passed' if not FAILS else '%d failed' % len(FAILS)))
     sys.exit(1 if FAILS else 0)

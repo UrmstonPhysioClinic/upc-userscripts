@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Calendar: Forecourt lights (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.4
+// @version      0.3.5
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/forecourt-lights.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/forecourt-lights.user.js
@@ -43,7 +43,7 @@
   if (window.__hxForecourtLights) return;
   window.__hxForecourtLights = true;
 
-  const VERSION = '0.3.4';
+  const VERSION = '0.3.5';
   const LAT = 53.45, LON = -2.35, TZ = 'Europe/London';
   const STEP = 15;                      // the timer's segments, minutes
   const SNOOZE = 60 * 60e3;
@@ -317,7 +317,7 @@
     if (!d) return;
     d.root.classList.add('upc-fl');
     d.body.innerHTML = r.lines.filter(Boolean).map((l) => '<p>' + l + '</p>').join('') +
-      '<div class="upc-fl-actions"><button type="button" class="btn btn-outline-primary" data-a="later">Remind me later</button>' +
+      '<div class="upc-fl-actions"><button type="button" class="btn btn-outline-primary" data-a="later">Remind Me Later</button>' +
       '<button type="button" class="btn btn-primary" data-a="done">' + (r.kind === 'summer' ? 'OK' : 'Done') + '</button></div>';
     open = { dialog: d, key: r.key };
     d.body.addEventListener('click', (e) => {
@@ -364,7 +364,7 @@
       '<label for="upc-fl-timer">The timer\'s on time is set to</label><select class="form-control" id="upc-fl-timer">' + times.join('') + '</select>' +
       (clinicSet('skip') ? '' : '<label for="upc-fl-skip">Dates to skip, one per line, e.g. 25-Dec-2026</label><textarea class="form-control" id="upc-fl-skip">' + esc((s.skip || []).map(label).join('\n')) + '</textarea>') +
       '</div><div class="alert alert-danger upc-err mt-2" data-err hidden></div>' +
-      '<h6 class="mt-3">The next two weeks</h6><table class="table table-striped table-bordered w-100"><thead><tr><th>Date</th><th>Sunset</th><th>Lights on</th><th>Clinic evening</th></tr></thead><tbody>' + rows.join('') + '</tbody></table>' +
+      '<h6 class="mt-3">The Next Two Weeks</h6><table class="table table-striped table-bordered w-100"><thead><tr><th>Date</th><th>Sunset</th><th>Lights On</th><th>Clinic Evening</th></tr></thead><tbody>' + rows.join('') + '</tbody></table>' +
       '<div class="upc-fl-actions"><button type="button" class="btn btn-outline-primary" data-upc-close>Cancel</button><button type="button" class="btn btn-primary" data-a="save">Save</button></div>';
     d.body.querySelector('[data-a=save]').addEventListener('click', () => {
       const q = (id) => d.body.querySelector('#' + id);

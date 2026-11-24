@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Script settings (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.0
+// @version      0.3.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/script-settings.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/script-settings.user.js
@@ -32,7 +32,7 @@
   if (window.__hxScriptSettings) return;
   window.__hxScriptSettings = true;
 
-  const VERSION = '0.3.0';
+  const VERSION = '0.3.1';
   const U = () => window.UPC;
   const esc = (s) => String(s === null || s === undefined ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const STATUS = { running: 'running on this page', next: 'starts on next page', off: 'switched off', unused: 'not used on this page' };
@@ -169,7 +169,7 @@
     const groups = [];
     rows.forEach((r) => { let g = groups.find((x) => x.name === r.def.script); if (!g) { g = { name: r.def.script, rows: [] }; groups.push(g); } g.rows.push(r); });
     groups.forEach((g) => {
-      h += '<div class="card"><div class="card-header"><h2>' + esc(g.name) + '</h2></div><div class="card-body p-0">' +
+      h += '<div class="card"><div class="card-header"><h2>' + esc(U().ui.titleCase(g.name)) + '</h2></div><div class="card-body p-0">' +
         '<table class="table table-striped table-bordered w-100 mb-0"><colgroup><col class="upc-ss-c1"><col class="upc-ss-c2"><col class="upc-ss-c3"></colgroup>' +
         '<thead><tr><th>Setting</th><th>Value</th><th>Default</th></tr></thead><tbody>' +
         g.rows.map((r) => {
@@ -272,7 +272,7 @@
       sub = busy ? U().ui.run.inline(busy) : '<span class="text-muted">' + (t ? 'Read from Halaxy at ' + esc(at(t)) + '.' : 'Not read from Halaxy yet on this PC: defaults shown.') + '</span>';
     }
     actions += btn('close', 'Close');
-    const tabs = [['pc', 'This PC']].concat(hasClinic ? [['clinic', 'Clinic settings']] : []).concat([['options', 'Options']]);
+    const tabs = [['pc', 'This PC']].concat(hasClinic ? [['clinic', 'Clinic Settings']] : []).concat([['options', 'Options']]);
     root.innerHTML = P.bar('Script settings', actions, sub) +
       '<ul class="nav nav-tabs upc-ss-tabs">' + tabs.map(([k, l]) => '<li class="nav-item"><a href="#' + ROUTE + '" class="nav-link' + (tab === k ? ' active' : '') + '" data-a="' + k + '">' + esc(l) + '</a></li>').join('') + '</ul>' +
       (tab === 'clinic' ? clinicBody() : tab === 'options' ? optionsBody() : pcBody());

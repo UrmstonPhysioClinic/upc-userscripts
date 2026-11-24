@@ -5,7 +5,7 @@ Checks: one Unpaid Invoices report from 2000; one row per invoice with its balan
 6 months old and paid-off ones left out; "Over 6 years" and "6 months to 6 years" cards with counts and totals;
 Write off asks first, then sets the invoice's status to Write-off in its settings (every other field as Halaxy filled
 it); a second Write off pressed straight away waits its turn ("Queued"); the page kit (title bar, search, sorting,
-Show 25 more); ticking rows and "Write off 2" asks once and queues both; only CH sees the page; Halaxy look.
+Show 25 more); ticking rows and "Write Off 2" asks once and queues both; only CH sees the page; Halaxy look.
 
 Run:  python3 tests/old-balances/test_old_balances.py
 """
@@ -39,7 +39,7 @@ def report():
     rows = [row(1001, '03-Mar-2019', 'Patient Old', 'Self-Funded', '£40.00', '£40.00'),                 # over 6 years
             row(1002, '10-Jan-2020', 'Patient Two', 'Self-Funded', '£30.00', ''),                       # two fees, over 6 years
             row(1002, '', '', '', '£30.00', '£60.00', first=False),
-            row(1003, '01-Feb-2025', 'Bupa', 'Bupa', '£50.00', '£50.00'),                               # 6 months to 6 years
+            row(1003, '01-Feb-2025', 'Bupa', 'Bupa', '£50.00', '£50.00'),                               # 6 Months to 6 Years
             row(1004, '01-Oct-2026', 'Patient New', 'Self-Funded', '£40.00', '£40.00'),                 # under 6 months
             row(1005, '01-Jan-2024', 'Patient Paid', 'Self-Funded', '£40.00', '£0.00')]                 # nothing to pay
     rows += [row(2000 + i, '01-Mar-2023', 'Patient X%04d' % (2000 + i), 'Self-Funded', '£%.2f' % (i + 1), '£%.2f' % (i + 1)) for i in range(60)]
@@ -103,19 +103,19 @@ async def main():
         cards = await pg.evaluate("[...document.querySelectorAll('[data-upc-old-balances] .card')].map((c) => [c.querySelector('h2').textContent, [...c.querySelectorAll('tbody tr')].map((tr) => [...tr.cells].map((x) => x.textContent.trim()))])")
         cd = dict(cards)
         check('one Unpaid Invoices report from 2000', S['reports'] == ['01-Jan-2000'], S['reports'])
-        check('over 6 years: one row per invoice, balance from its last line, total', [r[1:6] for r in cd.get('Over 6 years (2, £ 100.00)', [])] == [
+        check('over 6 years: one row per invoice, balance from its last line, total', [r[1:6] for r in cd.get('Over 6 Years (2, £ 100.00)', [])] == [
             ['UPC-01001', '03-Mar-2019', 'Patient Old', 'Self-Funded', '£ 40.00'], ['UPC-01002', '10-Jan-2020', 'Patient Two', 'Self-Funded', '£ 60.00']], cards)
-        mid = [r[1] for r in cd.get('6 months to 6 years (61, £ 1,880.00)', [])]
-        check('6 months to 6 years; under 6 months and paid off left out; thousands with a comma', len(mid) == 61 and 'UPC-01003' in mid and 'UPC-01004' not in mid and 'UPC-01005' not in mid, list(cd))
+        mid = [r[1] for r in cd.get('6 Months to 6 Years (61, £ 1,880.00)', [])]
+        check('6 Months to 6 Years; under 6 months and paid off left out; thousands with a comma', len(mid) == 61 and 'UPC-01003' in mid and 'UPC-01004' not in mid and 'UPC-01005' not in mid, list(cd))
         q = await pg.evaluate("[...document.querySelectorAll('[data-upc-old-balances] p.text-muted')].pop().textContent")
         check('the line under the list gives the range', q == 'Active and Issued invoices dated before 22-May-2026 with a balance.', q)
 
         bar = await pg.evaluate("(() => { const b = document.querySelector('[data-upc-old-balances] .upc-page-bar'); return b && [b.querySelector('h1').textContent, b.querySelector('.upc-page-actions .btn').textContent]; })()")
-        check('title bar: title left, Check now right; checked line under it', bar == ['Old balances', 'Check now'] and 'Checked at ' in await pg.evaluate("document.querySelector('[data-upc-old-balances] .upc-page-sub').textContent"), bar)
+        check('title bar: title left, Check now right; checked line under it', bar == ['Old Balances', 'Check Now'] and 'Checked at ' in await pg.evaluate("document.querySelector('[data-upc-old-balances] .upc-page-sub').textContent"), bar)
         vis = "[...document.querySelectorAll('[data-upc-list=mid] tbody tr')].filter((tr) => tr.style.display !== 'none').map((tr) => tr.cells[1].textContent.trim())"
         shown = await pg.evaluate(vis)
         more = await pg.evaluate("(document.querySelector('[data-upc-more=mid]') || {}).textContent")
-        check('a long list shows 25 rows, then "Show 25 more"', len(shown) == 25 and more == 'Show 25 more', (len(shown), more))
+        check('a long list shows 25 rows, then "Show 25 More"', len(shown) == 25 and more == 'Show 25 More', (len(shown), more))
         await pg.fill('input[data-upc-search=mid]', 'X2007')
         shown = await pg.evaluate(vis)
         cnt = await pg.evaluate("document.querySelector('[data-upc-list=mid]').previousElementSibling.querySelector('[data-upc-count]').textContent")
@@ -148,7 +148,7 @@ async def main():
         await pg.check("[data-upc-list=mid] tr[data-upc-id='2059'] input[data-upc-tick]")
         await pg.check("[data-upc-list=mid] tr[data-upc-id='2058'] input[data-upc-tick]")
         tick = await pg.evaluate("(document.querySelector('[data-upc-bulk-for=mid]') || {}).textContent")
-        check('ticked rows: count, total and "Write off 2" in the tool row', tick == '2 ticked, £ 119.00Write off 2', tick)
+        check('ticked rows: count, total and "Write Off 2" in the tool row', tick == '2 ticked, £ 119.00Write Off 2', tick)
         await pg.click('[data-a=bulk][data-list=mid]')
         await pg.wait_for_selector('[data-upc-ob-confirm]')
         conf = await pg.evaluate("document.querySelector('[data-upc-ob-confirm]').innerText")

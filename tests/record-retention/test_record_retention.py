@@ -155,12 +155,12 @@ async def main():
               teen[2:6] == ['Discharged', '01-Jun-1999', '01-Jul-2016', '01-Jun-2025'], teen)
         check('kept: seen within 8 years, a child not yet 25, booked ahead, Deleted and Contact records',
               not any(n in json.dumps(cards) for n in ['Adult Recent', 'Child Eleven', 'Booked Ahead', 'Gone Already', 'Only Contact', 'Never Recent', 'Filler']), list(cd))
-        check('own cards: no date of birth, Deceased, never seen', [r[1] for r in cd.get('No date of birth (1)', [])] == ['No Birthday Test']
-              and [r[1] for r in cd.get('Deceased (1)', [])] == ['Late Patient Test'] and [r[1] for r in cd.get('No appointments (1)', [])] == ['Never Seen Test'], list(cd))
+        check('own cards: no date of birth, Deceased, never seen', [r[1] for r in cd.get('No Date of Birth (1)', [])] == ['No Birthday Test']
+              and [r[1] for r in cd.get('Deceased (1)', [])] == ['Late Patient Test'] and [r[1] for r in cd.get('No Appointments (1)', [])] == ['Never Seen Test'], list(cd))
         line = await pg.evaluate("[...document.querySelectorAll('[data-upc-record-retention] p.text-muted')].pop().textContent")
         check('the line under the list gives the range', line == "Last appointment before 22-Nov-2018; children's records until their 25th or 26th birthday. Booked patients left out.", line)
         bar = await pg.evaluate("(() => { const b = document.querySelector('[data-upc-record-retention] .upc-page-bar'); return b && [b.querySelector('h1').textContent, b.querySelector('.upc-page-actions .btn').textContent]; })()")
-        check('title bar: title left, Check now right', bar == ['Record retention', 'Check now'], bar)
+        check('title bar: title left, Check now right', bar == ['Record Retention', 'Check Now'], bar)
         check('nothing changed without asking', not S['posts'], S['posts'])
 
         allbtn = await pg.evaluate("(document.querySelector('[data-upc-bulk-for=due]') || {}).textContent")

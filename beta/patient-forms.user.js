@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Patient forms (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.7
+// @version      0.1.8
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-forms.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-forms.user.js
@@ -51,7 +51,7 @@
   if (window.__hxPatientForms) return;
   window.__hxPatientForms = true;
 
-  const VERSION = '0.1.7';
+  const VERSION = '0.1.8';
   // Sending and reminders held (0.1.1): 0.1.0 read the form history as a table, but Halaxy lays it out in divs (live,
   // 17 Nov 2026), so it saw no forms and sent Progress Updates the campaign had already sent. 0.1.2 reads the divs and
   // stops if any sent form can't be read. While held, Check now works out what would happen (reads only).
@@ -448,7 +448,7 @@
     if (!root) return;
     const last = store().get('last', null);
     const recs = shared().cached();
-    let h = '' + U().ui.page.bar('Patient forms', '<button type="button" class="btn btn-outline-primary" data-a="refresh"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Checking...' : 'Check now') + '</button>', (busy ? U().ui.run.inline('') : U().ui.page.checked(last && last.at)));
+    let h = '' + U().ui.page.bar('Patient forms', '<button type="button" class="btn btn-outline-primary" data-a="refresh"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Checking...' : 'Check Now') + '</button>', (busy ? U().ui.run.inline('') : U().ui.page.checked(last && last.at)));
     if (error) h += '<div class="alert alert-danger upc-err">' + esc(error) + '</div>';
     if (HOLD) h += '<div class="alert alert-warning upc-warn">Sending is paused. Forms and reminders show what would happen.</div>';
     if (last) {
@@ -456,7 +456,7 @@
       const groups = [['Today', day0.getTime()], ['Tomorrow', day0.getTime() + DAY]];
       groups.forEach(([title, d]) => {
         const rows = last.list.filter((a) => a.start >= d && a.start < d + DAY && a.start > Date.now() - 2 * 3600e3);
-        h += '<div class="card"><div class="card-header"><h2>' + title + ' (' + rows.length + ')</h2></div><div class="card-body p-0">' +
+        h += '<div class="card"><div class="card-header"><h2>' + U().ui.titleCase(title) + ' (' + rows.length + ')</h2></div><div class="card-body p-0">' +
           (rows.length ? '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th>Appointment</th><th>Patient</th><th>Practitioner</th><th>Form</th><th>Reminder</th><th></th></tr></thead><tbody>' +
             rows.map((a) => {
               const v = formRec(a, recs);
