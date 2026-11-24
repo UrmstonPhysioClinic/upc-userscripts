@@ -1,5 +1,9 @@
 # Changelog
 
+## Portal fill 0.1.24, 24 Nov 2026 (beta)
+- Fill on the portal reads the funder invoice from Halaxy afresh, not from the page on screen (CH, 24 Nov 2026: fees merged onto one patient invoice after the page was opened left it linking to patient invoices that no longer existed, which was reported as a layout change, with a task and a health check problem). The fees, amounts and patient invoice are always the current ones.
+- A patient invoice that no longer exists says "Refresh the page and try again." without a task or a health check problem.
+
 ## Tests, 24 Nov 2026 (pull requests only)
 - The tests run on each pull request only, not again on main after the merge (CH, 24 Nov 2026: the same code was already tested; halves the Actions minutes once the repository is private). They can still be run by hand from GitHub's Actions tab.
 
