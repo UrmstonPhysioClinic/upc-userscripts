@@ -1,5 +1,9 @@
 # Changelog
 
+## To do 0.2.5, 24 Nov 2026 (beta)
+- List or Week, and the week shown, are remembered for each person on the PC, so a save in one of Halaxy's pop-ups (which reloads the page) no longer goes back to List (CH, 24 Nov 2026).
+- After that reload the tasks are read afresh, and asked for without the browser's copy, so a new task shows straight away without Check now.
+- The week view's purple edge now matches the card headers (Branding's inset 4px #994DE6); it used Bootstrap's own purple by mistake.
 ## Task stamps 0.2.2, 24 Nov 2026 (beta)
 - Enter now always gives a new "- " (CH, 24 Nov 2026: a recurring bug). Keys, focus and clicks are caught once for the whole page, before Halaxy's own handlers, instead of on each box: when Halaxy drew a pop-up again from a copy of its HTML, the copy carried our "done" mark but none of our handlers, and a handler of Halaxy's on the box could stop the key reaching ours.
 

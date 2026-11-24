@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Schedule: To do (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.4
+// @version      0.2.5
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
@@ -37,7 +37,7 @@
   if (window.__hxToDo) return;
   window.__hxToDo = true;
 
-  const VERSION = '0.2.4';
+  const VERSION = '0.2.5';
   const ROUTE = 'upc-to-do';
   const MENU_CLS = 'upc-todo-menu';
   const DAY = 864e5, MIN = 60e3;
@@ -71,7 +71,7 @@
     .upc-todo .upc-todo-week .card { margin: 0; min-height: 160px; }
     .upc-todo .upc-todo-week .card-body { padding: 8px; }
     .upc-todo .upc-todo-week .upc-todo-drop.upc-todo-over { outline: 2px dashed #994DE6; outline-offset: -4px; }
-    .upc-todo .upc-todo-chip { border: 1px solid var(--vs-card-border-color, #dee2e6); border-left: 4px solid var(--purple, #994DE6); border-radius: 6px; padding: 6px 8px; margin-bottom: 6px; background: var(--vs-card-bg-color, #fff); cursor: grab; }
+    .upc-todo .upc-todo-chip { border: 1px solid var(--vs-card-border-color, #dee2e6); border-radius: 6px; box-shadow: inset 4px 0 0 #994DE6; padding: 6px 8px 6px 12px; margin-bottom: 6px; background: var(--vs-card-bg-color, #fff); cursor: grab; }
     .upc-todo .upc-todo-week .upc-todo-appts { font-size: .85em; font-weight: normal; margin-top: 2px; }
     .upc-todo .upc-todo-chip small { display: block; }
     .upc-todo .upc-todo-weeknav { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
@@ -97,7 +97,8 @@
   async function load(force) {
     const c = store().get('open', null);
     if (!force && c && Date.now() - c.at < FRESH) return c;
-    const all = await U().http.json('/task/data');
+    // Asked afresh (a time in the address, no-store), so a task saved a moment ago is in it (as core does for lists).
+    const all = await U().http.json('/task/data?_=' + Date.now(), { cache: 'no-store' });
     if (!Array.isArray(all)) throw new (U().Error)('Halaxy\'s task list has changed (/task/data is not a list).');
     const open = all.filter((t) => t && t.status !== 'Completed')
       .map((t) => ({ id: String(t.id), title: clean(t.title), type: clean(t.type), priority: clean(t.priority), due: dueOf(t), status: t.status, who: (t.assignees || []).map(clean) }));
@@ -177,6 +178,10 @@
   let busy = null;
   const done = new Map();   // task id -> 'done' | 'moved' | 'error'
   const state = { unmount: null, loading: false, error: '', errors: [], undo: null, view: 'list', week: 0 };
+  // List or Week, and the week shown, kept for this person on this PC (CH, 24 Nov 2026: a save in one of Halaxy's
+  // pop-ups reloads the page, which went back to List).
+  const keepView = () => { store().set('view:' + me(), { view: state.view, week: state.week }); };
+  const restoreView = () => { const v = store().get('view:' + me(), null); if (v && (v.view === 'list' || v.view === 'week')) { state.view = v.view; state.week = Number(v.week) || 0; } };
   let root = null;
   const queuedOf = (id) => (busy === id ? 'busy' : jobs.some((j) => j.id === id) ? 'queued' : null);
   const patch = (id, fn) => { const c = store().get('open', null); if (!c) return; c.open = c.open.map((t) => (t.id === id ? fn(t) : t)); store().set('open', c); };
@@ -440,6 +445,7 @@
 
   function mount() {
     if (state.unmount) return;
+    restoreView();
     U().ui.nativeStyles();
     root = document.createElement('div');
     root.className = 'upc-native upc-page-wide';
@@ -455,8 +461,8 @@
       else if (a === 'done') act('done', [b.dataset.id]);
       else if (a === 'bulk-done') act('done', U().ui.list.picked(b.dataset.list));
       else if (a === 'undo') undoLast();
-      else if (a === 'view') { state.view = b.dataset.view; render(); }
-      else if (a === 'week') { state.week = b.dataset.step === '0' ? 0 : state.week + Number(b.dataset.step); render(); }
+      else if (a === 'view') { state.view = b.dataset.view; keepView(); render(); }
+      else if (a === 'week') { state.week = b.dataset.step === '0' ? 0 : state.week + Number(b.dataset.step); keepView(); render(); }
     });
     root.addEventListener('change', (e) => { const s = e.target.closest('select[data-f]'); if (s) { setFilter(s.dataset.f, s.value); render(); } });
     // Week view: drag a task onto a day.
@@ -492,7 +498,9 @@
       return (t ? t.getAttribute('href').split('#')[0] : U().base() + '/task/') + '#' + ROUTE;
     }, MENU_CLS, /^schedule$/i);
     // Back to To do after one of Halaxy's pop-ups reloaded the page.
-    if (location.hash !== '#' + ROUTE && U().ui.halaxyPopupReturn() === '#' + ROUTE) { store().set('open', null); location.hash = ROUTE; }
+    // Halaxy reloads keeping the address, so the page may already be To do: either way the tasks are read afresh, so
+    // the new or changed task shows straight away (CH, 24 Nov 2026: it needed Check now).
+    if (U().ui.halaxyPopupReturn() === '#' + ROUTE) { store().set('open', null); if (location.hash !== '#' + ROUTE) location.hash = ROUTE; }
     window.addEventListener('hashchange', route);
     window.addEventListener('storage', (e) => { if (e.key && e.key.startsWith('upc-todo')) { paintBadge(); if (root && !state.loading) render(); } });
     route();
