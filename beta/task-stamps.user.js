@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Calendar: Task stamps (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.1
+// @version      0.2.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/task-stamps.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/task-stamps.user.js
@@ -44,7 +44,7 @@
   if (window.__hxTaskStamps) return;
   window.__hxTaskStamps = true;
 
-  const VERSION = '0.2.1';
+  const VERSION = '0.2.2';
   const RECENT = 5 * 60e3;
   // Task comments (add-task and edit-task pop-ups), and an appointment's Comments in the calendar (form#pr-appointment,
   // a plain box form[description]; capture, 11 Nov 2026). Both plain text, line breaks kept.
@@ -95,54 +95,61 @@
     if (ok && box.value.slice(from, from + text.length) !== text) ok = false;
     if (!ok) { box.setRangeText(text, from, to, 'end'); fire(box); }
   }
-  function bullets(box) {
-    box.addEventListener('keydown', (e) => {
-      if (e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return;
-      const v = box.value, at = box.selectionStart, end = box.selectionEnd;
-      const lineStart = v.lastIndexOf('\n', at - 1) + 1;
-      const lineEnd = v.indexOf('\n', at) < 0 ? v.length : v.indexOf('\n', at);
-      const line = v.slice(lineStart, lineEnd);
-      if (e.key === 'Enter' && !e.shiftKey) {
-        if (BULLET.test(line)) {
-          e.preventDefault();
-          if (/^-[ \t]*$/.test(line) && at === end) return insert(box, '', lineStart, lineEnd);   // empty bullet: end the list
-          return insert(box, '\n- ', at, end);
-        }
-        if (STAMP_LINE.test(v.slice(lineStart, at)) && at === end && at === lineEnd) { e.preventDefault(); return insert(box, '\n- ', at, end); }
-      } else if (e.key === 'Backspace' && at === end && /^-[ \t]?$/.test(v.slice(lineStart, at)) && /^-[ \t]*$/.test(line)) {
+  // Enter, Backspace, focus and click are caught once for the whole page, in the capture phase, rather than on each
+  // box (CH, 24 Nov 2026: Enter sometimes gave no new "- "). Halaxy redraws some pop-ups from a copy of their HTML,
+  // which carried our "done" mark but none of the handlers on the old box; and a handler of Halaxy's on the box itself
+  // could stop the key reaching ours. Now any box matching FIELD works, however it got onto the page.
+  function onKey(e, box) {
+    if (e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return;
+    const st = state(box);
+    st.toEndOnUp = false;
+    const v = box.value, at = box.selectionStart, end = box.selectionEnd;
+    const lineStart = v.lastIndexOf('\n', at - 1) + 1;
+    const lineEnd = v.indexOf('\n', at) < 0 ? v.length : v.indexOf('\n', at);
+    const line = v.slice(lineStart, lineEnd);
+    if (e.key === 'Enter' && !e.shiftKey) {
+      if (BULLET.test(line)) {
         e.preventDefault();
-        insert(box, '', lineStart, lineEnd);
+        e.stopPropagation();
+        if (/^-[ \t]*$/.test(line) && at === end) return insert(box, '', lineStart, lineEnd);   // empty bullet: end the list
+        return insert(box, '\n- ', at, end);
       }
-    });
+      if (STAMP_LINE.test(v.slice(lineStart, at)) && at === end && at === lineEnd) { e.preventDefault(); e.stopPropagation(); return insert(box, '\n- ', at, end); }
+    } else if (e.key === 'Backspace' && at === end && /^-[ \t]?$/.test(v.slice(lineStart, at)) && /^-[ \t]*$/.test(line)) {
+      e.preventDefault();
+      e.stopPropagation();
+      insert(box, '', lineStart, lineEnd);
+    }
   }
 
   // The stamp goes in when the box is first clicked or tabbed into (not when the pop-up opens), so a task or
-  // appointment that's only opened, moved or given a new status is left as it was.
-  function prepare(box) {
-    box.setAttribute('data-upc-stamp-done', '1');
-    bullets(box);
-    let armed = true, toEndOnUp = false;
-    const toEnd = () => { try { box.setSelectionRange(box.value.length, box.value.length); } catch (e) { /* ignore */ } };
-    box.addEventListener('focus', () => {
-      if (!armed) return;
-      armed = false;
-      box.setAttribute('data-upc-touched', '1');
-      const who = initials(userName());
-      if (!who) return;
-      const text = box.value || '';
-      const before = lastStampBy(text, who);
-      if (before === null || Date.now() - before >= RECENT || Date.now() < before - 60e3) {
-        const s = stamp(who);
-        box.value = (text.replace(/\s+$/, '') ? text.replace(/\s+$/, '') + '\n\n' : '') + s + '\n- ';
-        box.setAttribute('data-upc-stamp', s);
-        fire(box);
-      }
-      toEnd();
-      toEndOnUp = true;   // a click places the cursor after focus: put it back at the end, under the stamp
-    });
-    box.addEventListener('mouseup', () => { if (toEndOnUp) { toEndOnUp = false; toEnd(); } });
-    box.addEventListener('keydown', () => { toEndOnUp = false; });
+  // appointment that's only opened, moved or given a new status is left as it was. Once per box on the page; a box
+  // Halaxy draws again gets no second stamp while this person's last one is recent (RECENT).
+  const boxes = new WeakMap();
+  const state = (box) => { let st = boxes.get(box); if (!st) { st = { armed: true, toEndOnUp: false }; boxes.set(box, st); } return st; };
+  const toEnd = (box) => { try { box.setSelectionRange(box.value.length, box.value.length); } catch (e) { /* ignore */ } };
+  function onFocus(box) {
+    const st = state(box);
+    if (!st.armed) return;
+    st.armed = false;
+    box.setAttribute('data-upc-touched', '1');
+    const who = initials(userName());
+    if (!who) return;
+    const text = box.value || '';
+    const before = lastStampBy(text, who);
+    if (before === null || Date.now() - before >= RECENT || Date.now() < before - 60e3) {
+      const s = stamp(who);
+      box.value = (text.replace(/\s+$/, '') ? text.replace(/\s+$/, '') + '\n\n' : '') + s + '\n- ';
+      box.setAttribute('data-upc-stamp', s);
+      fire(box);
+    }
+    toEnd(box);
+    st.toEndOnUp = true;   // a click places the cursor after focus: put it back at the end, under the stamp
   }
+  const isBox = (el) => !!(el && el.matches && el.matches(FIELD));
+  document.addEventListener('keydown', (e) => { if (isBox(e.target)) onKey(e, e.target); }, true);
+  document.addEventListener('focusin', (e) => { if (isBox(e.target)) onFocus(e.target); }, true);
+  document.addEventListener('mouseup', (e) => { if (!isBox(e.target)) return; const st = state(e.target); if (st.toEndOnUp) { st.toEndOnUp = false; toEnd(e.target); } }, true);
 
   // ------------------------------------------------------------------ due dates
 
@@ -251,7 +258,7 @@
     if (!links.some((a) => a.classList.contains('ajax'))) return;
     links.filter((a) => !a.classList.contains('ajax') && !a.hidden).forEach((a) => { a.hidden = true; a.style.setProperty('display', 'none', 'important'); });
   }
-  const scan = () => { queued = false; document.querySelectorAll(FIELD + ':not([data-upc-stamp-done])').forEach(prepare); document.querySelectorAll('form#form_task_edit:not([data-upc-due])').forEach(prepareDue); checkLayout(); hideBrokenComplete(); };
+  const scan = () => { queued = false; document.querySelectorAll('form#form_task_edit:not([data-upc-due])').forEach(prepareDue); checkLayout(); hideBrokenComplete(); };
   new MutationObserver(() => { if (!queued) { queued = true; requestAnimationFrame(scan); } }).observe(document.body, { childList: true, subtree: true });
   scan();
 

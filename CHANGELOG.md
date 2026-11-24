@@ -1,5 +1,8 @@
 # Changelog
 
+## Task stamps 0.2.2, 24 Nov 2026 (beta)
+- Enter now always gives a new "- " (CH, 24 Nov 2026: a recurring bug). Keys, focus and clicks are caught once for the whole page, before Halaxy's own handlers, instead of on each box: when Halaxy drew a pop-up again from a copy of its HTML, the copy carried our "done" mark but none of our handlers, and a handler of Halaxy's on the box could stop the key reaching ours.
+
 ## To do 0.2.4, 24 Nov 2026 (beta)
 - Week view (CH, 24 Nov 2026): tasks have a purple left edge, and each day shows how many appointments the signed-in practitioner has (not counting cancelled, did not attend, rejected, declined, rescheduled or waiting list), from the shared calendar read.
 
