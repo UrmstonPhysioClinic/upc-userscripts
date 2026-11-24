@@ -39,7 +39,7 @@ def report():
     rows = [row(1001, '03-Mar-2019', 'Patient Old', 'Self-Funded', '£40.00', '£40.00'),                 # over 6 years
             row(1002, '10-Jan-2020', 'Patient Two', 'Self-Funded', '£30.00', ''),                       # two fees, over 6 years
             row(1002, '', '', '', '£30.00', '£60.00', first=False),
-            row(1003, '01-Feb-2025', 'Bupa', 'Bupa', '£50.00', '£50.00'),                               # 6 months to 6 years
+            row(1003, '01-Feb-2025', 'Bupa', 'Bupa', '£50.00', '£50.00'),                               # 6 Months to 6 Years
             row(1004, '01-Oct-2026', 'Patient New', 'Self-Funded', '£40.00', '£40.00'),                 # under 6 months
             row(1005, '01-Jan-2024', 'Patient Paid', 'Self-Funded', '£40.00', '£0.00')]                 # nothing to pay
     rows += [row(2000 + i, '01-Mar-2023', 'Patient X%04d' % (2000 + i), 'Self-Funded', '£%.2f' % (i + 1), '£%.2f' % (i + 1)) for i in range(60)]
@@ -103,10 +103,10 @@ async def main():
         cards = await pg.evaluate("[...document.querySelectorAll('[data-upc-old-balances] .card')].map((c) => [c.querySelector('h2').textContent, [...c.querySelectorAll('tbody tr')].map((tr) => [...tr.cells].map((x) => x.textContent.trim()))])")
         cd = dict(cards)
         check('one Unpaid Invoices report from 2000', S['reports'] == ['01-Jan-2000'], S['reports'])
-        check('over 6 years: one row per invoice, balance from its last line, total', [r[1:6] for r in cd.get('Over 6 years (2, £ 100.00)', [])] == [
+        check('over 6 years: one row per invoice, balance from its last line, total', [r[1:6] for r in cd.get('Over 6 Years (2, £ 100.00)', [])] == [
             ['UPC-01001', '03-Mar-2019', 'Patient Old', 'Self-Funded', '£ 40.00'], ['UPC-01002', '10-Jan-2020', 'Patient Two', 'Self-Funded', '£ 60.00']], cards)
-        mid = [r[1] for r in cd.get('6 months to 6 years (61, £ 1,880.00)', [])]
-        check('6 months to 6 years; under 6 months and paid off left out; thousands with a comma', len(mid) == 61 and 'UPC-01003' in mid and 'UPC-01004' not in mid and 'UPC-01005' not in mid, list(cd))
+        mid = [r[1] for r in cd.get('6 Months to 6 Years (61, £ 1,880.00)', [])]
+        check('6 Months to 6 Years; under 6 months and paid off left out; thousands with a comma', len(mid) == 61 and 'UPC-01003' in mid and 'UPC-01004' not in mid and 'UPC-01005' not in mid, list(cd))
         q = await pg.evaluate("[...document.querySelectorAll('[data-upc-old-balances] p.text-muted')].pop().textContent")
         check('the line under the list gives the range', q == 'Active and Issued invoices dated before 22-May-2026 with a balance.', q)
 

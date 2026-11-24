@@ -214,10 +214,10 @@ async def main():
         await pg.goto('https://eu.halaxy.com/a/pr/555/invoice/201')
         await edit(pg, 901, 'rebate', '45.00')
         txt = await dialog_text(pg)
-        check('asks first, showing both invoices', 'Update both invoices?' in txt and 'UPC-30001' in txt and 'UPC-40001' in txt and '£ 45.00' in txt, txt)
+        check('asks first, showing both invoices', 'Update Both Invoices?' in txt and 'UPC-30001' in txt and 'UPC-40001' in txt and '£ 45.00' in txt, txt)
         n_before = len([x for x in S['log'] if x[1] == 'POST' or '/delete/' in x[2]])
         check('nothing changed before confirming', n_before == 0, S['log'])
-        await press(pg, 'Update both')
+        await press(pg, 'Update Both')
         await pg.wait_for_function("document.body.textContent.includes('Done.') || !!document.querySelector('.upc-err')", timeout=60000)
         txt = await pg.evaluate("document.body.textContent")
         f = S['funders'][101]['lines']
@@ -240,7 +240,7 @@ async def main():
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/invoice/201/101')
         await edit(pg, 902, 'amount', '0.00')
         await dialog_text(pg)
-        await press(pg, 'Update both')
+        await press(pg, 'Update Both')
         await pg.wait_for_function("document.body.textContent.includes('Done.') || !!document.querySelector('.upc-err')", timeout=60000)
         f = S['funders'][101]['lines']
         check('funder line set to £ 0.00: a £ 0.00 line stays (never a missing one)', len(f) == 1 and f[0]['amount'] == 0 and f[0]['date'] == '02-Oct-2026', f)
@@ -277,7 +277,7 @@ async def main():
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/invoice/201/101')
         await edit(pg, 902, 'amount', '45.00')
         txt = await dialog_text(pg)
-        check('invoices already disagree: not saved, says why, nothing changed', 'Not saved' in txt and 'disagree' in txt and not [x for x in S['log'] if '/remove' in x[2] or x[1] == 'POST'], (txt, S['log']))
+        check('invoices already disagree: not saved, says why, nothing changed', 'Not Saved' in txt and 'disagree' in txt and not [x for x in S['log'] if '/remove' in x[2] or x[1] == 'POST'], (txt, S['log']))
         await ctx.close()
 
         # 6. Halaxy refuses the re-bill part way (Issued funder invoice): everything put back, Issued again, a task for CH
@@ -289,7 +289,7 @@ async def main():
         await pg.goto('https://eu.halaxy.com/a/pr/555/invoice/201')
         await edit(pg, 901, 'rebate', '45.00')
         await dialog_text(pg)
-        await press(pg, 'Update both')
+        await press(pg, 'Update Both')
         await pg.wait_for_function("!!document.querySelector('.upc-err') && /Task added/.test(document.body.textContent)", timeout=60000)
         txt = await pg.evaluate("document.body.textContent")
         f, pt = S['funders'][101], S['patients'][201]

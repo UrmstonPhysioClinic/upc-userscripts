@@ -272,7 +272,7 @@
       sub = busy ? U().ui.run.inline(busy) : '<span class="text-muted">' + (t ? 'Read from Halaxy at ' + esc(at(t)) + '.' : 'Not read from Halaxy yet on this PC: defaults shown.') + '</span>';
     }
     actions += btn('close', 'Close');
-    const tabs = [['pc', 'This PC']].concat(hasClinic ? [['clinic', 'Clinic settings']] : []).concat([['options', 'Options']]);
+    const tabs = [['pc', 'This PC']].concat(hasClinic ? [['clinic', 'Clinic Settings']] : []).concat([['options', 'Options']]);
     root.innerHTML = P.bar('Script settings', actions, sub) +
       '<ul class="nav nav-tabs upc-ss-tabs">' + tabs.map(([k, l]) => '<li class="nav-item"><a href="#' + ROUTE + '" class="nav-link' + (tab === k ? ' active' : '') + '" data-a="' + k + '">' + esc(l) + '</a></li>').join('') + '</ul>' +
       (tab === 'clinic' ? clinicBody() : tab === 'options' ? optionsBody() : pcBody());

@@ -272,7 +272,7 @@ async def main():
         # Undo: back on the list
         await pg.click("[data-upc-check-ins] [data-a=undo][data-id='213']")
         await pg.click('[data-upc-ci-confirm] [data-c=yes]')
-        await pg.wait_for_function("!![...document.querySelectorAll('[data-upc-check-ins] .card')].find((c) => /Cancelled, not rebooked \\(2\\)/.test(c.textContent))", timeout=30000)
+        await pg.wait_for_function("!![...document.querySelectorAll('[data-upc-check-ins] .card')].find((c) => /Cancelled, Not Rebooked \\(2\\)/.test(c.textContent))", timeout=30000)
         check('Undo: back to recall, Not recalled empty', await pg.evaluate("[...document.querySelectorAll('[data-upc-check-ins] .card h2')].some((h) => h.textContent === 'Not Recalled (0)')")
               and await pg.evaluate("(document.querySelector('a.upc-ci-menu .upc-ci-badge') || {}).textContent") == '4', cards)
         # Send date: a later date chosen in the pop-up

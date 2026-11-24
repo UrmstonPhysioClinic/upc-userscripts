@@ -147,7 +147,7 @@
           <tr><td>Line on funder invoice ${esc(plan.funderNumber)}</td><td class="number">${money(plan.origRebate)} → <b>${money(plan.newRebate)}</b></td></tr>
           <tr><td>${diff >= 0 ? 'Patient pays more' : 'Patient pays less'}</td><td class="number"><b>${money(Math.abs(diff))}</b></td></tr>
         </table>`);
-      d.buttons([['Cancel', () => { d.close(); resolve(false); }], ['Update both', () => { d.close(); resolve(true); }, true]]);
+      d.buttons([['Cancel', () => { d.close(); resolve(false); }], ['Update Both', () => { d.close(); resolve(true); }, true]]);
     });
   }
 

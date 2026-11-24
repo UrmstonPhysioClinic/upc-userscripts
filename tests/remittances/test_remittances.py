@@ -483,7 +483,7 @@ async def main():
         await pg.evaluate("document.querySelector('[data-upc-remittances] [data-act=apply]').click()")
         await pg.wait_for_selector('[data-upc-remit-confirm]', timeout=120000)
         conf = await pg.evaluate("document.querySelector('[data-upc-remit-confirm]').textContent")
-        check('asks before applying the deposit, saying what and where', 'Apply the payment?' in conf and '(bank 10-Oct-2026)' in conf and 'UPC-40003 £ 50.00' in conf, conf)
+        check('asks before applying the deposit, saying what and where', 'Apply the Payment?' in conf and '(bank 10-Oct-2026)' in conf and 'UPC-40003 £ 50.00' in conf, conf)
         await pg.evaluate("document.querySelector('[data-upc-remit-confirm] [data-a=yes]').click()")
         await pg.wait_for_function("(document.querySelector('[data-upc-remittances] .upc-log') || {}).textContent && document.querySelector('[data-upc-remittances] .upc-log').textContent.includes('Finished')", timeout=120000)
         log2 = await pg.evaluate("document.querySelector('[data-upc-remittances] .upc-log').textContent")

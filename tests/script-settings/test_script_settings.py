@@ -105,7 +105,7 @@ async def main():
 
         await pg.click('.upc-ss [data-a=options]')
         groups = await pg.evaluate("[..." + root + ".querySelectorAll('.card')].map(g => g.innerText.replace(/\\s+/g, ' ').trim())")
-        check('options: a card per script', groups == ['Fixture options (2) Fixture: show results Fixture: on (click to turn off)'], groups)
+        check('options: a card per script', groups == ['Fixture Options (2) Fixture: show results Fixture: on (click to turn off)'], groups)
         await pg.click('.upc-ss [data-item]')
         check('an option runs from the page', await pg.evaluate('window.__fixtureRan === 1'))
 
