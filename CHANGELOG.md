@@ -1,5 +1,9 @@
 # Changelog
 
+## Tests, 24 Nov 2026 (Portal fill steadier)
+- Portal fill's test moves the fake clock on more gently (100 ms a turn, tests/fakeclock.py STEP): at full speed the time spent opening tabs used up the fill's own 60 seconds, so its claim was cleared before Halaxy sent CH's task (failed on GitHub after #190). About 50 seconds instead of 20, still under the 90-second limit.
+- It waits for the membership tab's own answer ("Carrying on in the new tab") while the claim is still there, instead of reading it at one moment.
+
 ## Portal fill 0.1.24, 24 Nov 2026 (beta)
 - Fill on the portal reads the funder invoice from Halaxy afresh, not from the page on screen (CH, 24 Nov 2026: fees merged onto one patient invoice after the page was opened left it linking to patient invoices that no longer existed, which was reported as a layout change, with a task and a health check problem). The fees, amounts and patient invoice are always the current ones.
 - A patient invoice that no longer exists says "Refresh the page and try again." without a task or a health check problem.

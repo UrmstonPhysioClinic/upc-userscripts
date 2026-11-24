@@ -24,7 +24,9 @@ from playwright.async_api import async_playwright
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tests'))
+import fakeclock
 from fakeclock import until, idle   # waits move the fake clock on (every tab: it is the context's clock)
+fakeclock.STEP = 100   # gently: the fill clears its claim after 60 seconds of its own time, and opening tabs takes real time
 LOADER = (ROOT / 'loader' / 'upc-loader.user.js').read_text()
 RAW = 'https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/'
 FILES = {f: (ROOT / 'beta' / f).read_text().replace('perMinute: 45,', 'perMinute: 100000,') for f in ('core.user.js', 'portal-fill.user.js')}   # tests: no 45-a-minute wait
@@ -405,6 +407,9 @@ async def main():
         except Exception:
             print('\n'.join(CONSOLE[-25:])); print('DEBUG loader:', await portal.evaluate("[typeof window.GM_getValue, !!window.__upcLoader, typeof window.__hxPortalFill, document.readyState, location.href]"), 'DEBUG form tab:', await portal.evaluate("(document.getElementById('upc-pf-panel') || {}).textContent || 'no panel'"), '| member tab:', await member_tab.evaluate("(document.getElementById('upc-pf-panel') || {}).textContent || 'no panel'"), perr, S['gm'].get('shared:portal-claim', {}).get('progress'))
             raise
+        # The membership tab left behind checks every 1.5 seconds whether the form tab has the claim: wait for its answer
+        # while the claim is still there (a busy machine may not have run its check yet)
+        await until(member_tab, "/Carrying on in the new tab|stopped|finished/.test((document.getElementById('upc-pf-panel') || {}).textContent || '')", timeout=30)
         claim = S['gm'].get('shared:portal-claim') or {}
         briefs = await pg.evaluate('''() => ['lower back pain, dull achy quality', 'ongoing shoulder pain post-fall 7/52 ago', 'L) knee pain', '(R) shoulder pain', 'Chronic neck pain - worse at work',
             'gradual onset of R hip pain for 3 months', 'right ankle sprain 2/52', 'low back pain with sciatica', 'Plantar fasciitis'].map(window.upcPortalFill.brief)''')

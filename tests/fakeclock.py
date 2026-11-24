@@ -11,7 +11,9 @@ waits, so a minute of the scripts' time passes in about a second. Mocked Halaxy 
 """
 import asyncio
 
-STEP = 500        # ms of fake time per turn: above core's 300 ms gap, so a paced request needs one turn
+STEP = 500        # ms of fake time per turn: above core's 300 ms gap, so a paced request needs one turn. A test whose
+                  # scripts time themselves against real-time work (tabs opening, pages loading) sets a smaller one
+                  # (fakeclock.STEP = 100), so that work doesn't use up their own time limits
 PAUSE = 0.01      # s of real time per turn, for mocked answers to arrive
 
 
@@ -24,7 +26,7 @@ async def _true(pg, expr, arg):
         raise
 
 
-async def until(pg, expr, timeout=60, step=STEP, arg=None):
+async def until(pg, expr, timeout=60, step=None, arg=None):
     """Wait (up to timeout real seconds) for the JS expression or function expr to be truthy, moving the fake clock on."""
     loop = asyncio.get_running_loop()
     end = loop.time() + timeout
@@ -34,21 +36,22 @@ async def until(pg, expr, timeout=60, step=STEP, arg=None):
             return v
         if loop.time() > end:
             raise TimeoutError('fakeclock.until: not true after %ds of real time: %s' % (timeout, expr[:200]))
-        await pg.clock.run_for(step)
+        await pg.clock.run_for(step or STEP)
         await asyncio.sleep(PAUSE)
 
 
-async def run(pg, expr, arg=None, step=STEP):
+async def run(pg, expr, arg=None, step=None):
     """pg.evaluate(expr, arg) for a call that waits on the scripts' timers (paced requests), moving the fake clock on."""
     task = asyncio.ensure_future(pg.evaluate(expr) if arg is None else pg.evaluate(expr, arg))
     while not task.done():
-        await pg.clock.run_for(step)
+        await pg.clock.run_for(step or STEP)
         await asyncio.sleep(PAUSE)
     return task.result()
 
 
-async def idle(pg, ms, step=STEP):
+async def idle(pg, ms, step=None):
     """Let ms of fake time pass in steps, giving mocked answers time to arrive between them."""
+    step = step or STEP
     left = ms
     while left > 0:
         await pg.clock.run_for(min(step, left))
