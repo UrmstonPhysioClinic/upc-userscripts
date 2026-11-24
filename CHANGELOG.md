@@ -1,5 +1,9 @@
 # Changelog
 
+## To do 0.2.14, core 0.1.84, 24 Nov 2026 (beta)
+- Week view headings are two lines in every column: the day, then the date and how many tasks ("Wednesday" / "25-Nov, 0 tasks"); the first column "Overdue or No Date" / "297 tasks" (CH, 24 Nov 2026: some ran onto two lines, some didn't).
+- Tabs keep Halaxy's look on every page: the page's own link styles no longer underline them or turn them purple (CH, 24 Nov 2026: Script settings).
+
 ## Tests, 24 Nov 2026
 - Six test groups of about four minutes each instead of five of up to eight, balanced by how long each folder takes (CH, 24 Nov 2026).
 - Time limits on GitHub: 90 seconds a test folder (longer only for the folders in tests/budgets.txt, each with why) and 300 seconds a group; over the limit fails the check, and each group lists its slowest folders in the job summary. Slow tests are caught as they creep in.

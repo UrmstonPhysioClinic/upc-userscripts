@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Schedule: To do (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.13
+// @version      0.2.14
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
@@ -38,7 +38,7 @@
   if (window.__hxToDo) return;
   window.__hxToDo = true;
 
-  const VERSION = '0.2.13';
+  const VERSION = '0.2.14';
   const ROUTE = 'upc-to-do';
   const MENU_CLS = 'upc-todo-menu';
   const DAY = 864e5, MIN = 60e3;
@@ -73,6 +73,9 @@
     .upc-todo .upc-todo-week { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
     .upc-todo .upc-todo-week .card { margin: 0; min-height: 160px; }
     .upc-todo .upc-todo-week .card-body { padding: 8px; }
+    .upc-todo .upc-todo-week .upc-todo-dayhead { display: block; }
+    .upc-todo .upc-todo-week .upc-todo-dayhead h2 { margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .upc-todo .upc-todo-week .upc-todo-dayhead .text-muted { font-size: .85em; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .upc-todo .upc-todo-week .upc-todo-drop.upc-todo-over { outline: 2px dashed #994DE6; outline-offset: -4px; }
     .upc-todo .upc-todo-chip { border: 1px solid var(--vs-card-border-color, #dee2e6); border-radius: 6px; box-shadow: inset 4px 0 0 #994DE6; padding: 6px 8px 6px 12px; margin-bottom: 6px; background: var(--vs-card-bg-color, #fff); cursor: grab; }
     .upc-todo .upc-todo-week .upc-todo-appts { border: 1px solid var(--vs-card-border-color, #dee2e6); border-radius: 6px; padding: 6px 8px; margin-bottom: 6px;
@@ -569,7 +572,11 @@
     let h = '<div class="upc-todo-weeknav"><button type="button" class="btn btn-outline-primary-light" data-a="week" data-step="-1">Previous Week</button>' +
       '<button type="button" class="btn btn-outline-primary-light" data-a="week" data-step="0">This Week</button><button type="button" class="btn btn-outline-primary-light" data-a="week" data-step="1">Next Week</button>' +
       '<span class="text-muted">' + esc(label(monday) + ' to ' + label(monday + 4 * DAY)) + '</span></div><div class="upc-todo-week">';
-    h += '<div class="card"><div class="card-header"><h2>Overdue or No Date (' + tray.length + ')</h2></div><div class="card-body">' + (tray.slice(0, 40).map(chip).join('') || '<p class="text-muted m-0">None.</p>') +
+    // Headings on two lines, the same in every column (CH, 24 Nov 2026: some ran onto two lines, some didn't): the name,
+    // then the date and how many tasks.
+    const tasks = (n) => n + ' task' + (n === 1 ? '' : 's');
+    const head = (title, sub) => '<div class="card-header upc-todo-dayhead"><h2 title="' + esc(title) + '">' + esc(title) + '</h2><div class="text-muted">' + esc(sub) + '</div></div>';
+    h += '<div class="card">' + head('Overdue or No Date', tasks(tray.length)) + '<div class="card-body">' + (tray.slice(0, 40).map(chip).join('') || '<p class="text-muted m-0">None.</p>') +
       (tray.length > 40 ? '<p class="text-muted m-0">and ' + (tray.length - 40) + ' more</p>' : '') + '</div></div>';
     const counts = apptCounts(monday);
     WEEKDAYS.forEach((name, i) => {
@@ -577,8 +584,7 @@
       const list = ts.filter((t) => !t.completed && t.due !== null && dayStart(t.due) === day);
       const n = counts ? counts[day] || 0 : null;
       // The day's appointments as a card of its own at the top, without the task cards' purple edge (CH, 24 Nov 2026).
-      h += '<div class="card upc-todo-drop" data-day="' + day + '"><div class="card-header"><h2>' + esc(name + ' ' + label(day).slice(0, 6)) + ' (' + list.length + ')</h2>' +
-        '</div><div class="card-body">' + (n === null ? '' : '<div class="upc-todo-appts"><i class="icon icon-calendar-full" aria-hidden="true"></i> ' + (n ? n + ' appointment' + (n === 1 ? '' : 's') : 'No appointments') + '</div>') +
+      h += '<div class="card upc-todo-drop" data-day="' + day + '">' + head(name, label(day).slice(0, 6) + ', ' + tasks(list.length)) + '<div class="card-body">' + (n === null ? '' : '<div class="upc-todo-appts"><i class="icon icon-calendar-full" aria-hidden="true"></i> ' + (n ? n + ' appointment' + (n === 1 ? '' : 's') : 'No appointments') + '</div>') +
         (list.map(chip).join('') || '') + '</div></div>';
     });
     return h + '</div>';
