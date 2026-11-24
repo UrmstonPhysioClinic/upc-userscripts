@@ -170,6 +170,23 @@ async def main():
         await pg.click('#apptSave')
         check('appointment Comments clicked into but nothing typed: left empty', (await pg.evaluate('saved'))[-1] == '')
 
+        # Halaxy draws the pop-up again from a copy of its HTML (our mark copied, our handlers not), and a handler of
+        # its own on the box stops keys going further: Enter still gives a new "- " (CH, 24 Nov 2026).
+        await pg.evaluate("appointment('')")
+        await pg.wait_for_timeout(200)
+        await pg.evaluate("""(() => { document.querySelector('textarea').setAttribute('data-upc-stamp-done', '1');
+          const m = document.getElementById('modals'); m.innerHTML = m.innerHTML;
+          document.querySelector('textarea').addEventListener('keydown', (e) => e.stopImmediatePropagation());
+          document.getElementById('apptSave').addEventListener('click', () => { window.saved.push(document.querySelector('textarea').value); }); })()""")
+        await pg.wait_for_timeout(200)
+        await pg.click('textarea')
+        await pg.keyboard.type('One')
+        await pg.keyboard.press('Enter')
+        await pg.keyboard.type('Two')
+        await pg.click('#apptSave')
+        s = (await pg.evaluate('saved'))[-1]
+        check('a box Halaxy drew again from a copy, with its own key handler: stamped, Enter gives a new "- "', re.fullmatch(STAMP + r'\n- One\n- Two', s) is not None, repr(s))
+
         # The Cancel or Delete Appointment pop-up's comment
         await pg.evaluate("cancelPopup('')")
         await pg.wait_for_timeout(200)
