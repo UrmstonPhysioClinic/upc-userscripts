@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Schedule: To do (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.11
+// @version      0.2.12
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
@@ -38,7 +38,7 @@
   if (window.__hxToDo) return;
   window.__hxToDo = true;
 
-  const VERSION = '0.2.11';
+  const VERSION = '0.2.12';
   const ROUTE = 'upc-to-do';
   const MENU_CLS = 'upc-todo-menu';
   const DAY = 864e5, MIN = 60e3;
@@ -187,29 +187,39 @@
     }
     return iconFound;
   }
-  // The count on To do looks like the bell's and sits in the same place (CH, 24 Nov 2026): core reads the bell's count
-  // (its link's ::after, from data-count) and our link takes the bell link's size, so the same offsets land the same.
-  // Until the bell has shown a count on this PC, our own small badge close to it.
-  const LOOK = ['top', 'right', 'left', 'bottom', 'transform', 'margin', 'min-width', 'height', 'padding', 'border-radius', 'font-size', 'font-weight', 'line-height', 'color', 'background-color', 'font-family', 'letter-spacing'];
-  const BOX = ['width', 'height', 'line-height', 'font-size', 'padding', 'vertical-align'];
+  // The count on To do looks like the bell's and sits in the same place on its icon (CH, 24 Nov 2026). Core reads the
+  // bell's count (its link's ::after, from data-count). Where it sits is measured: Halaxy places it from the nearest
+  // positioned box around the bell (not the link itself, which is static), so the offset from the bell's icon is worked
+  // out on screen and used from our icon, the same size (capture, 24 Nov 2026). Kept on the PC for pages without a count.
+  const LOOK = ['box-sizing', 'min-width', 'height', 'padding', 'border-radius', 'font-size', 'font-weight', 'line-height', 'color', 'background-color', 'font-family', 'letter-spacing'];
+  function bellSpot() {
+    const bell = U().ui.bellLink ? U().ui.bellLink() : null;
+    const icon = bell && bell.querySelector('i');
+    if (!icon || !/[1-9]/.test(bell.getAttribute('data-count') || '')) return null;
+    const cs = getComputedStyle(bell, '::after');
+    if (cs.position !== 'absolute' || isNaN(parseFloat(cs.top)) || isNaN(parseFloat(cs.left))) return null;
+    let p = bell;
+    while (p && p !== document.body && getComputedStyle(p).position === 'static') p = p.parentElement;
+    const pr = p.getBoundingClientRect(), ir = icon.getBoundingClientRect();
+    if (!ir.width) return null;
+    const ci = getComputedStyle(icon);
+    return { top: pr.top + p.clientTop + parseFloat(cs.top) - ir.top, left: pr.left + p.clientLeft + parseFloat(cs.left) - ir.left, size: ci.fontSize, lh: ci.lineHeight };
+  }
   function countLook(b, mine) {
     const look = U().ui.countLook ? U().ui.countLook() : null;
-    const bell = U().ui.bellLink ? U().ui.bellLink() : null;
-    const box = {}, icon = {};
-    if (bell) {
-      const cs = getComputedStyle(bell);
-      BOX.forEach((k) => { box[k] = cs.getPropertyValue(k); });
-      const i = bell.querySelector('i');
-      if (i) { const ci = getComputedStyle(i); icon['font-size'] = ci.getPropertyValue('font-size'); icon['line-height'] = ci.getPropertyValue('line-height'); }
-    }
-    const key = JSON.stringify([look, box, icon]);
-    if (b.dataset.look === key) return;
-    b.dataset.look = key;
+    let spot = bellSpot();
+    if (spot) store().set('countSpot', spot); else spot = store().get('countSpot', null);
+    const mi = mine.querySelector('i, svg');
+    if (spot && mi) { mi.style.setProperty('font-size', spot.size); if (mi.tagName === 'I') mi.style.setProperty('line-height', spot.lh); }
     if (look) LOOK.forEach((k) => { if (look[k]) b.style.setProperty(k, look[k]); });
-    if (bell && box.width && box.width !== 'auto' && box.width !== '0px') {
-      BOX.forEach((k) => { if (box[k]) mine.style.setProperty(k, box[k]); });
-      const mi = mine.querySelector('i, svg');
-      if (mi && icon['font-size']) { mi.style.setProperty('font-size', icon['font-size']); if (mi.tagName === 'I') mi.style.setProperty('line-height', icon['line-height']); }
+    if (look && !look['box-sizing']) b.style.setProperty('box-sizing', 'content-box');
+    if (spot && mi) {
+      const lr = mine.getBoundingClientRect(), ir = mi.getBoundingClientRect();
+      if (!lr.width) return;
+      const top = Math.round((spot.top + ir.top - lr.top) * 10) / 10 + 'px', left = Math.round((spot.left + ir.left - lr.left) * 10) / 10 + 'px';
+      if (b.style.top !== top) b.style.top = top;
+      if (b.style.left !== left) b.style.left = left;
+      b.style.right = 'auto'; b.style.bottom = 'auto';
     }
   }
   function topBar() {
