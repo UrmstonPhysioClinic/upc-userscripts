@@ -1,5 +1,10 @@
 # Changelog
 
+## Tests, 24 Nov 2026 (fake clock)
+- The five slow tests wait on a fake clock instead of real time (tests/fakeclock.py: until, run, idle move Playwright's clock on while waiting for core's pacing, retries and queues): Portal fill 216 to about 22 seconds, Bank statement 206 to 15, Remittances 146 to 18, Invoice Funder 132 to 11, Open-ended recalls 87 to 5. None is listed in tests/budgets.txt any more, so all are held to 90 seconds.
+- Remittances' pacing check reads when each request left in the page's own time, not when it reached the test (it could read 0.24 seconds on a busy machine).
+- Four test groups of about three minutes instead of six: fewer machines to set up, fewer Actions minutes once the repository is private.
+
 ## To do 0.2.15, 24 Nov 2026 (beta)
 - With To do on, tasks leave Halaxy's bell: its list shows the other notifications only and its count goes down to match (CH, 24 Nov 2026). Halaxy's task notifications stay switched on for Halaxy without the scripts. The bell's list is read once each time Halaxy's count changes; if Halaxy's bell changes, the health check says so and tasks show in it again.
 
