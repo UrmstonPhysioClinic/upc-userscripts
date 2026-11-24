@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.84
+// @version      0.1.85
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.84';
+  const VERSION = '0.1.85';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -2251,9 +2251,9 @@
     // (CH, 24 Nov 2026), e.g. divider('Done').
     divider(text) { return '<div class="upc-divider"><span>' + esc(titleCase(text)) + '</span></div>'; },
     // A row's outcome as a pill (CH, 24 Nov 2026: "Moved" in green text looked out of place): kind ok (done), err
-    // (not changed), wait (queued), info.
+    // (not changed), wait (queued), info, warn (needs a person: amber, CH, 24 Nov 2026).
     pill(text, kind) {
-      const k = { ok: 'success', err: 'danger', wait: 'light', info: 'info' }[kind || 'ok'] || 'success';
+      const k = { ok: 'success', err: 'danger', wait: 'light', info: 'info', warn: 'warning' }[kind || 'ok'] || 'success';
       return '<span class="badge badge-pill badge-' + k + ' upc-pill">' + esc(text) + '</span>';
     },
     card(title_, n, extra, body) {

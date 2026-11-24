@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.8
+// @version      0.4.9
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -36,7 +36,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.4.8';
+  const VERSION = '0.4.9';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -597,8 +597,8 @@
   let sh = null;
 
   // Each line's result as a pill, as To do shows its rows' results (CH, 24 Nov 2026): done in green, something
-  // to apply in blue, waiting on a person in grey, a problem in red.
-  const PILL = { ok: 'ok', done: 'ok', fix: 'info', resume: 'info', manual: 'wait', check: 'err', failed: 'err' };
+  // to apply in blue, part done or needing a person in amber, a problem in red.
+  const PILL = { ok: 'ok', done: 'ok', fix: 'info', resume: 'warn', manual: 'warn', check: 'err', failed: 'err' };
 
   // Halaxy's own classes (cards, tables, buttons, form controls) style the page; these rules only
   // cover what Halaxy has no class for, scoped to our page and using Halaxy's colour variables.
