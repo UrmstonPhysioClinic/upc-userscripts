@@ -1,5 +1,8 @@
 # Changelog
 
+## To do 0.2.11, 24 Nov 2026 (beta)
+- A moved task stays in the list it was in, at its old place, with "Moved to ..." and Undo, until Check now or To do is opened again (CH, 24 Nov 2026: it vanished to its new list). Done stays beside Undo. Results stay after Halaxy's own pop-ups (Edit task).
+
 ## To do 0.2.10, core 0.1.81, 24 Nov 2026 (beta)
 - A row's result is a pill, "Moved to 30-Nov-2026" or "Completed", with its own Undo beside it (CH, 24 Nov 2026: "Moved" in green text looked out of place, and should say where).
 - The Undo toast stays until the whole batch is done, then for 15 seconds (CH, 24 Nov 2026: it went before the last move was written).

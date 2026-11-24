@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Schedule: To do (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.10
+// @version      0.2.11
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
@@ -38,7 +38,7 @@
   if (window.__hxToDo) return;
   window.__hxToDo = true;
 
-  const VERSION = '0.2.10';
+  const VERSION = '0.2.11';
   const ROUTE = 'upc-to-do';
   const MENU_CLS = 'upc-todo-menu';
   const DAY = 864e5, MIN = 60e3;
@@ -62,7 +62,8 @@
     .upc-todo .upc-todo-filters .nav { margin-right: auto; }
     .upc-todo td.upc-todo-due, .upc-todo td.upc-todo-act { white-space: nowrap; }
     .upc-todo td.upc-todo-act .btn { margin: 0; }
-    .upc-todo td.upc-todo-act .upc-todo-undo { margin-left: 8px; }
+    .upc-todo td.upc-todo-act .btn + .btn, .upc-todo td.upc-todo-act .upc-pill + .btn { margin-left: 8px; }
+    .upc-todo td.upc-todo-act { white-space: nowrap; }
     .upc-todo .upc-todo-late { color: var(--vs-balance-negative-color, #b3261e); }
     .upc-todo .upc-todo-task { cursor: pointer; }
     .upc-todo .upc-bulk input.form-control { width: 150px; }
@@ -129,17 +130,16 @@
     return c.open.filter((t) => (!who || t.who.some((n) => n.toLowerCase() === who)) && (!f.type || f.type === 'all' || (f.type === 'none' ? !t.type : t.type === f.type)));
   }
 
-  function groups(ts) {
+  function groupOf(t) {
     const today = dayStart(Date.now()), tomorrow = today + DAY, nextMonday = mondayOf(today) + 7 * DAY;
+    return t.due === null ? 'nodate' : t.due < today || t.status === 'Overdue' ? 'overdue' : t.due < tomorrow ? 'today' : t.due < nextMonday ? 'week' : 'later';
+  }
+  // held: keep moved tasks where they were (the list on screen; counts elsewhere go by the real dates).
+  function groups(ts, held) {
     const g = { overdue: [], today: [], week: [], later: [], nodate: [] };
-    ts.forEach((t) => {
-      if (t.due === null) g.nodate.push(t);
-      else if (t.due < today || t.status === 'Overdue') g.overdue.push(t);
-      else if (t.due < tomorrow) g.today.push(t);
-      else if (t.due < nextMonday) g.week.push(t);
-      else g.later.push(t);
-    });
-    Object.values(g).forEach((l) => l.sort((a, b) => (a.due || 0) - (b.due || 0) || (PRIORITY[b.priority] || 0) - (PRIORITY[a.priority] || 0)));
+    const at = (t) => (held && stay.has(t.id) && before.has(t.id) ? before.get(t.id) : t.due);
+    ts.forEach((t) => { g[held && stay.has(t.id) ? stay.get(t.id) : groupOf(t)].push(t); });
+    Object.values(g).forEach((l) => l.sort((a, b) => (at(a) || 0) - (at(b) || 0) || (PRIORITY[b.priority] || 0) - (PRIORITY[a.priority] || 0)));
     return g;
   }
 
@@ -264,6 +264,9 @@
   const done = new Map();   // task id -> 'done' | 'moved' | 'back' | 'error'
   const before = new Map(); // task id -> its due day before it was moved (for the row's Undo)
   const movedTo = new Map(); // task id -> the day it was moved to
+  // A moved task stays in the list it was in, at its old place, until Check now or To do is opened again (CH, 24 Nov
+  // 2026: it vanished from where it was, so you had to look for it): task id -> that list.
+  const stay = new Map();
   const state = { unmount: null, loading: false, error: '', errors: [], undo: null, view: 'list', week: 0 };
   // List or Week, and the week shown, kept for this person on this PC (CH, 24 Nov 2026: a save in one of Halaxy's
   // pop-ups reloads the page, which went back to List).
@@ -281,7 +284,7 @@
     try {
       if (j.kind === 'done') { await complete(j.id); patch(j.id, (t) => Object.assign(t, { completed: true })); done.set(j.id, 'done'); }
       else if (j.kind === 'revert') { await revert(j.id); patch(j.id, (t) => Object.assign(t, { completed: false })); done.delete(j.id); }
-      else { await move(j.id, j.day); patch(j.id, (t) => Object.assign(t, { due: j.day, status: 'Pending' })); done.set(j.id, j.undo ? 'back' : 'moved'); if (!j.undo) movedTo.set(j.id, j.day); }
+      else { await move(j.id, j.day); patch(j.id, (t) => Object.assign(t, { due: j.day, status: 'Pending' })); done.set(j.id, j.undo ? 'back' : 'moved'); if (j.undo) stay.delete(j.id); else movedTo.set(j.id, j.day); }
     } catch (e) { done.set(j.id, 'error'); state.errors.push('Not changed: ' + j.title + ' (' + (e.message || e) + ')'); }
     finally { busy = null; settleUndo(); render(); paintBadge(); pump(); }
   }
@@ -296,7 +299,7 @@
       if (kind === 'done') { jobs.push({ id: t.id, title: t.title, kind: 'done' }); undo.push({ id: t.id, title: t.title, kind: 'revert' }); }
       else { jobs.push({ id: t.id, title: t.title, kind: 'move', day: dayMs }); undo.push({ id: t.id, title: t.title, kind: 'move', day: t.due === null ? null : dayStart(t.due), undo: true }); }
     });
-    if (kind !== 'done') ts.forEach((t) => before.set(t.id, t.due === null ? null : dayStart(t.due)));
+    if (kind !== 'done') ts.forEach((t) => { if (!stay.has(t.id)) { stay.set(t.id, groupOf(t)); before.set(t.id, t.due === null ? null : dayStart(t.due)); } });
     const what = ts.length === 1 ? '"' + ts[0].title + '"' : ts.length + ' tasks';
     if (state.undo && state.undo.toast) state.undo.toast.close();
     state.undo = { jobs: undo };
@@ -480,8 +483,7 @@
     const undoBtn = '<button type="button" class="btn btn-outline-primary-light upc-todo-undo" data-a="undo1" data-id="' + esc(t.id) + '">Undo</button>';
     const act = q === 'busy' ? U().ui.run.inline('') : q === 'queued' ? P.pill('Queued', 'wait')
       : t.completed ? P.pill('Completed') + undoBtn
-      : d === 'moved' ? P.pill('Moved to ' + label(movedTo.get(t.id))) + undoBtn
-      : (d === 'error' ? P.pill('Not changed', 'err') + ' ' : '') + '<button type="button" class="btn btn-outline-primary-light" data-a="done" data-id="' + esc(t.id) + '">Done</button>';
+      : (d === 'moved' ? P.pill('Moved to ' + label(movedTo.get(t.id))) + undoBtn : d === 'error' ? P.pill('Not changed', 'err') : '') + '<button type="button" class="btn btn-outline-primary-light" data-a="done" data-id="' + esc(t.id) + '">Done</button>';
     const f = filters();
     return '<tr data-upc-id="' + esc(t.id) + '"' + (q || t.completed ? ' data-upc-nopick' : '') + '><td><a class="upc-todo-task" href="' + esc(U().base() + '/task/' + t.id) + '" data-a="edit" data-id="' + esc(t.id) + '">' + esc(t.title || 'Task') + '</a></td>' +
       '<td>' + linkCell(t) + '</td><td class="upc-todo-due' + (t.due !== null && t.due < today ? ' upc-todo-late' : '') + '" data-sort="' + esc(t.due === null ? '' : label(t.due)) + '">' + esc(dueText(t.due)) + '</td>' +
@@ -503,7 +505,7 @@
   }
 
   function listView(ts) {
-    const g = groups(ts);
+    const g = groups(ts, true);
     let h = '';
     [['overdue', 'Overdue'], ['today', 'Today'], ['week', 'This week'], ['later', 'Later'], ['nodate', 'No date']].forEach(([id, title]) => {
       if (id === 'nodate' && !g.nodate.length) return;
@@ -599,10 +601,11 @@
     });
   }
 
-  async function refresh(force) {
+  // fresh (Check now, To do opened): results and held places go; after Halaxy's own pop-ups they stay.
+  async function refresh(force, fresh) {
     if (state.loading) return;
     state.loading = true; state.error = '';
-    if (!jobs.length && busy === null) { state.errors = []; done.clear(); }
+    if (fresh && !jobs.length && busy === null) { state.errors = []; done.clear(); stay.clear(); before.clear(); movedTo.clear(); }
     render();
     try { await load(force); } catch (e) { state.error = 'Could not read the tasks: ' + (e.message || e); }
     state.loading = false;
@@ -623,7 +626,7 @@
       if (!b || b.disabled) return;
       const a = b.dataset.a;
       if (a === 'edit' || a === 'view') e.preventDefault();
-      if (a === 'refresh') refresh(true);
+      if (a === 'refresh') refresh(true, true);
       else if (a === 'new') newTask();
       else if (a === 'edit') openEdit(b.dataset.id);
       else if (a === 'done') act('done', [b.dataset.id]);
@@ -647,7 +650,7 @@
     });
     state.unmount = U().ui.mountPage('To do', root, MENU_CLS);
     render();
-    refresh(false);
+    refresh(false, true);
   }
   function unmount() { if (!state.unmount) return; state.unmount(); state.unmount = null; root = null; }
   const route = () => (location.hash === '#' + ROUTE ? mount() : unmount());
