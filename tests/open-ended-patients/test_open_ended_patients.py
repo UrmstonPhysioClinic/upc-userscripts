@@ -228,7 +228,7 @@ async def main():
         check("the send date uses Halaxy's date picker, shown as Halaxy writes dates, from the first allowed day",
               len(fp) == 1 and fp[0]['o'] == {'dateFormat': 'Y-m-d', 'altInput': True, 'altFormat': 'd-M-Y', 'minDate': '2026-11-12', 'defaultDate': '2026-11-12'}, fp)
         await pg.click('[data-upc-ci-confirm] [data-c=yes]')
-        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-check-ins] .card')].some((c) => /Recalled/.test(c.textContent))", timeout=30000)
+        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-check-ins] .card h2')].some((h) => h.textContent === 'Recalled (1)')", timeout=30000)
         f = S['posts'][0][1] if S['posts'] else {}
         check('scheduled for the next weekday 10:30', S['posts'] and S['posts'][0][0] == 201 and f.get('form[scheduleDetails][scheduleDate]') == '12-Nov-2026'
               and f.get('form[scheduleDetails][scheduleTime][hour]') == '10' and f.get('form[scheduleDetails][scheduleTime][minute]') == '30', f)
@@ -236,6 +236,8 @@ async def main():
         b = f.get('form[body]', '')
         check('body: practitioner written in, patient tag left, styling kept', 'last saw Diana.' in b and '[Patient First Name]' in b and '[Practitioner First Name]' not in b and 'bgcolor="#f0f0f5"' in b, b)
         rows = await pg.evaluate("[...document.querySelectorAll('[data-upc-check-ins] .card')].map((c) => [c.querySelector('h2').textContent, [...c.querySelectorAll('tbody tr')].map((tr) => [...tr.cells].map((x) => x.textContent.trim()))])")
+        div = await pg.evaluate("(() => { const d = document.querySelector('[data-upc-check-ins] .upc-divider'); const next = d && d.nextElementSibling && d.nextElementSibling.querySelector('h2'); return d && [d.textContent, next && next.textContent]; })()")
+        check('a "Done" line above the cards already acted on', div == ['Done', 'Recalled (1)'], div)
         rec = dict(rows).get('Recalled (1)', [])
         check('moved to Recalled with the time, no button', rec and rec[0][0] == 'Patient A' and rec[0][5] == 'Scheduled for 12-Nov-2026 10:30'
               and not await pg.evaluate("!!document.querySelector(\"[data-a=recall][data-id='201']\")"), rows)
@@ -271,7 +273,7 @@ async def main():
         await pg.click("[data-upc-check-ins] [data-a=undo][data-id='213']")
         await pg.click('[data-upc-ci-confirm] [data-c=yes]')
         await pg.wait_for_function("!![...document.querySelectorAll('[data-upc-check-ins] .card')].find((c) => /Cancelled, not rebooked \\(2\\)/.test(c.textContent))", timeout=30000)
-        check('Undo: back to recall, Not recalled card gone', not await pg.evaluate("[...document.querySelectorAll('[data-upc-check-ins] .card h2')].some((h) => /Not recalled/.test(h.textContent))")
+        check('Undo: back to recall, Not recalled empty', await pg.evaluate("[...document.querySelectorAll('[data-upc-check-ins] .card h2')].some((h) => h.textContent === 'Not recalled (0)')")
               and await pg.evaluate("(document.querySelector('a.upc-ci-menu .upc-ci-badge') || {}).textContent") == '4', cards)
         # Send date: a later date chosen in the pop-up
         S['template'] = ('How are you getting on?', '<p>Since you last saw <span class="dynamicterm">[Practitioner First Name]</span>.</p>')

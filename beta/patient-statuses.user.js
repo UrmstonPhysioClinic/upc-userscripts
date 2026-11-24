@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Patient statuses (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.13
+// @version      0.2.14
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-statuses.user.js
@@ -41,7 +41,7 @@
   if (window.__hxPatientStatuses) return;
   window.__hxPatientStatuses = true;
 
-  const VERSION = '0.2.13';
+  const VERSION = '0.2.14';
   const ALLOWED = () => rule('patientStatuses.people', ['Carl Healy']);
   const DAY = 86400e3;
   // Clinic settings (Script settings > Clinic settings; core's UPC.settings), with the defaults if core is older.
@@ -85,8 +85,8 @@
     say = say || (() => {});
     const now = Date.now();
     const funded = store.get('funded2', {});     // invoice id -> true (funded) / false (self-funded)
-    const finished = store.get('finished3', {});   // finished3: wording tuned on the clinic's notes (18 Nov 2026), so notes are read again  // note id -> kind of wording found ('' if none)
-    const latest = store.get('latest', {});      // patient -> { key: last appointment and note status, note: { noteId, date } }
+    const finished = store.get('finished4', {});   // finished3: wording tuned on the clinic's notes (18 Nov 2026), so notes are read again  // note id -> kind of wording found ('' if none)
+    const latest = store.get('latest2', {});      // patient -> { key: last appointment and note status, note: { noteId, date } }
     const events = await calendar(now - BACK_DAYS * DAY, now + AHEAD_DAYS * DAY, say);
     const startMs = (e) => (typeof e.start === 'number' ? e.start * 1000 : Date.parse(e.start));
     const byPatient = new Map();
@@ -193,14 +193,16 @@
             if (note === undefined) {
               tell('Reading ' + name + '\'s last note');
               const items = await U().notes.items(id);
-              const found = items.find((x) => x.noteId && x.entity === 'note' && (x.category === 'appointment' || x.category === 'note'));
+              // The last visit's note, not that of a later appointment that was cancelled (CH, 24 Nov 2026).
+              const upTo = new Date(startMs(last)).setHours(23, 59, 59, 999);
+              const found = items.find((x) => x.noteId && x.entity === 'note' && (x.category === 'appointment' || x.category === 'note') && (x.date === null || x.date <= upTo));
               note = found ? { noteId: found.noteId, date: found.date || null, draft: /draft/i.test(found.status) } : null;
               latest[id] = { key: seenKey, note };
-              store.set('latest', latest);
+              store.set('latest2', latest);
             }
             let said = '';
             if (note) {
-              if (!(note.noteId in finished)) { finished[note.noteId] = (await U().notes.facts(note.noteId, ['finished'], { draft: note.draft })).finished[0] || ''; store.set('finished3', finished); }
+              if (!(note.noteId in finished)) { finished[note.noteId] = (await U().notes.facts(note.noteId, ['finished'], { draft: note.draft })).finished[0] || ''; store.set('finished4', finished); }
               said = finished[note.noteId];
             }
             if (said) { to = 'discharged'; why = 'Last note (' + label(note.date || startMs(last)) + ') says "' + said + '", nothing booked'; }
@@ -220,7 +222,7 @@
       }
     }
     Object.keys(latest).forEach((k) => { if (!byPatient.has(k) && !byPatient.has(Number(k))) delete latest[k]; });   // patients no longer in the window
-    store.set('latest', latest);
+    store.set('latest2', latest);
     const order = { discharged: 0, claimant: 1, current: 2, '': 3 };
     rows.forEach((r) => { if (r.from === 'contact' && r.to) r.why = 'Contact with an appointment. ' + r.why; });
     rows.sort((a, b) => order[a.to] - order[b.to] || a.name.localeCompare(b.name));

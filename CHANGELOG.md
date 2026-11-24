@@ -1,9 +1,18 @@
 # Changelog
 
+## Review requests 0.5.19, Open-ended recalls 0.4.8, Patient statuses 0.2.14, To do 0.2.6, core 0.1.79, 24 Nov 2026 (beta)
+- Review requests: a Practitioner column (who the patient last saw). Below a "Done" line, Asked (the latest Review Request follow-up, sent or scheduled, with its date) and Not asked ("Don't ask this time", with Undo); a patient acted on moves down at once (CH, 24 Nov 2026).
+- Open-ended recalls: the same "Done" line above Recalled and Not recalled, which always show.
+- "Last note" (Review requests), the note read (Open-ended recalls, Patient statuses): the last visit's, not a later cancelled appointment's empty note dated ahead (CH, 24 Nov 2026).
+- Note wording leaves out the past medical history and points about earlier problems ("Previous scoliosis as child - treated with physio, discharged" read as discharged; CH, 24 Nov 2026). Every note is read again once (core wording.current, WORDING_V 2).
+- To do in Halaxy's top bar, in place of the Inbox (which the clinic doesn't use), with the same count; Halaxy's own clipboard or checklist icon if its icon font has one, else a drawing in the same grey.
+- Core: UPC.ui.page.divider.
+
 ## To do 0.2.5, 24 Nov 2026 (beta)
 - List or Week, and the week shown, are remembered for each person on the PC, so a save in one of Halaxy's pop-ups (which reloads the page) no longer goes back to List (CH, 24 Nov 2026).
 - After that reload the tasks are read afresh, and asked for without the browser's copy, so a new task shows straight away without Check now.
 - The week view's purple edge now matches the card headers (Branding's inset 4px #994DE6); it used Bootstrap's own purple by mistake.
+
 ## Task stamps 0.2.2, 24 Nov 2026 (beta)
 - Enter now always gives a new "- " (CH, 24 Nov 2026: a recurring bug). Keys, focus and clicks are caught once for the whole page, before Halaxy's own handlers, instead of on each box: when Halaxy drew a pop-up again from a copy of its HTML, the copy carried our "done" mark but none of our handlers, and a handler of Halaxy's on the box could stop the key reaching ours.
 

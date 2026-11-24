@@ -5,7 +5,8 @@ reused by every script on the PC and by other PCs (through the shared Admin Note
 Checks: the first script to ask reads the note once and works out every known kind; another kind asked later is
 served without reading the note again; a kind added later by a script (Review requests' "review") reads it once more;
 the facts are saved to the shared note (no note text in it); a second PC gets them from there without reading the
-note; a draft is read again after a day; a newer version of a kind reads the note again.
+note; a draft is read again after a day; a newer version of a kind reads the note again; "discharged" in the past medical
+history doesn't count as this course finishing.
 
 Run:  python3 tests/core/test_note_facts.py
 """
@@ -18,7 +19,9 @@ CORE = (ROOT / 'beta' / 'core.user.js').read_text().replace('perMinute: 45,', 'p
 FAILS = []
 S = {'reads': [], 'notes': {}}
 TEXT = {'501': 'Subjective: knee better. Plan: Discharge from physiotherapy today. Return if symptoms recur.',
-        '502': 'Subjective: ok. Plan: Follow-up as needed.'}
+        '502': 'Subjective: ok. Plan: Follow-up as needed.',
+        # CH, 24 Nov 2026: a first visit whose only "discharged" is in the past history, with a follow-up booked.
+        '503': 'Subjective: - C/O R shoulder pain - Previous episodes: nil Past Medical History: - Previous scoliosis as child - treated with physio, discharged - General health good Objective: - Gluteal weakness Plan: - Follow-up appointment scheduled for next week'}
 
 
 def check(name, ok, detail=''):
@@ -93,6 +96,8 @@ async def main():
         check('a draft is read again after a day; a published note isn\'t', S['reads'] == ['502'], S['reads'])
         await pg.evaluate("(UPC.notes.addFacts('review', 6, (t) => ({ good: [] })), UPC.notes.facts('501', ['review']))")
         check('a newer version of a kind: read again', S['reads'] == ['502', '501'], S['reads'])
+        f = await pg.evaluate("UPC.notes.facts('503', ['finished'])")
+        check('past medical history ("treated with physio, discharged") is not this course finishing', f['finished'] == [], f)
         await ctx.close()
         await browser.close()
     print('\n' + ('All passed' if not FAILS else '%d failed' % len(FAILS)))
