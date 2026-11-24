@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Review requests (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.5.18
+// @version      0.5.19
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/review-requests.user.js
@@ -38,6 +38,9 @@
  *    follow-up template, which would set its own time. If Halaxy has an email template called
  *    "Review Reminder", a reminder is added for a week later at the same time; without one, nothing more.
  *    Don't ask: adds the "No review request" label on the patient's Edit page. Both ask first.
+ *  - Practitioner: who the patient last saw. Below a "Done" line (CH, 24 Nov 2026, as in Open-ended recalls): Asked
+ *    (the latest Review Request follow-up, Sent or Scheduled) and Not asked ("Don't ask this time", with Undo), for the
+ *    same window; a patient acted on here moves down at once.
  *  - Shown only to CH (by Halaxy sign-in). The menu count is refreshed at most every 12 hours in the
  *    visible tab, shared across tabs, skipped while Halaxy has asked scripts to pause. Each patient's
  *    result is kept for a week, so only newly finished patients are read again.
@@ -47,7 +50,7 @@
   if (window.__hxReviewRequests) return;
   window.__hxReviewRequests = true;
 
-  const VERSION = '0.5.18';
+  const VERSION = '0.5.19';
   const ROUTE = 'upc-review-requests';
   const MENU_CLS = 'upc-rr-menu';
   const ALLOWED = () => rule('reviewRequests.people', ['Carl Healy']);   // CH, 10 Nov 2026: just me for now
@@ -109,7 +112,7 @@
   ];
   // Against: only what says this course went badly or isn't over. Notes describe symptoms all the time
   // ("worse on stairs", "no need for a scan"), so plain mentions don't count (live list, 10 Nov 2026).
-  const RULES = 5;   // bump when the phrase lists or other signs change, so patients are read again
+  const RULES = 6;   // bump when the phrase lists or other signs change, so patients are read again
   const BAD = [
     ['not fully better', /\bnot (yet )?(100\s*%|fully|completely|quite)\s*(better|recovered|resolved|right|there|improved|pain[- ]?free)\b|\bno (better|improvement)\b|\bslow progress\b|\bminimal (change|improvement)\b/i],
     ['worse or flare-up', /\b(getting|feeling|feels|felt|been|is|was|now|much|slightly) worse\b|\b(has|have) (got|gotten|become) worse\b|\bworsen(ed|ing)\b|\b(had|having|has had|another) (a )?flare[- ]?up\b|\bflared( up)?\b|\bstill (painful|sore|struggling|symptomatic)\b|\bdeteriorat/i],
@@ -169,7 +172,10 @@
       out.progress = q ? scoreFrom(q.answer) : null;
       out.links.push({ kind: 'form', id: form.id, date: form.date });
     }
-    const recent = items.filter((x) => x.noteId && x.entity === 'note' && (x.category === 'appointment' || x.category === 'note') && (x.date === null || x.date >= since)).slice(0, 2);
+    // Notes up to the last visit only: a later appointment that was cancelled still has its (empty) note, dated ahead
+    // (CH, 24 Nov 2026: "Last note" showed 10-Dec-2026).
+    const upTo = new Date(p.lastSeen).setHours(23, 59, 59, 999);
+    const recent = items.filter((x) => x.noteId && x.entity === 'note' && (x.category === 'appointment' || x.category === 'note') && (x.date === null || (x.date >= since && x.date <= upTo))).slice(0, 2);
     recent.forEach((n) => out.links.unshift({ kind: 'note', id: n.noteId, date: n.date }));
     for (const n of recent) {
       // Shared with the other scripts and PCs through the core library's note facts (worked out once per note).
@@ -216,6 +222,14 @@
   const skips = () => (U() && U().shared ? U().shared('Review requests', { keep: 400 * DAY, file: 'review-requests.user.js' }) : null);
   const dayOf = (ms) => { const d = new Date(ms); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
 
+  // A follow-up's date as Halaxy gives it ("18-Nov-2026 10:30", or ISO): ms, or 0 if not read.
+  const hhmm = (ms) => String(new Date(ms).getHours()).padStart(2, '0') + ':' + String(new Date(ms).getMinutes()).padStart(2, '0');
+  function whenOf(v) {
+    const t = String(v || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}T/.test(t)) return Date.parse(t) || 0;
+    const d = U().parseDay(t.slice(0, 11)), hm = t.slice(11).match(/(\d{1,2}):(\d{2})/);
+    return d ? d + (hm ? (+hm[1] * 60 + +hm[2]) * 60e3 : 0) : 0;
+  }
   let unpaidPayers = null;   // names of patients paying their own unpaid invoices (this check), or null if unknown
   async function check(say) {
     say = say || (() => {});
@@ -232,7 +246,13 @@
     say('Reading the survey responses...');
     const responses = await U().surveys.list().catch((e) => { tellHealthCheck(e); return []; });
     say('Reading Tasks & Follow-Ups...');
-    const asked = new Set((await U().followUps.list()).filter((r) => new RegExp('^' + TEMPLATE + '$', 'i').test(U().clean(r.title))).map((r) => r.linkPaGId));
+    // Who has been asked: the latest Review Request follow-up per patient (Sent or Scheduled, with Halaxy's date).
+    const asked = new Map();
+    (await U().followUps.list()).filter((r) => new RegExp('^' + TEMPLATE + '$', 'i').test(U().clean(r.title))).forEach((r) => {
+      const had = asked.get(r.linkPaGId);
+      const at = whenOf(r.scheduledOrSentDate);
+      if (!had || at >= had.at) asked.set(r.linkPaGId, { at, when: at ? label(at) + ' ' + hhmm(at) : U().clean(r.scheduledOrSentDate || ''), status: U().clean(r.status || '') });
+    });
     const events = await calendar(day0 - (MAX_DAYS() + 120) * DAY, day0 + 120 * DAY, say);
     const startMs = (e) => (typeof e.start === 'number' ? e.start * 1000 : Date.parse(e.start));
     const byPatient = new Map();
@@ -242,7 +262,8 @@
       byPatient.get(id).push(e);
     });
     const counts = { asked: 0, left: 0, none: 0, ended: 0, soon: 0, skipped: 0 };
-    const rows = [];
+    const rows = [], askedRows = [], skippedRows = [];
+    const nameOf = (e) => U().clean(U().htmlDoc(e.title || '').body.textContent).replace(/^[\s*★]+/, '') || 'Patient';
     const fresh = (r) => r && now - r.at <= KEEP && r.links && r.rules === RULES;
     const toRead = [...byPatient.values()].filter((evs) => { const last = evs.filter((e) => startMs(e) < now && !e.appointmentStatus).map(startMs); return last.length && Math.max(...last) >= now - MAX_DAYS() * DAY; }).length;
     let read = 0;
@@ -254,10 +275,12 @@
       const lastSeen = startMs(attended[0]);
       if (lastSeen > now - SAID_DAYS * DAY || lastSeen < now - MAX_DAYS() * DAY) continue;
       if (past[0] && past[0].appointmentStatus) { counts.ended++; continue; }   // finished on a cancellation or missed appointment
-      if (asked.has(id)) { counts.asked++; continue; }
+      const pracId = String(attended[0].practitionerID || '');
+      // Asked, or "Don't ask this time" for this visit: listed in their own cards below the ones to act on (CH, 24 Nov 2026).
+      if (asked.has(id)) { counts.asked++; askedRows.push(Object.assign({ id, name: nameOf(attended[0]), lastSeen, pracId }, asked.get(id))); continue; }
       const sk = skipped['skip.' + id];
-      if (sk && (typeof sk === 'string' ? sk : sk.value) === dayOf(lastSeen)) { counts.skipped++; continue; }   // "Don't ask this time" for this visit
-      const name = U().clean(U().htmlDoc(attended[0].title || '').body.textContent).replace(/^[\s*★]+/, '') || 'Patient';
+      if (sk && (typeof sk === 'string' ? sk : sk.value) === dayOf(lastSeen)) { counts.skipped++; skippedRows.push({ id, name: nameOf(attended[0]), lastSeen, pracId }); continue; }
+      const name = nameOf(attended[0]);
       const p = { id, name, lastSeen, firstSeen: startMs(attended[attended.length - 1]) };
       const ck = id + '|' + lastSeen;
       let r = cache[ck];
@@ -271,13 +294,19 @@
       if (r.verdict === 'left') { counts.left++; continue; }
       // Seen in the last 2 weeks: only once the notes say treatment has finished (they may still book).
       if (lastSeen > now - QUIET_DAYS() * DAY && !(r.good || []).some((x) => FINISHED.includes(x))) { counts.soon++; continue; }
-      rows.push(Object.assign({ id, name, lastSeen }, r));
+      rows.push(Object.assign({ id, name, lastSeen, pracId }, r));
     }
+    // The practitioner each patient last saw (one request).
+    const pracs = new Map();
+    try { (await U().http.json('/lookup/practitioner?clinic=&include_id=&type=') || []).forEach((x) => pracs.set(String(x.id), U().clean(x.name))); } catch (e) { /* names left blank */ }
+    rows.concat(askedRows, skippedRows).forEach((x) => { x.prac = pracs.get(x.pracId) || ''; delete x.pracId; });
+    askedRows.sort((a, b) => b.at - a.at);
+    skippedRows.sort((a, b) => b.lastSeen - a.lastSeen);
     Object.keys(cache).forEach((k) => { if (now - cache[k].at > KEEP) delete cache[k]; });
     store.set('cache', cache);
     const order = { ready: 0, maybe: 1, error: 2 };
     rows.sort((a, b) => order[a.verdict] - order[b.verdict] || b.lastSeen - a.lastSeen);
-    const result = { at: Date.now(), by: VERSION, ready: rows.filter((x) => x.verdict === 'ready').length, rows, counts };
+    const result = { at: Date.now(), by: VERSION, ready: rows.filter((x) => x.verdict === 'ready').length, rows, asked: askedRows, skipped: skippedRows, counts };
     store.set('result', result);
     pushShared(result);
     return result;
@@ -362,24 +391,40 @@
         '<button type="button" class="btn btn-outline-primary-light" data-send="' + esc(r.id) + '">Send review request</button>' +
         '<button type="button" class="btn btn-outline-primary" data-skip="' + esc(r.id) + '">Don\'t ask this time</button>';
     return '<tr><td><a href="' + esc(base + '/patient/' + r.id) + '" target="_blank" rel="noopener">' + esc(r.name) + '</a></td>' +
-      '<td class="upc-rr-date">' + esc(label(r.lastSeen)) + '</td><td class="upc-rr-why">' + why + '</td><td class="upc-rr-links">' + linksHtml(r) + '</td><td class="upc-rr-acts">' + acts + '</td></tr>';
+      '<td class="upc-rr-date">' + esc(label(r.lastSeen)) + '</td><td>' + esc(r.prac || '') + '</td><td class="upc-rr-why">' + why + '</td><td class="upc-rr-links">' + linksHtml(r) + '</td><td class="upc-rr-acts">' + acts + '</td></tr>';
   }
 
   function render() {
     if (!root) return;
     const r = store.get('result', null);
-    const head = '<thead><tr><th>Patient</th><th>Last visit</th><th>Status</th><th>Check first</th><th></th></tr></thead>';
+    const head = '<thead><tr><th>Patient</th><th>Last visit</th><th>Practitioner</th><th>Status</th><th>Check first</th><th></th></tr></thead>';
     const bq = U().ui.batch('review-requests', 'Working through the list', 'done', jobs.length + (jobBusy !== null ? 1 : 0), [...done.values()].filter((d) => d && d.error).length);
     let h = '<div class="upc-rr">' + U().ui.page.bar('Review requests', '<button type="button" class="btn btn-outline-primary" data-a="refresh"' + (state.running ? ' disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>', bq || ((state.running ? U().ui.run.inline(state.status) : U().ui.page.checked(r && r.at))));
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     if (r) {
-      const ready = r.rows.filter((x) => x.verdict === 'ready'), rest = r.rows.filter((x) => x.verdict !== 'ready');
-      h += '<div class="card"><div class="card-header"><h2>Good outcome (' + ready.length + ')</h2></div><div class="card-body p-0">' +
-        (ready.length ? '<table class="table table-striped table-bordered w-100 m-0">' + head + '<tbody>' + ready.map(rowHtml).join('') + '</tbody></table>' : '<p class="text-muted m-3">None.</p>') + '</div></div>';
-      if (rest.length) h += '<div class="card"><div class="card-header"><h2>Worth a look (' + rest.length + ')</h2></div><div class="card-body p-0"><table class="table table-striped table-bordered w-100 m-0">' + head + '<tbody>' + rest.map(rowHtml).join('') + '</tbody></table></div></div>';
+      // Asked or not asked on this page since the last check move straight down to the log.
+      const acted = (x) => { const d = done.get(x.id); return d && (d.sent || d === 'skipped'); };
+      const ready = r.rows.filter((x) => x.verdict === 'ready' && !acted(x)), rest = r.rows.filter((x) => x.verdict !== 'ready' && !acted(x));
+      const card = (title, list, hd, row) => '<div class="card"><div class="card-header"><h2>' + title + ' (' + list.length + ')</h2></div><div class="card-body p-0">' +
+        (list.length ? '<table class="table table-striped table-bordered w-100 m-0">' + hd + '<tbody>' + list.map(row).join('') + '</tbody></table>' : '<p class="text-muted m-3">None.</p>') + '</div></div>';
+      h += card('Good outcome', ready, head, rowHtml);
+      if (rest.length) h += card('Worth a look', rest, head, rowHtml);
+      const base = U().base();
+      const who = (x) => '<td><a href="' + esc(base + '/patient/' + x.id) + '" target="_blank" rel="noopener">' + esc(x.name) + '</a></td><td class="upc-rr-date">' + esc(label(x.lastSeen)) + '</td><td>' + esc(x.prac || '') + '</td>';
+      const nowAsked = r.rows.filter((x) => { const d = done.get(x.id); return d && d.sent; }).map((x) => { const d = done.get(x.id); return { id: x.id, name: x.name, lastSeen: x.lastSeen, prac: x.prac, when: d.sent, status: 'Scheduled', reminder: d.reminder, reminderError: d.reminderError }; });
+      const nowSkipped = r.rows.filter((x) => done.get(x.id) === 'skipped');
+      const askedList = nowAsked.concat((r.asked || []).filter((x) => !undone.has(x.id)));
+      const skippedList = nowSkipped.concat((r.skipped || []).filter((x) => !undone.has(x.id)));
+      h += U().ui.page.divider('Done');
+      h += card('Asked', askedList, '<thead><tr><th>Patient</th><th>Last visit</th><th>Practitioner</th><th>Review request</th></tr></thead>',
+        (x) => '<tr>' + who(x) + '<td>' + esc((/sched/i.test(x.status) ? 'Scheduled for ' : /sent/i.test(x.status) ? 'Sent ' : '') + x.when + (x.reminder ? ', reminder ' + x.reminder : '')) +
+          (x.reminderError ? '<br><span class="upc-err">Reminder not added: ' + esc(x.reminderError) + '</span>' : '') + '</td></tr>');
+      h += card('Not asked', skippedList, '<thead><tr><th>Patient</th><th>Last visit</th><th>Practitioner</th><th></th></tr></thead>',
+        (x) => '<tr>' + who(x) + '<td class="upc-rr-acts">' + (queuedOf(x.id) === 'busy' ? U().ui.run.inline('') : queuedOf(x.id) === 'queued' ? 'Queued'
+          : '<button type="button" class="btn btn-outline-primary-light" data-undo="' + esc(x.id) + '">Undo</button>') + '</td></tr>');
       const c = r.counts;
-      h += '<p class="text-muted">Nothing booked, last visit up to ' + MAX_DAYS() + ' days ago. Left out: ' + c.asked + ' already asked, ' +
-        c.left + ' under ' + MIN_AGE() + ' or owing money, ' + (c.skipped || 0) + ' not asking this time, ' + c.ended + ' last appointment cancelled or missed, ' +
+      h += '<p class="text-muted">Nothing booked, last visit up to ' + MAX_DAYS() + ' days ago. Left out: ' +
+        c.left + ' under ' + MIN_AGE() + ' or owing money, ' + c.ended + ' last appointment cancelled or missed, ' +
         (c.soon || 0) + ' seen recently and not finished, ' + c.none + ' no good-outcome signs.</p>';
     }
     h += '</div>';
@@ -422,6 +467,26 @@
       : await confirm('Don\'t ask this time?', '<p>Don\'t suggest a review request for ' + esc(r.name) + ' for their visit on ' + esc(label(r.lastSeen)) + '?</p>', 'Don\'t ask this time');
     if (!ok) return;
     enqueue(id, () => doAct(kind, id, r, when));
+  }
+  // Undo a "Don't ask this time" (CH, 24 Nov 2026): it can be put back exactly, so it happens at once. The patient is
+  // suggested again from the next check.
+  const undone = new Set();
+  function undoSkip(id) {
+    const r = store.get('result', { skipped: [] });
+    const x = (r.skipped || []).find((y) => y.id === id) || (r.rows || []).find((y) => y.id === id);
+    if (!x || queuedOf(id)) return;
+    enqueue(id, async () => {
+      try {
+        const mark = { ['skip.' + id]: 'undo' };
+        const mine = store.get('skips', {}); delete mine['skip.' + id]; store.set('skips', mine);
+        const sk = skips();
+        if (sk) await sk.write(mark);
+        undone.add(id);
+        done.delete(id);
+        U().ui.toast('Back on the list from the next check: ' + x.name + '.');
+      } catch (e) { U().ui.toast('Not undone: ' + (e.message || e), { kind: 'danger' }); }
+      render();
+    });
   }
   async function doAct(kind, id, r, when) {
     try {
@@ -501,6 +566,8 @@
       if (s) act('send', s.dataset.send);
       const k = e.target.closest('[data-skip]');
       if (k) act('skip', k.dataset.skip);
+      const u = e.target.closest('[data-undo]');
+      if (u) undoSkip(u.dataset.undo);
     });
     state.unmount = U().ui.mountPage('Review requests', root, MENU_CLS);
     render();

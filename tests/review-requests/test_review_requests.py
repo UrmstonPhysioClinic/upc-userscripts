@@ -219,9 +219,11 @@ def check(name, ok, detail=''):
 
 
 ROOT_JS = "document.querySelector('[data-upc-review-requests]')"
-ROWS = """[...document.querySelectorAll('[data-upc-review-requests] tbody tr')].map((tr) => ({ who: tr.cells[0].textContent, off: tr.closest('.card') !== document.querySelector('[data-upc-review-requests] .card'),
-  when: tr.cells[1].textContent, why: tr.cells[2].innerText, acts: tr.cells[4].innerText,
-  links: [...tr.cells[3].querySelectorAll('a')].map((a) => a.textContent + ' ' + a.getAttribute('href') + ' ' + a.target) }))"""
+# The patients still to act on (the cards above the "Done" line: six columns).
+ROWS = """[...document.querySelectorAll('[data-upc-review-requests] tbody tr')].filter((tr) => tr.cells.length === 6).map((tr) => ({ who: tr.cells[0].textContent, off: tr.closest('.card') !== document.querySelector('[data-upc-review-requests] .card'),
+  when: tr.cells[1].textContent, prac: tr.cells[2].textContent, why: tr.cells[3].innerText, acts: tr.cells[5].innerText,
+  links: [...tr.cells[4].querySelectorAll('a')].map((a) => a.textContent + ' ' + a.getAttribute('href') + ' ' + a.target) }))"""
+DONE = """Object.fromEntries([...document.querySelectorAll('[data-upc-review-requests] .upc-divider ~ .card')].map((c) => [c.querySelector('h2').textContent, [...c.querySelectorAll('tbody tr')].map((tr) => [...tr.cells].map((x) => x.innerText.trim()))]))"""
 
 
 async def main():
@@ -255,7 +257,10 @@ async def main():
         check('a survey from someone with the same name but another date of birth is ignored', 'Patient C' not in by, sorted(by))
         check('discharged 2 days ago: asked straight away', by.get('Patient N', {}).get('off') is False and 'discharged' in by['Patient N']['why'], by.get('Patient N'))
         foot = await pg.evaluate(ROOT_JS + ".querySelector('.upc-rr > p.text-muted').textContent")
-        check('left out and counted: asked, under 16/owing, Don\'t ask this time (this visit only), cancelled, no good signs', "Left out: 1 already asked, 2 under 16 or owing money, 1 not asking this time, 1 last appointment cancelled or missed, 1 seen recently and not finished, 3 no good-outcome signs" in foot, foot)
+        check('left out and counted: under 16/owing, cancelled, no good signs', "Left out: 2 under 16 or owing money, 1 last appointment cancelled or missed, 1 seen recently and not finished, 3 no good-outcome signs" in foot, foot)
+        dn = await pg.evaluate(DONE)
+        check('below a "Done" line: Asked (Halaxy\'s follow-up, sent when) and Not asked (Don\'t ask this time, with Undo)', [k for k in dn] == ['Asked (1)', 'Not asked (1)']
+              and dn['Asked (1)'][0][0] == 'Patient G' and dn['Asked (1)'][0][3] == 'Sent 01-Nov-2026 09:00' and dn['Not asked (1)'][0][3] == 'Undo', dn)
         check('menu count', await pg.evaluate("(document.querySelector('a.upc-rr-menu .upc-rr-badge') || {}).textContent") == '3')
         menu = await pg.evaluate("[...document.querySelectorAll('#mainMenu a.mainmenu-sublink')].map(a => a.getAttribute('href'))")
         check('menu item under Patients, over the Patient List', '/a/pr/555/patient/#upc-review-requests' in menu, menu)
@@ -276,7 +281,9 @@ async def main():
         conf = await pg.evaluate("document.querySelector('[data-upc-rr-confirm]').innerText")
         check('asks first', 'Schedule the Review Request email for Patient A on Wednesday 11-Nov-2026 at 10:30?' in conf and not S['writes'], conf)
         await pg.click('[data-upc-rr-confirm] [data-c=yes]')
-        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-review-requests] tbody tr')].some(tr => tr.innerText.includes('Review request scheduled for Wednesday 11-Nov-2026 at 10:30'))", timeout=90000)
+        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-review-requests] tbody tr')].some(tr => tr.innerText.includes('Scheduled for Wednesday 11-Nov-2026 at 10:30'))", timeout=90000)
+        dn = await pg.evaluate(DONE)
+        check('sent: moves down to Asked at once', ['Patient A', 'Scheduled for Wednesday 11-Nov-2026 at 10:30'] == [dn.get('Asked (2)', [[]])[0][0], dn.get('Asked (2)', [[None, None, None, None]])[0][3]], dn)
         w = [x for x in S['writes'] if x[0] == 'followup']
         f = w[0][2] if w else {}
         check('follow-up for the next weekday 10:30 UK time, entered as Sydney time (21:30) for Halaxy, Review Request email template only', len(w) == 1 and w[0][1] == 101 and f.get('form[recallTemplate]') == [''] and f.get('form[emailTemplate]') == ['45']
@@ -313,7 +320,7 @@ async def main():
 
         # Don't ask for Patient B (queued above)
         # (up to a minute: by now the check has used this minute's 45 requests, and the pacing waits its turn)
-        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-review-requests] tbody tr')].some(tr => tr.innerText.includes('Not asking this time'))", timeout=90000)
+        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-review-requests] .upc-divider ~ .card tbody tr')].some(tr => tr.cells[0].textContent.trim() === 'Patient B')", timeout=90000)
         lines = [re.sub(r'<[^>]+>', '', x) for x in S['notes'][0]['html'].split('</p>') if x.strip()]
         lb = next((r['when'] for r in rows0 if r['who'] == 'Patient B'), None)
         check('Don\'t ask this time: noted for every PC with the visit it applies to; nothing changed on the patient', any(l.startswith('skip.102 | ') and l.endswith(' | ' + datetime.datetime.strptime(lb, '%d-%b-%Y').strftime('%Y-%m-%d')) for l in lines)

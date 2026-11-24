@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.77
+// @version      0.1.79
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.77';
+  const VERSION = '0.1.79';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -1999,6 +1999,8 @@
     .upc-native .upc-run-log .upc-box { max-height: 300px; overflow: auto; margin-top: 8px; }
     .upc-native .upc-page-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px solid var(--vs-card-border-color, #dee2e6); }
     .upc-native .upc-page-bar h1 { margin: 0; }
+    .upc-native .upc-divider { display: flex; align-items: center; gap: 12px; margin: 32px 0 20px; font-weight: 600; color: var(--vs-text-muted-color, #6c757d); }
+    .upc-native .upc-divider::before, .upc-native .upc-divider::after { content: ''; flex: 1; border-top: 2px solid #DCC5F9; }
     .upc-native .upc-page-bar .upc-page-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
     .upc-native .upc-page-bar .btn { margin: 0; }
     .upc-native .upc-page-sub { display: block; min-height: 1.5em; margin: 0 0 16px; }
@@ -2219,6 +2221,9 @@
     checked(ms) {
       return ms ? '<span class="text-muted">Checked at ' + new Date(ms).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) + ' on ' + dayLabel(ms) + '.</span>' : '';
     },
+    // A line across the page with a word in it, between the groups still to act on and those already done
+    // (CH, 24 Nov 2026), e.g. divider('Done').
+    divider(text) { return '<div class="upc-divider"><span>' + esc(text) + '</span></div>'; },
     card(title, n, extra, body) {
       return '<div class="card"><div class="card-header"><h2>' + esc(title) + ' (' + n + (extra ? ', ' + esc(extra) : '') + ')</h2></div><div class="card-body p-0">' +
         (n ? body : '<p class="text-muted m-3">None.</p>') + '</div></div>';
@@ -2718,6 +2723,21 @@
     'if (it |things |symptoms? |pain |back |knee |hip |neck |shoulder )?(gets? worse|worsens?|returns?|recurs?|flares?( up)?|deteriorates?|persists?|(is |are )?not settl(ed|ing)|(does|do)n.?t settle)|prn|sos';
   const COMEBACK = '(come|coming|call|ring|get|getting|contact|be|return(ing)?|rtc|rebook(ing)?|book(ing)?) ?(back|in touch|us|again|in|to (the )?(clinic|physio))?';
   const wording = {
+    // The note as it bears on this course of treatment: the past history section and any point about earlier problems
+    // are taken out before the phrases are looked for (CH, 24 Nov 2026: "Previous scoliosis as child - treated with
+    // physio, discharged" under Past Medical History read as this course being discharged). The text is one line
+    // (notes.text), so a section runs from its heading to the next heading.
+    current(text) {
+      const HIST = /\b(past medical history|medical history|past history|pmh|social history|drug history|family history|previous history)\s*:/i;
+      const NEXT = /\b(subjective|objective|assessment|plan|treatment|impression|diagnosis|goals?|advice|education|outcome|management|summary)\s*:/i;
+      let t = String(text || ''), m;
+      while ((m = HIST.exec(t))) {
+        const rest = t.slice(m.index + m[0].length), n = NEXT.exec(rest);
+        t = t.slice(0, m.index) + ' ' + (n ? rest.slice(n.index) : '');
+      }
+      // A point (from " - " or a sentence start) about earlier problems, up to the next point, full stop or heading.
+      return t.replace(/(^|\s-\s|\.\s)[^-.:]*?\b(previous(ly)?|as a child|in childhood|years ago|in the past|history of|hx of)\b[^-.]*?(?=\s-\s|\.|\s[A-Za-z]+( [a-z]+)*\s*:|$)/gi, '$1 ');
+    },
     NEGATION: /\b(not|no longer|never|isn'?t|wasn'?t|hasn'?t|without|unable to|not yet|before|no need to)\b[^.]{0,20}$/i,
     // Treatment has finished.
     FINISHED: [
@@ -2823,7 +2843,7 @@
   // Kept on this PC (local storage) and shared through one Admin Note, "UPC shared list: Note wording" (JSON, merged on
   // each save, 150 days, trimmed to fit), pulled at most every 15 minutes and saved a minute after new facts are found.
   // A published note doesn't change; a draft is read again after a day.
-  const WORDING_V = 1;   // bump when wording.FINISHED / OPEN_ENDED / NEGATION or outcome() change
+  const WORDING_V = 2;   // bump when wording.FINISHED / OPEN_ENDED / NEGATION or outcome() change
   const noteFacts = (() => {
     const kinds = { finished: { v: '1', fn: (t) => wording.finished(t) }, open: { v: '1', fn: (t) => wording.openEnded(t) } };
     const st = storage('upc-notefacts:');
@@ -2896,7 +2916,7 @@
         let m = map(), e = m[id];
         const fresh = (x) => x && !(x.draft && Date.now() - (x.at || 0) > DRAFT_AGAIN);
         if (!fresh(e) || want.some((k) => !e.k[k] || e.k[k][0] !== ver(k))) {
-          const text = await notes.text(id);
+          const text = wording.current(await notes.text(id));
           e = { at: Date.now(), k: {}, draft: !!(opts && opts.draft) };
           Object.keys(kinds).forEach((k) => { e.k[k] = [ver(k), kinds[k].fn(text)]; });
           m = map();

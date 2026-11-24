@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Open-ended recalls (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.7
+// @version      0.4.8
 // @upc-was      check-ins.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/open-ended-patients.user.js
@@ -41,7 +41,7 @@
   if (window.__hxCheckIns) return;
   window.__hxCheckIns = true;
 
-  const VERSION = '0.4.7';
+  const VERSION = '0.4.8';
   const ROUTE = 'upc-check-ins';
   const MENU_CLS = 'upc-ci-menu';
   const ALLOWED = () => rule('openEnded.people', ['Carl Healy']);
@@ -52,7 +52,7 @@
   const UP_TO_DAYS = () => rule('openEnded.upToDays', 91);    // not further back than about 3 months
   const REFRESH_EVERY = 12 * 3600e3, PAGE_FRESH = 30 * 60e3, KEEP = 7 * DAY;
   const KEY = 'upc-ci:';
-  const RULES = 4;   // bump when the wording list changes, so patients are read again
+  const RULES = 5;   // bump when the wording list changes, so patients are read again
 
   const U = () => window.UPC;
   const esc = (s) => U().esc(s);
@@ -175,7 +175,9 @@
         say('Reading ' + p.name + '\'s last note (' + read + ' of ' + candidates.length + ')...');
         try {
           const items = await U().notes.items(p.id);
-          const last = items.find((x) => x.noteId && x.entity === 'note' && (x.category === 'appointment' || x.category === 'note'));
+          // The note of the last visit, not of a later appointment that was cancelled (CH, 24 Nov 2026).
+          const upTo = new Date(p.lastSeen).setHours(23, 59, 59, 999);
+          const last = items.find((x) => x.noteId && x.entity === 'note' && (x.category === 'appointment' || x.category === 'note') && (x.date === null || x.date <= upTo));
           const f = last ? await U().notes.facts(last.noteId, ['open', 'finished'], { draft: /draft/i.test(last.status) }) : { open: [], finished: [] };
           r = { at: now, rules: RULES, noteId: last ? last.noteId : null, noteDate: last ? last.date : null, found: f.open, finished: f.finished.length > 0 };
           cache[ck] = r;
@@ -289,8 +291,8 @@
       const card = (title, list) => '<div class="card"><div class="card-header"><h2>' + title + ' (' + list.length + ')</h2></div><div class="card-body p-0">' +
         (list.length ? '<table class="table table-striped table-bordered w-100 m-0">' + head + '<tbody>' + list.map(row).join('') + '</tbody></table>' : '<p class="text-muted m-3">None.</p>') + '</div></div>';
       h += card('Open-ended', open) + card('Cancelled, not rebooked', cancelled);
-      if (done.length) h += card('Recalled', done);
-      if (notRecalled.length) h += card('Not recalled', notRecalled);
+      // Below a "Done" line (CH, 24 Nov 2026): the ones already acted on.
+      h += U().ui.page.divider('Done') + card('Recalled', done) + card('Not recalled', notRecalled);
       if (bad.length) h += '<div class="alert alert-danger upc-err">Notes not read for ' + bad.map((x) => esc(x.name) + ' (' + esc(x.error) + ')').join(', ') + '.</div>';
       const c = r.counts || {};
       h += '<p class="text-muted">Last seen ' + AFTER_DAYS() + ' to ' + UP_TO_DAYS() + ' days ago, nothing booked. Left out: ' + (c.recent || 0) + ' seen in the last ' + AFTER_DAYS() + ' days, ' +
