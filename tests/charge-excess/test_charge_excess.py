@@ -187,7 +187,7 @@ async def main():
             await ctx.close()
         check('button on a patient invoice billed to its funder with something outstanding', shown[3001], shown)
         check('no button when paid in full, still to bill, or on a funder invoice', not shown[3002] and not shown[3003] and not shown[3004], shown)
-        check('"Schedule excess" next to Process Now (after its drop-down), in Halaxy\'s style', place[1] == 'Process Now' and place[2] == 'Schedule excess' and 'btn-outline-primary-light' in place[0], place)
+        check('"Schedule Excess" next to Process Now (after its drop-down), in Halaxy\'s style', place[1] == 'Process Now' and place[2] == 'Schedule Excess' and 'btn-outline-primary-light' in place[0], place)
 
         # Confirm, then the three steps in order
         S = fresh()

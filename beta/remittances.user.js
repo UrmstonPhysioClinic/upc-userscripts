@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Remittances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.6
+// @version      0.4.7
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/remittances.user.js
@@ -36,7 +36,7 @@
   if (window.__upcRemittances) return;
   window.__upcRemittances = true;
 
-  const VERSION = '0.4.6';
+  const VERSION = '0.4.7';
   const ROUTE = 'upc-remittances';
   const MENU_CLS = 'upc-remit-menu';
   const CDN = 'https://cdn.jsdelivr.net/npm/';
@@ -634,7 +634,7 @@
     const r = state.remit;
     const fixes = state.results.filter((x) => x.status === 'fix');
     let html = '<div class="upc-rem">' + UPC.ui.page.bar('Remittances', '', '') +
-      '<div class="card"><div class="card-header"><h2>Read a remittance</h2></div><div class="card-body">' +
+      '<div class="card"><div class="card-header"><h2>Read a Remittance</h2></div><div class="card-body">' +
       '<div class="upc-rem-drop" tabindex="0" role="button">Drop a remittance PDF here, or click to choose one<input type="file" accept="application/pdf" hidden></div>' +
       '<div class="upc-rem-status" aria-live="polite"></div>';
     if (r) {
@@ -650,7 +650,7 @@
           '<label>paid <input class="form-control" data-add="paid" placeholder="70.00" inputmode="decimal" aria-label="Amount paid"></label> ' +
           '<label>billed <input class="form-control" data-add="billed" placeholder="if shown" inputmode="decimal" aria-label="Amount billed, if the remittance shows it"></label> ' +
           '<label><input type="checkbox" data-add="excess"> Member contribution or excess</label> ' +
-          '<button type="button" class="btn btn-outline-primary-light" data-act="addline">Add and check</button></div>';
+          '<button type="button" class="btn btn-outline-primary-light" data-act="addline">Add and Check</button></div>';
       }
     }
     html += '</div></div>';
@@ -658,8 +658,8 @@
     if (state.run) html += UPC.ui.run.html(state.run);
     const working = state.busy && state.run && !state.run.finished;
     if (state.results.length && !working) {
-      html += '<div class="card"><div class="card-header"><h2>Invoices on this remittance</h2></div><div class="card-body p-0 table-responsive-sm">' +
-        '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th></th><th>Invoice</th><th class="number">Halaxy</th><th class="number">Insurer paid</th><th class="number">Difference</th><th>Result</th></tr></thead><tbody>';
+      html += '<div class="card"><div class="card-header"><h2>Invoices on This Remittance</h2></div><div class="card-body p-0 table-responsive-sm">' +
+        '<table class="table table-striped table-bordered w-100 m-0"><thead><tr><th></th><th>Invoice</th><th class="number">Halaxy</th><th class="number">Insurer Paid</th><th class="number">Difference</th><th>Result</th></tr></thead><tbody>';
       state.results.forEach((x, i) => {
         const it = x.item;
         const label = x.status === 'ok' && x.already ? 'Excess moved' : { ok: 'Paid in full', fix: 'Excess', resume: 'Finish', manual: 'By hand', check: 'Check', done: 'Done', failed: 'Failed' }[x.status];
@@ -668,7 +668,7 @@
         let paidCell = paidShown;
         if (r.scanned && !['done', 'failed'].includes(x.status) && !state.busy) {
           // Scanned: the invoice number and the amounts can be corrected against the paper copy, then checked again.
-          link += '<div class="upc-rem-chg text-muted">Read as ' + esc(it.invoice) + '. Wrong? Correct the number or the amounts, then <span class="upc-rem-fix"><input class="form-control" data-num="' + i + '" value="' + esc(it.invoice) + '" aria-label="Correct invoice number"> <button type="button" class="btn btn-outline-primary-light" data-act="recheck" data-i="' + i + '">Re-check</button></span></div>';
+          link += '<div class="upc-rem-chg text-muted">Read as ' + esc(it.invoice) + '. Wrong? Correct the number or the amounts, then <span class="upc-rem-fix"><input class="form-control" data-num="' + i + '" value="' + esc(it.invoice) + '" aria-label="Correct invoice number"> <button type="button" class="btn btn-outline-primary-light" data-act="recheck" data-i="' + i + '">Re-Check</button></span></div>';
           paidCell = it.lines && it.lines.length > 1
             ? it.lines.map((l, k) => '<label class="upc-rem-amt"><span class="text-muted">' + esc(l.date ? UPC.dayLabel(Date.parse(l.date)) : 'Line ' + (k + 1)) + '</span> <input class="form-control" data-line="' + i + ':' + k + '" value="' + esc(plain(l.paid || 0)) + '" inputmode="decimal" aria-label="Paid for ' + esc(l.date || 'line ' + (k + 1)) + '"></label>').join('') +
               '<div class="text-muted">' + paidShown + '</div>'

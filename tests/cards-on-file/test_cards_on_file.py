@@ -146,7 +146,7 @@ async def main():
         head = await pg.evaluate("document.querySelector('[data-upc-stored-cards] .card h2').textContent")
         check('read: the card report (every expiry), the patient list, the Unpaid Invoices report', S['reports'] == ['26', '5'] and S['expiry'] == ('01-2000', '12-2060') and S['lists'] == 2, (S['reports'], S.get('expiry'), S['lists']))
         check('no longer needed: last seen over 28 days ago, nothing booked or owed (oldest first; both of a patient\'s cards)',
-              head == 'No longer needed (3)' and [r[1] for r in rows] == ['Mrs Gail Gone', 'Mrs Alice (Ali) Done', 'Mrs Alice (Ali) Done'], (head, rows))
+              head == 'No Longer Needed (3)' and [r[1] for r in rows] == ['Mrs Gail Gone', 'Mrs Alice (Ali) Done', 'Mrs Alice (Ali) Done'], (head, rows))
         check('a row: status, card, expiry, last appointment', rows[0][2:6] == ['Current', 'Amex ending 8888', 'Feb 2027', '01-Jan-2025'], rows[:1])
         text = json.dumps(rows)
         check('kept: booked, owing on their own invoice, an unpaid insurer invoice in their name (title and preferred name ignored), seen recently, never seen, not in the patient list',

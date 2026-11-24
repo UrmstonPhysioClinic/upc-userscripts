@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Calendar: Calendar controls (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      2.17
+// @version      2.18
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/calendar-controls.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/calendar-controls.user.js
@@ -1433,8 +1433,8 @@
       group.id = 'upc-prac-buttons';
       group.className = 'btn-group ml-2';
       group.innerHTML =
-        '<button type="button" id="upc-just-me" class="btn btn-sm btn-outline-primary" title="Show only my calendar" data-long="Just me" data-short="Me">Just me</button>' +
-        '<button type="button" id="upc-all-pracs" class="btn btn-sm btn-outline-primary" title="Show all practitioners" data-long="All practitioners" data-short="All">All practitioners</button>';
+        '<button type="button" id="upc-just-me" class="btn btn-sm btn-outline-primary" title="Show only my calendar" data-long="Just me" data-short="Me">Just Me</button>' +
+        '<button type="button" id="upc-all-pracs" class="btn btn-sm btn-outline-primary" title="Show all practitioners" data-long="All practitioners" data-short="All">All Practitioners</button>';
       col.prepend(group);
       group.querySelector('#upc-just-me').addEventListener('click', () => { const m = me(); if (m) showPractitioners([m]); });
       group.querySelector('#upc-all-pracs').addEventListener('click', () => showPractitioners(clinicians()));

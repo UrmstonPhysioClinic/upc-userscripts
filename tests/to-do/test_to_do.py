@@ -58,7 +58,7 @@ def page_html():
             "<li class='mainmenu-item'><a class='mainmenu-link'><span class='mainmenu-link-label'>Schedule</span></a><ul><li><a class='mainmenu-sublink' href='/a/pr/555/calendar'>Calendar</a></li>"
             "<li><a class='mainmenu-sublink' href='/a/pr/555/task/'>Tasks &amp; Follow-Ups</a></li></ul></li>"
             "<li class='mainmenu-item'><a class='mainmenu-link'><span class='mainmenu-link-label'>Finances</span></a><ul><li><a class='mainmenu-sublink' href='/a/pr/555/invoice/'>Invoices</a></li>"
-            "<li><a class='mainmenu-sublink upc-rtb-menu' href='/a/pr/555/invoice/#upc-ready-to-bill'>Ready to bill</a></li></ul></li></ul></nav></div>"
+            "<li><a class='mainmenu-sublink upc-rtb-menu' href='/a/pr/555/invoice/#upc-ready-to-bill'>Ready to Bill</a></li></ul></li></ul></nav></div>"
             "<div id='headerWrapper' style='height:50px'><div id='alertHeader' class='alertIconsContainer'><div id='alertIncomingMessages' class='headIcon'><style>a.alertIcon[data-count]::after{content:attr(data-count);position:absolute;top:-12px;right:0;height:20px;font-size:12px;background-color:rgb(150,150,150)}</style><a id='btn-alert-incoming-messages' class='fa-stack alertIcon' href='javascript:' title='Inbox' data-count='12'><i class='icon-inbox icon'></i></a></div>"
             "<div class='alertPopoverInner'><div class='teasers'><div id='alertTeaser_9' class='viewTeaser alertType-task-due'><p><a href='/a/pr/555/task/4'>Renew licence</a> for <a href='/a/pr/555/organisation/804'>Org Four</a></p></div></div></div><div id='alertNotifications' class='headIcon'><style>#btn-alert-notifications{position:relative;display:inline-block;width:30px;height:30px;line-height:30px;font-size:15px}#btn-alert-notifications i{display:inline-block;width:18px;height:18px}#btn-alert-notifications[data-count]::after{content:attr(data-count);position:absolute;top:-3px;right:-5px;min-width:14px;height:14px;font-size:9px;line-height:14px;border-radius:7px;background-color:rgb(10,20,30);color:rgb(250,250,250)}</style><a id='btn-alert-notifications' class='fa-stack alertIcon' href='javascript:' title='Notifications' data-count='9'><i class='icon-alarm icon'></i></a></div></div></div><div id='pageContent'><h1>Tasks</h1></div>"
             "<script>window.HkUser = { linkPrG: 11, pracID: 11, pracName: 'Carl Healy' }; window.Hk = { jwt: 'j' };"
@@ -134,11 +134,11 @@ async def main():
         await pg.goto('https://eu.halaxy.com/a/pr/555/task/')
         await pg.wait_for_selector('a.upc-todo-menu', timeout=20000)
         menu = await pg.evaluate("[...document.querySelectorAll('#mainMenu a.mainmenu-sublink')].map((a) => a.childNodes[0].textContent.trim())")
-        check('Schedule > To do, after Halaxy\'s own items', menu[:3] == ['Calendar', 'Tasks & Follow-Ups', 'To do'], menu)
+        check('Schedule > To do, after Halaxy\'s own items', menu[:3] == ['Calendar', 'Tasks & Follow-Ups', 'To Do'], menu)
         await pg.click('a.upc-todo-menu')
         await pg.wait_for_selector('[data-upc-to-do] [data-upc-list=overdue]', timeout=20000)
         heads = await pg.evaluate("[...document.querySelectorAll('[data-upc-to-do] .card h2')].map((h) => h.textContent)")
-        check('my open tasks grouped; completed and other people\'s left out', heads[:5] == ['Overdue (1)', 'Today (1)', 'This week (1)', 'Later (1)', 'No date (1)'], heads)
+        check('my open tasks grouped; completed and other people\'s left out', heads[:5] == ['Overdue (1)', 'Today (1)', 'This Week (1)', 'Later (1)', 'No Date (1)'], heads)
         badge = await pg.evaluate("(document.querySelector('a.upc-todo-menu .upc-todo-badge') || {}).textContent")
         check('badge: overdue and due today', badge == '2', badge)
         head = await pg.evaluate("""(() => { const a = document.querySelector('#alertHeader a.upc-todo-head'); const inbox = document.getElementById('alertIncomingMessages');
@@ -153,7 +153,7 @@ async def main():
         linked = await pg.evaluate("Object.fromEntries([...document.querySelectorAll('[data-upc-link]')].map((e) => [e.dataset.upcLink, [e.textContent, (e.querySelector('a') || {}).getAttribute && e.querySelector('a').getAttribute('href'), (e.querySelector('a') || {}).target]]))")
         check('Linked to: the record by name, opening in a new tab', linked == {'2': ['Patient Two', '/a/pr/555/patient/602', '_blank'], '3': ['Invoice UPC-012235', '/a/pr/555/invoice/703', '_blank'], '4': ['Org Four', '/a/pr/555/organisation/804', '_blank']}, linked)
         check("read from each linked task's Edit pop-up once, one in the bell's list taken from there; unlinked tasks not read", sorted(x for x in S.get('popups', []) if x != 'new') == ['2', '3'], S.get('popups'))
-        check('a card for each list I can open, with count and top rows; none for lists I can\'t', 'Ready to bill (4)' in heads and 'Old balances (9)' not in heads
+        check('a card for each list I can open, with count and top rows; none for lists I can\'t', 'Ready to Bill (4)' in heads and 'Old Balances (9)' not in heads
               and 'Patient C, Bupa, £ 1,200.00' in await pg.evaluate("document.querySelector('.upc-todo-side').innerText") and 'and 1 more' in await pg.evaluate("document.querySelector('.upc-todo-side').innerText"), heads)
 
         check("Halaxy's page underneath doesn't scroll", await pg.evaluate("document.documentElement.style.overflow") == 'hidden')

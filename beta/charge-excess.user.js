@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Schedule excess (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.1
+// @version      0.2.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/charge-excess.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/charge-excess.user.js
@@ -39,7 +39,7 @@
   if (window.__hxChargeExcess) return;
   window.__hxChargeExcess = true;
 
-  const VERSION = '0.2.1';
+  const VERSION = '0.2.2';
   const U = () => window.UPC;
   if (!/^\/a\/pr\/\d+\//.test(location.pathname)) return;
   // A patient invoice: /invoice/{id} or /patient/invoice/{patient}/{id}; not the patient's Invoices tab.
@@ -176,11 +176,11 @@
       busy = false;
       dlg.body.innerHTML = '<p>Schedule the ' + esc(U().money.fmt(p.amount)) + ' excess on ' + esc(p.inv.number) + '?</p>' +
         '<table class="table table-striped table-bordered w-100"><tbody>' +
-        '<tr><th>Due date</th><td>' + esc(p.due) + '</td></tr>' +
+        '<tr><th>Due Date</th><td>' + esc(p.due) + '</td></tr>' +
         '<tr><th>Payment</th><td>' + esc(U().money.fmt(p.amount)) + ' from ' + esc(p.card) + ' on ' + esc(p.due) + ' at ' + esc(p.time) + '</td></tr>' +
         '<tr><th>Email</th><td>' + esc(TEMPLATE()) + '<br><span class="text-muted">to ' + esc(p.to) + '</span></td></tr>' +
         '</tbody></table>' +
-        '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-upc-close>Cancel</button><button type="button" class="btn btn-primary" data-a="go">Schedule excess</button></div>';
+        '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-upc-close>Cancel</button><button type="button" class="btn btn-primary" data-a="go">Schedule Excess</button></div>';
       dlg.body.querySelector('[data-a=go]').addEventListener('click', () => go(dlg, p));
     }).catch((e) => {
       busy = false;
@@ -227,7 +227,7 @@
     btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'btn btn-outline-primary-light upc-charge-excess';
-    btn.textContent = 'Schedule excess';
+    btn.textContent = 'Schedule Excess';
     btn.addEventListener('click', ask);
     // Next to Process Now (with its drop-down; live 16 Nov 2026 the buttons carry data-modal-href, not href), else
     // next to Mark as Paid, else under the payments.

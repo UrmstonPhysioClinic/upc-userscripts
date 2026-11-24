@@ -254,7 +254,7 @@ async def main():
         await c5.close()
 
         # Per person (clinic setting): reminders follow whoever is signed in (here WP) on any PC, whatever the PC's own
-        # switch says, and "Remind me later" follows her to other PCs
+        # switch says, and "Remind Me Later" follows her to other PCs
         for n in NOTES[78842]:
             if n['id'] == 69000:
                 n['html'] = '<p>UPC clinic settings</p><p>forecourtLights.remind = Wendy Pritchard</p>'
@@ -269,7 +269,7 @@ async def main():
         await c6.close()
         c7, g7 = await pc(dict(BASE, enabled=False, timerOn='15:30'), datetime.datetime(2026, 11, 17, 10, 2, tzinfo=LON))
         await g7.wait_for_timeout(5000)
-        check('"Remind me later" follows her to another PC', await g7.evaluate("!document.querySelector('[data-upc-dialog=\"upc-forecourt-lights\"]')"), note_lines('UPC shared checks: Forecourt lights'))
+        check('"Remind Me Later" follows her to another PC', await g7.evaluate("!document.querySelector('[data-upc-dialog=\"upc-forecourt-lights\"]')"), note_lines('UPC shared checks: Forecourt lights'))
         await c7.close()
         await browser.close()
 

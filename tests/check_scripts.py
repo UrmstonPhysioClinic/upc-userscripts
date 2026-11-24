@@ -29,9 +29,38 @@ WORDING = [
     ('red-text paragraph (use alert alert-danger / -warning / -success)', re.compile(r'<p class="(?:[\w-]+ )*upc-(?:err|warn|ok)\b')),
     ('faded rows (upc-off)', re.compile(r'\bupc-off\b')),
     ('version line on a page (upc-version)', re.compile(r'\bupc-version\b')),
-    ('"Check again" (use "Check now")', re.compile(r'Check again')),
+    ('"Check again" (use "Check Now")', re.compile(r'Check again')),
     ('em dash', re.compile('\u2014')),
 ]
+# Headings, tabs, column headers and buttons written as Halaxy writes them: each word with a capital, except short
+# joining words inside (CH, 24 Nov 2026; core UPC.ui.titleCase). Checked on literal text in our own markup.
+MINOR = set('a an and as at but by for in nor of on or per the to vs via with'.split())
+TITLED = re.compile(r"<(button|th|h[1-6])\b[^>]*>([A-Za-z][^<>'\"+]*?)</\1>|nav-link[^>]*>([A-Za-z][^<>'\"+]*?)</a>")
+
+
+def title_case(text):
+    ws, first, out = text.split(' '), True, []
+    for i, w in enumerate(ws):
+        if not re.search('[A-Za-z]', w):
+            out.append(w)
+            continue
+        is_first, first = first, w.endswith(':')
+        if not is_first and i < len(ws) - 1 and w.lower() in MINOR:
+            out.append(w.lower())
+        else:
+            out.append('-'.join(p[:1].upper() + p[1:] if p[:1].islower() else p for p in w.split('-')))
+    return ' '.join(out)
+
+
+def untitled(body):
+    found = []
+    for m in TITLED.finditer(body):
+        t = (m.group(2) or m.group(3) or '').strip()
+        if t and t != title_case(t):
+            found.append(t)
+    return found
+
+
 LOADER_GM = {'GM_getValue', 'GM_setValue', 'GM_deleteValue', 'GM_registerMenuCommand'}
 FAILS = []
 
@@ -98,6 +127,7 @@ for name in sorted(stable | beta):
             # on pages; the same button words everywhere.
             look = [w for w, rx in WORDING if rx.search(body)]
             check(tag + ' wording and look', not look, look)
+            check(tag + ' headings and buttons in Title Case', not untitled(body), untitled(body))
     if len(texts) == 2:
         vs = meta(header(texts['stable']) or '', 'version')
         vb = meta(header(texts['beta']) or '', 'version')

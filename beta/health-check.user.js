@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.62
+// @version      1.1.63
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.62';
+  const VERSION = '1.1.63';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -614,7 +614,7 @@
     if (!list.length && !open) { sh.innerHTML = ''; return; }
     let html = '<div class="upc-hc-wrap' + (open ? ' upc-hc-open' : '') + '">';
     if (open) {
-      html += '<div class="card upc-hc-panel" role="dialog" aria-label="Clinic scripts health check"><div class="card-header"><h2>Clinic scripts health check</h2></div><div class="card-body">';
+      html += '<div class="card upc-hc-panel" role="dialog" aria-label="Clinic scripts health check"><div class="card-header"><h2>Clinic Scripts Health Check</h2></div><div class="card-body">';
       if (!list.length) html += '<p class="upc-hc-ok">All checks passed.</p>';
       list.forEach((p) => {
         html += '<div class="upc-hc-item"><b>' + esc(p.title) + '</b>' +

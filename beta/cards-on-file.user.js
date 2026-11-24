@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Cards on file (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.1
+// @version      0.1.2
 // @upc-was      stored-cards.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/cards-on-file.user.js
@@ -34,7 +34,7 @@
   if (window.__hxStoredCards) return;
   window.__hxStoredCards = true;
 
-  const VERSION = '0.1.1';
+  const VERSION = '0.1.2';
   const ROUTE = 'upc-cards-on-file';
   const MENU_CLS = 'upc-sc-menu';
   const DAY = 864e5;
@@ -150,7 +150,7 @@
       const end = (v) => { if (!answered) { answered = true; resolve(v); } };
       const dlg = U().ui.dialog({ title, small: true, onClose: () => end(false) });
       dlg.root.setAttribute('data-upc-sc-confirm', '');
-      dlg.body.innerHTML = html + '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-c="no">Cancel</button><button type="button" class="btn btn-primary" data-c="yes">' + esc(yes) + '</button></div>';
+      dlg.body.innerHTML = html + '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-c="no">Cancel</button><button type="button" class="btn btn-primary" data-c="yes">' + esc(window.UPC && UPC.ui.titleCase ? UPC.ui.titleCase(yes) : yes) + '</button></div>';
       dlg.body.addEventListener('click', (e) => { const b = e.target.closest('[data-c]'); if (!b) return; end(b.dataset.c === 'yes'); dlg.close(); });
     });
   }
@@ -174,7 +174,7 @@
 
   function table(rows) {
     const base = U().base();
-    return '<table class="table table-striped table-bordered w-100 m-0" data-upc-list="due" data-upc-pick><thead><tr><th>Patient</th><th>Status</th><th>Card</th><th>Expires</th><th>Last appointment</th><th data-upc-nosort></th></tr></thead><tbody>' +
+    return '<table class="table table-striped table-bordered w-100 m-0" data-upc-list="due" data-upc-pick><thead><tr><th>Patient</th><th>Status</th><th>Card</th><th>Expires</th><th>Last Appointment</th><th data-upc-nosort></th></tr></thead><tbody>' +
       rows.map((x) => {
         const q = queuedOf(x.key), d = done.get(x.key);
         const act = q === 'busy' ? U().ui.run.inline('') : q === 'queued' ? 'Queued' : d === 'ok' ? '<span class="upc-ok">Removed</span>' : d ? '<span class="upc-err">Not changed</span>' : '';
@@ -194,7 +194,7 @@
   function render() {
     if (!root) return;
     const r = store.get('result', null);
-    const btn = '<button type="button" class="btn btn-outline-primary" data-a="refresh"' + (state.running ? ' disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>';
+    const btn = '<button type="button" class="btn btn-outline-primary" data-a="refresh"' + (state.running ? ' disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check Now') + '</button>';
     const bq = U().ui.batch('stored-cards', 'Removing cards', 'removed', jobs.length + (jobBusy !== null ? 1 : 0), state.errors.length);
     let h = '<div class="upc-sc">' + U().ui.page.bar('Cards on file', btn, bq || (state.running ? U().ui.run.inline(state.status) : U().ui.page.checked(r && r.at)));
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';

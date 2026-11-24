@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Old balances (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.3
+// @version      0.2.4
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/old-balances.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/old-balances.user.js
@@ -30,7 +30,7 @@
   if (window.__hxOldBalances) return;
   window.__hxOldBalances = true;
 
-  const VERSION = '0.2.3';
+  const VERSION = '0.2.4';
   const ROUTE = 'upc-old-balances';
   const MENU_CLS = 'upc-ob-menu';
   const DAY = 864e5;
@@ -103,7 +103,7 @@
       const end = (v) => { if (!answered) { answered = true; resolve(v); } };
       const dlg = U().ui.dialog({ title, small: true, onClose: () => end(false) });
       dlg.root.setAttribute('data-upc-ob-confirm', '');
-      dlg.body.innerHTML = html + '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-c="no">Cancel</button><button type="button" class="btn btn-primary" data-c="yes">' + esc(yes) + '</button></div>';
+      dlg.body.innerHTML = html + '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-c="no">Cancel</button><button type="button" class="btn btn-primary" data-c="yes">' + esc(window.UPC && UPC.ui.titleCase ? UPC.ui.titleCase(yes) : yes) + '</button></div>';
       dlg.body.addEventListener('click', (e) => { const b = e.target.closest('[data-c]'); if (!b) return; end(b.dataset.c === 'yes'); dlg.close(); });
     });
   }
@@ -141,7 +141,7 @@
       rows.map((x) => {
         const q = queuedOf(x.id), d = done.get(x.id);
         const act = q === 'busy' ? U().ui.run.inline('') : q === 'queued' ? 'Queued' : d === 'ok' ? '<span class="upc-ok">Written off</span>'
-          : '<button type="button" class="btn btn-outline-primary-light" data-a="off" data-id="' + esc(x.id) + '">Write off</button>';
+          : '<button type="button" class="btn btn-outline-primary-light" data-a="off" data-id="' + esc(x.id) + '">Write Off</button>';
         return '<tr data-upc-id="' + esc(x.id) + '"' + (q || d === 'ok' ? ' data-upc-nopick' : '') + '><td><a href="' + esc(base + '/invoice/' + x.id) + '" target="_blank" rel="noopener">' + esc(x.number) + '</a></td><td class="upc-ob-date">' + esc(label(x.date)) + '</td>' +
           '<td>' + esc(x.payer) + '</td><td>' + esc(x.funder) + '</td><td class="number">' + esc(fmt(x.balance)) + '</td><td class="upc-ob-act">' + act + '</td></tr>';
       }).join('') + '</tbody></table>';
@@ -153,13 +153,13 @@
     const xs = rows.filter((x) => ids.includes(String(x.id)));
     if (!xs.length) return '';
     return '<span data-upc-bulk-for="' + listId + '"><span class="text-muted">' + xs.length + ' ticked, ' + esc(fmt(xs.reduce((t, x) => t + x.balance, 0))) + '</span>' +
-      '<button type="button" class="btn btn-primary" data-a="bulk" data-list="' + listId + '">Write off ' + xs.length + '</button></span>';
+      '<button type="button" class="btn btn-primary" data-a="bulk" data-list="' + listId + '">Write Off ' + xs.length + '</button></span>';
   }
 
   function render() {
     if (!root) return;
     const r = store.get('result', null);
-    const btn = '<button type="button" class="btn btn-outline-primary" data-a="refresh"' + (state.running ? ' disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>';
+    const btn = '<button type="button" class="btn btn-outline-primary" data-a="refresh"' + (state.running ? ' disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check Now') + '</button>';
     const bq = U().ui.batch('old-balances', 'Writing off', 'written off', jobs.length + (jobBusy !== null ? 1 : 0), state.errors.length);
     let h = '<div class="upc-ob">' + U().ui.page.bar('Old balances', btn, bq || (state.running ? U().ui.run.inline(state.status) : U().ui.page.checked(r && r.at)));
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';

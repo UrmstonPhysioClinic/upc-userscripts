@@ -3,7 +3,7 @@
     {
       "file": "health-check.user.js",
       "name": "UPC System: Health check (beta)",
-      "version": "1.1.62"
+      "version": "1.1.63"
     },
     {
       "file": "block-reporting.user.js",
@@ -14,7 +14,7 @@
     {
       "file": "core.user.js",
       "name": "UPC System: Core library (beta)",
-      "version": "0.1.82"
+      "version": "0.1.83"
     },
     {
       "file": "alerts.user.js",
@@ -34,7 +34,7 @@
     {
       "file": "bank-statement.user.js",
       "name": "UPC Billing: Bank statement (beta)",
-      "version": "0.2.9"
+      "version": "0.2.10"
     },
     {
       "file": "branding.user.js",
@@ -44,52 +44,52 @@
     {
       "file": "calendar-controls.user.js",
       "name": "UPC Calendar: Calendar controls (beta)",
-      "version": "2.17"
+      "version": "2.18"
     },
     {
       "file": "cards-on-file.user.js",
       "name": "UPC Patients: Cards on file (beta)",
-      "version": "0.1.1",
+      "version": "0.1.2",
       "was": "stored-cards.user.js"
     },
     {
       "file": "charge-excess.user.js",
       "name": "UPC Billing: Schedule excess (beta)",
-      "version": "0.2.1"
+      "version": "0.2.2"
     },
     {
       "file": "email-html.user.js",
       "name": "UPC Look: HTML source for emails (beta)",
-      "version": "0.9",
+      "version": "0.10",
       "was": "email-html-source.user.js"
     },
     {
       "file": "feedback-alerts.user.js",
       "name": "UPC Patients: Feedback alerts (beta)",
-      "version": "0.1.8",
+      "version": "0.1.9",
       "was": "survey-feedback.user.js"
     },
     {
       "file": "forecourt-lights.user.js",
       "name": "UPC Calendar: Forecourt lights (beta)",
-      "version": "0.3.4"
+      "version": "0.3.5"
     },
     {
       "file": "insurer-payments-due.user.js",
       "name": "UPC Billing: Insurer payments due (beta)",
-      "version": "0.1.12",
+      "version": "0.1.13",
       "was": "funder-chaser.user.js"
     },
     {
       "file": "invoice-funder.user.js",
       "name": "UPC Billing: Invoice Funder (beta)",
-      "version": "0.8.5",
+      "version": "0.8.6",
       "was": "bill-funder.user.js"
     },
     {
       "file": "missing-details.user.js",
       "name": "UPC Patients: Missing details (beta)",
-      "version": "0.2.9"
+      "version": "0.2.10"
     },
     {
       "file": "mobile-layout.user.js",
@@ -100,23 +100,23 @@
     {
       "file": "old-balances.user.js",
       "name": "UPC Billing: Old balances (beta)",
-      "version": "0.2.3"
+      "version": "0.2.4"
     },
     {
       "file": "open-ended-patients.user.js",
       "name": "UPC Patients: Open-ended recalls (beta)",
-      "version": "0.4.8",
+      "version": "0.4.9",
       "was": "check-ins.user.js"
     },
     {
       "file": "outstanding-actions.user.js",
       "name": "UPC Calendar: Outstanding actions (beta)",
-      "version": "0.5.5"
+      "version": "0.5.6"
     },
     {
       "file": "patient-forms.user.js",
       "name": "UPC Patients: Patient forms (beta)",
-      "version": "0.1.7"
+      "version": "0.1.8"
     },
     {
       "file": "patient-statuses.user.js",
@@ -126,12 +126,12 @@
     {
       "file": "portal-fill.user.js",
       "name": "UPC Billing: Portal fill (beta)",
-      "version": "0.1.22"
+      "version": "0.1.23"
     },
     {
       "file": "ready-to-bill.user.js",
       "name": "UPC Billing: Ready to bill (beta)",
-      "version": "0.4.13"
+      "version": "0.4.14"
     },
     {
       "file": "rebate-sync.user.js",
@@ -141,22 +141,22 @@
     {
       "file": "record-retention.user.js",
       "name": "UPC Patients: Record retention (beta)",
-      "version": "0.1.3"
+      "version": "0.1.4"
     },
     {
       "file": "remittances.user.js",
       "name": "UPC Billing: Remittances (beta)",
-      "version": "0.4.6"
+      "version": "0.4.7"
     },
     {
       "file": "review-requests.user.js",
       "name": "UPC Patients: Review requests (beta)",
-      "version": "0.5.19"
+      "version": "0.5.20"
     },
     {
       "file": "script-settings.user.js",
       "name": "UPC System: Script settings (beta)",
-      "version": "0.3.0"
+      "version": "0.3.1"
     },
     {
       "file": "task-stamps.user.js",
@@ -172,7 +172,7 @@
     {
       "file": "to-do.user.js",
       "name": "UPC Schedule: To do (beta)",
-      "version": "0.2.12"
+      "version": "0.2.13"
     },
     {
       "file": "toast-alerts.user.js",

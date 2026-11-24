@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Record retention (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.3
+// @version      0.1.4
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/record-retention.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/record-retention.user.js
@@ -38,7 +38,7 @@
   if (window.__hxRecordRetention) return;
   window.__hxRecordRetention = true;
 
-  const VERSION = '0.1.3';
+  const VERSION = '0.1.4';
   const ROUTE = 'upc-record-retention';
   const MENU_CLS = 'upc-rr8-menu';
   const FRESH = 24 * 3600e3;
@@ -210,7 +210,7 @@
       const end = (v) => { if (!answered) { answered = true; resolve(v); } };
       const dlg = U().ui.dialog({ title, small: true, onClose: () => end(false) });
       dlg.root.setAttribute('data-upc-ret-confirm', '');
-      dlg.body.innerHTML = html + '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-c="no">Cancel</button><button type="button" class="btn btn-primary" data-c="yes">' + esc(yes) + '</button></div>';
+      dlg.body.innerHTML = html + '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-c="no">Cancel</button><button type="button" class="btn btn-primary" data-c="yes">' + esc(window.UPC && UPC.ui.titleCase ? UPC.ui.titleCase(yes) : yes) + '</button></div>';
       dlg.body.addEventListener('click', (e) => { const b = e.target.closest('[data-c]'); if (!b) return; end(b.dataset.c === 'yes'); dlg.close(); });
     });
   }
@@ -242,8 +242,8 @@
   function table(listId, rows) {
     const base = U().base();
     const never = listId === 'never';
-    return '<table class="table table-striped table-bordered w-100 m-0" data-upc-list="' + listId + '" data-upc-pick><thead><tr><th>Patient</th><th>Status</th><th>Date of birth</th>' +
-      '<th>' + (never ? 'Record made' : 'Last appointment') + '</th><th>Kept until</th><th data-upc-nosort></th></tr></thead><tbody>' +
+    return '<table class="table table-striped table-bordered w-100 m-0" data-upc-list="' + listId + '" data-upc-pick><thead><tr><th>Patient</th><th>Status</th><th>Date of Birth</th>' +
+      '<th>' + (never ? 'Record made' : 'Last appointment') + '</th><th>Kept Until</th><th data-upc-nosort></th></tr></thead><tbody>' +
       rows.map((x) => {
         const q = queuedOf(x.id), d = done.get(x.id);
         const act = q === 'busy' ? U().ui.run.inline('') : q === 'queued' ? 'Queued' : d === 'ok' ? '<span class="upc-ok">Deleted</span>' : d ? '<span class="upc-err">Not changed</span>' : '';
@@ -267,7 +267,7 @@
   function render() {
     if (!root) return;
     const r = store.get('result', null);
-    const btn = '<button type="button" class="btn btn-outline-primary" data-a="refresh"' + (state.running ? ' disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check now') + '</button>';
+    const btn = '<button type="button" class="btn btn-outline-primary" data-a="refresh"' + (state.running ? ' disabled' : '') + '>' + (state.running ? 'Checking...' : 'Check Now') + '</button>';
     const bq = U().ui.batch('record-retention', checking ? 'Checking the changes' : 'Setting to Deleted', 'set to Deleted', pending(), state.failed);
     let h = '<div class="upc-ret">' + U().ui.page.bar('Record retention', btn, bq || (state.running ? U().ui.run.inline(state.status) : U().ui.page.checked(r && r.at)));
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';

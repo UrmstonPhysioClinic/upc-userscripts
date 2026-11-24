@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Calendar: Outstanding actions (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.5.5
+// @version      0.5.6
 // @description  Persistent notice of today's outstanding actions: attended appointments without a published note, and unpaid self-funded invoices.
 // @match        https://*.halaxy.com/a/*
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
@@ -47,7 +47,7 @@
   if (window.__hxOutstanding) return;
   window.__hxOutstanding = true;
 
-  const VERSION = '0.5.5';
+  const VERSION = '0.5.6';
   const m = location.pathname.match(/^\/a\/pr\/(\d+)\//);
   if (!m) return;
   const PG = m[1];
@@ -528,7 +528,7 @@
           (() => { const c = el('input', { type: 'checkbox' }); c.checked = !!settings.showEveryone; c.addEventListener('change', () => { settings.showEveryone = c.checked; saveSettings(); refresh('setting'); }); return c; })(),
           el('span', { text: 'Show everyone' })
         ]),
-      el('button', { type: 'button', class: 'btn btn-outline-primary-light', text: 'Check now', onclick: () => refresh('manual') }),
+      el('button', { type: 'button', class: 'btn btn-outline-primary-light', text: 'Check Now', onclick: () => refresh('manual') }),
       el('button', { type: 'button', class: 'btn btn-outline-primary-light', text: 'Copy diagnostics', title: 'Copies counts and status codes only, no patient details', onclick: copyDiag })
     ]));
     return panel;

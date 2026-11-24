@@ -5,7 +5,7 @@ Checks: one Unpaid Invoices report from 2000; one row per invoice with its balan
 6 months old and paid-off ones left out; "Over 6 years" and "6 months to 6 years" cards with counts and totals;
 Write off asks first, then sets the invoice's status to Write-off in its settings (every other field as Halaxy filled
 it); a second Write off pressed straight away waits its turn ("Queued"); the page kit (title bar, search, sorting,
-Show 25 more); ticking rows and "Write off 2" asks once and queues both; only CH sees the page; Halaxy look.
+Show 25 more); ticking rows and "Write Off 2" asks once and queues both; only CH sees the page; Halaxy look.
 
 Run:  python3 tests/old-balances/test_old_balances.py
 """
@@ -111,11 +111,11 @@ async def main():
         check('the line under the list gives the range', q == 'Active and Issued invoices dated before 22-May-2026 with a balance.', q)
 
         bar = await pg.evaluate("(() => { const b = document.querySelector('[data-upc-old-balances] .upc-page-bar'); return b && [b.querySelector('h1').textContent, b.querySelector('.upc-page-actions .btn').textContent]; })()")
-        check('title bar: title left, Check now right; checked line under it', bar == ['Old balances', 'Check now'] and 'Checked at ' in await pg.evaluate("document.querySelector('[data-upc-old-balances] .upc-page-sub').textContent"), bar)
+        check('title bar: title left, Check now right; checked line under it', bar == ['Old Balances', 'Check Now'] and 'Checked at ' in await pg.evaluate("document.querySelector('[data-upc-old-balances] .upc-page-sub').textContent"), bar)
         vis = "[...document.querySelectorAll('[data-upc-list=mid] tbody tr')].filter((tr) => tr.style.display !== 'none').map((tr) => tr.cells[1].textContent.trim())"
         shown = await pg.evaluate(vis)
         more = await pg.evaluate("(document.querySelector('[data-upc-more=mid]') || {}).textContent")
-        check('a long list shows 25 rows, then "Show 25 more"', len(shown) == 25 and more == 'Show 25 more', (len(shown), more))
+        check('a long list shows 25 rows, then "Show 25 More"', len(shown) == 25 and more == 'Show 25 More', (len(shown), more))
         await pg.fill('input[data-upc-search=mid]', 'X2007')
         shown = await pg.evaluate(vis)
         cnt = await pg.evaluate("document.querySelector('[data-upc-list=mid]').previousElementSibling.querySelector('[data-upc-count]').textContent")
@@ -148,7 +148,7 @@ async def main():
         await pg.check("[data-upc-list=mid] tr[data-upc-id='2059'] input[data-upc-tick]")
         await pg.check("[data-upc-list=mid] tr[data-upc-id='2058'] input[data-upc-tick]")
         tick = await pg.evaluate("(document.querySelector('[data-upc-bulk-for=mid]') || {}).textContent")
-        check('ticked rows: count, total and "Write off 2" in the tool row', tick == '2 ticked, £ 119.00Write off 2', tick)
+        check('ticked rows: count, total and "Write Off 2" in the tool row', tick == '2 ticked, £ 119.00Write Off 2', tick)
         await pg.click('[data-a=bulk][data-list=mid]')
         await pg.wait_for_selector('[data-upc-ob-confirm]')
         conf = await pg.evaluate("document.querySelector('[data-upc-ob-confirm]').innerText")

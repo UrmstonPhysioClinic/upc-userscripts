@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Invoice Funder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.8.5
+// @version      0.8.6
 // @upc-was      bill-funder.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/invoice-funder.user.js
@@ -41,7 +41,7 @@
   if (window.__upcBillFunder) return;
   window.__upcBillFunder = true;
 
-  const VERSION = '0.8.5';
+  const VERSION = '0.8.6';
   const MAX_AGE_DAYS = 183;   // about 6 months
   const NOT_ATTENDED = /cancel|did-not-attend|dna|reject|declin|reschedul/i;
   const DAY = 86400e3;
@@ -335,13 +335,13 @@
         if (r.feeDateError) h += '<div class="alert alert-warning upc-warn">Check the fee dates on ' + esc(r.orgInvoiceNumber || 'the funder invoice') + ': ' + esc(r.feeDateError) + '.</div>';
         // Bupa and AXA claims: the next step is the insurer's portal (Portal fill, on the funder invoice).
         const portal = /bupa/i.test(p.current.funderName || '') ? 'Bupa' : /axa/i.test(p.current.funderName || '') ? 'AXA' : '';
-        if (portal && r.orgInvoiceId) h += '<p><a class="btn btn-outline-primary-light" href="' + esc(U().base() + '/invoice/' + r.orgInvoiceId + '#upc-portal-fill') + '" target="_blank" rel="noopener">Fill on the ' + portal + ' portal</a></p>';
+        if (portal && r.orgInvoiceId) h += '<p><a class="btn btn-outline-primary-light" href="' + esc(U().base() + '/invoice/' + r.orgInvoiceId + '#upc-portal-fill') + '" target="_blank" rel="noopener">Fill on the ' + portal + ' Portal</a></p>';
       }
       // After billing: cancelled or did-not-attend fees left out, to keep or set to £0.
       const left = leftover();
       if (st.result && left.length) {
         h += '<div class="upc-gap"><b>Cancelled or did not attend: not billed to ' + esc(p.current.funderName || 'the funder') + '</b>' +
-          '<table class="table w-100"><thead><tr><th>Date</th><th>Fee</th><th>Invoice</th><th class="number">Amount</th><th>Comments</th><th>Keep or set to £ 0.00</th></tr></thead><tbody>';
+          '<table class="table w-100"><thead><tr><th>Date</th><th>Fee</th><th>Invoice</th><th class="number">Amount</th><th>Comments</th><th>Keep or Set to £ 0.00</th></tr></thead><tbody>';
         left.forEach((f) => {
           const key = String(f.lineId);
           const choice = st.zero[key] || 'keep';
@@ -368,8 +368,8 @@
       else if (st.confirm) h += '<button type="button" class="btn btn-outline-primary" data-a="back">Back</button><button type="button" class="btn btn-primary" data-a="go">' + goLabel() + '</button>';
       else if (st.phase === 'running' || st.phase === 'zeroing') h += '<button type="button" class="btn btn-primary" disabled>' + (st.phase === 'zeroing' ? 'Setting to £ 0.00...' : 'Billing...') + '</button>';
       else if (st.phase === 'done' && st.zeroConfirm) h += '<button type="button" class="btn btn-outline-primary" data-a="zeroback">Back</button><button type="button" class="btn btn-primary" data-a="zerogo">Set ' + toZero().length + ' to £ 0.00</button>';
-      else if (st.phase === 'done' && left.length) h += '<button type="button" class="btn btn-outline-primary" data-a="reload">Close and reload</button><button type="button" class="btn btn-primary" data-a="zeronext" ' + (toZero().length ? '' : 'disabled') + '>Set chosen fees to £ 0.00</button>';
-      else h += '<button type="button" class="btn btn-primary" data-a="' + (st.result || st.phase === 'failed' ? 'reload' : 'close') + '">' + (st.result || st.phase === 'failed' ? 'Close and reload' : 'Close') + '</button>';
+      else if (st.phase === 'done' && left.length) h += '<button type="button" class="btn btn-outline-primary" data-a="reload">Close and Reload</button><button type="button" class="btn btn-primary" data-a="zeronext" ' + (toZero().length ? '' : 'disabled') + '>Set Chosen Fees to £ 0.00</button>';
+      else h += '<button type="button" class="btn btn-primary" data-a="' + (st.result || st.phase === 'failed' ? 'reload' : 'close') + '">' + (st.result || st.phase === 'failed' ? 'Close and Reload' : 'Close') + '</button>';
       h += '</div>';
       sh.innerHTML = h;
     }

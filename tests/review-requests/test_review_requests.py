@@ -259,8 +259,8 @@ async def main():
         foot = await pg.evaluate(ROOT_JS + ".querySelector('.upc-rr > p.text-muted').textContent")
         check('left out and counted: under 16/owing, cancelled, no good signs', "Left out: 2 under 16 or owing money, 1 last appointment cancelled or missed, 1 seen recently and not finished, 3 no good-outcome signs" in foot, foot)
         dn = await pg.evaluate(DONE)
-        check('below a "Done" line: Asked (Halaxy\'s follow-up, sent when) and Not asked (Don\'t ask this time, with Undo)', [k for k in dn] == ['Asked (1)', 'Not asked (1)']
-              and dn['Asked (1)'][0][0] == 'Patient G' and dn['Asked (1)'][0][3] == 'Sent 01-Nov-2026 09:00' and dn['Not asked (1)'][0][3] == 'Undo', dn)
+        check('below a "Done" line: Asked (Halaxy\'s follow-up, sent when) and Not asked (Don\'t ask this time, with Undo)', [k for k in dn] == ['Asked (1)', 'Not Asked (1)']
+              and dn['Asked (1)'][0][0] == 'Patient G' and dn['Asked (1)'][0][3] == 'Sent 01-Nov-2026 09:00' and dn['Not Asked (1)'][0][3] == 'Undo', dn)
         check('menu count', await pg.evaluate("(document.querySelector('a.upc-rr-menu .upc-rr-badge') || {}).textContent") == '3')
         menu = await pg.evaluate("[...document.querySelectorAll('#mainMenu a.mainmenu-sublink')].map(a => a.getAttribute('href'))")
         check('menu item under Patients, over the Patient List', '/a/pr/555/patient/#upc-review-requests' in menu, menu)

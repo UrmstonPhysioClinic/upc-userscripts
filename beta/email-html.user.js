@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Look: HTML source for emails (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.9
+// @version      0.10
 // @upc-was      email-html-source.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/email-html.user.js
@@ -181,12 +181,12 @@
       '<iframe sandbox="" title="Email preview"></iframe>' +
       '<div class="hx-raw-bar">' +
         '<span class="hx-raw-note text-muted">HTML mode</span>' +
-        '<button type="button" class="btn btn-outline-primary-light hx-raw-act" data-act="back">Back to editor</button>' +
+        '<button type="button" class="btn btn-outline-primary-light hx-raw-act" data-act="back">Back to Editor</button>' +
         '<div class="hx-raw-warn"></div>' +
       '</div>' +
       '<div class="hx-raw-confirm" style="display:none">' +
         'The editor will remove formatting it does not support, such as layout divs, inline styles, padding, borders and table styling.' +
-        '<button type="button" class="btn btn-outline-primary-light hx-raw-act" data-act="yes">Switch to editor</button>' +
+        '<button type="button" class="btn btn-outline-primary-light hx-raw-act" data-act="yes">Switch to Editor</button>' +
         '<button type="button" class="btn btn-outline-primary-light hx-raw-act" data-act="no">Stay in HTML</button>' +
       '</div>';
     main.after(panel);

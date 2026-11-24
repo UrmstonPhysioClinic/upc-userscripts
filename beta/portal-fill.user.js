@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Portal fill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.22
+// @version      0.1.23
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
@@ -48,7 +48,7 @@
   if (window.__hxPortalFill) return;
   window.__hxPortalFill = true;
 
-  const VERSION = '0.1.22';
+  const VERSION = '0.1.23';
   const KEY = 'portal-claim';
   const MAX_AGE = 4 * 3600e3;
   const PORTALS = {
@@ -245,7 +245,7 @@
     function draw() {
       if (!box) return;
       const k = box.getAttribute('data-kind');
-      box.innerHTML = '<button type="button" class="btn btn-outline-primary-light" data-a="fill"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Reading the claim...' : 'Fill on the ' + PORTALS[k].name + ' portal') + '</button>' +
+      box.innerHTML = '<button type="button" class="btn btn-outline-primary-light" data-a="fill"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Reading the claim...' : 'Fill on the ' + PORTALS[k].name + ' Portal') + '</button>' +
         (note ? '<span class="' + (noteErr ? 'upc-err' : 'text-muted') + '">' + esc(note) + '</span>' : '');
     }
     function mount(kind) {
@@ -339,7 +339,7 @@
         const dlg = U().ui.dialog({ title, small: true, onClose: () => end(false) });
         if (!dlg) { end(false); return; }
         dlg.root.setAttribute('data-upc-pf-confirm', '');
-        dlg.body.innerHTML = html + '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-c="no">Not now</button><button type="button" class="btn btn-primary" data-c="yes">' + esc(yes) + '</button></div>';
+        dlg.body.innerHTML = html + '<div class="upc-actions"><button type="button" class="btn btn-outline-primary" data-c="no">Not Now</button><button type="button" class="btn btn-primary" data-c="yes">' + esc(window.UPC && UPC.ui.titleCase ? UPC.ui.titleCase(yes) : yes) + '</button></div>';
         dlg.body.addEventListener('click', (e) => { const b = e.target.closest('[data-c]'); if (!b) return; end(b.dataset.c === 'yes'); dlg.close(); });
       });
     }
