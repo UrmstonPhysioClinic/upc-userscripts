@@ -39,7 +39,7 @@ PAGE = """<!doctype html><html><head><title>Calendar | Halaxy</title></head><bod
 <script>
 window.HkUser = { linkPrG: 11, pracID: 11, pracName: 'Reception Person' };
 const EVENTS = %s;
-window.HkCalendar = { eventsView: { model: { models: EVENTS.map((e) => ({ id: e.id, attributes: e, get: (k) => e[k] })) } } };
+window.HkCalendar = { eventsView: { model: { models: EVENTS.map((e) => ({ id: e.id, attributes: e, get: (k) => e[k] })) } }, updated: [], updateSingleEvent(id) { this.updated.push(id); } };
 window.halaxyClicks = [];
 window.showMenu = function (id) {
   const e = EVENTS.find((x) => x.id === id);
@@ -55,6 +55,7 @@ window.showSidebar = function (id) {
   const e = EVENTS.find((x) => x.id === id);
   document.getElementById('RightHandPanel').innerHTML = "<div><a class='editAppointment btn icon pr-0' href='/a/pr/555/calendar/appointment/11/" + id + "/edit' data-appointmentid='" + id + "'></a>" +
     "<a class='name-underline-only-text' href='/a/pr/555/patient/" + e.linkPaGId + "'>Patient " + id + "</a>" +
+    "<div class='upc-t-details'><div>Gender: <span>Female</span></div><div>Status: <span>Booked</span></div></div>" +
     "<div class='footer'><button class='btn btn-outline-primary rebook-appointment'>Rebook appointment</button></div></div>";
 };
 </script></body></html>""" % json.dumps(EVENTS)
@@ -111,6 +112,8 @@ async def main():
         await pg.wait_for_function("document.querySelector('#RightHandPanel .upc-arrived-btn').classList.contains('btn-outline-primary')", timeout=10000)
         btn = await pg.evaluate("(() => { const b = document.querySelector('#RightHandPanel .upc-arrived-btn'); return [b.textContent, b.disabled]; })()")
         check('it asks Halaxy with the event\'s patientID (not the sidebar\'s patient link), then shows it is done', S['status'] == [('7001', '4001', '1')] and btn == ['Arrived', True], (S['status'], btn))
+        side = await pg.evaluate("[document.querySelector('.upc-t-details').textContent, HkCalendar.updated]")
+        check('then the sidebar\'s Status reads Arrived (nothing else changed) and the calendar reads the appointment again', side == ['Gender: FemaleStatus: Arrived', [7001]], side)
         for id in (7002, 7004):
             await pg.evaluate('showSidebar(%d)' % id)
             await pg.wait_for_timeout(300)
@@ -123,6 +126,8 @@ async def main():
         await pg.wait_for_function("document.querySelector('.upc-toast')", timeout=10000)
         t = await pg.evaluate("[document.querySelector('.upc-toast').textContent, document.querySelector('#RightHandPanel .upc-arrived-btn').disabled]")
         check('refused: said in a toast, the button can be pressed again', t[0].startswith('Not marked as arrived:') and t[1] is False, t)
+        st = await pg.evaluate("document.querySelector('.upc-t-details').textContent")
+        check('refused: the sidebar still says Booked', st == 'Gender: FemaleStatus: Booked', st)
         check('no page errors', not errors, errors)
         await browser.close()
     print('\n' + ('All passed' if not FAILS else '%d failed' % len(FAILS)))

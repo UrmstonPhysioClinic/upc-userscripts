@@ -96,6 +96,7 @@ async def halaxy(route):
         return await js([{'id': 11, 'name': 'Carl Healy'}, {'id': 22, 'name': 'Prac Two'}])
     if p == '/a/pr/555/calendar/json':
         S['calendar'] = S.get('calendar', 0) + 1
+        S['calq'] = urllib.parse.parse_qsl(u.query)
         return await js({'payload': {'events': calendar_events()}})
     m = re.match(r'^/a/pr/555/task/(\d+)/revert/(\w+)$', p)
     if m:
@@ -236,6 +237,18 @@ async def main():
         await pg.wait_for_selector('.upc-todo-week .upc-todo-appts', timeout=10000)
         appts = await pg.evaluate("[...document.querySelectorAll('.upc-todo-week .upc-todo-drop')].map((c) => ((c.querySelector('.card-body > .upc-todo-appts:first-child') || {}).textContent || '').trim())")
         check("each day: my appointments (not cancelled, not did-not-attend, not someone else's)", appts == ['2 appointments', '1 appointment', 'No appointments', '3 appointments', 'No appointments'], appts)
+        q = dict(S['calq'])
+        check('the calendar read is my five days only', [k for k, v in S['calq'] if k.startswith('practitioners')] == ['practitioners[0][id]'] and q['practitioners[0][id]'] == '11' and int(q['end']) - int(q['start']) == 5 * 86400, S['calq'])
+        cal = S['calendar']
+        await pg.click('[data-a=week][data-step="1"]')
+        await pg.click('[data-a=week][data-step="0"]')
+        now = await pg.evaluate("document.querySelectorAll('.upc-todo-week .upc-todo-appts').length")
+        await pg.wait_for_timeout(1500)
+        check('a week already read: its counts show at once, not read again', now == 5 and S['calendar'] == cal + 1, (now, S['calendar'] - cal))
+        await pg.click('[data-a=refresh]')
+        await pg.wait_for_function("document.querySelector('[data-a=refresh]') && !document.querySelector('[data-a=refresh]').disabled", timeout=10000)
+        await pg.wait_for_timeout(1500)
+        check('Check Now reads the counts again', S['calendar'] == cal + 2, S['calendar'] - cal)
         edge = await pg.evaluate("getComputedStyle(document.querySelector('.upc-todo-week .upc-todo-chip')).boxShadow")
         check('week tasks have the card headers\' purple left edge (inset 4px #994DE6)', 'rgb(153, 77, 230)' in edge and 'inset' in edge and '4px 0px 0px' in edge, edge)
         nposts = len(S['posts'])

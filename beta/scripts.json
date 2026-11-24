@@ -29,7 +29,7 @@
     {
       "file": "arrived-button.user.js",
       "name": "UPC Calendar: Arrived button (beta)",
-      "version": "0.1.0"
+      "version": "0.1.1"
     },
     {
       "file": "bank-statement.user.js",
@@ -172,7 +172,7 @@
     {
       "file": "to-do.user.js",
       "name": "UPC Schedule: To do (beta)",
-      "version": "0.2.15"
+      "version": "0.2.16"
     },
     {
       "file": "toast-alerts.user.js",
