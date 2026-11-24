@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.83
+// @version      0.1.84
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.83';
+  const VERSION = '0.1.84';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -1999,12 +1999,12 @@
     .upc-native .upc-run-log .upc-box { max-height: 300px; overflow: auto; margin-top: 8px; }
     .upc-native .upc-page-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 12px; margin-bottom: 4px; border-bottom: 1px solid var(--vs-card-border-color, #dee2e6); }
     .upc-native .upc-page-bar h1 { margin: 0; }
-    .upc-native .nav-tabs .nav-link { border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; padding: 8px 16px 14px; border-radius: 0;
-      background: none; font-weight: 500; text-decoration: none; color: var(--vs-theme-body-color, #2d2d35); }
-    .upc-native .nav-tabs .nav-link:hover { text-decoration: none; color: var(--vs-nav-tabs-nav-link-hover-color, #7a38c0);
-      border-bottom-color: var(--vs-nav-tabs-nav-link-hover-bottom-border-color, #c9a6f0); }
-    .upc-native .nav-tabs .nav-link.active { font-weight: 700; color: var(--vs-nav-tabs-nav-link-active-color, #5c2899);
-      border-bottom-color: var(--vs-nav-tabs-nav-link-active-bottom-border-color, #994de6); }
+    .upc-native.upc-native .nav-tabs a.nav-link { border: 0 !important; border-bottom: 2px solid transparent !important; margin-bottom: -1px; padding: 8px 16px 14px;
+      border-radius: 0; background: none !important; font-weight: 500 !important; text-decoration: none !important; color: var(--vs-theme-body-color, #2d2d35) !important; }
+    .upc-native.upc-native .nav-tabs a.nav-link:hover { color: var(--vs-nav-tabs-nav-link-hover-color, #7a38c0) !important;
+      border-bottom-color: var(--vs-nav-tabs-nav-link-hover-bottom-border-color, #c9a6f0) !important; }
+    .upc-native.upc-native .nav-tabs a.nav-link.active { font-weight: 700 !important; color: var(--vs-nav-tabs-nav-link-active-color, #5c2899) !important;
+      border-bottom-color: var(--vs-nav-tabs-nav-link-active-bottom-border-color, #994de6) !important; box-shadow: none !important; }
     .upc-native .upc-pill { font-size: .8em; font-weight: 600; padding: .35em .75em; vertical-align: middle; white-space: nowrap; }
     .upc-native .upc-pill.badge-light { border: 1px solid var(--vs-card-border-color, #dee2e6); }
     .upc-native .upc-divider { display: flex; align-items: center; gap: 12px; margin: 32px 0 20px; font-weight: 600; color: var(--vs-text-muted-color, #6c757d); }
@@ -2039,6 +2039,8 @@
     .upc-dialog .modal-header .close { cursor: pointer; }
     .upc-dialog .modal-body { padding: 16px; }
   `;
+  // Tabs (in the stylesheet above) are forced, doubled class and !important, like Halaxy's (capture 24 Nov 2026): the
+  // page's own link rules differ from page to page (CH, 24 Nov 2026: Script settings kept underlined purple links).
   function nativeStyles() {
     if (document.getElementById('upc-native-css')) return;
     const s = document.createElement('style');
