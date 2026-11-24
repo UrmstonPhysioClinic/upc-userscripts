@@ -1,5 +1,8 @@
 # Changelog
 
+## To do 0.2.15, 24 Nov 2026 (beta)
+- With To do on, tasks leave Halaxy's bell: its list shows the other notifications only and its count goes down to match (CH, 24 Nov 2026). Halaxy's task notifications stay switched on for Halaxy without the scripts. The bell's list is read once each time Halaxy's count changes; if Halaxy's bell changes, the health check says so and tasks show in it again.
+
 ## To do 0.2.14, core 0.1.84, 24 Nov 2026 (beta)
 - Week view headings are two lines in every column: the day, then the date and how many tasks ("Wednesday" / "25-Nov, 0 tasks"); the first column "Overdue or No Date" / "297 tasks" (CH, 24 Nov 2026: some ran onto two lines, some didn't).
 - Tabs keep Halaxy's look on every page: the page's own link styles no longer underline them or turn them purple (CH, 24 Nov 2026: Script settings).

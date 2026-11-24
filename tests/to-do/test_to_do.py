@@ -62,6 +62,9 @@ def page_html():
             "<div id='headerWrapper' style='height:50px'><div id='alertHeader' class='alertIconsContainer'><div id='alertIncomingMessages' class='headIcon'><style>a.alertIcon[data-count]::after{content:attr(data-count);position:absolute;top:-12px;right:0;height:20px;font-size:12px;background-color:rgb(150,150,150)}</style><a id='btn-alert-incoming-messages' class='fa-stack alertIcon' href='javascript:' title='Inbox' data-count='12'><i class='icon-inbox icon'></i></a></div>"
             "<div class='alertPopoverInner'><div class='teasers'><div id='alertTeaser_9' class='viewTeaser alertType-task-due'><p><a href='/a/pr/555/task/4'>Renew licence</a> for <a href='/a/pr/555/organisation/804'>Org Four</a></p></div></div></div><div id='alertNotifications' class='headIcon'><style>#btn-alert-notifications{position:relative;display:inline-block;width:30px;height:30px;line-height:30px;font-size:15px}#btn-alert-notifications i{display:inline-block;width:18px;height:18px}#btn-alert-notifications[data-count]::after{content:attr(data-count);position:absolute;top:-3px;right:-5px;min-width:14px;height:14px;font-size:9px;line-height:14px;border-radius:7px;background-color:rgb(10,20,30);color:rgb(250,250,250)}</style><a id='btn-alert-notifications' class='fa-stack alertIcon' href='javascript:' title='Notifications' data-count='9'><i class='icon-alarm icon'></i></a></div></div></div><div id='pageContent'><h1>Tasks</h1></div>"
             "<script>window.HkUser = { linkPrG: 11, pracID: 11, pracName: 'Carl Healy' }; window.Hk = { jwt: 'j' };"
+            # Halaxy's bell (HkAlert): the count is painted by setAlertCount, the list filled by getTeaserData.
+            "window.HkAlert = { urlGetTeasers: { notification: '/a/pr/555/alert/get-teasers/2' }, setAlertCount(z, n) { document.getElementById('btn-alert-notifications').setAttribute('data-count', n); },"
+            " getTeaserData(z, cb) { fetch(this.urlGetTeasers[z]).then((r) => r.json()).then((j) => { HkAlert.setAlertCount(z, j.payload.counts[z]); cb(j.payload.teasers[z]); }); } };"
             "window.popups = []; document.addEventListener('click', (e) => { const a = e.target.closest && e.target.closest('a.ajax'); if (!a) return; e.preventDefault();"
             " window.popups.push(a.getAttribute('href')); const d = document.createElement('div'); d.className = 'bootbox modal'; d.textContent = 'Halaxy pop-up'; document.body.appendChild(d); });</script>"
             "<div style='height:3000px'></div></body></html>")
@@ -83,6 +86,12 @@ async def halaxy(route):
     if p == '/a/pr/555/task/data':
         S['reads'] += 1
         return await js(TASKS)
+    if p == '/a/pr/555/alert/get-teasers/2':
+        S['teasers'] = S.get('teasers', 0) + 1
+        tz = ["<div id='alertTeaser_1' class='viewTeaser alertType-task-due'><p><a href='/a/pr/555/task/3'>Send report</a></p></div>",
+              "<div id='alertTeaser_2' class='viewTeaser alertType-invoice-paid'><p>Invoice paid</p></div>",
+              "<div id='alertTeaser_3' class='viewTeaser alertType-task-due'><p><a href='/a/pr/555/task/1'>Bank transfer</a></p></div>"]
+        return await js({'status': 'OK', 'payload': {'success': True, 'teasers': {'notification': tz}, 'counts': {'notification': 3}}})
     if p == '/a/pr/555/lookup/practitioner':
         return await js([{'id': 11, 'name': 'Carl Healy'}, {'id': 22, 'name': 'Prac Two'}])
     if p == '/a/pr/555/calendar/json':
@@ -144,6 +153,9 @@ async def main():
         head = await pg.evaluate("""(() => { const a = document.querySelector('#alertHeader a.upc-todo-head'); const inbox = document.getElementById('alertIncomingMessages');
           return a && [a.getAttribute('href'), a.title, (a.querySelector('.upc-todo-headcount') || {}).textContent, getComputedStyle(inbox).display, a.parentElement.nextElementSibling.id, !!a.querySelector('svg')]; })()""")
         check('top bar: To do in place of the Inbox (hidden), opening To do, with the same count; drawn icon when Halaxy\'s font has none', head == ['/a/pr/555/task/#upc-to-do', 'To do', badge, 'none', 'alertIncomingMessages', True], (head, badge))
+        await pg.wait_for_function("document.getElementById('btn-alert-notifications').getAttribute('data-count') === '1'", timeout=10000)
+        got = await pg.evaluate("new Promise((ok) => HkAlert.getTeaserData('notification', (r) => ok([r.length, r[0].includes('invoice-paid'), document.getElementById('btn-alert-notifications').getAttribute('data-count')])))")
+        check("the bell without tasks: its count only the other entries, task entries left out of its list", got == [1, True, '1'] and S['teasers'] == 2, (got, S.get('teasers')))
         look = await pg.evaluate("""(() => { const el = document.querySelector('#alertHeader a.upc-todo-head .upc-todo-headcount'), b = getComputedStyle(el);
           const bell = document.getElementById('btn-alert-notifications'), bi = bell.querySelector('i').getBoundingClientRect(), br = bell.getBoundingClientRect(), a = getComputedStyle(bell, '::after');
           const r = el.getBoundingClientRect(), oi = document.querySelector('#alertHeader a.upc-todo-head i, #alertHeader a.upc-todo-head svg').getBoundingClientRect();

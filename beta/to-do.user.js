@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Schedule: To do (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.14
+// @version      0.2.15
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
@@ -38,7 +38,7 @@
   if (window.__hxToDo) return;
   window.__hxToDo = true;
 
-  const VERSION = '0.2.14';
+  const VERSION = '0.2.15';
   const ROUTE = 'upc-to-do';
   const MENU_CLS = 'upc-todo-menu';
   const DAY = 864e5, MIN = 60e3;
@@ -227,6 +227,71 @@
       b.style.right = 'auto'; b.style.bottom = 'auto';
     }
   }
+  // ------------------------------------------------------------------ the bell without tasks
+
+  // With To do on, tasks leave Halaxy's bell, its list and its count (CH, 24 Nov 2026). Halaxy's own task notifications
+  // stay switched on, for anyone using Halaxy without the scripts. Halaxy's bell (HkAlert; captures 24 Nov 2026): the
+  // count is the number of entries in its list; the list is GET alert/get-teasers/2 (HkAlert.urlGetTeasers.notification),
+  // payload.teasers.notification, one HTML string per entry, a task's being div.viewTeaser.alertType-task-*;
+  // HkAlert.setAlertCount(zone, n) paints the count (on its own poll too) and HkAlert.getTeaserData(zone, cb) fills the
+  // list. Both are wrapped. To know how many entries aren't tasks, the list is read once each time Halaxy's count changes
+  // (kept on the PC for 10 minutes, shared by its tabs), about what opening the bell would cost.
+  const isTask = (html) => /^\s*<[^>]*class=["'][^"']*\balertType-task/.test(String(html));
+  let bellTasks = [];         // the bell's task entries (HTML), also used for Linked to
+  let bellReading = null, bellSet = null, bellTold = false;
+  function keepBell(list, total) {
+    const others = list.filter((h) => !isTask(h)).length;
+    bellTasks = list.filter(isTask);
+    store().set('bell', { at: Date.now(), total, others });
+    if (bellSet) bellSet(others);
+  }
+  function bellOthers(total) {
+    if (!total) return 0;
+    const c = store().get('bell', null);
+    if (c && c.total === total && Date.now() - c.at < 10 * MIN) return c.others;
+    const H = window.HkAlert, url = H && H.urlGetTeasers && H.urlGetTeasers.notification;
+    if (url && !bellReading && !(U().http.pausedFor() > 0)) {
+      bellReading = U().http.json(url).then((j) => {
+        const p = (j && j.payload) || {};
+        const list = (p.teasers && p.teasers.notification) || [];
+        keepBell(list, p.counts && p.counts.notification !== undefined ? Number(p.counts.notification) : list.length);
+      }).catch(() => {}).finally(() => { bellReading = null; });
+    }
+    return null;
+  }
+  function bell() {
+    const H = window.HkAlert;
+    if (!document.getElementById('alertNotifications')) return;
+    if (!H || typeof H.setAlertCount !== 'function' || typeof H.getTeaserData !== 'function' || !H.urlGetTeasers) {
+      if (!bellTold) {
+        bellTold = true;
+        document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: 'to-do.user.js', message: 'Halaxy\'s bell has changed (HkAlert.setAlertCount, getTeaserData or urlGetTeasers not found): tasks show in it again.' }) }));
+      }
+      return;
+    }
+    if (H.__upcToDo) return;
+    H.__upcToDo = true;
+    const set = H.setAlertCount, get = H.getTeaserData;
+    bellSet = (n) => set.call(H, 'notification', n);
+    H.setAlertCount = function (zone, n) {
+      if (zone === 'notification' && !isNaN(Number(n))) {
+        const others = bellOthers(Number(n));
+        if (others !== null) n = others;
+      }
+      return set.call(this, zone, n);
+    };
+    H.getTeaserData = function (zone, cb) {
+      if (zone !== 'notification') return get.call(this, zone, cb);
+      return get.call(this, zone, (r) => {
+        if (Array.isArray(r)) { keepBell(r, r.length); r = r.filter((h) => !isTask(h)); }
+        cb(r);
+      });
+    };
+    // The count already on the page, from before the wrap.
+    const a = document.getElementById('btn-alert-notifications'), now = a ? Number(a.getAttribute('data-count')) : NaN;
+    if (!isNaN(now)) H.setAlertCount('notification', now);
+  }
+
   function topBar() {
     const inbox = document.getElementById('alertIncomingMessages');
     const bar = document.getElementById('alertHeader') || (inbox && inbox.parentElement);
@@ -450,7 +515,8 @@
   const linkOf = (id) => links()[id] || null;
   function keepLink(id, v) { const m = links(); m[id] = Object.assign({ at: Date.now() }, v); store().set('links', m); }
   function fromBell() {
-    document.querySelectorAll('#alertHeader .viewTeaser').forEach((teaser) => {
+    const kept = bellTasks.map((h) => { const d = document.createElement('div'); d.innerHTML = h; return d; });
+    [...document.querySelectorAll('#alertHeader .viewTeaser')].concat(kept).forEach((teaser) => {
       const task = teaser.querySelector('a[href*="/task/"]');
       const id = task && (task.getAttribute('href').match(/\/task\/(\d+)/) || [])[1];
       if (!id || linkOf(id)) return;
@@ -707,6 +773,8 @@
     window.addEventListener('storage', (e) => { if (e.key && e.key.startsWith('upc-todo')) { paintBadge(); if (root && !state.loading) render(); } });
     route();
     setTimeout(paintBadge, 3000);
+    bell();
+    setTimeout(bell, 3000);   // in case Halaxy's alerts start after us
     setTimeout(background, 30000);
     setInterval(background, 5 * MIN);
     setInterval(paintBadge, 5000);   // Halaxy redraws its top bar on some pages: put To do back
