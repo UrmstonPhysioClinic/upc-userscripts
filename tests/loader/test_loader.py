@@ -102,6 +102,9 @@ def check(name, ok, detail=''):
         FAILS.append(name)
 
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from fakeclock import idle, until   # moves the fake clock on instead of waiting in real time
+
 async def main():
     reset_repo()
     net = {'offline': False, 'real': False}
@@ -109,6 +112,7 @@ async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         ctx = await browser.new_context()
+        await ctx.clock.install()   # today's time; the loader's own timers are moved on by idle() (fakeclock)
 
         async def github(route):
             if net['offline']:
@@ -132,7 +136,9 @@ async def main():
 
         async def load(path='/a/pr/1/calendar', wait=800):
             await pg.goto('https://eu.halaxy.com' + path)
-            await pg.wait_for_timeout(wait)
+            await pg.wait_for_timeout(min(wait, 800))   # real time, for the fetches
+            if wait > 800:
+                await idle(pg, wait - 800)              # the rest on the fake clock (the loader's 4 s menu timer)
             return await pg.evaluate("""() => ({ start: window.__start || [], startBefore: window.__startBeforePage, idle: window.__idle,
                 appsOnly: !!window.__appsOnly, count: window.__count, last: !!window.__last, betaOnly: !!window.__betaOnly,
                 injected: window.__injected, errs: window.__errs, menu: window.__tmMenu.map(m => m[0]) })""")
@@ -144,7 +150,7 @@ async def main():
         s = await load()
         check('fresh PC: runs every script on the first page', s['start'] == ['1.0'] and s['idle'] and s['appsOnly'] and s['count'] == 1 and s['last'], s)
         check('fresh PC: loader settings in the Tampermonkey menu', 'UPC scripts: settings and updates' in s['menu'], s['menu'])
-        await pg.wait_for_timeout(4500)
+        await idle(pg, 4500)
         tm = await pg.evaluate('window.__tmMenu.map(m => m[0])')
         check('no Script settings on the page: script items go to the Tampermonkey menu after the page loads', 'Fixture menu' in tm, tm)
         check('a failing script is reported and does not stop the others', s['last'] and any(e['file'] == 'throws.user.js' for e in s['errs']), s['errs'])
@@ -274,6 +280,7 @@ async def main():
         net['real'] = True
         for ch in ('stable', 'beta'):
             ctx = await browser.new_context()
+            await ctx.clock.install()
             await ctx.route(RAW + '**', github)
             await ctx.route('https://eu.halaxy.com/**', lambda r: r.fulfill(body=PAGE, content_type='text/html'))
             await ctx.add_init_script("localStorage.setItem('upc-loader:channel', JSON.stringify('%s'));" % ch)
@@ -290,9 +297,15 @@ async def main():
                 rx = lambda g: _re.compile('^' + _re.escape(g).replace('\\*', '.*') + '$')
                 return any(rx(g).match(url) for g in pats('match') + pats('include')) and not any(rx(g).match(url) for g in pats('exclude'))
             files = [x['file'] for x in json.loads((ROOT / ch / 'scripts.json').read_text())['scripts'] if covers(x['file'])]
-            for _ in range(2):
+            for visit in range(2):
                 await pg.goto('https://eu.halaxy.com/a/pr/555/calendar')
-                await pg.wait_for_timeout(2500)
+                # Until every script has run (and, on the first visit, the update check has finished), not a fixed wait
+                done = "(window.__injected || []).length >= %d" % len(files) + (" && Object.keys(localStorage).some(k => k.startsWith('upc-loader:lastCheck'))" if visit == 0 else '')
+                try:
+                    await until(pg, done, timeout=20, step=50)
+                except TimeoutError:
+                    pass   # the check below says which scripts didn't run
+                await pg.wait_for_timeout(300)
             injected = await pg.evaluate('window.__injected')
             errs = await pg.evaluate('window.__errs')
             check(ch + ' scripts: all run from saved copies', sorted(injected) == sorted(files), sorted(set(files) - set(injected)))
