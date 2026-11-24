@@ -1,5 +1,8 @@
 # Changelog
 
+## To do 0.2.8, 24 Nov 2026 (beta)
+- Linked to shows the record by name and opens it in a new tab: the invoice number, the patient's name, the appointment, the organisation, the clinical note (CH, 24 Nov 2026). Read from each linked task's Edit pop-up once, only for tasks on screen, at Halaxy's pace, and kept on the PC; tasks in the bell's list are taken from there.
+
 ## To do 0.2.7, 24 Nov 2026 (beta)
 - The count on To do in the top bar looks like the bell's (CH, 24 Nov 2026: ours covered the icon): its size, place and colours are copied from Halaxy's own count on the bell, with a small badge close to it until the bell has shown one.
 
