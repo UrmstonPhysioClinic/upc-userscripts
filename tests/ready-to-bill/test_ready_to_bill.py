@@ -328,7 +328,7 @@ async def main():
         conf = await pg.evaluate("document.querySelector('[data-upc-rtb-confirm]').innerText")
         check('Set to £ 0.00 asks first, naming the fee', 'Set the 05-Nov-2026 fee on UPC-551' in conf and not S.get('writes'), conf)
         await pg.click('[data-upc-rtb-confirm] [data-a=yes]')
-        await pg.wait_for_function("document.querySelector('[data-upc-ready-to-bill] .upc-rtb-fee .upc-ok')", timeout=60000)
+        await pg.wait_for_function("document.querySelector('[data-upc-ready-to-bill] .upc-rtb-fee .upc-pill.badge-success')", timeout=60000)
         check('fee and its funder rebate set to £ 0.00', S.get('writes') == [(S['invoices'][551]['lines'][0]['lineId'], '0.00', '0.00')], S.get('writes'))
         zero_words = await pg.evaluate("/\\bzero\\b/i.test(document.querySelector('[data-upc-ready-to-bill]').innerText)")
         check('worded "Set to £ 0.00", never "zero"', not zero_words)
