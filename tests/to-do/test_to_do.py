@@ -162,16 +162,18 @@ async def main():
         check("Undo: Halaxy's Revert", S['reverted'] == [2], S['reverted'])
 
         await pg.check("[data-upc-list=later] tr[data-upc-id='4'] input[data-upc-tick]")
-        await pg.fill("input[data-upc-move=later]", '2026-11-30')
+        await pg.fill("input[data-upc-move=later]", '2026-11-27')
         await pg.wait_for_function("document.querySelector('.upc-toast')", timeout=10000)
-        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-to-do] .upc-pill')].some((x) => x.textContent === 'Moved to 30-Nov-2026')", timeout=20000)
+        await pg.wait_for_function("[...document.querySelectorAll('[data-upc-to-do] .upc-pill')].some((x) => x.textContent === 'Moved to 27-Nov-2026')", timeout=20000)
         check('the toast stays once the batch is done (closes later)', await pg.evaluate("!!document.querySelector('.upc-toast')"))
         post = dict(S['posts'][0][1]) if S['posts'] else {}
         check('ticked rows moved to a date: the Edit task form saved with only the due date changed',
-              S['posts'][0][0] == '4' and post.get('form[displayDueDate]') == '30-Nov-2026' and post.get('form[title]') == 'Task 4' and post.get('form[_token]') == 'tt'
+              S['posts'][0][0] == '4' and post.get('form[displayDueDate]') == '27-Nov-2026' and post.get('form[title]') == 'Task 4' and post.get('form[_token]') == 'tt'
               and post.get('form[comment]') == '2026-11-01 10:00 RH\n- note' and ('form[linkPrGs][]', '11') in S['posts'][0][1], S['posts'])
+        check('a moved task stays where it was (Later, not This week), with its Undo beside Done',
+              await pg.evaluate("(() => { const r = document.querySelector(\"[data-upc-list=later] tr[data-upc-id='4']\"); return !!r && !!r.querySelector('[data-a=undo1]') && !!r.querySelector('[data-a=done]'); })()"))
         await pg.click("[data-a=undo1][data-id='4']")
-        await pg.wait_for_function("document.querySelector(\"[data-a=done][data-id='4']\")", timeout=20000)
+        await pg.wait_for_function("!document.querySelector(\"[data-a=undo1][data-id='4']\") && document.querySelector(\"[data-a=done][data-id='4']\")", timeout=20000)
         check("a moved row's own Undo puts its date back", len(S['posts']) == 2 and dict(S['posts'][1][1]).get('form[displayDueDate]') == '10-Dec-2026', S['posts'][1:])
 
         n = S['reads']
