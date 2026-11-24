@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Schedule: To do (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.6
+// @version      0.2.7
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
@@ -38,7 +38,7 @@
   if (window.__hxToDo) return;
   window.__hxToDo = true;
 
-  const VERSION = '0.2.6';
+  const VERSION = '0.2.7';
   const ROUTE = 'upc-to-do';
   const MENU_CLS = 'upc-todo-menu';
   const DAY = 864e5, MIN = 60e3;
@@ -80,7 +80,8 @@
     .upc-todo-headbox { position: relative; display: inline-flex; align-items: center; }
     a.upc-todo-head { position: relative; display: inline-flex; align-items: center; justify-content: center; color: inherit; font-size: 1.35em; text-decoration: none; }
     a.upc-todo-head:hover { text-decoration: none; opacity: .8; }
-    a.upc-todo-head .upc-todo-badge { position: absolute; top: -4px; right: -8px; margin: 0; font-size: 11px; }
+    a.upc-todo-head .upc-todo-headcount { position: absolute; top: -6px; right: -9px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px;
+      font-size: 10px; line-height: 16px; font-weight: 600; text-align: center; color: #fff; background: var(--vs-notification-badge-bg-color, #ec6b65); pointer-events: none; }
     .upc-todo-badge { display: inline-block; min-width: 18px; margin-left: 6px; padding: 0 5px; border-radius: 9px; font-size: .75em; line-height: 18px;
       text-align: center; font-weight: 600; color: #fff; background: var(--vs-notification-badge-bg-color, #ec6b65); vertical-align: middle; }
     .upc-todo-new .upc-todo-find { position: relative; }
@@ -149,9 +150,11 @@
     const g = c && me() ? groups(shown(c, { who: 'me' })) : null;
     const n = g ? g.overdue.concat(g.today).filter((t) => !t.completed).length : 0;
     [a, head].filter(Boolean).forEach((el) => {
-      let b = el.querySelector('.upc-todo-badge');
+      const cls = el === head ? 'upc-todo-headcount' : 'upc-todo-badge';
+      let b = el.querySelector('.' + cls);
       if (!n) { if (b) b.remove(); return; }
-      if (!b) { b = document.createElement('span'); b.className = 'upc-todo-badge'; el.appendChild(b); }
+      if (!b) { b = document.createElement('span'); b.className = cls; el.appendChild(b); }
+      if (el === head) countLook(b);
       const text = n > 99 ? '99+' : String(n);
       if (b.textContent !== text) b.textContent = text;
       const title = n + ' task' + (n === 1 ? '' : 's') + ' overdue or due today';
@@ -182,6 +185,26 @@
       if (content && content !== 'none' && content !== 'normal' && content !== '""') { iconFound = c; break; }
     }
     return iconFound;
+  }
+  // The count on To do looks like the bell's (CH, 24 Nov 2026: ours covered the icon): Halaxy draws the bell's count
+  // as its link's ::after from data-count, so its size, place and colours are copied from there when it shows one
+  // (kept for next time); until then our own small badge, close to it.
+  const LOOK = ['top', 'right', 'left', 'bottom', 'width', 'min-width', 'height', 'padding', 'border-radius', 'font-size', 'font-weight', 'line-height', 'color', 'background-color', 'border', 'font-family', 'letter-spacing'];
+  function countLook(b) {
+    let look = null;
+    const bell = document.querySelector('#btn-alert-notifications, #alertHeader a.alertIcon[data-count]');
+    if (bell) {
+      const cs = getComputedStyle(bell, '::after');
+      if (cs.content && cs.content !== 'none' && cs.content !== 'normal' && cs.position === 'absolute') {
+        look = {};
+        LOOK.forEach((k) => { look[k] = cs.getPropertyValue(k); });
+        store().set('countLook', look);
+      }
+    }
+    look = look || store().get('countLook', null);
+    if (!look || b.dataset.look === JSON.stringify(look)) return;
+    b.dataset.look = JSON.stringify(look);
+    LOOK.forEach((k) => { if (look[k] && look[k] !== 'auto' || k === 'left' || k === 'bottom') b.style.setProperty(k, look[k]); });
   }
   function topBar() {
     const inbox = document.getElementById('alertIncomingMessages');
