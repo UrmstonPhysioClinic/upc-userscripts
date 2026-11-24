@@ -1,5 +1,10 @@
 # Changelog
 
+## To do 0.2.12, core 0.1.82, 24 Nov 2026 (beta)
+- Counts (menu and To do in the top bar) were squashed: the bell's count adds its padding to its height (content-box), ours took it from the height (CH, 24 Nov 2026, capture the same day). To do's count is placed from where Halaxy draws the bell's on its icon, measured on screen (Halaxy places it from the box around the bell, not the bell link).
+- To do's Week view: each day's appointment count is a card of its own at the top of the day, without the purple edge, and only for clinicians (the signed-in person is one of Halaxy's practitioners), not administrators (CH, 24 Nov 2026).
+- Our tabs (To do's List / Week, Script settings) look like Halaxy's: dark text, the selected one bold purple with a bar under it, no underlined links (CH, 24 Nov 2026).
+
 ## To do 0.2.11, 24 Nov 2026 (beta)
 - A moved task stays in the list it was in, at its old place, with "Moved to ..." and Undo, until Check now or To do is opened again (CH, 24 Nov 2026: it vanished to its new list). Done stays beside Undo. Results stay after Halaxy's own pop-ups (Edit task).
 

@@ -60,7 +60,7 @@ def page_html():
             "<li class='mainmenu-item'><a class='mainmenu-link'><span class='mainmenu-link-label'>Finances</span></a><ul><li><a class='mainmenu-sublink' href='/a/pr/555/invoice/'>Invoices</a></li>"
             "<li><a class='mainmenu-sublink upc-rtb-menu' href='/a/pr/555/invoice/#upc-ready-to-bill'>Ready to bill</a></li></ul></li></ul></nav></div>"
             "<div id='headerWrapper' style='height:50px'><div id='alertHeader' class='alertIconsContainer'><div id='alertIncomingMessages' class='headIcon'><style>a.alertIcon[data-count]::after{content:attr(data-count);position:absolute;top:-12px;right:0;height:20px;font-size:12px;background-color:rgb(150,150,150)}</style><a id='btn-alert-incoming-messages' class='fa-stack alertIcon' href='javascript:' title='Inbox' data-count='12'><i class='icon-inbox icon'></i></a></div>"
-            "<div class='alertPopoverInner'><div class='teasers'><div id='alertTeaser_9' class='viewTeaser alertType-task-due'><p><a href='/a/pr/555/task/4'>Renew licence</a> for <a href='/a/pr/555/organisation/804'>Org Four</a></p></div></div></div><div id='alertNotifications' class='headIcon'><style>#btn-alert-notifications{position:relative;display:inline-block;width:30px;height:30px;line-height:30px;font-size:15px}#btn-alert-notifications[data-count]::after{content:attr(data-count);position:absolute;top:-3px;right:-5px;min-width:14px;height:14px;font-size:9px;line-height:14px;border-radius:7px;background-color:rgb(10,20,30);color:rgb(250,250,250)}</style><a id='btn-alert-notifications' class='fa-stack alertIcon' href='javascript:' title='Notifications' data-count='9'><i class='icon-alarm icon'></i></a></div></div></div><div id='pageContent'><h1>Tasks</h1></div>"
+            "<div class='alertPopoverInner'><div class='teasers'><div id='alertTeaser_9' class='viewTeaser alertType-task-due'><p><a href='/a/pr/555/task/4'>Renew licence</a> for <a href='/a/pr/555/organisation/804'>Org Four</a></p></div></div></div><div id='alertNotifications' class='headIcon'><style>#btn-alert-notifications{position:relative;display:inline-block;width:30px;height:30px;line-height:30px;font-size:15px}#btn-alert-notifications i{display:inline-block;width:18px;height:18px}#btn-alert-notifications[data-count]::after{content:attr(data-count);position:absolute;top:-3px;right:-5px;min-width:14px;height:14px;font-size:9px;line-height:14px;border-radius:7px;background-color:rgb(10,20,30);color:rgb(250,250,250)}</style><a id='btn-alert-notifications' class='fa-stack alertIcon' href='javascript:' title='Notifications' data-count='9'><i class='icon-alarm icon'></i></a></div></div></div><div id='pageContent'><h1>Tasks</h1></div>"
             "<script>window.HkUser = { linkPrG: 11, pracID: 11, pracName: 'Carl Healy' }; window.Hk = { jwt: 'j' };"
             "window.popups = []; document.addEventListener('click', (e) => { const a = e.target.closest && e.target.closest('a.ajax'); if (!a) return; e.preventDefault();"
             " window.popups.push(a.getAttribute('href')); const d = document.createElement('div'); d.className = 'bootbox modal'; d.textContent = 'Halaxy pop-up'; document.body.appendChild(d); });</script>"
@@ -111,7 +111,10 @@ async def halaxy(route):
         return await js({'status': 'REFRESH'})
     if p == '/a/magic/lookup/patient':
         return await js({'lookup': [{'id': 9001, 'title': 'John Doe (P-000721) / 21-Aug-1994', 'payload': {'pag': {'id': 663}}}]})
-    await route.fulfill(body=page_html(), content_type='text/html')
+    html = page_html()
+    if S.get('admin'):
+        html = html.replace('linkPrG: 11, pracID: 11', 'linkPrG: 99, pracID: 99')
+    await route.fulfill(body=html, content_type='text/html')
 
 
 async def main():
@@ -141,8 +144,11 @@ async def main():
         head = await pg.evaluate("""(() => { const a = document.querySelector('#alertHeader a.upc-todo-head'); const inbox = document.getElementById('alertIncomingMessages');
           return a && [a.getAttribute('href'), a.title, (a.querySelector('.upc-todo-headcount') || {}).textContent, getComputedStyle(inbox).display, a.parentElement.nextElementSibling.id, !!a.querySelector('svg')]; })()""")
         check('top bar: To do in place of the Inbox (hidden), opening To do, with the same count; drawn icon when Halaxy\'s font has none', head == ['/a/pr/555/task/#upc-to-do', 'To do', badge, 'none', 'alertIncomingMessages', True], (head, badge))
-        look = await pg.evaluate("(() => { const b = getComputedStyle(document.querySelector('#alertHeader a.upc-todo-head .upc-todo-headcount')); const a = getComputedStyle(document.querySelector('#alertHeader a.upc-todo-head')); return [b.top, b.right, b.height, b.fontSize, b.backgroundColor, a.width, a.height]; })()")
-        check("the top bar count looks like the bell's, not the Inbox's, on a link the bell's size", look == ['-3px', '-5px', '14px', '9px', 'rgb(10, 20, 30)', '30px', '30px'], look)
+        look = await pg.evaluate("""(() => { const el = document.querySelector('#alertHeader a.upc-todo-head .upc-todo-headcount'), b = getComputedStyle(el);
+          const bell = document.getElementById('btn-alert-notifications'), bi = bell.querySelector('i').getBoundingClientRect(), br = bell.getBoundingClientRect(), a = getComputedStyle(bell, '::after');
+          const r = el.getBoundingClientRect(), oi = document.querySelector('#alertHeader a.upc-todo-head i, #alertHeader a.upc-todo-head svg').getBoundingClientRect();
+          return [b.height, b.fontSize, b.backgroundColor, b.boxSizing, Math.round(r.top - oi.top) === Math.round(br.top + parseFloat(a.top) - bi.top), Math.round(r.left - oi.left) === Math.round(br.left + parseFloat(a.left) - bi.left)]; })()""")
+        check("the top bar count looks like the bell's (not the Inbox's), at the same place on its icon", look == ['14px', '9px', 'rgb(10, 20, 30)', 'content-box', True, True], look)
         await pg.wait_for_function("[...document.querySelectorAll('[data-upc-link] a')].length === 3", timeout=20000)
         linked = await pg.evaluate("Object.fromEntries([...document.querySelectorAll('[data-upc-link]')].map((e) => [e.dataset.upcLink, [e.textContent, (e.querySelector('a') || {}).getAttribute && e.querySelector('a').getAttribute('href'), (e.querySelector('a') || {}).target]]))")
         check('Linked to: the record by name, opening in a new tab', linked == {'2': ['Patient Two', '/a/pr/555/patient/602', '_blank'], '3': ['Invoice UPC-012235', '/a/pr/555/invoice/703', '_blank'], '4': ['Org Four', '/a/pr/555/organisation/804', '_blank']}, linked)
@@ -214,7 +220,7 @@ async def main():
         days = await pg.evaluate("[...document.querySelectorAll('.upc-todo-week .card h2')].map((h) => h.textContent)")
         check('week view: a tray, then Monday to Friday', len(days) == 6 and days[1].startswith('Monday 23-Nov') and days[5].startswith('Friday 27-Nov'), days)
         await pg.wait_for_selector('.upc-todo-week .upc-todo-appts', timeout=10000)
-        appts = await pg.evaluate("[...document.querySelectorAll('.upc-todo-week .upc-todo-drop')].map((c) => (c.querySelector('.upc-todo-appts') || {}).textContent)")
+        appts = await pg.evaluate("[...document.querySelectorAll('.upc-todo-week .upc-todo-drop')].map((c) => ((c.querySelector('.card-body > .upc-todo-appts:first-child') || {}).textContent || '').trim())")
         check("each day: my appointments (not cancelled, not did-not-attend, not someone else's)", appts == ['2 appointments', '1 appointment', 'No appointments', '3 appointments', 'No appointments'], appts)
         edge = await pg.evaluate("getComputedStyle(document.querySelector('.upc-todo-week .upc-todo-chip')).boxShadow")
         check('week tasks have the card headers\' purple left edge (inset 4px #994DE6)', 'rgb(153, 77, 230)' in edge and 'inset' in edge and '4px 0px 0px' in edge, edge)
@@ -228,11 +234,14 @@ async def main():
         await pg.click('[data-a=week][data-step="1"]')
         reads = S['reads']
         await pg.evaluate("sessionStorage.setItem('upc-halaxy-popup', JSON.stringify({ at: Date.now(), from: '#upc-to-do' }))")
+        S['admin'] = True   # the next page is an administrator's: not one of the practitioners
         await pg.reload()
         await pg.wait_for_selector('.upc-todo-week', timeout=20000)
         await pg.wait_for_timeout(800)
         wk = await pg.evaluate("[document.querySelector('.nav-link.active').textContent, document.querySelector('.upc-todo-weeknav .text-muted').textContent]")
         check('after the reload: still Week view, the same week', wk == ['Week', '30-Nov-2026 to 04-Dec-2026'], wk)
+        await pg.wait_for_timeout(1500)
+        check('an administrator (not a practitioner) sees no appointment counts', not await pg.evaluate("!!document.querySelector('.upc-todo-appts')"))
         check('after the reload: the tasks read afresh', S['reads'] > reads, (reads, S['reads']))
         check('after the reload: links known already, not read again', [x for x in S.get('popups', []) if x in ('2', '3')].count('2') == 1, S.get('popups'))
         look = await pg.evaluate("(() => { const r = document.querySelector('[data-upc-to-do]'); return r.classList.contains('upc-native') && !!r.querySelector('.upc-page-bar h1') && !!r.querySelector('.card .card-header h2') && !r.shadowRoot; })()")
