@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Schedule: To do (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.5
+// @version      0.2.6
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/to-do.user.js
@@ -19,6 +19,7 @@
  *    (me by default, a person, or everyone) and what they are linked to; the filters are remembered for each person on
  *    this PC. Read when the page opens (kept for 5 minutes) and for the menu badge (mine, overdue or due today) at most
  *    hourly in the visible tab.
+ *  - In Halaxy's top bar too, in place of the Inbox, with the same count (CH, 24 Nov 2026; see topBar).
  *  - Week view (CH, 24 Nov 2026): tasks with a purple edge; under each day's heading, the signed-in practitioner's
  *    appointments that day.
  *  - List view: cards Overdue, Today, This week, Later, No date (25 rows, then "Show 25 more"; search and sorting from
@@ -37,7 +38,7 @@
   if (window.__hxToDo) return;
   window.__hxToDo = true;
 
-  const VERSION = '0.2.5';
+  const VERSION = '0.2.6';
   const ROUTE = 'upc-to-do';
   const MENU_CLS = 'upc-todo-menu';
   const DAY = 864e5, MIN = 60e3;
@@ -76,6 +77,10 @@
     .upc-todo .upc-todo-chip small { display: block; }
     .upc-todo .upc-todo-weeknav { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
     .upc-todo .upc-todo-weeknav .btn { margin: 0; }
+    .upc-todo-headbox { position: relative; display: inline-flex; align-items: center; }
+    a.upc-todo-head { position: relative; display: inline-flex; align-items: center; justify-content: center; color: inherit; font-size: 1.35em; text-decoration: none; }
+    a.upc-todo-head:hover { text-decoration: none; opacity: .8; }
+    a.upc-todo-head .upc-todo-badge { position: absolute; top: -4px; right: -8px; margin: 0; font-size: 11px; }
     .upc-todo-badge { display: inline-block; min-width: 18px; margin-left: 6px; padding: 0 5px; border-radius: 9px; font-size: .75em; line-height: 18px;
       text-align: center; font-weight: 600; color: #fff; background: var(--vs-notification-badge-bg-color, #ec6b65); vertical-align: middle; }
     .upc-todo-new .upc-todo-find { position: relative; }
@@ -138,17 +143,66 @@
 
   function paintBadge() {
     const a = document.querySelector('a.' + MENU_CLS);
-    if (!a) return;
+    const head = topBar();
+    if (!a && !head) return;
     const c = store().get('open', null);
     const g = c && me() ? groups(shown(c, { who: 'me' })) : null;
     const n = g ? g.overdue.concat(g.today).filter((t) => !t.completed).length : 0;
-    let b = a.querySelector('.upc-todo-badge');
-    if (!n) { if (b) b.remove(); return; }
-    if (!b) { b = document.createElement('span'); b.className = 'upc-todo-badge'; a.appendChild(b); }
-    const text = n > 99 ? '99+' : String(n);
-    if (b.textContent !== text) b.textContent = text;
-    const title = n + ' task' + (n === 1 ? '' : 's') + ' overdue or due today';
-    if (b.title !== title) b.title = title;
+    [a, head].filter(Boolean).forEach((el) => {
+      let b = el.querySelector('.upc-todo-badge');
+      if (!n) { if (b) b.remove(); return; }
+      if (!b) { b = document.createElement('span'); b.className = 'upc-todo-badge'; el.appendChild(b); }
+      const text = n > 99 ? '99+' : String(n);
+      if (b.textContent !== text) b.textContent = text;
+      const title = n + ' task' + (n === 1 ? '' : 's') + ' overdue or due today';
+      if (b.title !== title) b.title = title;
+    });
+  }
+
+  // To do in Halaxy's top bar, in place of the Inbox (CH, 24 Nov 2026: the clinic doesn't use the Inbox). The Inbox is
+  // div#alertIncomingMessages.headIcon > a#btn-alert-incoming-messages (i.icon-inbox), beside div#alertNotifications
+  // (the bell), in div#alertHeader (capture, 24 Nov 2026). Ours sits where the Inbox was and opens To do; its badge
+  // counts the same as the menu's. The icon is Halaxy's own (its icon font) if it has a clipboard or checklist, else a
+  // drawing of one in the same grey.
+  const ICONS = ['icon-clipboard', 'icon-checklist', 'icon-tasks', 'icon-task', 'icon-list-check', 'icon-checkbox-checked', 'icon-check-square'];
+  const DRAWN = '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4.5V3h6v1.5"/><path d="M8.5 13l2.5 2.5 4.5-5"/></svg>';
+  let iconFound;
+  function iconOf(host) {
+    if (iconFound !== undefined) return iconFound;
+    iconFound = '';
+    for (const c of ICONS) {
+      const i = document.createElement('i');
+      i.className = 'icon ' + c;
+      host.appendChild(i);
+      const content = getComputedStyle(i, '::before').content;
+      i.remove();
+      if (content && content !== 'none' && content !== 'normal' && content !== '""') { iconFound = c; break; }
+    }
+    return iconFound;
+  }
+  function topBar() {
+    const inbox = document.getElementById('alertIncomingMessages');
+    const bar = document.getElementById('alertHeader') || (inbox && inbox.parentElement);
+    if (!bar) return null;
+    let mine = bar.querySelector('a.upc-todo-head');
+    const menu = document.querySelector('a.' + MENU_CLS);
+    const href = (menu && menu.getAttribute('href')) || U().base() + '/task/#' + ROUTE;
+    if (!mine) {
+      const box = document.createElement('div');
+      box.className = 'headIcon upc-todo-headbox';
+      mine = document.createElement('a');
+      mine.className = 'fa-stack upc-todo-head';
+      mine.title = 'To do';
+      mine.setAttribute('aria-label', 'To do');
+      const ic = iconOf(bar);
+      mine.innerHTML = ic ? '<i class="icon ' + ic + '"></i>' : DRAWN;
+      box.appendChild(mine);
+      bar.insertBefore(box, inbox || bar.firstChild);
+    }
+    if (mine.getAttribute('href') !== href) mine.setAttribute('href', href);
+    if (inbox && inbox.style.display !== 'none') inbox.style.setProperty('display', 'none', 'important');
+    return mine;
   }
 
   // Halaxy's two-step pop-ups (Mark as completed, Revert): the pop-up, then its one-time link.
@@ -507,6 +561,7 @@
     setTimeout(paintBadge, 3000);
     setTimeout(background, 30000);
     setInterval(background, 5 * MIN);
+    setInterval(paintBadge, 5000);   // Halaxy redraws its top bar on some pages: put To do back
     document.addEventListener('visibilitychange', background);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
