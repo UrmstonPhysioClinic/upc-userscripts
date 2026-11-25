@@ -270,8 +270,14 @@ async def bupa(route):
     if p == '/providers-online/memberSearch.do':
         if q.get('method') == ['search']:
             return await html(bupa_page("<h2>Provider Details</h2><form id='createClaimForm' method='post' action='/providers-online/memberSearch.do?method=addClaimsProvider'>"
-                                        "<table><tr><td><input type='radio' name='specialist' id='specialist1' value='1' checked></td><td>%s</td></tr></table>"
-                                        "<button type='submit' name='go' value='previous'>Previous</button><button type='submit' name='go' value='next'>Next</button></form>" % B.get('provider', 'Urmston Physio Clinic'), False))
+                                        # As live (25 Nov 2026): several providers, with another one (the hospital) chosen as lead.
+                                        "<table><tr><th>Name</th><th>Number</th><th>Type</th><th>Lead specialist</th><th></th></tr>"
+                                        "<tr><td>Urmston Physio Clinic</td><td>80000001</td><td>Provider</td><td><input type='radio' name='specialist' value='1'></td><td></td></tr>"
+                                        "<tr><td>Test Hospital</td><td>60000002</td><td>Hospital</td><td><input type='radio' name='specialist' value='2' checked></td><td><a href='#'>Remove</a></td></tr>"
+                                        "<tr><td>Other Physio Limited</td><td>80000003</td><td>Provider</td><td><input type='radio' name='specialist' value='3'></td><td><a href='#'>Remove</a></td></tr></table>"
+                                        "<button type='submit' name='go' value='previous'>Previous</button><button type='submit' name='go' value='next'>Next</button></form>", False))
+        if q.get('method') == ['addClaimsProvider']:
+            B['lead'] = f.get('specialist')
         if B['prepopulated']:
             B['treatments'] = [{'pre': True}]
             B['prepopulated'] = False
@@ -478,6 +484,7 @@ async def main():
         check('Bupa: cookie box closed (Reject all)', any(c['name'] == 'ot' for c in await ctx.cookies('https://providersonline.bupa.co.uk')))
         check('Bupa: set-up (invoice number without the 0, first treatment date, pre-auth number)', B.get('setup', {}).get('invoiceNumber') == 'UPC-2222'
               and B['setup'].get('firstTreatmentDate') == '03/11/2026' and B['setup'].get('preAuthNumber') == 'AUTHTEST', B.get('setup'))
+        check('Bupa: Urmston Physio Clinic chosen as lead provider in place of the hospital Bupa had chosen', B.get('lead') == '1', B.get('lead'))
         check('Bupa: a form that comes back without a message is filled again; pre-populated treatment removed, Bupa opens a new treatment after removal, one fee per treatment, Consultant rooms, the procedure chosen by the fee\'s Item Code (Bupa\'s code), Bupa\'s impairment left as it came',
               B['treatments'] == [{'placeOfService': 'CR', 'treatmentFromDate': '03/11/2026', 'treatmentToDate': '03/11/2026', 'incidents': '1', 'chargeAmount': '60.00', 'impairmentPair': '22222-Knee sprain', 'procedureCode': 'Physio initial consultation - AA360'},
                                   {'placeOfService': 'CR', 'treatmentFromDate': '10/11/2026', 'treatmentToDate': '10/11/2026', 'incidents': '1', 'chargeAmount': '40.00', 'impairmentPair': '22222-Knee sprain', 'procedureCode': 'AA361 Physio follow up'}], B['treatments'])

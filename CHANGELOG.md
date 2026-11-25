@@ -1,5 +1,8 @@
 # Changelog
 
+## Portal fill 0.1.25, 25 Nov 2026 (beta)
+- Bupa, Provider Details: chooses Urmston Physio Clinic as the lead provider when Bupa has another one chosen (CH, 25 Nov 2026: it stopped instead, with a hospital chosen). Stops only if the clinic isn't in Bupa's list. The other providers are left as they are.
+
 ## Ready to bill 0.4.16, 25 Nov 2026 (beta)
 - New card "Billed, Not Submitted": the insurer's own invoices still Active (not marked Issued), with the patient, fees and invoice date, from the same Unpaid Invoices report, no extra requests (CH, 25 Nov 2026: a Bupa invoice made but not yet submitted to Bupa had dropped off the page). They count on the menu with the patients due ("7 to bill, 1 to submit").
 - Card headings in Title Case: "Due to Bill", "Not Due Yet".

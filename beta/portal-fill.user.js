@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Portal fill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.24
+// @version      0.1.25
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/portal-fill.user.js
@@ -34,8 +34,8 @@
  *     for each further fee. The condition is highlighted to check.
  *   - Bupa: you log in (on Bupa's separate log-in site, identity.provider.bupa.co.uk, where the script doesn't run; CH,
  *     11 Nov 2026: simpler and safer than pressing it for you), then it carries on from Providers Online: closes the cookie box, Create an invoice, invoice number,
- *     first treatment date and pre-auth number, Next on the Pre-Auth Summary, checks Urmston Physio Clinic is the
- *     provider, removes any pre-populated treatment, then adds one fee per treatment (Consultant rooms, 1 session,
+ *     first treatment date and pre-auth number, Next on the Pre-Auth Summary, chooses Urmston Physio Clinic as the
+ *     lead provider (CH, 25 Nov 2026: Bupa may have another one chosen, such as the referring hospital), removes any pre-populated treatment, then adds one fee per treatment (Consultant rooms, 1 session,
  *     the fee), leaving Bupa's impairment and procedure code as they come.
  *   - Stops before submitting, and stops (saying why) at anything it doesn't expect. It never presses Submit.
  *   - While it works, the page is covered (clicks and key presses blocked, Stop still works), and uncovered when it needs
@@ -48,7 +48,7 @@
   if (window.__hxPortalFill) return;
   window.__hxPortalFill = true;
 
-  const VERSION = '0.1.24';
+  const VERSION = '0.1.25';
   const KEY = 'portal-claim';
   const MAX_AGE = 4 * 3600e3;
   const PORTALS = {
@@ -710,13 +710,20 @@
         return say('Filled: ' + claim.lines.length + ' treatment' + (claim.lines.length === 1 ? '' : 's') + ', £ ' + claim.total + '.' +
           (differs ? ' Bupa shows a total of £ ' + shown + ': check the treatments.' : '') + ' Check everything, tick the confirmation and press Submit yourself.', !!differs, true);
       }
-      // Provider details: Urmston Physio Clinic must be the one chosen.
+      // Provider details: choose Urmston Physio Clinic as the lead provider (CH, 25 Nov 2026), whichever Bupa has chosen.
       const spec = [...document.querySelectorAll('input[type=radio][name="specialist"]')];
       if (spec.length && has(/^provider details$/i)) {
-        const chosen = spec.find((r) => r.checked);
-        const row = chosen && (chosen.closest('tr, li, .row, div, label') || chosen.parentElement);
-        if (!chosen || !/urmston physio/i.test(txt(row))) return stop('Urmston Physio Clinic isn\'t the chosen provider.');
-        const next = buttonByText(/^next$/i, chosen.form || document);
+        const name = (claim.payee && claim.payee.name) || 'Urmston Physio Clinic';
+        const rowOf = (r) => r.closest('tr') || r.closest('li') || r.parentElement;
+        const ours = spec.find((r) => txt(rowOf(r)).toLowerCase().includes(name.toLowerCase()));
+        if (!ours) return stop('Bupa\'s provider list has no "' + name + '".');
+        if (!ours.checked) {
+          tick(ours);
+          await sleep(500);
+          if (!ours.isConnected) return;   // Bupa reloaded the page: the fill carries on from there
+          if (!ours.checked) return stop('"' + name + '" couldn\'t be chosen as the lead provider.');
+        }
+        const next = buttonByText(/^next$/i, ours.form || document);
         if (!next) return stop('Bupa\'s provider page has changed ("Next" not found).');
         pr.stage = 'provider'; await save();
         return next.click();
