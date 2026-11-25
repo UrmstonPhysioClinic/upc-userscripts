@@ -1,5 +1,11 @@
 # Changelog
 
+## Appointment recorder 0.2.0, 25 Nov 2026 (beta)
+- One file per session (CH, 25 Nov 2026: Heidi takes one audio file per session). Changing the microphone carries on in the same file: the microphone feeds the recorder through the AudioContext, and a new microphone is switched in underneath. No more 60-minute parts. Parts now only come from a window closed mid-recording and Continue Recording (or an AudioContext that isn't running); Download joins them into one Ogg file (each part decoded and encoded again, 16 kHz mono, with opus-recorder 8.0.5's encoder from jsDelivr).
+- 16 kbit/s (about 7 MB an hour). A session left running (CH asked): "Still recording after an hour" on the note and in the window, and finished by itself after two hours (about 14 MB, under the 15.7 MB Halaxy is known to take).
+- The note's patient, practitioner and date are read from the note when Start is pressed (GET /note/:id: patient.name, notePractitionerName, date). Patients > Recordings shows the patient and the practitioner by full name (CH: the practitioner of the note, not who pressed Start), and the note's date as its link. The recorder window names them too.
+- Copies in Halaxy are titled "Recording 25-Nov-2026 10:00, <patient>, <practitioner>, note <id>" (CH, 25 Nov 2026); the 2-day clean-up reads both the new and the 0.1.0 titles. Downloads, which go to Heidi, are named by date and time only.
+
 ## Appointment recorder 0.1.0, Health check 1.1.65, 25 Nov 2026 (beta)
 - New script, Patients group (CH, 25 Nov 2026; plan in the project doc heidi-recorder.md). Start Appointment on a clinical note opens a small recorder window (a blank page the note writes, so Halaxy's own code, including its inactivity log-out, doesn't run there) and records the session as Opus in Ogg, mono, about 24 kbit/s (Heidi refuses webm). Saved on this PC (IndexedDB) every 5 seconds; a new part at a change of microphone and every 60 minutes.
 - On the note: the time, a microphone list (Monitor devices left out; each PC remembers its choice), a sound level as bars from a centre line, one per band of pitch, "No sound" after 30 seconds of silence, and Finish Appointment. Another note's page says a recording is under way. Start on the same note within 12 hours continues the same recording.
