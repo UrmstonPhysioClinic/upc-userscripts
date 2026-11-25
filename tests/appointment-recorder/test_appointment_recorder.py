@@ -331,9 +331,14 @@ async def main():
 
         # ---- Start
         await pg.evaluate("localStorage.setItem('upc-rec:mic', JSON.stringify({ id: 'mic-a', label: 'Desk Microphone' }))")
+        # A window of the recorder's name left on Heidi (up to 0.3.2 the recorder window went there; CH, 25 Nov 2026: Start then did nothing)
+        await pg.evaluate("window.open('https://scribe.heidihealth.com/', 'upc-recorder', 'popup=yes,width=540,height=460'); 0")
+        await until_py(pg, lambda: _true(any('heidihealth' in x.url for x in ctx.pages)), what='the old window on Heidi')
         await pg.click('.upc-rec-strip [data-a=start]')
         await idle(pg, 1000)
         pop = [x for x in ctx.pages if x is not pg][0]
+        await until(pg, "!!document.querySelector('.upc-rec-strip [data-a=finish]')", timeout=30)
+        check('Start works even with a window of the recorder\'s name left on Heidi: it is brought back and used', len(ctx.pages) == 2 and pop.url.startswith('https://eu.halaxy.com/'), [x.url for x in ctx.pages])
         pop_errors = []
         pop.on('pageerror', lambda e: pop_errors.append(str(e)))
         await until(pg, "!!document.querySelector('.upc-rec-strip [data-a=finish]')")
@@ -389,7 +394,7 @@ async def main():
         await pg.click('.upc-rec-strip [data-a=finish]')
         opens = await pg.evaluate("__opens")
         check('Finish opens Heidi in a full-size window of its own, from the press itself (Firefox may not resize the small one)',
-              opens[:1] == [['', 'upc-heidi', 'popup=yes,width=1100,height=820']], opens)
+              len(opens) == 1 and opens[0][0] == '' and re.match(r'^upc-heidi-r\w+$', opens[0][1]) and opens[0][2] == 'popup=yes,width=1100,height=820', opens)
         await until(pg, "upcAppointmentRecorder.db.recs().then((r) => r[0].status === 'finished')")
         await closed(pg, pop)
         await until_py(pg, lambda: heidi_state(pg, rid), what='the Heidi step starts')
