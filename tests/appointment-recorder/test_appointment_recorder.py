@@ -40,7 +40,7 @@ assert 'warnMs: 75 * 60e3, maxMs: 2 * 3600e3' in SCRIPT
 SCRIPT = SCRIPT.replace('warnMs: 75 * 60e3, maxMs: 2 * 3600e3', 'warnMs: 120e3, maxMs: 180e3')
 NOW = datetime.datetime(2026, 11, 25, 10, 0, tzinfo=datetime.timezone.utc)
 FAILS = []
-S = {'files': [], 'uploads': [], 'deleted': [], 'heidi': [], 'refuse': False, 'slow': False}
+S = {'files': [], 'uploads': [], 'deleted': [], 'heidi': [], 'refuse': False, 'slow': False, 'landing': 'fresh'}
 
 
 def check(name, ok, detail=''):
@@ -129,10 +129,13 @@ HEIDI_PAGE = r"""<!doctype html><html><head><title>Heidi</title></head><body><di
 const app = document.getElementById('app');
 let n = 0;
 function topBar() { return "<button data-testid='session-toolbar-cta-main'>New session</button>"; }
-function bindNew() { app.querySelector('[data-testid=session-toolbar-cta-main]').onclick = () => { n++; history.pushState(null, '', '/en/scribe/sessions/1234567890123456789012345' + n); session(); }; }
+let empty = false;   // as on Heidi: New session does nothing on a session with nothing recorded
+function bindNew() { app.querySelector('[data-testid=session-toolbar-cta-main]').onclick = () => { if (empty) return; n++; history.pushState(null, '', '/en/scribe/sessions/1234567890123456789012345' + n); session(); }; }
+function today() { const d = new Date(); const h = d.getHours(); return 'Today ' + String(h % 12 || 12).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + (h < 12 ? ' AM' : ' PM'); }
 function home() { app.innerHTML = topBar() + "<button data-testid='resume-recording-button'>Resume</button><button data-testid='start-recording-dropdown'>v</button><div class='tiptap ProseMirror'><p>Someone else's old session</p></div>"; bindNew(); }
 function session() {
-  app.innerHTML = topBar() + "<button data-testid='start-recording-button'>Transcribe</button><button data-testid='start-recording-dropdown'>v</button><div id='menu'></div><div id='dlg'></div><div class='tiptap ProseMirror' id='ed'></div>";
+  empty = true;
+  app.innerHTML = topBar() + "<button type='button'>" + today() + "</button><button data-testid='start-recording-button'>Transcribe</button><button data-testid='start-recording-dropdown'>v</button><div id='menu'></div><div id='dlg'></div><div class='tiptap ProseMirror' id='ed'></div>";
   bindNew();
   app.querySelector('[data-testid=start-recording-dropdown]').addEventListener('pointerdown', () => {
     const m = document.getElementById('menu');
@@ -141,6 +144,7 @@ function session() {
   });
 }
 function upload(e) {
+  empty = false;
   const f = e.target.files[0];
   const sid = location.pathname.split('/').pop();
   const x = new XMLHttpRequest();
@@ -158,6 +162,11 @@ function poll(sid) {
   x.onload = () => { const c = JSON.parse(x.responseText).consult_notes[0]; if (c.status === 'COMPLETED') document.getElementById('ed').innerHTML = "<p data-x='1'><strong><u>Subjective:</u></strong></p><p class='y'>- Knee pain</p>"; else setTimeout(() => poll(sid), 1000); };
   x.send();
 }
+// Heidi often opens on a new, empty session of its own (after a moment); the test says which.
+const lx = new XMLHttpRequest();
+lx.open('GET', 'https://uk.api.heidihealth.com/api/test/landing');
+lx.onload = () => { if (lx.responseText === 'fresh') setTimeout(() => { n++; history.replaceState(null, '', '/en/scribe/sessions/1234567890123456789012345' + n); session(); }, 700); };
+lx.send();
 home();
 </script></body></html>"""
 NOTE_IN = '<p><strong><u>Subjective:</u></strong></p><p>- Knee pain</p>'
@@ -220,12 +229,14 @@ async def heidi_api(route):
     req = route.request
     path = urllib.parse.urlparse(req.url).path
     cors = {'Access-Control-Allow-Origin': '*'}
+    if path == '/api/test/landing':
+        return await route.fulfill(body=S['landing'], headers=cors)
     if path == '/api/test/refuse':
         return await route.fulfill(body='yes' if S['refuse'] else 'no', headers=cors)
     if path.endswith('/upload-audio'):
         body = (req.post_data_buffer or b'').decode('latin-1')
         m = re.search(r'filename="([^"]+)"\r\nContent-Type: ([^\r]+)', body)
-        S['heidi'].append({'name': m.group(1) if m else None, 'type': m.group(2) if m else None, 'size': len(body)})
+        S['heidi'].append({'name': m.group(1) if m else None, 'type': m.group(2) if m else None, 'size': len(body), 'sid': path.split('/')[-2]})
         return await route.fulfill(body='true', content_type='application/json', headers=cors)
     if path.endswith('/consult-note'):
         done = not S['slow']
@@ -374,8 +385,8 @@ async def main():
         await until_py(pg, lambda: _state_is(pg, rid, 'done'), what='Heidi\'s note in')
         await closed(pg, pop)
         content = await pg.evaluate("document.querySelector('.ck-editor__editable').ckeditorInstance.getData()")
-        check('after Finish the recorder window goes to Heidi, which gets the recording as one Ogg file and uploads it in a new session',
-              len(S['heidi']) == 1 and S['heidi'][0]['name'] == 'recording-25-Nov-2026-1000.ogg' and S['heidi'][0]['type'] == 'audio/ogg', S['heidi'])
+        check('after Finish the recorder window goes to Heidi, which gets the recording as one Ogg file and uploads it in the new, empty session Heidi opens',
+              len(S['heidi']) == 1 and S['heidi'][0]['sid'].endswith('51') and S['heidi'][0]['name'] == 'recording-25-Nov-2026-1000.ogg' and S['heidi'][0]['type'] == 'audio/ogg', S['heidi'])
         check('Heidi\'s completed note goes into the empty note as Heidi drew it (tidied), and the window closes', content == NOTE_IN and pop.is_closed(), content)
         seen = await pg.evaluate("[...new Set(coverSeen)]")
         check('the note was covered meanwhile, with Cancel, saying what is happening', any('Waiting for Heidi' in x or 'Sending to Heidi' in x for x in seen) and all('Cancel' in x for x in seen), seen)
@@ -424,12 +435,14 @@ async def main():
         rid3 = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => r.find((x) => x.noteId === '7003').id)")
         check('a stopped recording isn\'t sent to Heidi by itself: Send to Heidi on the strip', await heidi_state(pg, rid3) is None and await pg.evaluate("!!document.querySelector('.upc-rec-strip [data-a=heidi]')"))
         S['refuse'] = True
+        S['landing'] = 'home'
         await pg.click('.upc-rec-strip [data-a=heidi]')
         await until_py(pg, lambda: _state_is(pg, rid3, 'failed'), what='Heidi refuses')
         hw = [x for x in ctx.pages if x is not pg][0]
         st = await pg.evaluate("document.querySelector('.upc-rec-strip').textContent")
         check('Heidi refusing the file: "Not sent to Heidi" on the note with why, and Send to Heidi again', 'Not sent to Heidi' in st and 'Unsupported file type' in st and await pg.evaluate("!!document.querySelector('.upc-rec-strip [data-a=heidi]')"), st)
         S['refuse'] = False
+        S['landing'] = 'fresh'
         await pg.click('.upc-rec-strip [data-a=heidi]')
         await until(pg, "!!document.querySelector('.upc-dialog[data-upc-dialog=upc-rec-heidi-how]')", timeout=60)
         ask = await pg.evaluate("[...document.querySelectorAll('.upc-dialog [data-how]')].map((b) => b.textContent)")
