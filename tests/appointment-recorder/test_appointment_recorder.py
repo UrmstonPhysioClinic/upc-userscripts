@@ -14,7 +14,7 @@ recorder's own; recordings older than 14 days leave the PC.
 
 Run:  python3 tests/appointment-recorder/test_appointment_recorder.py
 """
-import asyncio, datetime, json, re, sys, urllib.parse
+import asyncio, datetime, json, re, subprocess, sys, urllib.parse
 from pathlib import Path
 from playwright.async_api import async_playwright
 
@@ -22,8 +22,15 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'tests'))
 from fakeclock import until, idle, run  # noqa: E402
 
+HERE = Path(__file__).resolve().parent
+if not (HERE / 'node_modules' / 'opus-recorder').exists():
+    subprocess.run(['npm', 'install', '--no-audit', '--no-fund', '--no-package-lock', '--silent'], cwd=HERE, check=True)
+ENCODER = (HERE / 'node_modules' / 'opus-recorder' / 'dist' / 'encoderWorker.min.js').read_bytes()
 CORE = (ROOT / 'beta' / 'core.user.js').read_text().replace('perMinute: 45,', 'perMinute: 100000,')
+# A session's hour warning and two-hour stop, shortened to 2 and 3 minutes so the test can reach them.
 SCRIPT = (ROOT / 'beta' / 'appointment-recorder.user.js').read_text()
+assert 'warnMs: 60 * 60e3, maxMs: 2 * 3600e3' in SCRIPT
+SCRIPT = SCRIPT.replace('warnMs: 60 * 60e3, maxMs: 2 * 3600e3', 'warnMs: 120e3, maxMs: 180e3')
 NOW = datetime.datetime(2026, 11, 25, 10, 0, tzinfo=datetime.timezone.utc)
 FAILS = []
 S = {'files': [], 'uploads': [], 'deleted': []}
@@ -38,7 +45,7 @@ def check(name, ok, detail=''):
 # The fake microphone, in every page and in the recorder window.
 FAKE_MIC = r"""
 (() => {
-  window.__mic = { level: 0.4, calls: [], recorders: [] };
+  window.__mic = { level: 0.4, calls: [], recorders: [], streams: [] };
   const DEVS = [
     { deviceId: 'mic-a', groupId: 'g1', kind: 'audioinput', label: 'Desk Microphone' },
     { deviceId: 'mic-b', groupId: 'g2', kind: 'audioinput', label: 'USB Microphone' },
@@ -53,7 +60,9 @@ FAKE_MIC = r"""
     const want = c.audio && c.audio.deviceId && c.audio.deviceId.exact;
     const d = want ? DEVS.find((x) => x.deviceId === want) : DEVS[0];
     if (!d) { const e = new Error('not found'); e.name = 'OverconstrainedError'; throw e; }
-    return new Stream(d);
+    const s = new Stream(d);
+    window.__mic.streams.push(s);
+    return s;
   };
   md.enumerateDevices = async () => DEVS.map((d) => Object.assign({}, d));
   class Recorder extends EventTarget {
@@ -72,7 +81,9 @@ FAKE_MIC = r"""
         getFloatFrequencyData(a) { const l = window.__mic.level; for (let i = 0; i < a.length; i++) a[i] = l > 0 ? -90 + 55 * l * (0.6 + 0.4 * Math.sin(i)) : -140; },
         getFloatTimeDomainData(a) { const l = window.__mic.level; for (let i = 0; i < a.length; i++) a[i] = (i % 2 ? 1 : -1) * l * 0.5; } };
     }
-    createMediaStreamSource() { return { connect() {} }; }
+    createMediaStreamSource(s) { return { s, connect() {}, disconnect() { this.gone = true; } }; }
+    createMediaStreamDestination() { return { stream: new Stream({ deviceId: 'mix', label: 'mix' }) }; }
+    close() { this.state = 'closed'; }
     resume() { this.state = 'running'; return Promise.resolve(); }
   };
 })();
@@ -129,6 +140,11 @@ async def halaxy(route):
         S['deleted'].append(fid)
         S['files'] = [f for f in S['files'] if f['id'] != fid]
         return await js({'status': 'REFRESH'})
+    m = re.search(r'^/a/pr/555/note/(\d+)$', path)
+    if m:
+        n = int(m.group(1))
+        return await js({'id': n, 'content': '<p>Not read</p>', 'patient': {'name': 'Patient %d' % (n + 2000), 'linkPaGId': n + 2000},
+                         'notePractitionerName': 'Practitioner One', 'assignedPractitionerName': 'Practitioner Two', 'date': {'date': '25-Nov-2026', 'time': '09:55'}})
     if '/clinical/category/note/id/' in path:
         return await route.fulfill(body=NOTE_PAGE, content_type='text/html')
     await route.fulfill(body=LIST_PAGE, content_type='text/html')
@@ -165,6 +181,7 @@ async def main():
         ctx = await browser.new_context(viewport={'width': 1300, 'height': 900}, timezone_id='Europe/London')
         await ctx.clock.install(time=NOW.isoformat())
         await ctx.route('https://eu.halaxy.com/**', halaxy)
+        await ctx.route('https://cdn.jsdelivr.net/npm/opus-recorder@8.0.5/dist/encoderWorker.min.js', lambda r: r.fulfill(body=ENCODER, content_type='application/javascript'))
         await ctx.add_init_script(FAKE_MIC)
         # Halaxy pages only (the recorder window is a blank page the scripts don't run in, as on the PCs).
         await ctx.add_init_script("if (location.href.indexOf('https://eu.halaxy.com/a/pr/') === 0) {\n" + CORE + "\n}")
@@ -185,15 +202,17 @@ async def main():
         pop_errors = []
         pop.on('pageerror', lambda e: pop_errors.append(str(e)))
         await until(pg, "!!document.querySelector('.upc-rec-strip [data-a=finish]')")
-        win = await pop.evaluate("[document.querySelector('.upc-rec-window h1').textContent, __mic.calls[0], __mic.recorders[0].mimeType, __mic.recorders[0].bits, !!document.querySelector('style') && [...document.querySelectorAll('style')].some((s) => s.textContent.includes('halaxy-own')), document.body.className, location.pathname + location.hash]")
-        check('Start opens the recorder window: Halaxy\'s styles copied in, title Appointment Recording', win[0] == 'Appointment Recording' and win[4] and 'vs-theme-default' in win[5], win)
+        win = await pop.evaluate("[document.querySelector('.upc-rec-window h1').textContent, __mic.calls[0], __mic.recorders[0].mimeType, __mic.recorders[0].bits, !!document.querySelector('style') && [...document.querySelectorAll('style')].some((s) => s.textContent.includes('halaxy-own')), document.body.className, location.pathname + location.hash, document.querySelector('.upc-rec-window .upc-page-sub').textContent]")
+        check('Start opens the recorder window: Halaxy\'s styles copied in, title Appointment Recording, the note\'s patient and practitioner', win[0] == 'Appointment Recording' and win[4] and 'vs-theme-default' in win[5] and win[7] == 'Patient 9001, Practitioner One, started 10:00', win)
         check('it asks for the saved microphone, in mono', win[1]['audio'].get('deviceId') == {'exact': 'mic-a'} and win[1]['audio'].get('channelCount') == 1, win[1])
-        check('it records Opus in Ogg at about 24 kbit/s', win[2] == 'audio/ogg;codecs=opus' and win[3] == 24000, win[2:4])
+        check('it records Opus in Ogg at 16 kbit/s, from the AudioContext (so the microphone can change in the same file)', win[2] == 'audio/ogg;codecs=opus' and win[3] == 16000
+              and await pop.evaluate("__mic.recorders[0].stream.t[0].d.deviceId === 'mix'"), win[2:4])
         check('reloading the window would open the recordings organisation, not the note', win[6] == '/a/pr/555/organisation/78972#upc-recorder-reloaded', win[6])
 
         await idle(pg, 12000)
-        saved = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => r.map((x) => [x.noteId, x.patientId, x.who, x.status, x.parts.map((p) => [p.n, p.chunks, p.mic, p.ext])]))")
-        check('chunks are saved on this PC every 5 seconds', saved and saved[0][:4] == ['7001', '9001', 'CH', 'recording'] and saved[0][4][0][1] >= 2 and saved[0][4][0][2] == 'Desk Microphone', saved)
+        saved = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => r.map((x) => [x.noteId, x.patientId, x.patient, x.practitioner, x.noteDate, x.by, x.status, x.parts.map((p) => [p.n, p.chunks, p.mic, p.ext])]))")
+        check('chunks are saved on this PC every 5 seconds, with the note\'s patient, practitioner and date', saved and saved[0][:7] == ['7001', '9001', 'Patient 9001', 'Practitioner One', '25-Nov-2026 09:55', 'Cara Hale', 'recording']
+              and saved[0][7][0][1] >= 2 and saved[0][7][0][2] == 'Desk Microphone', saved)
         st = await pg.evaluate("(() => { const s = document.querySelector('.upc-rec-strip'); return [s.querySelector('[data-upc-rec-time]').textContent, [...s.querySelectorAll('.upc-rec-bars > span')].map((b) => [b.className, parseInt(b.style.height)]), [...s.querySelectorAll('select option')].map((o) => o.textContent), s.querySelector('select').value]; })()")
         check('the strip shows the time, the level as bars and the microphone', re.match(r'^00:1\d$', st[0]) and len(st[1]) == 7 and all(c == 'bg-success' and h > 4 for c, h in st[1]) and st[3] == 'mic-a', st)
         check('the microphone list leaves out "Monitor of" devices and speakers', st[2] == ['Desk Microphone', 'USB Microphone'], st[2])
@@ -206,11 +225,12 @@ async def main():
 
         # ---- change the microphone
         await pg.select_option('.upc-rec-strip select', 'mic-b')
-        await until(pg, "upcAppointmentRecorder.db.recs().then((r) => r[0].parts.length === 2 && !!r[0].parts[0].endedAt)")
+        await until(pg, "upcAppointmentRecorder.db.recs().then((r) => r[0].parts[0].mic === 'USB Microphone')")
         await idle(pg, 6000)
-        sw = await pop.evaluate("[__mic.calls.length, __mic.calls[1].audio.deviceId, __mic.recorders[0].stream.t[0].stopped]")
+        sw = await pop.evaluate("[__mic.calls.length, __mic.calls[1].audio.deviceId, __mic.streams[0].t[0].stopped, __mic.recorders.length, __mic.recorders[0].state]")
+        one = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => [r[0].parts.length, r[0].parts[0].mics, r[0].parts[0].endedAt])")
         sel = await pg.evaluate("document.querySelector('.upc-rec-strip select').value")
-        check('changing the microphone ends the part and starts a new one on that microphone', sw[0] == 2 and sw[1] == {'exact': 'mic-b'} and sw[2] is True and sel == 'mic-b', (sw, sel))
+        check('changing the microphone carries on in the same file on that microphone', sw == [2, {'exact': 'mic-b'}, True, 1, 'recording'] and one == [1, ['Desk Microphone', 'USB Microphone'], None] and sel == 'mic-b', (sw, one, sel))
 
         # ---- silence
         await pop.evaluate("__mic.level = 0")
@@ -226,25 +246,25 @@ async def main():
         await pg.click('.upc-rec-strip [data-a=finish]')
         await until(pg, "upcAppointmentRecorder.db.recs().then((r) => r[0].status === 'finished')")
         await closed(pg, pop)
-        await files_until(pg, 2)
+        await files_until(pg, 1)
         files = [(f['title'], f['comments'][:46]) for f in S['files']]
-        check('each part is attached to the recordings organisation, titled by time and initials, with the recorder\'s comment',
-              files == [('Recording 2026-11-25 10:00 CH', 'Appointment recorder; note 7001; patient 9001;'), ('Recording 2026-11-25 10:00 CH part 2', 'Appointment recorder; note 7001; patient 9001;')], files)
+        check('the recording is attached to the recordings organisation as one file, titled by time, patient, practitioner and note, with the recorder\'s comment',
+              files == [('Recording 25-Nov-2026 10:00, Patient 9001, Practitioner One, note 7001', 'Appointment recorder; note 7001; patient 9001;')], files)
         ups = S['uploads']
-        check('the files are Ogg audio, uploaded with Halaxy\'s token, named without the patient', len(ups) == 2 and ups[0]['name'] == 'recording-2026-11-25-1000-CH.ogg' and ups[1]['name'] == 'recording-2026-11-25-1000-CH-part2.ogg'
-              and all(u['type'] == 'audio/ogg' and u['auth'] == 'Bearer jwt-test' for u in ups), ups)
+        check('the file is Ogg audio, uploaded with Halaxy\'s token, named without the patient', len(ups) == 1 and ups[0]['name'] == 'recording-25-Nov-2026-1000.ogg'
+              and ups[0]['type'] == 'audio/ogg' and ups[0]['auth'] == 'Bearer jwt-test', ups)
         await until(pg, "/In Halaxy/.test(document.querySelector('.upc-rec-strip').textContent)")
         done = await pg.evaluate("(() => { const s = document.querySelector('.upc-rec-strip'); return [s.querySelector('[data-a=start]').textContent.trim(), !!s.querySelector('[data-a=download]'), s.textContent]; })()")
         check('afterwards the strip offers Continue Recording and Download Recording, with the copy in Halaxy', done[0] == 'Continue Recording' and done[1] and re.search(r'Recorded \d\d:\d\d', done[2]) is not None, done)
         await idle(pg, 20000)
-        check('nothing is attached twice', len(S['files']) == 2, S['files'])
+        check('nothing is attached twice', len(S['files']) == 1, S['files'])
 
         # ---- Patients > Recordings
         lst = await ctx.new_page()
         await lst.goto('https://eu.halaxy.com/a/pr/555/patient/#upc-recordings')
         await until(lst, "!!document.querySelector('[data-upc-page] table[data-upc-list=upc-recordings] tbody tr')")
         row = await lst.evaluate("(() => { const tr = document.querySelector('[data-upc-page] tbody tr'); return [[...tr.cells].map((c) => c.textContent.trim()), tr.querySelector('a').getAttribute('href'), document.querySelector('a.upc-rec-menu') && document.querySelector('a.upc-rec-menu').textContent]; })()")
-        check('Patients > Recordings lists it, with the note\'s link and its copy in Halaxy', row[0][0] == '25-Nov-2026 10:00' and row[0][2] == 'CH' and row[0][4] == 'In Halaxy' and row[0][5] == '09-Dec-2026'
+        check('Patients > Recordings lists it: patient, practitioner, the note\'s date as its link, its copy in Halaxy', row[0][:7] == ['25-Nov-2026 10:00', row[0][1], 'Patient 9001', 'Practitioner One', '25-Nov-2026', 'In Halaxy', '09-Dec-2026']
               and row[1] == '/a/pr/555/patient/9001/clinical/category/note/id/7001' and row[2] == 'Recordings', row)
         await lst.close()
 
@@ -259,20 +279,70 @@ async def main():
         await idle(pg, 80000)
         await until(pg, "upcAppointmentRecorder.db.recs().then((r) => r.find((x) => x.noteId === '7003').status === 'stopped')")
         await until(pg, "/Window closed/.test(document.querySelector('.upc-rec-strip').textContent) && !!document.querySelector('.upc-rec-strip [data-a=start]')")
-        await files_until(pg, 3)
+        await files_until(pg, 2)
         stopped = [f['title'] for f in S['files']]
-        check('a window closed mid-recording: marked stopped, Continue Recording offered, and its part still goes to Halaxy', len(stopped) == 3, stopped)
+        check('a window closed mid-recording: marked stopped, Continue Recording offered, and its part still goes to Halaxy', len(stopped) == 2 and stopped[1].endswith(', note 7003'), stopped)
+
+        # ---- a session left running: a warning after an hour, finished after two (2 and 3 minutes here)
+        await pg.goto('https://eu.halaxy.com/a/pr/555/patient/9004/clinical/category/note/id/7004')
+        await until(pg, "!!document.querySelector('.upc-rec-strip [data-a=start]')")
+        await pg.click('.upc-rec-strip [data-a=start]')
+        await until(pg, "!!document.querySelector('.upc-rec-strip [data-a=finish]')")
+        pop3 = [x for x in ctx.pages if x is not pg][0]
+        await idle(pg, 122000)
+        check('a session left running: "Still recording after an hour" on the note', await pg.evaluate("/Still recording after an hour/.test(document.querySelector('.upc-rec-strip').textContent)"))
+        await idle(pg, 60000)
+        await closed(pg, pop3)
+        auto = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => { const x = r.find((y) => y.noteId === '7004'); return [x.status, x.stopped]; })")
+        check('and finished by itself after two hours', auto[0] == 'finished' and str(auto[1]).startswith('Stopped after'), auto)
+        await files_until(pg, 3)
+
+        # ---- a recording in two parts: Download gives one file
+        js_join = """async () => {
+          const enc = await fetch('https://cdn.jsdelivr.net/npm/opus-recorder@8.0.5/dist/encoderWorker.min.js').then((r) => r.text());
+          const make = (secs) => new Promise((ok) => {
+            const w = new Worker(URL.createObjectURL(new Blob([enc], { type: 'text/javascript' })));
+            const pages = [];
+            w.onmessage = (e) => {
+              const d = e.data || {};
+              if (d.message === 'ready') {
+                w.postMessage({ command: 'getHeaderPages' });
+                const n = secs * 16000;
+                for (let i = 0; i < n; i += 4096) { const c = new Float32Array(4096); for (let k = 0; k < 4096; k++) c[k] = 0.3 * Math.sin(2 * Math.PI * 440 * (i + k) / 16000); w.postMessage({ command: 'encode', buffers: [c] }); }
+                w.postMessage({ command: 'done' });
+              } else if (d.message === 'page') pages.push(d.page);
+              else if (d.message === 'done') { w.terminate(); ok(new Blob(pages, { type: 'audio/ogg' })); }
+            };
+            w.postMessage({ command: 'init', encoderSampleRate: 16000, originalSampleRate: 16000, numberOfChannels: 1, encoderApplication: 2048, encoderBitRate: 16000 });
+          });
+          const A = upcAppointmentRecorder;
+          const a = await make(2), b = await make(3);
+          const t0 = Date.now();
+          const rec = { id: 'rjoin', noteId: '7009', patientId: '9009', patient: 'Patient 9009', practitioner: 'Practitioner One', startedAt: t0, status: 'stopped', beat: t0, parts: [
+            { n: 1, mime: 'audio/ogg', ext: 'ogg', startedAt: t0, endedAt: t0 + 2000, chunks: 1, bytes: a.size },
+            { n: 2, mime: 'audio/ogg', ext: 'ogg', startedAt: t0 + 5000, endedAt: t0 + 8000, chunks: 1, bytes: b.size }] };
+          await A.db.addChunk('rjoin', 1, 0, a);
+          await A.db.addChunk('rjoin', 2, 0, b);
+          await A.db.putRec(rec);
+          const one = await A.joined(rec);
+          const head = new Uint8Array(await one.slice(0, 4).arrayBuffer());
+          const back = await new OfflineAudioContext(1, 16000, 16000).decodeAudioData(await one.arrayBuffer());
+          return [String.fromCharCode(...head), Math.round(back.duration * 10) / 10, one.type, A.fileName(rec, null)];
+        }"""
+        jr = await pg.evaluate(js_join)
+        check('a recording in two parts is joined into one Ogg file holding both (2 s and 3 s)', jr[0] == 'OggS' and 4.9 <= jr[1] <= 6.2 and jr[2] == 'audio/ogg' and jr[3].endswith('.ogg'), jr)
 
         # ---- copies older than 2 days
         S['files'].insert(0, {'id': 701, 'title': 'Recording 2026-11-20 09:00 DL', 'comments': 'Appointment recorder; note 1; patient 2; 30:00, 09:00 to 09:30'})
         S['files'].insert(0, {'id': 702, 'title': 'Recording 2026-11-20 09:00 notes', 'comments': 'Something CH attached by hand'})
         S['files'].insert(0, {'id': 703, 'title': 'Insurer letter', 'comments': ''})
+        S['files'].insert(0, {'id': 704, 'title': 'Recording 21-Nov-2026 11:00, Patient 9010, Practitioner Two, note 7010', 'comments': 'Appointment recorder; note 7010; patient 9010; 45:00, 11:00 to 11:45'})
         await pg.mouse.move(10, 10)
         await pg.mouse.move(20, 20)
         await pg.evaluate("localStorage.removeItem('upc-rec:cleanAt')")
         await run(pg, "upcAppointmentRecorder.cleanHalaxy()")
         left = sorted(f['id'] for f in S['files'])
-        check('copies older than 2 days are deleted through Halaxy\'s Delete pop-up, only the recorder\'s own', S['deleted'] == [701] and 702 in left and 703 in left and len(left) == 5, (S['deleted'], left))
+        check('copies older than 2 days are deleted through Halaxy\'s Delete pop-up, only the recorder\'s own (old and new titles)', sorted(S['deleted']) == [701, 704] and 702 in left and 703 in left and {800, 801, 802} <= set(left), (S['deleted'], left))
 
         # ---- 14 days on this PC
         await pg.clock.fast_forward(15 * 86400 * 1000)

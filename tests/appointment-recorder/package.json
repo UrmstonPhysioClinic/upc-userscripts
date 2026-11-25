@@ -1,0 +1,8 @@
+{
+  "name": "upc-appointment-recorder-tests",
+  "private": true,
+  "description": "The Ogg Opus encoder the Appointment recorder loads from jsDelivr, served to the test from here.",
+  "dependencies": {
+    "opus-recorder": "8.0.5"
+  }
+}

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Appointment recorder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.0
+// @version      0.2.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/appointment-recorder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/appointment-recorder.user.js
@@ -21,15 +21,20 @@
  *  - The recording runs in a small window of its own, so moving around Halaxy doesn't stop it. The window is a blank page
  *    the note page writes (same site, so it shares this PC's storage), not a Halaxy page: Halaxy's own code (its
  *    inactivity log-out, pop-ups, autosave) never runs there. The note page and the window talk over a BroadcastChannel.
- *  - Audio: Opus in Ogg (Heidi refuses webm: recon 25 Nov 2026), mono, about 24 kbit/s (about 11 MB an hour). Saved to
+ *  - Audio: Opus in Ogg (Heidi refuses webm: recon 25 Nov 2026), mono, 16 kbit/s (about 7 MB an hour). Saved to
  *    IndexedDB every 5 seconds, so a crash or a closed window loses seconds, not the session. Patient audio on the PC is
- *    agreed by CH (25 Nov 2026): kept 14 days, then deleted. A new part starts when the microphone is changed and every
- *    60 minutes, so each part is a whole file of its own (Halaxy takes files up to between 15.7 and 31.5 MB).
+ *    agreed by CH (25 Nov 2026): kept 14 days, then deleted. One file per session (CH, 25 Nov 2026: Heidi takes one
+ *    file per session): a change of microphone carries on in the same file (the microphone feeds the recorder through
+ *    the AudioContext). A recording only comes in parts when its window was closed and Continue Recording pressed (or the
+ *    AudioContext wasn't running); Download then joins the parts into one file. A warning after an hour, finished by
+ *    itself after two (about 14 MB; Halaxy is known to take 15.7 MB and to refuse 31.5 MB).
  *  - Finished parts are attached to the "UPC scripts (recordings)" organisation (ORG) by whichever Halaxy tab is open
- *    (one at a time across tabs), titled "Recording yyyy-mm-dd hh:mm <initials>" (" part n" after the first), never the
- *    patient's name. Copies there are deleted after 2 days (CH agreed, 25 Nov 2026): only files with that title and the
- *    "Appointment recorder" comment, so nothing else on the profile is touched.
- *  - Patients > Recordings lists this PC's recordings: Download, Delete. One recording at a time per PC.
+ *    (one at a time across tabs), titled "Recording 25-Nov-2026 10:00, <patient>, <practitioner>, note <id>" (", part n"
+ *    after the first; CH, 25 Nov 2026). Copies there are deleted after 2 days (CH agreed, 25 Nov 2026): only files with
+ *    that title and the "Appointment recorder" comment, so nothing else on the profile is touched. Downloads, which go
+ *    to Heidi, are named by date and time only.
+ *  - Patients > Recordings lists this PC's recordings with the note's patient, practitioner and date: Download, Delete. One
+ *    recording at a time per PC.
  *  - The bars: each is a band of pitch, low to high, as tall as that band is loud, drawn up and down from a centre line
  *    (like Heidi's; CH, 25 Nov 2026). "No sound" (amber) when the level has been near zero for 30 seconds.
  */
@@ -38,7 +43,7 @@
   if (window.__hxAppointmentRecorder) return;
   window.__hxAppointmentRecorder = true;
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.2.0';
   const ORG = '78972';                          // "UPC scripts (recordings)" (CH, 25 Nov 2026)
   const KEEP_LOCAL_MS = 14 * 86400e3;           // on this PC (CH, 25 Nov 2026)
   const KEEP_HALAXY_MS = 2 * 86400e3;           // the copy in Halaxy (CH, 25 Nov 2026)
@@ -52,9 +57,13 @@
   const KEY = 'upc-rec:';
   const BARS = 7;
   const COMMENT = 'Appointment recorder';
-  const TITLE_RX = /\bRecording (\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})\b/;
+  // "Recording 25-Nov-2026 10:00, <patient>, <practitioner>, note <id>" (0.2.0); "Recording 2026-11-25 10:00 CH" (0.1.0).
+  const TITLE_RX = /\bRecording (?:(\d{4})-(\d{2})-(\d{2})|(\d{2})-([A-Z][a-z]{2})-(\d{4})) (\d{2}):(\d{2})\b/;
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const ENCODER_URL = 'https://cdn.jsdelivr.net/npm/opus-recorder@8.0.5/dist/encoderWorker.min.js';   // MIT; Ogg Opus encoder (WebAssembly inside)
+  const JOIN_MAX_MS = 150 * 60e3;   // joining decodes the whole recording into memory
   const REC = {   // passed to the recorder window
-    channel: CHANNEL, bars: BARS, chunkMs: 5000, partMaxMs: 60 * 60e3, bitrate: 24000,
+    channel: CHANNEL, bars: BARS, chunkMs: 5000, bitrate: 16000, warnMs: 60 * 60e3, maxMs: 2 * 3600e3,
     lowHz: 110, highHz: 4200, quietRms: 0.004, quietMs: 30e3, version: VERSION,
   };
 
@@ -124,8 +133,8 @@
     const pad = (n) => String(n).padStart(2, '0');
     const clock = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(s / 3600); return (h ? h + ':' + pad(Math.floor(s / 60) % 60) : pad(Math.floor(s / 60))) + ':' + pad(s % 60); };
     const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-    let rec = null, part = null, mr = null, stream = null, ctx = null, meter = null, rollTimer = null, chain = Promise.resolve();
-    let seq = 0, quietSince = now(), quiet = false, levelsOk = false, state = 'starting', error = '', devices = [];
+    let rec = null, part = null, mr = null, stream = null, ctx = null, meter = null, chain = Promise.resolve();
+    let seq = 0, quietSince = now(), quiet = false, levelsOk = false, state = 'starting', error = '', devices = [], long = false;
     const levels = new Array(cfg.bars).fill(0);
     window.__upcRecorder = { id: cfg.id, noteId: cfg.noteId };
 
@@ -134,7 +143,7 @@
 
     function snapshot() {
       return { t: 'st', id: rec ? rec.id : cfg.id, noteId: cfg.noteId, patientId: cfg.patientId, startedAt: rec ? rec.startedAt : now(),
-        status: state, mic: part ? part.mic : '', micId: part ? part.micId : '', devices, quiet: quiet && levelsOk, ok: levelsOk, error, part: part ? part.n : 0 };
+        status: state, mic: part ? part.mic : '', micId: part ? part.micId : '', devices, quiet: quiet && levelsOk, ok: levelsOk, error, part: part ? part.n : 0, long };
     }
     const tell = () => { try { bc.postMessage(snapshot()); } catch (e) { /* channel closed */ } };
 
@@ -143,9 +152,10 @@
       const recording = state === 'recording';
       let h = '<div class="upc-page-bar"><h1>Appointment Recording</h1><div class="upc-page-actions">' +
         (state === 'finished' ? '' : '<button type="button" class="btn btn-primary" data-a="finish"' + (recording ? '' : ' disabled') + '><i class="icon icon-stop-circle"></i> ' + (state === 'finishing' ? 'Finishing...' : 'Finish Appointment') + '</button>') +
-        '</div></div><div class="upc-page-sub"><span class="text-muted">' + esc(cfg.who) + ', started ' + esc(new Date(rec ? rec.startedAt : now()).toTimeString().slice(0, 5)) + '</span></div>';
+        '</div></div><div class="upc-page-sub"><span class="text-muted">' + esc([cfg.patient, cfg.practitioner].filter(Boolean).join(', ')) + (cfg.patient || cfg.practitioner ? ', started ' : 'Started ') + esc(new Date(rec ? rec.startedAt : now()).toTimeString().slice(0, 5)) + '</span></div>';
       if (error) h += '<div class="alert alert-danger upc-err">' + esc(error) + '</div>';
-      if (state === 'finished') h += '<div class="alert alert-success upc-ok">Recording saved on this PC.</div>';
+      if (state === 'finished') h += '<div class="alert alert-success upc-ok">' + esc(rec && rec.stopped ? rec.stopped + ' ' : '') + 'Recording saved on this PC.</div>';
+      if (long && state === 'recording') h += '<div class="alert alert-warning upc-warn">Still recording after an hour. Finish Appointment when the session is over.</div>';
       h += '<div class="upc-rec-big"><div class="upc-rec-bars" aria-hidden="true">' + '<span></span>'.repeat(cfg.bars) + '</div>' +
         '<div class="upc-rec-time"></div></div>';
       if (state !== 'finished') {
@@ -173,43 +183,62 @@
       document.title = (state === 'finished' ? 'Recording saved' : 'Recording ' + clock(ms)) + ' | Halaxy';
     }
 
-    // ---- the level
-    function startMeter(s) {
+    // ---- the sound graph: each microphone feeds the level meter and, when the AudioContext runs, the recorder too, so
+    // a change of microphone carries on in the same file (CH, 25 Nov 2026: Heidi takes one file per session). If the
+    // AudioContext isn't running, the recorder takes the microphone directly and a change of microphone starts a new part.
+    let an = null, dest = null, src = null, mode = 'direct';
+    async function ensureCtx() {
       try {
-        ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
-        const an = ctx.createAnalyser();
-        an.fftSize = 1024;
-        an.smoothingTimeConstant = 0.5;
-        ctx.createMediaStreamSource(s).connect(an);
-        const freq = new Float32Array(an.frequencyBinCount), wave = new Float32Array(an.fftSize);
-        const edges = [];
-        for (let i = 0; i <= cfg.bars; i++) edges.push(cfg.lowHz * Math.pow(cfg.highHz / cfg.lowHz, i / cfg.bars));
-        const hz = (ctx.sampleRate || 48000) / an.fftSize;
-        if (ctx.state === 'suspended') ctx.resume().catch(() => {});
-        clearInterval(meter);
-        meter = setInterval(() => {
-          const ok = ctx.state === 'running';
-          if (ok !== levelsOk) { levelsOk = ok; quietSince = now(); draw(); }
-          if (ok) {
-            an.getFloatFrequencyData(freq);
-            an.getFloatTimeDomainData(wave);
-            let ss = 0;
-            for (let i = 0; i < wave.length; i++) ss += wave[i] * wave[i];
-            if (Math.sqrt(ss / wave.length) > cfg.quietRms) quietSince = now();
-            for (let b = 0; b < cfg.bars; b++) {
-              const lo = Math.max(1, Math.floor(edges[b] / hz)), hi = Math.max(lo + 1, Math.ceil(edges[b + 1] / hz));
-              let sum = 0, n = 0;
-              for (let k = lo; k < hi && k < freq.length; k++) if (isFinite(freq[k])) { sum += freq[k]; n++; }
-              const v = Math.min(1, Math.max(0, ((n ? sum / n : -120) + 90) / 55));
-              levels[b] += (v - levels[b]) * (v > levels[b] ? 0.6 : 0.25);
-            }
-          } else levels.fill(0);
-          const q = now() - quietSince > cfg.quietMs;
-          if (q !== quiet) { quiet = q; tell(); }
-          bars();
-          try { bc.postMessage({ t: 'lv', id: rec ? rec.id : cfg.id, lv: levels.map((x) => Math.round(x * 100) / 100), quiet: quiet && levelsOk, ok: levelsOk }); } catch (e) { /* closed */ }
-        }, 80);
-      } catch (e) { levelsOk = false; }
+        if (!ctx) {
+          ctx = new (window.AudioContext || window.webkitAudioContext)();
+          an = ctx.createAnalyser();
+          an.fftSize = 1024;
+          an.smoothingTimeConstant = 0.5;
+        }
+        if (ctx.state === 'suspended') await Promise.race([ctx.resume(), new Promise((r) => setTimeout(r, 1000))]);
+      } catch (e) { ctx = null; an = null; }
+      return !!ctx && ctx.state === 'running';
+    }
+    function plug(s) {
+      if (!ctx) return;
+      try {
+        const n = ctx.createMediaStreamSource(s);
+        if (an) n.connect(an);
+        if (mode === 'mixed' && dest) n.connect(dest);
+        if (src) try { src.disconnect(); } catch (e) { /* gone */ }
+        src = n;
+      } catch (e) { /* no level */ }
+    }
+    function startMeter() {
+      if (meter || !ctx || !an) return;
+      const freq = new Float32Array(an.frequencyBinCount), wave = new Float32Array(an.fftSize);
+      const edges = [];
+      for (let i = 0; i <= cfg.bars; i++) edges.push(cfg.lowHz * Math.pow(cfg.highHz / cfg.lowHz, i / cfg.bars));
+      const hz = (ctx.sampleRate || 48000) / an.fftSize;
+      meter = setInterval(() => {
+        const ok = ctx.state === 'running';
+        if (ok !== levelsOk) { levelsOk = ok; quietSince = now(); draw(); }
+        // The recorder hears the microphone through the AudioContext: if that stops, carry on directly in a new part.
+        if (!ok && mode === 'mixed' && state === 'recording') { state = 'switching'; roll().catch(fail); }
+        if (ok) {
+          an.getFloatFrequencyData(freq);
+          an.getFloatTimeDomainData(wave);
+          let ss = 0;
+          for (let i = 0; i < wave.length; i++) ss += wave[i] * wave[i];
+          if (Math.sqrt(ss / wave.length) > cfg.quietRms) quietSince = now();
+          for (let b = 0; b < cfg.bars; b++) {
+            const lo = Math.max(1, Math.floor(edges[b] / hz)), hi = Math.max(lo + 1, Math.ceil(edges[b + 1] / hz));
+            let sum = 0, n = 0;
+            for (let k = lo; k < hi && k < freq.length; k++) if (isFinite(freq[k])) { sum += freq[k]; n++; }
+            const v = Math.min(1, Math.max(0, ((n ? sum / n : -120) + 90) / 55));
+            levels[b] += (v - levels[b]) * (v > levels[b] ? 0.6 : 0.25);
+          }
+        } else levels.fill(0);
+        const q = state === 'recording' && now() - quietSince > cfg.quietMs;
+        if (q !== quiet) { quiet = q; tell(); }
+        bars();
+        try { bc.postMessage({ t: 'lv', id: rec ? rec.id : cfg.id, lv: levels.map((x) => Math.round(x * 100) / 100), quiet: quiet && levelsOk, ok: levelsOk }); } catch (e) { /* closed */ }
+      }, 80);
     }
 
     // ---- recording
@@ -221,6 +250,10 @@
           .filter((d) => { const k = d.groupId + '|' + d.label; if (d.deviceId !== 'default' && seen.has(k)) return false; seen.add(k); return true; })
           .map((d) => ({ id: d.deviceId, label: d.label || 'Microphone' }));
       } catch (e) { devices = []; }
+      try { localStorage.setItem('upc-rec:devices', JSON.stringify(devices)); } catch (e) { /* fine */ }
+    }
+    function remember() {
+      if (part && part.micId) try { localStorage.setItem('upc-rec:mic', JSON.stringify({ id: part.micId, label: part.mic })); } catch (e) { /* fine */ }
     }
     function save(p, blob) {
       const s = seq++;
@@ -231,22 +264,34 @@
         return db.putRec(rec);
       }).catch((e) => { error = 'Not saved on this PC: ' + ((e && e.message) || e) + '. Download it from Patients > Recordings before closing this window.'; draw(); tell(); });
     }
-    async function startPart(device) {
+    async function openMic(device) {
       const base = { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true };
-      let s = null;
       if (device && device.id) {
-        try { s = await navigator.mediaDevices.getUserMedia({ audio: Object.assign({ deviceId: { exact: device.id } }, base) }); } catch (e) { s = null; }
+        try { return await navigator.mediaDevices.getUserMedia({ audio: Object.assign({ deviceId: { exact: device.id } }, base) }); } catch (e) { /* the default instead */ }
       }
-      if (!s) s = await navigator.mediaDevices.getUserMedia({ audio: base });
-      stream = s;
+      return navigator.mediaDevices.getUserMedia({ audio: base });
+    }
+    const micOf = (s, device) => {
       const track = s.getAudioTracks()[0];
+      const settings = track && track.getSettings ? track.getSettings() : {};
+      return { mic: (track && track.label) || 'Microphone', micId: settings.deviceId || (device && device.id) || '' };
+    };
+    async function startPart(device) {
+      const s = await openMic(device);
+      stream = s;
+      const running = await ensureCtx();
+      mode = running ? 'mixed' : 'direct';
+      dest = null;
+      if (running) { try { dest = ctx.createMediaStreamDestination(); } catch (e) { mode = 'direct'; } }
+      plug(s);
+      startMeter();
       const mime = pickMime();
-      mr = new MediaRecorder(s, mime ? { mimeType: mime, audioBitsPerSecond: cfg.bitrate } : { audioBitsPerSecond: cfg.bitrate });
+      const input = mode === 'mixed' ? dest.stream : s;
+      mr = new MediaRecorder(input, mime ? { mimeType: mime, audioBitsPerSecond: cfg.bitrate } : { audioBitsPerSecond: cfg.bitrate });
       const type = String(mr.mimeType || mime || 'audio/ogg').split(';')[0];
       const n = (rec.parts.length ? rec.parts[rec.parts.length - 1].n : 0) + 1;
-      const settings = track && track.getSettings ? track.getSettings() : {};
-      part = { n, mime: type, ext: /webm/.test(type) ? 'webm' : 'ogg', mic: (track && track.label) || 'Microphone', micId: settings.deviceId || (device && device.id) || '',
-        startedAt: now(), endedAt: null, bytes: 0, chunks: 0 };
+      const m = micOf(s, device);
+      part = { n, mime: type, ext: /webm/.test(type) ? 'webm' : 'ogg', mic: m.mic, micId: m.micId, mics: [m.mic], startedAt: now(), endedAt: null, bytes: 0, chunks: 0 };
       rec.parts.push(part);
       seq = 0;
       rec.beat = now();
@@ -254,20 +299,15 @@
       const p = part;
       mr.ondataavailable = (e) => { if (e.data && e.data.size) save(p, e.data); };
       mr.start(cfg.chunkMs);
-      startMeter(s);
-      clearTimeout(rollTimer);
-      rollTimer = setTimeout(() => roll().catch(fail), cfg.partMaxMs);
       await listDevices();
-      if (part.micId) try { localStorage.setItem('upc-rec:mic', JSON.stringify({ id: part.micId, label: part.mic })); } catch (e) { /* fine */ }
-      try { localStorage.setItem('upc-rec:devices', JSON.stringify(devices)); } catch (e) { /* fine */ }
+      remember();
     }
     async function endPart() {
-      clearTimeout(rollTimer);
       const r = mr, p = part;
       if (r && r.state !== 'inactive') await new Promise((ok) => { r.addEventListener('stop', ok, { once: true }); try { r.stop(); } catch (e) { ok(); } });
       await chain;
       if (stream) stream.getTracks().forEach((t) => t.stop());
-      clearInterval(meter);
+      if (src) { try { src.disconnect(); } catch (e) { /* gone */ } src = null; }
       if (p && !p.endedAt) {
         p.endedAt = now();
         await db.putRec(rec);
@@ -276,9 +316,28 @@
       mr = null;
       stream = null;
     }
-    async function roll() { const d = part ? { id: part.micId, label: part.mic } : null; await endPart(); await startPart(d); draw(); tell(); }
+    async function roll() { const d = part ? { id: part.micId, label: part.mic } : null; await endPart(); await startPart(d); state = 'recording'; draw(); tell(); }
     async function switchMic(device) {
       if (state !== 'recording' || !device || (part && device.id === part.micId)) return;
+      if (mode === 'mixed' && ctx && ctx.state === 'running') {
+        let s = null;
+        try { s = await openMic(device); } catch (e) { error = 'That microphone is not available: ' + ((e && (e.message || e.name)) || e) + '.'; draw(); tell(); return; }
+        const old = stream;
+        stream = s;
+        plug(s);
+        if (old) old.getTracks().forEach((t) => t.stop());
+        const m = micOf(s, device);
+        part.mic = m.mic;
+        part.micId = m.micId;
+        part.mics.push(m.mic);
+        error = '';
+        await db.putRec(rec);
+        await listDevices();
+        remember();
+        draw();
+        tell();
+        return;
+      }
       state = 'switching';
       draw();
       await endPart();
@@ -287,7 +346,8 @@
       draw();
       tell();
     }
-    async function finish() {
+    const total = () => (rec ? (rec.parts || []).reduce((a, p) => a + ((p.endedAt || now()) - p.startedAt), 0) : 0);
+    async function finish(why) {
       if (state !== 'recording') return;
       state = 'finishing';
       draw();
@@ -296,13 +356,25 @@
       rec.status = 'finished';
       rec.endedAt = now();
       rec.beat = now();
+      if (why) rec.stopped = why;
       await db.putRec(rec);
       state = 'finished';
       levels.fill(0);
+      clearInterval(meter);
       draw();
       tell();
       try { bc.postMessage({ t: 'finished', id: rec.id }); } catch (e) { /* closed */ }
+      try { if (ctx) ctx.close(); } catch (e) { /* fine */ }
       setTimeout(() => window.close(), 1500);
+    }
+    // A session left running (CH, 25 Nov 2026: a practitioner may forget to finish): a warning after an hour, finished
+    // after two (about 14 MB at 16 kbit/s, under the 15.7 MB Halaxy is known to take).
+    function guard() {
+      if (state !== 'recording') return;
+      const t = total();
+      const l = t >= cfg.warnMs;
+      if (l !== long) { long = l; draw(); tell(); }
+      if (t >= cfg.maxMs) finish('Stopped after ' + Math.round(cfg.maxMs / 3600e3) + ' hours.').catch(fail);
     }
     function fail(e) {
       error = 'Microphone not available: ' + ((e && (e.message || e.name)) || e) + '. Close this window and try again.';
@@ -334,18 +406,20 @@
       try { if (mr && mr.state === 'recording') mr.requestData(); } catch (e) { /* closing */ }
       try { bc.postMessage({ t: 'gone', id: rec ? rec.id : cfg.id }); } catch (e) { /* closing */ }
     });
-    setInterval(() => { tick(); tell(); }, 1000);
+    setInterval(() => { tick(); guard(); tell(); }, 1000);
 
     (async () => {
       draw();
       rec = await db.rec(cfg.id);
-      if (!rec) rec = { id: cfg.id, noteId: cfg.noteId, patientId: cfg.patientId, who: cfg.who, startedAt: now(), parts: [], v: cfg.version };
+      if (!rec) rec = { id: cfg.id, noteId: cfg.noteId, patientId: cfg.patientId, patient: cfg.patient, practitioner: cfg.practitioner, noteDate: cfg.noteDate, by: cfg.by, startedAt: now(), parts: [], v: cfg.version };
+      else ['patient', 'practitioner', 'noteDate'].forEach((k) => { if (!rec[k] && cfg[k]) rec[k] = cfg[k]; });
       rec.status = 'recording';
       rec.endedAt = null;
       rec.beat = now();
       await db.putRec(rec);
       await startPart(cfg.device);
       state = 'recording';
+      quietSince = now();
       draw();
       tell();
     })().catch(async (e) => {
@@ -368,7 +442,6 @@
   const upKey = (r, p) => 'up:' + r.id + '|' + p.n;   // the Halaxy copy of each part, per PC (localStorage, not IndexedDB:
   const upOf = (r, p) => store.get(upKey(r, p), { state: 'waiting', tries: 0 });   // the recorder window writes recs)
   const lengthOf = (r) => (r.parts || []).reduce((a, p) => a + ((p.endedAt || r.beat || Date.now()) - p.startedAt), 0);
-  const initials = () => U().user.initials(U().user.name()) || 'XX';
 
   let recsSig = '';
   async function loadRecs() {
@@ -409,8 +482,10 @@
 
   // ------------------------------------------------------------------ copies in Halaxy
 
-  const fileTitle = (r, p) => 'Recording ' + ymd(r.startedAt) + ' ' + hm(r.startedAt) + ' ' + r.who + (p.n > 1 ? ' part ' + p.n : '');
-  const fileName = (r, p) => 'recording-' + ymd(r.startedAt) + '-' + hm(r.startedAt).replace(':', '') + '-' + r.who + (p.n > 1 ? '-part' + p.n : '') + '.' + (p.ext || 'ogg');
+  // In Halaxy: who and which note, so a lost session is easy to find (CH, 25 Nov 2026). Downloads (what Heidi sees)
+  // carry no names.
+  const fileTitle = (r, p) => ['Recording ' + day(r.startedAt) + ' ' + hm(r.startedAt), r.patient, r.practitioner || r.who, 'note ' + r.noteId].filter(Boolean).join(', ') + (p.n > 1 ? ', part ' + p.n : '');
+  const fileName = (r, p) => 'recording-' + day(r.startedAt) + '-' + hm(r.startedAt).replace(':', '') + (p && p.n > 1 ? '-part' + p.n : '') + '.' + ((p && p.ext) || 'ogg');
   const fileComments = (r, p) => COMMENT + '; note ' + r.noteId + '; patient ' + r.patientId + '; ' + clock(p.endedAt - p.startedAt) + ', ' + hm(p.startedAt) + ' to ' + hm(p.endedAt);
 
   let uploading = false;
@@ -435,7 +510,7 @@
         try {
           const title = fileTitle(r, p);
           // Already there (a tab closed half way through last time): not attached twice.
-          const have = (await U().orgFiles.list(ORG)).find((f) => new RegExp('\\b' + title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?!\\s*part)').test(U().clean(f.text)));
+          const have = (await U().orgFiles.list(ORG)).find((f) => new RegExp('\\b' + title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?!,? part)').test(U().clean(f.text)));
           let fileId = have ? have.id : null;
           if (!fileId) {
             const blob = await db.partBlob(r.id, p.n, p.mime);
@@ -457,7 +532,9 @@
   // Copies in Halaxy older than 2 days, deleted (CH agreed, 25 Nov 2026): only the recorder's own files (title and comment).
   function oldTitle(text) {
     const m = TITLE_RX.exec(String(text || ''));
-    return !!m && Date.now() - new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]).getTime() > KEEP_HALAXY_MS;
+    if (!m) return false;
+    const t = m[1] ? new Date(+m[1], +m[2] - 1, +m[3], +m[7], +m[8]) : new Date(+m[6], MONTHS.indexOf(m[5]), +m[4], +m[7], +m[8]);
+    return !isNaN(t) && Date.now() - t.getTime() > KEEP_HALAXY_MS;
   }
   async function removeFile(id) {
     const path = '/file/delete/' + encodeURIComponent(id);
@@ -505,18 +582,62 @@
 
   // ------------------------------------------------------------------ downloads
 
+  // One file per recording (CH, 25 Nov 2026: Heidi takes one file per session). A recording in parts (its window was
+  // closed and Continue Recording pressed) is joined: each part decoded, end to end, and encoded again as one Ogg Opus
+  // file (16 kHz mono, 16 kbit/s) by opus-recorder's encoder, loaded from jsDelivr when first needed.
+  let encoderUrl = null;
+  async function encoder() {
+    if (!encoderUrl) {
+      const res = await fetch(ENCODER_URL, { credentials: 'omit' });
+      if (!res.ok) throw new (U().Error)('The audio encoder could not be loaded (' + res.status + ').');
+      encoderUrl = URL.createObjectURL(new Blob([await res.text()], { type: 'text/javascript' }));
+    }
+    return new Worker(encoderUrl);
+  }
+  async function joined(r) {
+    const parts = (r.parts || []).filter((p) => p.chunks || p.bytes);
+    if (!parts.length) throw new (U().Error)('Nothing was recorded.');
+    if (parts.length === 1) return db.partBlob(r.id, parts[0].n, parts[0].mime);
+    if (lengthOf(r) > JOIN_MAX_MS) throw new (U().Error)('This recording is too long to join here.');
+    const RATE = 16000, SIZE = 4096;
+    const w = await encoder();
+    const pages = [];
+    let ready, done, fail;
+    const isReady = new Promise((ok) => { ready = ok; });
+    const isDone = new Promise((ok, no) => { done = ok; fail = no; });
+    w.onmessage = (e) => { const d = e.data || {}; if (d.message === 'ready') ready(); else if (d.message === 'page') pages.push(d.page); else if (d.message === 'done') done(); };
+    w.onerror = (e) => { fail(new (U().Error)('The audio encoder stopped: ' + (e.message || 'unknown') + '.')); ready(); };
+    try {
+      w.postMessage({ command: 'init', encoderSampleRate: RATE, originalSampleRate: RATE, numberOfChannels: 1, encoderApplication: 2048, encoderBitRate: 16000, encoderComplexity: 5 });
+      await isReady;
+      w.postMessage({ command: 'getHeaderPages' });
+      for (const p of parts) {
+        const blob = await db.partBlob(r.id, p.n, p.mime);
+        const audio = await new OfflineAudioContext(1, RATE, RATE).decodeAudioData(await blob.arrayBuffer());
+        const ch = audio.getChannelData(0);
+        for (let i = 0; i < ch.length; i += SIZE) {
+          const c = new Float32Array(SIZE);
+          c.set(ch.subarray(i, i + SIZE));
+          w.postMessage({ command: 'encode', buffers: [c] }, [c.buffer]);
+        }
+      }
+      w.postMessage({ command: 'done' });
+      await isDone;
+    } finally { w.terminate(); }
+    return new Blob(pages, { type: 'audio/ogg' });
+  }
   async function download(r) {
-    for (const p of r.parts || []) {
-      if (!p.chunks && !p.bytes) continue;
-      const blob = await db.partBlob(r.id, p.n, p.mime);
+    const several = (r.parts || []).filter((p) => p.chunks || p.bytes).length > 1;
+    const busy = several ? U().ui.toast('Joining the parts into one file...', { kind: 'info', ms: 0 }) : null;
+    try {
+      const blob = await joined(r);
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = fileName(r, p);
+      a.download = fileName(r, null);
       document.body.appendChild(a);
       a.click();
       setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
-      await U().sleep(700);
-    }
+    } finally { if (busy) busy.close(); }
   }
 
   // A recording's copy in Halaxy, as a pill.
@@ -581,7 +702,7 @@
     const st = stripState();
     if (!st) return;
     const { mine, other, saved } = st;
-    const key = JSON.stringify([mine ? [mine.id, mine.status, mine.micId, mine.devices, mine.quiet, mine.ok, mine.error] : null, other ? other.id : null,
+    const key = JSON.stringify([mine ? [mine.id, mine.status, mine.micId, mine.devices, mine.quiet, mine.ok, mine.error, mine.long] : null, other ? other.id : null,
       saved ? [saved.id, saved.status, (saved.parts || []).length, copyPill(saved)] : null]);
     if (!force && key === stripKey) { timeNow(); return; }
     stripKey = key;
@@ -589,7 +710,7 @@
     if (mine) {
       h += '<span class="upc-rec-time"><i class="icon icon-timer"></i> <span data-upc-rec-time></span></span>' +
         micSelect(mine.devices || savedDevices(), { id: mine.micId, label: mine.mic }) + barsHtml() +
-        (mine.quiet ? U().ui.page.pill('No sound', 'warn') : '') + (!mine.ok && mine.status === 'recording' ? U().ui.page.pill('Level in the recorder window', 'info') : '') +
+        (mine.quiet ? U().ui.page.pill('No sound', 'warn') : '') + (mine.long ? U().ui.page.pill('Still recording after an hour', 'warn') : '') + (!mine.ok && mine.status === 'recording' ? U().ui.page.pill('Level in the recorder window', 'info') : '') +
         '<button type="button" class="btn btn-outline-primary" data-a="finish"' + (mine.status === 'recording' ? '' : ' disabled') + '><i class="icon icon-stop-circle"></i> ' +
         (mine.status === 'finishing' ? 'Finishing...' : 'Finish Appointment') + '</button>';
       if (mine.error) h += '</div><div class="alert alert-danger upc-err">' + esc(mine.error) + '</div><div>';
@@ -663,15 +784,30 @@
   }
 
   // Start Appointment: the window is opened straight away (Firefox only allows a pop-up from the click itself).
-  function startRecording(st) {
+  // The note's patient, practitioner and date (GET /note/:id; live 25 Nov 2026: patient.name, notePractitionerName or
+  // assignedPractitionerName, date.date and date.time as the page shows them). Empty if Halaxy doesn't say.
+  async function noteFacts(noteId) {
+    try {
+      const j = await Promise.race([U().http.json('/note/' + encodeURIComponent(noteId)), new Promise((ok) => setTimeout(() => ok(null), 8000))]);
+      if (!j) return {};
+      const d = j.date || (j.note && j.note.date) || {};
+      return { patient: U().clean((j.patient && j.patient.name) || ''), practitioner: U().clean(j.notePractitionerName || j.assignedPractitionerName || ''),
+        noteDate: d.date ? d.date + (d.time ? ' ' + d.time : '') : '' };
+    } catch (e) { return {}; }
+  }
+  // Start Appointment: the window is opened straight away (Firefox only allows a pop-up from the click itself).
+  async function startRecording(st) {
     if (anyLive()) return;
     const w = window.open('', WIN, 'popup=yes,width=540,height=460');
     if (!w) { U().ui.toast('Firefox blocked the recorder window. Allow pop-ups for Halaxy, then press Start Appointment again.', { kind: 'danger', ms: 0 }); return; }
-    if (w.__upcRecorder) { w.focus(); return; }   // already recording (its report not seen yet)
+    if (w.__upcRecorder || w.__upcStarting) { w.focus(); return; }   // already recording (its report not seen yet)
+    w.__upcStarting = true;
     const prev = st.saved && Date.now() - st.saved.startedAt < CONTINUE_MS && st.saved.status !== 'recording' ? st.saved : null;
+    const facts = prev && prev.patient ? prev : await noteFacts(st.ids.noteId);
     const cfg = Object.assign({}, REC, { id: prev ? prev.id : 'r' + Date.now().toString(36), noteId: st.ids.noteId, patientId: st.ids.patientId,
-      who: prev ? prev.who : initials(), device: savedMic() });
+      patient: facts.patient || '', practitioner: facts.practitioner || U().user.name(), noteDate: facts.noteDate || '', by: U().user.name(), device: savedMic() });
     try {
+      if (w.closed) return;
       openRecorder(w, cfg);
     } catch (e) {
       try { w.close(); } catch (x) { /* fine */ }
@@ -713,13 +849,13 @@
     if (!root) return;
     const base = U().base();
     const rows = recs.map((r) => '<tr data-upc-id="' + esc(r.id) + '"><td data-sort="' + r.startedAt + '">' + esc(day(r.startedAt) + ' ' + hm(r.startedAt)) + '</td>' +
-      '<td>' + esc(clock(lengthOf(r))) + (r.status === 'stopped' ? ' ' + U().ui.page.pill('Window closed', 'warn') : '') + '</td><td>' + esc(r.who) + '</td>' +
-      '<td><a href="' + esc(base + '/patient/' + r.patientId + '/clinical/category/note/id/' + r.noteId) + '">Open Note</a></td>' +
+      '<td>' + esc(clock(lengthOf(r))) + (r.status === 'stopped' ? ' ' + U().ui.page.pill('Window closed', 'warn') : '') + '</td><td>' + esc(r.patient || '') + '</td><td>' + esc(r.practitioner || r.who || '') + '</td>' +
+      '<td><a href="' + esc(base + '/patient/' + r.patientId + '/clinical/category/note/id/' + r.noteId) + '">' + esc(r.noteDate ? r.noteDate.split(' ')[0] : 'Open Note') + '</a></td>' +
       '<td>' + copyPill(r) + '</td><td data-sort="' + (r.startedAt + KEEP_LOCAL_MS) + '">' + esc(day((r.endedAt || r.startedAt) + KEEP_LOCAL_MS)) + '</td>' +
       '<td class="text-nowrap">' + (r.status === 'recording' ? '' : '<button type="button" class="btn btn-outline-primary-light" data-a="download">Download</button> ' +
         '<button type="button" class="btn btn-outline-primary-light" data-a="delete">Delete</button>') + '</td></tr>').join('');
     root.innerHTML = '<div class="upc-rec">' + U().ui.page.bar('Recordings', '', '') +
-      U().ui.page.card('Recordings on This PC', recs.length, '', '<table class="table table-striped table-bordered w-100 m-0" data-upc-list="upc-recordings"><thead><tr><th>Recorded</th><th>Length</th><th>By</th><th>Note</th><th>Copy in Halaxy</th><th>Kept Until</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>') +
+      U().ui.page.card('Recordings on This PC', recs.length, '', '<table class="table table-striped table-bordered w-100 m-0" data-upc-list="upc-recordings"><thead><tr><th>Recorded</th><th>Length</th><th>Patient</th><th>Practitioner</th><th>Note</th><th>Copy in Halaxy</th><th>Kept Until</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>') +
       '<p class="text-muted">Kept on this PC for 14 days; copies in Halaxy for 2 days.</p></div>';
     U().ui.list.enhance(root, { auto: true });
   }
@@ -813,5 +949,5 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
 
-  window.upcAppointmentRecorder = { version: VERSION, db, loadRecs, housekeeping, uploads, cleanHalaxy, cleanLocal, fileTitle, live };
+  window.upcAppointmentRecorder = { version: VERSION, db, loadRecs, housekeeping, uploads, cleanHalaxy, cleanLocal, fileTitle, fileName, joined, live };
 })();
