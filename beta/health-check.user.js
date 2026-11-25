@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.65
+// @version      1.1.66
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.65';
+  const VERSION = '1.1.66';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -219,11 +219,14 @@
     },
     {
       id: 'editor', title: "Halaxy's text editor",
-      scripts: ['HTML source for emails', 'Auto-expanding text boxes'],
+      scripts: ['HTML source for emails', 'Auto-expanding text boxes', 'Appointment recorder'],
       applies: () => !!document.querySelector('.ck-editor__editable'),
       test: () => {
         const ed = document.querySelector('.ck-editor__editable').ckeditorInstance;
-        return ed && ed.data && typeof ed.data.get === 'function' && ed.ui && ed.ui.view ? [] : ['editor instance on .ck-editor__editable'];
+        if (!(ed && ed.data && typeof ed.data.get === 'function' && ed.ui && ed.ui.view)) return ['editor instance on .ck-editor__editable'];
+        // Appointment recorder puts Heidi's note in through these (as a paste does).
+        const ins = ed.model && typeof ed.model.insertContent === 'function' && typeof ed.model.change === 'function' && typeof ed.data.toModel === 'function' && ed.data.processor && typeof ed.data.processor.toView === 'function';
+        return ins ? [] : ['the editor\'s insertContent, toModel and processor.toView'];
       },
     },
   ];

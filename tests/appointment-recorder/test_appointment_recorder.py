@@ -12,6 +12,13 @@ Continue Recording and Download Recording; Patients > Recordings lists it; a win
 stopped and its part still goes to Halaxy; copies older than 2 days are deleted through Halaxy's Delete pop-up, only the
 recorder's own; recordings older than 14 days leave the PC.
 
+The Heidi step, against a mock Heidi (its test labels as on the real one, its answers from a mock API): after Finish the
+recorder window goes to Heidi, which gets the recording as one Ogg file, starts a new session, uploads it and waits for
+Heidi's completed note; the note goes into the empty note (the editor covered meanwhile), the window closes, and Undo
+takes it out again. Heidi refusing the file is said on the note with Send to Heidi; sending again into a note with text
+asks, and Add Below puts it after the text. A note left before Heidi finishes (the clinician moved on in Halaxy) is
+opened in a new tab and the note put in there.
+
 Run:  python3 tests/appointment-recorder/test_appointment_recorder.py
 """
 import asyncio, datetime, json, re, subprocess, sys, urllib.parse
@@ -33,7 +40,7 @@ assert 'warnMs: 75 * 60e3, maxMs: 2 * 3600e3' in SCRIPT
 SCRIPT = SCRIPT.replace('warnMs: 75 * 60e3, maxMs: 2 * 3600e3', 'warnMs: 120e3, maxMs: 180e3')
 NOW = datetime.datetime(2026, 11, 25, 10, 0, tzinfo=datetime.timezone.utc)
 FAILS = []
-S = {'files': [], 'uploads': [], 'deleted': []}
+S = {'files': [], 'uploads': [], 'deleted': [], 'heidi': [], 'refuse': False, 'slow': False}
 
 
 def check(name, ok, detail=''):
@@ -91,11 +98,69 @@ FAKE_MIC = r"""
 
 MENU = ("<div id='mainMenu'><ul><li class='mainmenu-item'><a class='mainmenu-link'><span class='mainmenu-link-label'>Patients</span></a>"
         "<ul><li><a class='mainmenu-sublink' href='/a/pr/555/patient/'>Patient List</a></li></ul></li></ul></div>")
-NOTE_PAGE = ("<!doctype html><html><head><title>Clinical note | Halaxy</title><style>.halaxy-own { color: red; }</style></head><body class='vs-theme-default'>" + MENU +
-             "<div id='headerWrapper'></div><div id='content'><h2>Clinical Note</h2><div class='note-area'><div class='ck ck-editor'><div class='ck-editor__main'>"
-             "<div class='ck-editor__editable' contenteditable='true'><p>Existing text</p></div></div></div></div></div>"
-             "<script>window.HkUser = { pracName: 'Cara Hale', pracID: 11 }; window.Hk = { jwt: 'jwt-test' };"
-             "document.querySelector('.ck-editor__editable').ckeditorInstance = { isReadOnly: false };</script></body></html>")
+# A stand-in for Halaxy's CKEditor: the parts the recorder uses (getData, data.processor.toView, data.toModel,
+# model.change with setSelection, insertContent, execute('undo')), keeping the note as HTML.
+FAKE_EDITOR = r"""
+window.fakeEditor = function (html) {
+  const ed = { content: html, isReadOnly: false, undos: [], ui: { view: {} },
+    getData() { return ed.content; },
+    data: { get: () => ed.content, processor: { toView: (h) => ({ view: h }) }, toModel: (v) => ({ model: v.view }) },
+    model: { document: { getRoot: () => ({ root: true }) },
+      change(fn) { const w = { sel: 'end', createRangeIn: () => ({ all: true }), setSelection(a, b) { w.sel = a && a.all ? 'all' : b === 'end' ? 'end' : 'other'; } }; ed.w = w; fn(w); },
+      insertContent(frag) { ed.undos.push(ed.content); ed.content = ed.w.sel === 'all' ? frag.model : ed.content + frag.model; } },
+    execute(cmd) { if (cmd === 'undo' && ed.undos.length) ed.content = ed.undos.pop(); } };
+  return ed;
+};
+"""
+NOTES = {7003: '<p>Existing text</p>'}
+
+
+def note_page(n):
+    return ("<!doctype html><html><head><title>Clinical note | Halaxy</title><style>.halaxy-own { color: red; }</style></head><body class='vs-theme-default'>" + MENU +
+            "<div id='headerWrapper'></div><div id='content'><h2>Clinical Note</h2><div class='note-area'><div class='ck ck-editor'><div class='ck-editor__main'>"
+            "<div class='ck-editor__editable' contenteditable='true'></div></div></div></div></div>"
+            "<script>window.HkUser = { pracName: 'Cara Hale', pracID: 11 }; window.Hk = { jwt: 'jwt-test' };" + FAKE_EDITOR +
+            "document.querySelector('.ck-editor__editable').ckeditorInstance = fakeEditor(%s);</script></body></html>") % json.dumps(NOTES.get(n, ''))
+
+
+# A mock Heidi: the elements the step uses, with Heidi's test labels; its upload and consult-note requests go to the
+# mock API below. Its note is drawn as Heidi draws it (bold, underlined heading this time).
+HEIDI_PAGE = r"""<!doctype html><html><head><title>Heidi</title></head><body><div id='app'></div><script>
+const app = document.getElementById('app');
+let n = 0;
+function topBar() { return "<button data-testid='session-toolbar-cta-main'>New session</button>"; }
+function bindNew() { app.querySelector('[data-testid=session-toolbar-cta-main]').onclick = () => { n++; history.pushState(null, '', '/en/scribe/sessions/1234567890123456789012345' + n); session(); }; }
+function home() { app.innerHTML = topBar() + "<button data-testid='resume-recording-button'>Resume</button><button data-testid='start-recording-dropdown'>v</button><div class='tiptap ProseMirror'><p>Someone else's old session</p></div>"; bindNew(); }
+function session() {
+  app.innerHTML = topBar() + "<button data-testid='start-recording-button'>Transcribe</button><button data-testid='start-recording-dropdown'>v</button><div id='menu'></div><div id='dlg'></div><div class='tiptap ProseMirror' id='ed'></div>";
+  bindNew();
+  app.querySelector('[data-testid=start-recording-dropdown]').addEventListener('pointerdown', () => {
+    const m = document.getElementById('menu');
+    m.innerHTML = "<div role='menuitem' data-testid='start-recording-dropdown-upload'>Upload session audio</div>";
+    m.firstChild.addEventListener('click', () => { m.innerHTML = ''; const d = document.getElementById('dlg'); d.innerHTML = "<input type='file' data-testid='upload-audio-file-input-input' accept='.ogg,audio/ogg'>"; d.firstChild.addEventListener('change', upload); });
+  });
+}
+function upload(e) {
+  const f = e.target.files[0];
+  const sid = location.pathname.split('/').pop();
+  const x = new XMLHttpRequest();
+  x.open('GET', 'https://uk.api.heidihealth.com/api/test/refuse');
+  x.onload = () => {
+    if (x.responseText === 'yes') { document.getElementById('dlg').innerHTML = '<p>Unsupported file type</p>'; return; }
+    const fd = new FormData(); fd.append('upload_file', f); fd.append('starttime', 'now');
+    const u = new XMLHttpRequest(); u.open('POST', 'https://uk.api.heidihealth.com/api/v1/ml-scribe/sessions/' + sid + '/upload-audio'); u.onload = () => poll(sid); u.send(fd);
+  };
+  x.send();
+}
+function poll(sid) {
+  const x = new XMLHttpRequest();
+  x.open('GET', 'https://uk.api.heidihealth.com/api/v2/ml-scribe/sessions/' + sid + '/consult-note');
+  x.onload = () => { const c = JSON.parse(x.responseText).consult_notes[0]; if (c.status === 'COMPLETED') document.getElementById('ed').innerHTML = "<p data-x='1'><strong><u>Subjective:</u></strong></p><p class='y'>- Knee pain</p>"; else setTimeout(() => poll(sid), 1000); };
+  x.send();
+}
+home();
+</script></body></html>"""
+NOTE_IN = '<p><strong><u>Subjective:</u></strong></p><p>- Knee pain</p>'
 LIST_PAGE = ("<!doctype html><html><head><title>Patients | Halaxy</title></head><body>" + MENU +
              "<div id='headerWrapper'></div><div id='content'>Patient list</div><script>window.HkUser = { pracName: 'Cara Hale' }; window.Hk = { jwt: 'jwt-test' };</script></body></html>")
 ATTACH_POPUP = ("<form name='form' method='post' id='fileupload' class='js-file-edit-form' data-upload-url='/api/v2/practitioner/file/upload/files?_locale=1'>"
@@ -145,9 +210,64 @@ async def halaxy(route):
         n = int(m.group(1))
         return await js({'id': n, 'content': '<p>Not read</p>', 'patient': {'name': 'Patient %d' % (n + 2000), 'linkPaGId': n + 2000},
                          'notePractitionerName': 'Practitioner One', 'assignedPractitionerName': 'Practitioner Two', 'date': {'date': '25-Nov-2026', 'time': '09:55'}})
-    if '/clinical/category/note/id/' in path:
-        return await route.fulfill(body=NOTE_PAGE, content_type='text/html')
+    m = re.search(r'/clinical/category/note/id/(\d+)', path)
+    if m:
+        return await route.fulfill(body=note_page(int(m.group(1))), content_type='text/html')
     await route.fulfill(body=LIST_PAGE, content_type='text/html')
+
+
+async def heidi_api(route):
+    req = route.request
+    path = urllib.parse.urlparse(req.url).path
+    cors = {'Access-Control-Allow-Origin': '*'}
+    if path == '/api/test/refuse':
+        return await route.fulfill(body='yes' if S['refuse'] else 'no', headers=cors)
+    if path.endswith('/upload-audio'):
+        body = (req.post_data_buffer or b'').decode('latin-1')
+        m = re.search(r'filename="([^"]+)"\r\nContent-Type: ([^\r]+)', body)
+        S['heidi'].append({'name': m.group(1) if m else None, 'type': m.group(2) if m else None, 'size': len(body)})
+        return await route.fulfill(body='true', content_type='application/json', headers=cors)
+    if path.endswith('/consult-note'):
+        done = not S['slow']
+        c = {'id': 'c1', 'status': 'COMPLETED' if done else 'CREATED', 'note': '**Subjective:**\n- Knee pain' if done else '', 'content_type': 'MARKDOWN'}
+        return await route.fulfill(body=json.dumps({'consult_notes': [c]}), content_type='application/json', headers=cors)
+    await route.fulfill(status=404, body='', headers=cors)
+
+
+async def _true(v):
+    return v
+
+
+async def _state_is(pg, rid, state):
+    h = await heidi_state(pg, rid)
+    return bool(h) and h.get('state') == state
+
+
+async def _text_has(pg, rid, text):
+    h = await heidi_state(pg, rid)
+    return bool(h) and text in (h.get('text') or '')
+
+
+async def heidi_state(pg, rid):
+    return await pg.evaluate("(id) => JSON.parse(localStorage.getItem('upc-rec:heidi:' + id) || 'null')", rid)
+
+
+async def until_py(pg, fn, timeout=60, what=''):
+    """Move the fake clock on until the Python check is true."""
+    loop = asyncio.get_running_loop()
+    end = loop.time() + timeout
+    while True:
+        v = await fn()
+        if v:
+            return v
+        if loop.time() > end:
+            raise TimeoutError('not true: ' + what)
+        try:
+            await idle(pg, 500)
+        except Exception as e:
+            if 'closed' not in str(e).lower():
+                raise
+            await asyncio.sleep(0.1)
 
 
 async def closed(pg, win, timeout=30):
@@ -182,10 +302,13 @@ async def main():
         await ctx.clock.install(time=NOW.isoformat())
         await ctx.route('https://eu.halaxy.com/**', halaxy)
         await ctx.route('https://cdn.jsdelivr.net/npm/opus-recorder@8.0.5/dist/encoderWorker.min.js', lambda r: r.fulfill(body=ENCODER, content_type='application/javascript'))
+        await ctx.route('https://scribe.heidihealth.com/**', lambda r: r.fulfill(body=HEIDI_PAGE, content_type='text/html'))
+        await ctx.route('https://uk.api.heidihealth.com/**', heidi_api)
         await ctx.add_init_script(FAKE_MIC)
         # Halaxy pages only (the recorder window is a blank page the scripts don't run in, as on the PCs).
         await ctx.add_init_script("if (location.href.indexOf('https://eu.halaxy.com/a/pr/') === 0) {\n" + CORE + "\n}")
         await ctx.add_init_script("if (location.href.indexOf('https://eu.halaxy.com/a/pr/') === 0) document.addEventListener('DOMContentLoaded', function () {\n" + SCRIPT + "\n});")
+        await ctx.add_init_script("if (location.hostname === 'scribe.heidihealth.com') {\n" + SCRIPT + "\n}")   # at the page's start, as the loader runs it
         pg = await ctx.new_page()
         errors = []
         pg.on('pageerror', lambda e: errors.append(str(e)))
@@ -242,10 +365,26 @@ async def main():
         await idle(pg, 2000)
         check('sound again: the warning goes', not await pg.evaluate("document.querySelector('.upc-rec-strip').textContent.includes('No sound')"))
 
-        # ---- Finish
+        # ---- Finish, then the Heidi step
+        rid = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => r[0].id)")
+        await pg.evaluate("window.coverSeen = []; new MutationObserver(() => { const c = document.querySelector('.ck-editor > .upc-rec-cover'); if (c) coverSeen.push(c.textContent); }).observe(document.body, { childList: true, subtree: true, characterData: true })")
         await pg.click('.upc-rec-strip [data-a=finish]')
         await until(pg, "upcAppointmentRecorder.db.recs().then((r) => r[0].status === 'finished')")
+        await until_py(pg, lambda: heidi_state(pg, rid), what='the Heidi step starts')
+        await until_py(pg, lambda: _state_is(pg, rid, 'done'), what='Heidi\'s note in')
         await closed(pg, pop)
+        content = await pg.evaluate("document.querySelector('.ck-editor__editable').ckeditorInstance.getData()")
+        check('after Finish the recorder window goes to Heidi, which gets the recording as one Ogg file and uploads it in a new session',
+              len(S['heidi']) == 1 and S['heidi'][0]['name'] == 'recording-25-Nov-2026-1000.ogg' and S['heidi'][0]['type'] == 'audio/ogg', S['heidi'])
+        check('Heidi\'s completed note goes into the empty note as Heidi drew it (tidied), and the window closes', content == NOTE_IN and pop.is_closed(), content)
+        seen = await pg.evaluate("[...new Set(coverSeen)]")
+        check('the note was covered meanwhile, with Cancel, saying what is happening', any('Waiting for Heidi' in x or 'Sending to Heidi' in x for x in seen) and all('Cancel' in x for x in seen), seen)
+        st = await pg.evaluate("(() => { const s = document.querySelector('.upc-rec-strip'); return [s.textContent, !!document.querySelector('.ck-editor > .upc-rec-cover'), [...document.querySelectorAll('.upc-toast')].map((x) => x.textContent)]; })()")
+        check('afterwards: no cover, "Heidi\'s note added" on the strip, and a toast with Undo', "Heidi's note added" in st[0] and not st[1] and any(x.startswith("Heidi's note added.") and 'Undo' in x for x in st[2]), st)
+        kept = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => r.find((x) => x.noteId === '7001').heidiNote === undefined)")
+        check('Heidi\'s note is not kept on the PC once it is in', kept)
+        await pg.click('.upc-toast .upc-toast-act')
+        check('Undo takes it out again', await pg.evaluate("document.querySelector('.ck-editor__editable').ckeditorInstance.getData()") == '')
         await files_until(pg, 1)
         files = [(f['title'], f['comments'][:46]) for f in S['files']]
         check('the recording is attached to the recordings organisation as one file, titled by time, patient, practitioner and note, with the recorder\'s comment',
@@ -264,7 +403,7 @@ async def main():
         await lst.goto('https://eu.halaxy.com/a/pr/555/patient/#upc-recordings')
         await until(lst, "!!document.querySelector('[data-upc-page] table[data-upc-list=upc-recordings] tbody tr')")
         row = await lst.evaluate("(() => { const tr = document.querySelector('[data-upc-page] tbody tr'); return [[...tr.cells].map((c) => c.textContent.trim()), tr.querySelector('a').getAttribute('href'), document.querySelector('a.upc-rec-menu') && document.querySelector('a.upc-rec-menu').textContent]; })()")
-        check('Patients > Recordings lists it: patient, practitioner, the note\'s date as its link, its copy in Halaxy', row[0][:7] == ['25-Nov-2026 10:00', row[0][1], 'Patient 9001', 'Practitioner One', '25-Nov-2026', 'In Halaxy', '09-Dec-2026']
+        check('Patients > Recordings lists it: patient, practitioner, the note\'s date as its link, its copy in Halaxy, Heidi', row[0][:8] == ['25-Nov-2026 10:00', row[0][1], 'Patient 9001', 'Practitioner One', '25-Nov-2026', 'In Halaxy', "Heidi's note added", '09-Dec-2026']
               and row[1] == '/a/pr/555/patient/9001/clinical/category/note/id/7001' and row[2] == 'Recordings', row)
         await lst.close()
 
@@ -282,6 +421,24 @@ async def main():
         await files_until(pg, 2)
         stopped = [f['title'] for f in S['files']]
         check('a window closed mid-recording: marked stopped, Continue Recording offered, and its part still goes to Halaxy', len(stopped) == 2 and stopped[1].endswith(', note 7003'), stopped)
+        rid3 = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => r.find((x) => x.noteId === '7003').id)")
+        check('a stopped recording isn\'t sent to Heidi by itself: Send to Heidi on the strip', await heidi_state(pg, rid3) is None and await pg.evaluate("!!document.querySelector('.upc-rec-strip [data-a=heidi]')"))
+        S['refuse'] = True
+        await pg.click('.upc-rec-strip [data-a=heidi]')
+        await until_py(pg, lambda: _state_is(pg, rid3, 'failed'), what='Heidi refuses')
+        hw = [x for x in ctx.pages if x is not pg][0]
+        st = await pg.evaluate("document.querySelector('.upc-rec-strip').textContent")
+        check('Heidi refusing the file: "Not sent to Heidi" on the note with why, and Send to Heidi again', 'Not sent to Heidi' in st and 'Unsupported file type' in st and await pg.evaluate("!!document.querySelector('.upc-rec-strip [data-a=heidi]')"), st)
+        S['refuse'] = False
+        await pg.click('.upc-rec-strip [data-a=heidi]')
+        await until(pg, "!!document.querySelector('.upc-dialog[data-upc-dialog=upc-rec-heidi-how]')", timeout=60)
+        ask = await pg.evaluate("[...document.querySelectorAll('.upc-dialog [data-how]')].map((b) => b.textContent)")
+        check('sending again into a note with text asks: Cancel, Add Below, Replace', ask == ['Cancel', 'Add Below', 'Replace'], ask)
+        await pg.click('.upc-dialog [data-how=end]')
+        await until_py(pg, lambda: _state_is(pg, rid3, 'done'), what='added below')
+        content = await pg.evaluate("document.querySelector('.ck-editor__editable').ckeditorInstance.getData()")
+        check('Add Below puts Heidi\'s note after the text already there', content == '<p>Existing text</p>' + NOTE_IN, content)
+        await closed(pg, hw)
 
         # ---- a session left running: a warning after 75 minutes, finished after two hours (2 and 3 minutes here)
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/9004/clinical/category/note/id/7004')
@@ -291,11 +448,27 @@ async def main():
         pop3 = [x for x in ctx.pages if x is not pg][0]
         await idle(pg, 122000)
         check('a session left running: "Still recording after 2 minutes" (75 on the PCs) on the note', await pg.evaluate("/Still recording after 2 minutes/.test(document.querySelector('.upc-rec-strip').textContent)"))
+        S['slow'] = True   # Heidi takes its time, and the clinician moves on in Halaxy meanwhile
         await idle(pg, 60000)
+        rid4 = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => r.find((x) => x.noteId === '7004').id)")
+        await until_py(pg, lambda: _text_has(pg, rid4, 'Waiting for Heidi'), what='Heidi working')
+        await pg.goto('https://eu.halaxy.com/a/pr/555/patient/')
+        await idle(pg, 20000)
+        S['slow'] = False
+        await until_py(pg, lambda: _true(any('/note/id/7004' in x.url for x in ctx.pages if x is not pg)), what='the note opened in a new tab')
+        nt = [x for x in ctx.pages if '/note/id/7004' in x.url and x is not pg][0]
+        # Playwright doesn't run init scripts in a tab opened by window.open (Tampermonkey does), so load it again.
+        await nt.wait_for_load_state()
+        await nt.reload()
+        await until_py(pg, lambda: _state_is(pg, rid4, 'done'), what='note 7004 done')
+        content = await nt.evaluate("document.querySelector('.ck-editor__editable').ckeditorInstance.getData()")
+        check('moved on before Heidi finished: the note opens in a new tab and Heidi\'s note goes in there', content == NOTE_IN, content)
         await closed(pg, pop3)
+        await nt.close()
         auto = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => { const x = r.find((y) => y.noteId === '7004'); return [x.status, x.stopped]; })")
         check('and finished by itself after two hours', auto[0] == 'finished' and str(auto[1]).startswith('Stopped after'), auto)
         await files_until(pg, 3)
+
 
         # ---- a recording in two parts: Download gives one file
         js_join = """async () => {
