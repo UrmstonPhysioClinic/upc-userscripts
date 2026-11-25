@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Appointment recorder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.0
+// @version      0.2.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/appointment-recorder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/appointment-recorder.user.js
@@ -26,8 +26,8 @@
  *    agreed by CH (25 Nov 2026): kept 14 days, then deleted. One file per session (CH, 25 Nov 2026: Heidi takes one
  *    file per session): a change of microphone carries on in the same file (the microphone feeds the recorder through
  *    the AudioContext). A recording only comes in parts when its window was closed and Continue Recording pressed (or the
- *    AudioContext wasn't running); Download then joins the parts into one file. A warning after an hour, finished by
- *    itself after two (about 14 MB; Halaxy is known to take 15.7 MB and to refuse 31.5 MB).
+ *    AudioContext wasn't running); Download then joins the parts into one file. A warning after 75 minutes, finished
+ *    by itself after two hours (about 14 MB; Halaxy is known to take 15.7 MB and to refuse 31.5 MB).
  *  - Finished parts are attached to the "UPC scripts (recordings)" organisation (ORG) by whichever Halaxy tab is open
  *    (one at a time across tabs), titled "Recording 25-Nov-2026 10:00, <patient>, <practitioner>, note <id>" (", part n"
  *    after the first; CH, 25 Nov 2026). Copies there are deleted after 2 days (CH agreed, 25 Nov 2026): only files with
@@ -43,7 +43,7 @@
   if (window.__hxAppointmentRecorder) return;
   window.__hxAppointmentRecorder = true;
 
-  const VERSION = '0.2.0';
+  const VERSION = '0.2.1';
   const ORG = '78972';                          // "UPC scripts (recordings)" (CH, 25 Nov 2026)
   const KEEP_LOCAL_MS = 14 * 86400e3;           // on this PC (CH, 25 Nov 2026)
   const KEEP_HALAXY_MS = 2 * 86400e3;           // the copy in Halaxy (CH, 25 Nov 2026)
@@ -63,7 +63,7 @@
   const ENCODER_URL = 'https://cdn.jsdelivr.net/npm/opus-recorder@8.0.5/dist/encoderWorker.min.js';   // MIT; Ogg Opus encoder (WebAssembly inside)
   const JOIN_MAX_MS = 150 * 60e3;   // joining decodes the whole recording into memory
   const REC = {   // passed to the recorder window
-    channel: CHANNEL, bars: BARS, chunkMs: 5000, bitrate: 16000, warnMs: 60 * 60e3, maxMs: 2 * 3600e3,
+    channel: CHANNEL, bars: BARS, chunkMs: 5000, bitrate: 16000, warnMs: 75 * 60e3, maxMs: 2 * 3600e3,
     lowHz: 110, highHz: 4200, quietRms: 0.004, quietMs: 30e3, version: VERSION,
   };
 
@@ -155,7 +155,7 @@
         '</div></div><div class="upc-page-sub"><span class="text-muted">' + esc([cfg.patient, cfg.practitioner].filter(Boolean).join(', ')) + (cfg.patient || cfg.practitioner ? ', started ' : 'Started ') + esc(new Date(rec ? rec.startedAt : now()).toTimeString().slice(0, 5)) + '</span></div>';
       if (error) h += '<div class="alert alert-danger upc-err">' + esc(error) + '</div>';
       if (state === 'finished') h += '<div class="alert alert-success upc-ok">' + esc(rec && rec.stopped ? rec.stopped + ' ' : '') + 'Recording saved on this PC.</div>';
-      if (long && state === 'recording') h += '<div class="alert alert-warning upc-warn">Still recording after an hour. Finish Appointment when the session is over.</div>';
+      if (long && state === 'recording') h += '<div class="alert alert-warning upc-warn">Still recording after ' + Math.round(cfg.warnMs / 60e3) + ' minutes. Finish Appointment when the session is over.</div>';
       h += '<div class="upc-rec-big"><div class="upc-rec-bars" aria-hidden="true">' + '<span></span>'.repeat(cfg.bars) + '</div>' +
         '<div class="upc-rec-time"></div></div>';
       if (state !== 'finished') {
@@ -367,8 +367,8 @@
       try { if (ctx) ctx.close(); } catch (e) { /* fine */ }
       setTimeout(() => window.close(), 1500);
     }
-    // A session left running (CH, 25 Nov 2026: a practitioner may forget to finish): a warning after an hour, finished
-    // after two (about 14 MB at 16 kbit/s, under the 15.7 MB Halaxy is known to take).
+    // A session left running (CH, 25 Nov 2026: a practitioner may forget to finish): a warning after 75 minutes (some
+    // appointments are an hour), finished after two hours (about 14 MB at 16 kbit/s, under the 15.7 MB Halaxy is known to take).
     function guard() {
       if (state !== 'recording') return;
       const t = total();
@@ -710,7 +710,7 @@
     if (mine) {
       h += '<span class="upc-rec-time"><i class="icon icon-timer"></i> <span data-upc-rec-time></span></span>' +
         micSelect(mine.devices || savedDevices(), { id: mine.micId, label: mine.mic }) + barsHtml() +
-        (mine.quiet ? U().ui.page.pill('No sound', 'warn') : '') + (mine.long ? U().ui.page.pill('Still recording after an hour', 'warn') : '') + (!mine.ok && mine.status === 'recording' ? U().ui.page.pill('Level in the recorder window', 'info') : '') +
+        (mine.quiet ? U().ui.page.pill('No sound', 'warn') : '') + (mine.long ? U().ui.page.pill('Still recording after ' + Math.round(REC.warnMs / 60e3) + ' minutes', 'warn') : '') + (!mine.ok && mine.status === 'recording' ? U().ui.page.pill('Level in the recorder window', 'info') : '') +
         '<button type="button" class="btn btn-outline-primary" data-a="finish"' + (mine.status === 'recording' ? '' : ' disabled') + '><i class="icon icon-stop-circle"></i> ' +
         (mine.status === 'finishing' ? 'Finishing...' : 'Finish Appointment') + '</button>';
       if (mine.error) h += '</div><div class="alert alert-danger upc-err">' + esc(mine.error) + '</div><div>';
