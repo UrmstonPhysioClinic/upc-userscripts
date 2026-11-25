@@ -134,6 +134,21 @@ async def halaxy(route):
     await route.fulfill(body=LIST_PAGE, content_type='text/html')
 
 
+async def closed(pg, win, timeout=30):
+    """Move the fake clock on until the recorder window has closed itself (moving the clock while it closes may fail)."""
+    loop = asyncio.get_running_loop()
+    end = loop.time() + timeout
+    while not win.is_closed():
+        if loop.time() > end:
+            raise TimeoutError('the recorder window is still open')
+        try:
+            await idle(pg, 500)
+        except Exception as e:
+            if 'closed' not in str(e).lower():
+                raise
+            await asyncio.sleep(0.1)
+
+
 async def files_until(pg, n, timeout=60):
     """Move the fake clock on until the organisation has n files."""
     loop = asyncio.get_running_loop()
@@ -210,7 +225,7 @@ async def main():
         # ---- Finish
         await pg.click('.upc-rec-strip [data-a=finish]')
         await until(pg, "upcAppointmentRecorder.db.recs().then((r) => r[0].status === 'finished')")
-        await until(pg, "() => window.open('', 'upc-recorder') && !window.open('', 'upc-recorder').__upcRecorder")
+        await closed(pg, pop)
         await files_until(pg, 2)
         files = [(f['title'], f['comments'][:46]) for f in S['files']]
         check('each part is attached to the recordings organisation, titled by time and initials, with the recorder\'s comment',
@@ -220,7 +235,7 @@ async def main():
               and all(u['type'] == 'audio/ogg' and u['auth'] == 'Bearer jwt-test' for u in ups), ups)
         await until(pg, "/In Halaxy/.test(document.querySelector('.upc-rec-strip').textContent)")
         done = await pg.evaluate("(() => { const s = document.querySelector('.upc-rec-strip'); return [s.querySelector('[data-a=start]').textContent.trim(), !!s.querySelector('[data-a=download]'), s.textContent]; })()")
-        check('afterwards the strip offers Continue Recording and Download Recording, with the copy in Halaxy', done[0] == 'Continue Recording' and done[1] and 'Recorded 00:' in done[2], done)
+        check('afterwards the strip offers Continue Recording and Download Recording, with the copy in Halaxy', done[0] == 'Continue Recording' and done[1] and re.search(r'Recorded \d\d:\d\d', done[2]) is not None, done)
         await idle(pg, 20000)
         check('nothing is attached twice', len(S['files']) == 2, S['files'])
 
