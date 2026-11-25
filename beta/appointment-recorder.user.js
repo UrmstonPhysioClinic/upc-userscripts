@@ -592,7 +592,7 @@
       const a = e.target.closest('[data-a]');
       if (!a) return;
       if (a.dataset.a === 'finish') {
-        if (cfg.heidi) { try { window.open(cfg.heidiUrl, cfg.heidiName, cfg.heidiWin); } catch (x) { /* the note page opens it */ } }
+        if (cfg.heidi) { try { window.open(cfg.heidiUrl, cfg.heidiName + '-' + cfg.id, cfg.heidiWin); } catch (x) { /* the note page opens it */ } }
         finish().catch(fail);
       }
       if (a.dataset.a === 'level' && ctx) ctx.resume().then(() => draw()).catch(() => {});
@@ -1015,7 +1015,7 @@
     if (!st) return;
     if (a.dataset.a === 'start') startRecording(st);
     if (a.dataset.a === 'finish' && st.mine) {
-      if (REC.heidi) { try { const w = heidiWindow(); if (w) preOpened = { w, id: st.mine.id, at: Date.now() }; } catch (x) { /* opened later */ } }
+      if (REC.heidi) { try { const w = heidiWindow(st.mine.id); if (w) preOpened = { w, id: st.mine.id, at: Date.now() }; } catch (x) { /* opened later */ } }
       bc.postMessage({ t: 'cmd', id: st.mine.id, do: 'finish' });
     }
     if (a.dataset.a === 'show') { const w = window.open('', WIN); if (w && !(ours(w) && w.__upcRecorder)) w.close(); else if (w) w.focus(); }
@@ -1151,8 +1151,9 @@
   // w: a window already opened on Heidi by a click (Send to Heidi); otherwise the recorder window is sent there.
   // The Heidi window: a window of its own, opened at Heidi's full size (Firefox keeps a new window's size but may ignore
   // resizing; Heidi draws a narrow window without Upload session audio). An open one (from the Finish press) is reused.
-  function heidiWindow() {
-    const w = window.open('', HEIDI_NAME, HEIDI_WIN);
+  // One per recording (back-to-back appointments: the next Finish mustn't take the window Heidi is still writing in).
+  function heidiWindow(id) {
+    const w = window.open('', HEIDI_NAME + '-' + id, HEIDI_WIN);
     if (!w) return null;
     w.location.href = HEIDI_URL;
     return w;
@@ -1169,7 +1170,7 @@
       job.name = fileName(r, null);
     } catch (e) { endJob(job); return heidiFailed(r.id, 'The recording could not be prepared for Heidi: ' + (e.message || e)); }
     if (!job.w || job.w.closed) {
-      try { job.w = heidiWindow(); } catch (e) { endJob(job); return heidiFailed(r.id, 'The Heidi window could not be opened: ' + (e.message || e)); }
+      try { job.w = heidiWindow(r.id); } catch (e) { endJob(job); return heidiFailed(r.id, 'The Heidi window could not be opened: ' + (e.message || e)); }
       if (!job.w) { endJob(job); return heidiFailed(r.id, 'Firefox blocked the Heidi window. Allow pop-ups for Halaxy, then press Send to Heidi.'); }
     }
     job.timer = setInterval(() => tickJob(job), 2000);
@@ -1372,7 +1373,7 @@
   function heidiClick(a, r) {
     if (a.dataset.a === 'heidi') {
       let w = null;
-      try { w = heidiWindow(); } catch (e) { /* said below */ }   // from the click itself, so Firefox allows it
+      try { w = heidiWindow(r.id); } catch (e) { /* said below */ }   // from the click itself, so Firefox allows it
       if (!w) { U().ui.toast('Firefox blocked the Heidi window. Allow pop-ups for Halaxy, then press Send to Heidi again.', { kind: 'danger', ms: 0 }); return true; }
       store.del('heidi:' + r.id);
       sendToHeidi(r, w);

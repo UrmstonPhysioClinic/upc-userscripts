@@ -394,7 +394,7 @@ async def main():
         await pg.click('.upc-rec-strip [data-a=finish]')
         opens = await pg.evaluate("__opens")
         check('Finish opens Heidi in a full-size window of its own, from the press itself (Firefox may not resize the small one)',
-              opens[:1] == [['', 'upc-heidi', 'popup=yes,width=1100,height=820']], opens)
+              len(opens) == 1 and opens[0][0] == '' and re.match(r'^upc-heidi-r\w+$', opens[0][1]) and opens[0][2] == 'popup=yes,width=1100,height=820', opens)
         await until(pg, "upcAppointmentRecorder.db.recs().then((r) => r[0].status === 'finished')")
         await closed(pg, pop)
         await until_py(pg, lambda: heidi_state(pg, rid), what='the Heidi step starts')
