@@ -4,7 +4,8 @@ Test for Ready to bill and core's report readers, against a mock Halaxy.
 The mock has invented insurer patients ("Patient A" ...), each built to hit one rule: authorisation
 used up, no visit for 14 days with nothing booked, fees 3 months old, held for the excess on a new
 claim, not due yet, only a did-not-attend fee. Others must be left out: billed (Pending), Issued, on
-the insurer's own invoice, self-funded, older than 6 months.
+the insurer's own invoice, self-funded, older than 6 months. The insurer's own invoices still Active are
+listed as billed, not submitted; Issued ones are not.
 
 Checks: who is due and why; the greyed rows with their invoice links; the Invoice Funder link; the
 count on the Finances menu item; the count shared with a second tab without asking Halaxy again;
@@ -83,7 +84,8 @@ def fresh(today, drop_column=None):
     # Left out: billed (Pending), Issued, the insurer's own invoice, self-funded, older than 6 months
     inv(561, 307, 'Patient G', 'Bupa', [att(-30)], ref=(5, 5)); S['pending'].add(561)
     inv(571, 308, 'Patient H', 'AXA Health', [att(-30)], ref=(5, 5), status='Issued')
-    inv(581, 309, 'Bupa Healthcare', 'Bupa', [att(-30)], payer_id='Bupa-1')
+    inv(581, 309, 'Bupa Healthcare / (Patient Y)', 'Bupa', [att(-30), att(-23)], payer_id='Bupa-1')   # billed, not submitted
+    inv(582, 309, 'AXA Health / (Patient Z)', 'AXA Health', [att(-20)], status='Issued', payer_id='AXA-1')   # submitted: left out
     inv(591, 310, 'Patient J', '', [att(-30)])
     inv(601, 311, 'Patient K', 'Bupa', [att(-200)], ref=(5, 5))
     # Q: Bupa new claim, one fee, intake form says no excess -> not held (the 2-fee fallback would hold)
@@ -258,7 +260,7 @@ async def open_page(ctx, path='/a/pr/555/invoice/#upc-ready-to-bill'):
 
 
 ROOT_JS = "document.querySelector('[data-upc-ready-to-bill]')"
-ROWS_JS = """[...document.querySelectorAll('[data-upc-ready-to-bill] tbody tr')].map((tr) => ({
+ROWS_JS = """[...document.querySelectorAll('[data-upc-ready-to-bill] tbody tr')].filter((tr) => !tr.closest('[data-upc-rtb-unsent]')).map((tr) => ({
   off: tr.closest('.card') !== document.querySelector('[data-upc-ready-to-bill] .card'), who: tr.cells[0].textContent, funder: tr.cells[1].textContent, unbilled: tr.cells[2].textContent,
   why: tr.cells[4].textContent, invs: [...tr.cells[5].querySelectorAll('a')].map((a) => a.getAttribute('href')),
   btn: tr.cells[6] && tr.cells[6].querySelector('a') ? tr.cells[6].querySelector('a').getAttribute('href') : null,
@@ -318,7 +320,7 @@ async def main():
         ftxt = await pg.evaluate("[...document.querySelectorAll('[data-upc-ready-to-bill] tbody tr')].find((tr) => tr.cells[0].textContent === 'Patient F').cells[4].innerText")
         check('did-not-attend fee shown with its appointment comments', 'No show.' in ftxt and 'Do not bill.' in ftxt and '05-Nov-2026' in ftxt, ftxt)
         heads = await pg.evaluate("[...document.querySelectorAll('[data-upc-ready-to-bill] table')].map((t) => t.tHead.rows[0].cells.length)")
-        check('no empty column on the not-due table', heads == [7, 6], heads)
+        check('no empty column on the not-due table', heads == [7, 5, 6], heads)
         check('"3rd Party Funded" counts as a funder', 'Patient L' in by, rows)
         check('left out: billed, Issued, insurer\'s own, self-funded, over 6 months', not any(w in by for w in ['Patient G', 'Patient H', 'Bupa Healthcare', 'Patient J', 'Patient K']), list(by))
         check('Pending list asked with Halaxy\'s status filter', S.get('listBody', {}).get('filterModel', {}).get('status', {}).get('filter') == 'Pending', S.get('listBody'))
@@ -338,7 +340,13 @@ async def main():
         cal = [x for x in reqs if x[1].endswith('/calendar/json')]
         check('one report and one calendar per check', len(reports) == 1 and len(cal) == 1, reqs)
         badge = await pg.evaluate("(document.querySelector('a.upc-rtb-menu .upc-rtb-badge') || {}).textContent")
-        check('count on the menu item', badge == '7', badge)
+        check('count on the menu item: 7 to bill and 1 to submit', badge == '8', badge)
+        unsent = await pg.evaluate("[...document.querySelectorAll('[data-upc-ready-to-bill] [data-upc-rtb-unsent] tbody tr')].map((tr) => [...tr.cells].map((td) => td.innerText.replace(/\\s+/g, ' ').trim()).concat([tr.cells[0].querySelector('a').getAttribute('href')]))")
+        check('billed, not submitted: the insurer\'s Active invoice, with patient, fees and date; not the Issued one', unsent == [['UPC-581', 'Patient Y', 'Bupa', '2 fees £ 80.00', hx(S['invoices'][581]['lines'][0]['day']), '/a/pr/555/invoice/581']], unsent)
+        utitle = await pg.evaluate("[...document.querySelectorAll('[data-upc-ready-to-bill] .card-header h2')].map((h) => h.textContent)")
+        check('billed, not submitted: its own card, between due and not due', utitle == ['Due to Bill (7)', 'Billed, Not Submitted (1)', 'Not Due Yet (11)'], utitle)
+        btitle = await pg.evaluate("(document.querySelector('a.upc-rtb-menu .upc-rtb-badge') || {}).title")
+        check('count says what it counts', btitle == '7 to bill, 1 to submit', btitle)
         menu = await pg.evaluate("[...document.querySelectorAll('#mainMenu a.mainmenu-sublink')].map(a => a.getAttribute('href'))")
         check('menu item under Finances, over the Invoices page', '/a/pr/555/invoice/#upc-ready-to-bill' in menu and await pg.evaluate(
             "document.querySelector('.upc-rtb-menu').closest('.mainmenu-item').querySelector('.mainmenu-link-label').textContent") == 'Finances', menu)
@@ -352,7 +360,7 @@ async def main():
         await pg2.wait_for_selector('a.upc-rtb-menu', timeout=10000)
         await pg2.wait_for_timeout(3500)
         badge2 = await pg2.evaluate("(document.querySelector('a.upc-rtb-menu .upc-rtb-badge') || {}).textContent")
-        check('second tab shows the count without asking Halaxy', badge2 == '7' and [x for x in S['log'][n:] if not x[1].endswith('/invoice/')] == [], (badge2, S['log'][n:]))
+        check('second tab shows the count without asking Halaxy', badge2 == '8' and [x for x in S['log'][n:] if not x[1].endswith('/invoice/')] == [], (badge2, S['log'][n:]))
 
         # Check again: invoice details come from the cache
         n = len(S['log'])

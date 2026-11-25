@@ -1,5 +1,9 @@
 # Changelog
 
+## Ready to bill 0.4.16, 25 Nov 2026 (beta)
+- New card "Billed, Not Submitted": the insurer's own invoices still Active (not marked Issued), with the patient, fees and invoice date, from the same Unpaid Invoices report, no extra requests (CH, 25 Nov 2026: a Bupa invoice made but not yet submitted to Bupa had dropped off the page). They count on the menu with the patients due ("7 to bill, 1 to submit").
+- Card headings in Title Case: "Due to Bill", "Not Due Yet".
+
 ## Patient forms 0.1.9, Open-ended recalls 0.4.10, core 0.1.86, Health check 1.1.64, 25 Nov 2026 (beta)
 - Riding out a Halaxy update (CH, 25 Nov 2026: Halaxy 127.26 went live at 07:27; for about half an hour the template page came back without its form, so 8 of tomorrow's reminders failed with "its edit page has changed", then 4 of them worked on their next try). Templates are read by core (UPC.templates): one retry, then the last good copy kept on the PC for up to a day. A reply that isn't the template page at all counts as temporary; the page without its content box counts as a real change.
 - Patient forms: a temporary failure is tried again after 15 minutes (was an hour) and reported only if it lasts 2 hours. When a later try works, its earlier error is taken back from the health check. A reminder not yet sent shows "Not sent yet" instead of a blank.

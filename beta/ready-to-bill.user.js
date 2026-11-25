@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Billing: Ready to bill (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.15
+// @version      0.4.16
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/ready-to-bill.user.js
@@ -40,13 +40,17 @@
  *  - Shown only to CH and WP, only inside Halaxy. The count on the menu is refreshed at most every
  *    2 hours, in the visible tab only, shared across tabs, never while Halaxy has asked us to pause.
  *  - Billing is Invoice Funder's job: the button opens the invoice with Invoice Funder.
+ *  - Billed, not submitted (CH, 25 Nov 2026): the insurer's own invoices still Active in the same report.
+ *    Marking a funder invoice Issued is how the clinic records it went to the insurer, so an Active one has
+ *    been made but not yet sent (Invoice Funder run part way, or the portal not yet filled). Counted on the
+ *    menu with the patients due.
  */
 (() => {
   'use strict';
   if (window.__hxReadyToBill) return;
   window.__hxReadyToBill = true;
 
-  const VERSION = '0.4.15';
+  const VERSION = '0.4.16';
   const ROUTE = 'upc-ready-to-bill';
   const MENU_CLS = 'upc-rtb-menu';
   const ALLOWED = () => rule('readyToBill.people', ['Carl Healy', 'Wendy Pritchard']);   // CH, 7 Nov 2026: only the two of them
@@ -167,6 +171,23 @@
       inv.lines.push({ fee: l.fee, status: l.apptStatus, amount: l.amount || 0 });
     });
 
+    // The insurer's own invoices not yet marked Issued: billed here, not yet submitted.
+    const unsent = new Map();
+    lines.forEach((l) => {
+      if (!l.invoiceId || !insurer(l.funder) || !payerIsFunder(l.payer, l.funder) || /issued/i.test(l.invoiceStatus)) return;
+      const when = U().parseDay(l.date);
+      if (when !== null && when < cutoff) return;
+      let inv = unsent.get(l.invoiceId);
+      if (!inv) {
+        // Halaxy shows the payer as "Bupa Healthcare / (Patient Name)".
+        const m = String(l.payer).match(/\(([^)]+)\)\s*$/);
+        inv = { id: String(l.invoiceId), number: l.invoice, when, funder: l.funder, patient: m ? m[1].trim() : '', fees: 0, total: 0 };
+        unsent.set(l.invoiceId, inv);
+      }
+      inv.fees += 1;
+      inv.total += l.amount || 0;
+    });
+
     // One group per patient and funder.
     const groups = new Map();
     for (const inv of invoices.values()) {
@@ -255,6 +276,7 @@
     const result = {
       at: Date.now(), by: VERSION,
       due: list.filter((g) => g.state === 'due').length,
+      unsent: [...unsent.values()].sort((a, b) => (a.when || 0) - (b.when || 0)),
       rows: list.map((g) => ({
         payer: g.payer, funder: g.funder, patientId: g.patientId, state: g.state, reasons: g.reasons, note: g.note,
         fees: g.billable.length, total: g.total, oldest: g.oldest, lastInvoiceId: g.lastInvoice.id,
@@ -300,13 +322,16 @@
     if (!a) return;
     const r = store.get('result', null);
     let b = a.querySelector('.upc-rtb-badge');
-    const n = r ? r.due : 0;
-    if (U().todo) U().todo.publish('ready-to-bill', { title: 'Ready to bill', cls: MENU_CLS, href: a.getAttribute('href'), count: n, rows: r ? r.rows.filter((x) => x.state === 'due').slice(0, 3).map((x) => x.payer + ', ' + x.funder + ', ' + fmt(x.total)) : [] });
+    const unsent = (r && r.unsent) || [];
+    const n = r ? r.due + unsent.length : 0;
+    const top = r ? r.rows.filter((x) => x.state === 'due').map((x) => x.payer + ', ' + x.funder + ', ' + fmt(x.total))
+      .concat(unsent.map((x) => x.number + ', ' + x.funder + ', not submitted')).slice(0, 3) : [];
+    if (U().todo) U().todo.publish('ready-to-bill', { title: 'Ready to bill', cls: MENU_CLS, href: a.getAttribute('href'), count: n, rows: top });
     if (!n) { if (b) b.remove(); return; }
     if (!b) { b = document.createElement('span'); b.className = 'upc-rtb-badge'; a.appendChild(b); }
     const text = n > 99 ? '99+' : String(n);
     if (b.textContent !== text) b.textContent = text;   // only on change: the menu is watched for redraws
-    const title = n + ' patient' + (n === 1 ? '' : 's') + ' ready to bill';
+    const title = [r.due ? r.due + ' to bill' : '', unsent.length ? unsent.length + ' to submit' : ''].filter(Boolean).join(', ');
     if (b.title !== title) b.title = title;
   }
 
@@ -454,14 +479,23 @@
     if (state.error) h += '<div class="alert alert-danger upc-err">' + esc(state.error) + '</div>';
     if (r) {
       const due = r.rows.filter((x) => x.state === 'due'), rest = r.rows.filter((x) => x.state !== 'due');
-      h += '<div class="card"><div class="card-header"><h2>Due to bill (' + due.length + ')</h2></div><div class="card-body p-0">' +
+      h += '<div class="card"><div class="card-header"><h2>Due to Bill (' + due.length + ')</h2></div><div class="card-body p-0">' +
         (due.length ? '<table class="table table-striped table-bordered w-100 m-0">' + head(true) + '<tbody>' + due.map((x) => rowHtml(x, true)).join('') + '</tbody></table>'
           : '<p class="text-muted m-3">None.</p>') + '</div></div>';
+      const unsent = r.unsent || [];
+      if (unsent.length) {
+        const base = U().base();
+        h += '<div class="card"><div class="card-header"><h2>Billed, Not Submitted (' + unsent.length + ')</h2></div><div class="card-body p-0">' +
+          '<table class="table table-striped table-bordered w-100 m-0" data-upc-rtb-unsent><thead><tr><th>Invoice</th><th>Patient</th><th>Funder</th><th class="number">Fees</th><th>Invoice Date</th></tr></thead><tbody>' +
+          unsent.map((x) => '<tr><td><a href="' + esc(base + '/invoice/' + x.id) + '" target="_blank" rel="noopener">' + esc(x.number) + '</a></td><td>' + esc(x.patient) + '</td><td>' + esc(x.funder) + '</td>' +
+            '<td class="number">' + x.fees + ' fee' + (x.fees === 1 ? '' : 's') + '<br>' + fmt(x.total) + '</td><td class="upc-rtb-date">' + (x.when ? esc(label(x.when)) : '') + '</td></tr>').join('') +
+          '</tbody></table></div></div>';
+      }
       if (rest.length) {
-        h += '<div class="card"><div class="card-header"><h2>Not due yet (' + rest.length + ')</h2></div><div class="card-body p-0">' +
+        h += '<div class="card"><div class="card-header"><h2>Not Due Yet (' + rest.length + ')</h2></div><div class="card-body p-0">' +
           '<table class="table table-striped table-bordered w-100 m-0">' + head(false) + '<tbody>' + rest.map((x) => rowHtml(x, false)).join('') + '</tbody></table></div></div>';
       }
-      h += '<p class="text-muted">Unbilled insurer fees from the last ' + WINDOW_MONTHS() + ' months.</p>';
+      h += '<p class="text-muted">Insurer fees from the last ' + WINDOW_MONTHS() + ' months not yet billed, and insurer invoices not marked Issued.</p>';
     }
     h += '</div>';
     root.innerHTML = h;
