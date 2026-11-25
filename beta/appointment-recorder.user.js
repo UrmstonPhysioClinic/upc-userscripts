@@ -65,6 +65,9 @@
   const JOIN_MAX_MS = 150 * 60e3;   // joining decodes the whole recording into memory
   const REC = {   // passed to the recorder window
     channel: CHANNEL, bars: BARS, chunkMs: 5000, bitrate: 16000, warnMs: 75 * 60e3, maxMs: 2 * 3600e3, heidi: true,
+    // Heidi's own full-size window, opened by the Finish press itself (CH, 25 Nov 2026: Firefox on the PCs ignores
+    // resizing, and Heidi draws the small recorder window without Upload session audio).
+    heidiUrl: 'https://scribe.heidihealth.com/', heidiName: 'upc-heidi', heidiWin: 'popup=yes,width=1100,height=820',
     lowHz: 110, highHz: 4200, quietRms: 0.004, quietMs: 30e3, version: VERSION,
   };
 
@@ -567,7 +570,7 @@
       tell();
       try { bc.postMessage({ t: 'finished', id: rec.id }); } catch (e) { /* closed */ }
       try { if (ctx) ctx.close(); } catch (e) { /* fine */ }
-      setTimeout(() => window.close(), cfg.heidi ? 180e3 : 1500);   // the Heidi step sends this window to Heidi
+      setTimeout(() => window.close(), 1500);   // Heidi has a window of its own
     }
     // A session left running (CH, 25 Nov 2026: a practitioner may forget to finish): a warning after 75 minutes (some
     // appointments are an hour), finished after two hours (about 14 MB at 16 kbit/s, under the 15.7 MB Halaxy is known to take).
@@ -588,7 +591,10 @@
     root.addEventListener('click', (e) => {
       const a = e.target.closest('[data-a]');
       if (!a) return;
-      if (a.dataset.a === 'finish') finish().catch(fail);
+      if (a.dataset.a === 'finish') {
+        if (cfg.heidi) { try { window.open(cfg.heidiUrl, cfg.heidiName, cfg.heidiWin); } catch (x) { /* the note page opens it */ } }
+        finish().catch(fail);
+      }
       if (a.dataset.a === 'level' && ctx) ctx.resume().then(() => draw()).catch(() => {});
     });
     root.addEventListener('change', (e) => {
@@ -1008,7 +1014,10 @@
     const st = stripState();
     if (!st) return;
     if (a.dataset.a === 'start') startRecording(st);
-    if (a.dataset.a === 'finish' && st.mine) bc.postMessage({ t: 'cmd', id: st.mine.id, do: 'finish' });
+    if (a.dataset.a === 'finish' && st.mine) {
+      if (REC.heidi) { try { const w = heidiWindow(); if (w) preOpened = { w, id: st.mine.id, at: Date.now() }; } catch (x) { /* opened later */ } }
+      bc.postMessage({ t: 'cmd', id: st.mine.id, do: 'finish' });
+    }
     if (a.dataset.a === 'show') { const w = window.open('', WIN); if (w && !w.__upcRecorder) w.close(); else if (w) w.focus(); }
     if (st.saved && heidiClick(a, st.saved)) return;
     if (a.dataset.a === 'download' && st.saved) download(st.saved).catch((x) => U().ui.toast('Not downloaded: ' + (x.message || x), { kind: 'danger' }));
@@ -1081,8 +1090,10 @@
   // opens the note and finishes). A note with text asks first: Replace, Add Below or Cancel (CH). The editor is
   // covered from Finish until the note is in, with Cancel. Heidi accounts are shared (CH): no check of who is signed in.
   const HEIDI_ORIGIN = 'https://scribe.heidihealth.com';
-  const HEIDI_URL = HEIDI_ORIGIN + '/';
-  const HEIDI_WIN = 'popup=yes,width=1100,height=820';
+  const HEIDI_URL = REC.heidiUrl;
+  const HEIDI_WIN = REC.heidiWin;
+  const HEIDI_NAME = REC.heidiName;
+  let preOpened = null;   // the Heidi window this tab opened at a Finish press
   const HEIDI_MAX_MS = 30 * 60e3;
   const jobs = new Map();       // recording id -> the step this tab runs
   const claims = new Set();     // recordings whose note another tab has open
@@ -1118,17 +1129,18 @@
   const hereFor = (r) => { const ids = noteIds(); return !!ids && ids.noteId === r.noteId && !!editor(); };
 
   // w: a window already opened on Heidi by a click (Send to Heidi); otherwise the recorder window is sent there.
-  // The Heidi window, at Heidi's full size: resized while it is still the recorder's page (Firefox stops Halaxy resizing it
-  // once it is on Heidi's site), then sent to Heidi. Heidi draws a narrow window differently, without the upload menu.
+  // The Heidi window: a window of its own, opened at Heidi's full size (Firefox keeps a new window's size but may ignore
+  // resizing; Heidi draws a narrow window without Upload session audio). An open one (from the Finish press) is reused.
   function heidiWindow() {
-    const w = window.open('', WIN, HEIDI_WIN);
+    const w = window.open('', HEIDI_NAME, HEIDI_WIN);
     if (!w) return null;
-    try { if (w.outerWidth < 1100 || w.outerHeight < 820) w.resizeTo(Math.max(w.outerWidth, 1100), Math.max(w.outerHeight, 820)); } catch (e) { /* Heidi's side tries too */ }
     w.location.href = HEIDI_URL;
     return w;
   }
   async function sendToHeidi(r, w) {
     if (!(await exclusive('claim:' + r.id, () => !jobs.has(r.id) && lockTake('heidi:' + r.id, 30e3)))) return false;
+    if (!w && preOpened && preOpened.id === r.id && !preOpened.w.closed && Date.now() - preOpened.at < 5 * 60e3) w = preOpened.w;
+    preOpened = null;
     const job = { id: r.id, w: w || null, started: Date.now(), wanted: false, timer: null, signIn: false };
     jobs.set(r.id, job);
     setHeidi(r.id, { state: 'sending', text: 'Sending to Heidi' });

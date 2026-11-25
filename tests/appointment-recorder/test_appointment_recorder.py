@@ -385,15 +385,20 @@ async def main():
         # ---- Finish, then the Heidi step
         rid = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => r[0].id)")
         await pg.evaluate("window.coverSeen = []; new MutationObserver(() => { const c = document.querySelector('.ck-editor > .upc-rec-cover'); if (c) coverSeen.push(c.textContent); }).observe(document.body, { childList: true, subtree: true, characterData: true })")
+        await pg.evaluate("window.__opens = []; const o = window.open; window.open = function (u, n, f) { __opens.push([u, n, f]); return o.apply(this, arguments); }; 0")
         await pg.click('.upc-rec-strip [data-a=finish]')
+        opens = await pg.evaluate("__opens")
+        check('Finish opens Heidi in a full-size window of its own, from the press itself (Firefox may not resize the small one)',
+              opens[:1] == [['', 'upc-heidi', 'popup=yes,width=1100,height=820']], opens)
         await until(pg, "upcAppointmentRecorder.db.recs().then((r) => r[0].status === 'finished')")
+        await closed(pg, pop)
         await until_py(pg, lambda: heidi_state(pg, rid), what='the Heidi step starts')
         await until_py(pg, lambda: _state_is(pg, rid, 'done'), what='Heidi\'s note in')
-        await closed(pg, pop)
+        await until_py(pg, lambda: _true(not any('heidihealth' in x.url for x in ctx.pages)), what='the Heidi window closes')
         content = await pg.evaluate("document.querySelector('.ck-editor__editable').ckeditorInstance.getData()")
-        check('after Finish the recorder window goes to Heidi, which gets the recording as one Ogg file and uploads it in the new, empty session Heidi opens',
+        check('the recorder window closes; Heidi gets the recording as one Ogg file and uploads it in the new, empty session Heidi opens',
               len(S['heidi']) == 1 and S['heidi'][0]['sid'].endswith('51') and S['heidi'][0]['name'] == 'recording-25-Nov-2026-1000.ogg' and S['heidi'][0]['type'] == 'audio/ogg', S['heidi'])
-        check('Heidi\'s completed note goes into the empty note as Heidi drew it (tidied), and the window closes', content == NOTE_IN and pop.is_closed(), content)
+        check('Heidi\'s completed note goes into the empty note as Heidi drew it (tidied), and the Heidi window closes', content == NOTE_IN, content)
         seen = await pg.evaluate("[...new Set(coverSeen)]")
         check('the note was covered meanwhile, with Cancel, saying what is happening', any('Waiting for Heidi' in x or 'Sending to Heidi' in x for x in seen) and all('Cancel' in x for x in seen), seen)
         st = await pg.evaluate("(() => { const s = document.querySelector('.upc-rec-strip'); return [s.textContent, !!document.querySelector('.ck-editor > .upc-rec-cover'), [...document.querySelectorAll('.upc-toast')].map((x) => x.textContent)]; })()")
@@ -487,6 +492,7 @@ async def main():
         content = await nt.evaluate("document.querySelector('.ck-editor__editable').ckeditorInstance.getData()")
         check('moved on before Heidi finished: the note opens in a new tab and Heidi\'s note goes in there', content == NOTE_IN, content)
         await closed(pg, pop3)
+        await until_py(pg, lambda: _true(not any('heidihealth' in x.url for x in ctx.pages)), what='the Heidi window closes')
         await nt.close()
         auto = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => { const x = r.find((y) => y.noteId === '7004'); return [x.status, x.stopped]; })")
         check('and finished by itself after two hours', auto[0] == 'finished' and str(auto[1]).startswith('Stopped after'), auto)

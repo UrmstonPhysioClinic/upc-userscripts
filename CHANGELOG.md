@@ -2,6 +2,7 @@
 
 ## Appointment recorder 0.3.3, 25 Nov 2026 (beta)
 - One tab at a time, for sure (CH, 25 Nov 2026: each recording was attached two or three times, and Halaxy's profile then showed 3 new files where one was expected). Every open Halaxy tab hears "finished" at the same moment, and the tabs' shared lock could let two through at once. Uploads, the 2-day clean-up, starting the Heidi step, opening the note and putting Heidi's note in now use Firefox's own lock between tabs (Web Locks), and a tab skips a recording another tab has already attached.
+- Heidi in a full-size window of its own (CH, 25 Nov 2026: "Upload session audio did not appear"; the small recorder window still went to Heidi, as Firefox on the PCs ignores resizing, and Heidi draws a narrow window without that item). Finish opens it at once, from the press itself, at 1100 by 820, and the recorder window closes as before Heidi.
 - A tab running an older version (open since before an update) leaves this work to the newer one. A third copy came from a tab still running 0.1.0 ("undefined" in its title); the 2-day clean-up deletes it like the others.
 
 ## Appointment recorder 0.3.2, 25 Nov 2026 (beta)
