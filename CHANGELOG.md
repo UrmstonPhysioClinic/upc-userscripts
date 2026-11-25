@@ -6,7 +6,7 @@
 - If the note page has been left, the note opens in a new tab and Heidi's note goes in there. If Heidi isn't signed in, the window says so; signing in there carries on.
 - Heidi refusing the file, or its page changing, is said on the note ("Not sent to Heidi" with why) with Send to Heidi to try again. A recording stopped by closing its window isn't sent by itself: Send to Heidi on the note. A published note isn't changed: the note says to revert it to draft, then Add Heidi's Note.
 - Patients > Recordings: a Heidi column.
-- Loader and Starter: also run on scribe.heidihealth.com, for scripts whose @match names it. The Starter has no update address, so it is reinstalled once on each PC.
+- Loader and Starter: also run on scribe.heidihealth.com, for scripts whose @match names it. The loader updates itself on the PCs. The Starter (not yet in use: it has no update address, for when the repository goes private) gets the new site only when installed afresh.
 - Health check: the editor check covers the parts of Halaxy's editor the recorder uses.
 
 ## Appointment recorder 0.2.1, 25 Nov 2026 (beta)
