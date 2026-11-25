@@ -1,5 +1,8 @@
 # Changelog
 
+## Appointment recorder 0.2.1, 25 Nov 2026 (beta)
+- The "Still recording" warning comes after 75 minutes instead of an hour (CH, 25 Nov 2026: some appointments are an hour long). The two-hour stop is unchanged.
+
 ## Appointment recorder 0.2.0, 25 Nov 2026 (beta)
 - One file per session (CH, 25 Nov 2026: Heidi takes one audio file per session). Changing the microphone carries on in the same file: the microphone feeds the recorder through the AudioContext, and a new microphone is switched in underneath. No more 60-minute parts. Parts now only come from a window closed mid-recording and Continue Recording (or an AudioContext that isn't running); Download joins them into one Ogg file (each part decoded and encoded again, 16 kHz mono, with opus-recorder 8.0.5's encoder from jsDelivr).
 - 16 kbit/s (about 7 MB an hour). A session left running (CH asked): "Still recording after an hour" on the note and in the window, and finished by itself after two hours (about 14 MB, under the 15.7 MB Halaxy is known to take).

@@ -29,8 +29,8 @@ ENCODER = (HERE / 'node_modules' / 'opus-recorder' / 'dist' / 'encoderWorker.min
 CORE = (ROOT / 'beta' / 'core.user.js').read_text().replace('perMinute: 45,', 'perMinute: 100000,')
 # A session's hour warning and two-hour stop, shortened to 2 and 3 minutes so the test can reach them.
 SCRIPT = (ROOT / 'beta' / 'appointment-recorder.user.js').read_text()
-assert 'warnMs: 60 * 60e3, maxMs: 2 * 3600e3' in SCRIPT
-SCRIPT = SCRIPT.replace('warnMs: 60 * 60e3, maxMs: 2 * 3600e3', 'warnMs: 120e3, maxMs: 180e3')
+assert 'warnMs: 75 * 60e3, maxMs: 2 * 3600e3' in SCRIPT
+SCRIPT = SCRIPT.replace('warnMs: 75 * 60e3, maxMs: 2 * 3600e3', 'warnMs: 120e3, maxMs: 180e3')
 NOW = datetime.datetime(2026, 11, 25, 10, 0, tzinfo=datetime.timezone.utc)
 FAILS = []
 S = {'files': [], 'uploads': [], 'deleted': []}
@@ -283,14 +283,14 @@ async def main():
         stopped = [f['title'] for f in S['files']]
         check('a window closed mid-recording: marked stopped, Continue Recording offered, and its part still goes to Halaxy', len(stopped) == 2 and stopped[1].endswith(', note 7003'), stopped)
 
-        # ---- a session left running: a warning after an hour, finished after two (2 and 3 minutes here)
+        # ---- a session left running: a warning after 75 minutes, finished after two hours (2 and 3 minutes here)
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/9004/clinical/category/note/id/7004')
         await until(pg, "!!document.querySelector('.upc-rec-strip [data-a=start]')")
         await pg.click('.upc-rec-strip [data-a=start]')
         await until(pg, "!!document.querySelector('.upc-rec-strip [data-a=finish]')")
         pop3 = [x for x in ctx.pages if x is not pg][0]
         await idle(pg, 122000)
-        check('a session left running: "Still recording after an hour" on the note', await pg.evaluate("/Still recording after an hour/.test(document.querySelector('.upc-rec-strip').textContent)"))
+        check('a session left running: "Still recording after 2 minutes" (75 on the PCs) on the note', await pg.evaluate("/Still recording after 2 minutes/.test(document.querySelector('.upc-rec-strip').textContent)"))
         await idle(pg, 60000)
         await closed(pg, pop3)
         auto = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => { const x = r.find((y) => y.noteId === '7004'); return [x.status, x.stopped]; })")
