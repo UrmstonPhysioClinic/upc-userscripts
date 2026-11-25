@@ -356,7 +356,12 @@ async def main():
         await other.goto('https://eu.halaxy.com/a/pr/555/patient/9002/clinical/category/note/id/7002')
         await until(other, "!!document.querySelector('.upc-rec-strip') && /Another appointment/.test(document.querySelector('.upc-rec-strip').textContent)")
         check('another note\'s page: says another appointment is being recorded, with Show Recorder', await other.evaluate("!document.querySelector('.upc-rec-strip [data-a=start]') && !!document.querySelector('.upc-rec-strip [data-a=show]')"))
-        await other.close()
+        # Two more Halaxy tabs stay open, as on the PCs: every tab hears "finished" at once (CH, 25 Nov 2026: copies attached twice)
+        await other.goto('https://eu.halaxy.com/a/pr/555/patient/')
+        third = await ctx.new_page()
+        await third.goto('https://eu.halaxy.com/a/pr/555/patient/9002/clinical/category/note/id/7002')
+        await until(third, "!!document.querySelector('.upc-rec-strip')")
+        await pg.bring_to_front()
 
         # ---- change the microphone
         await pg.select_option('.upc-rec-strip select', 'mic-b')
@@ -408,7 +413,10 @@ async def main():
         done = await pg.evaluate("(() => { const s = document.querySelector('.upc-rec-strip'); return [s.querySelector('[data-a=start]').textContent.trim(), !!s.querySelector('[data-a=download]'), s.textContent]; })()")
         check('afterwards the strip offers Continue Recording and Download Recording, with the copy in Halaxy', done[0] == 'Continue Recording' and done[1] and re.search(r'Recorded \d\d:\d\d', done[2]) is not None, done)
         await idle(pg, 20000)
-        check('nothing is attached twice', len(S['files']) == 1, S['files'])
+        check('nothing is attached twice, with three Halaxy tabs open', len(S['files']) == 1 and len(S['uploads']) == 1, S['files'])
+        check('nor sent to Heidi twice', len(S['heidi']) == 1, S['heidi'])
+        await third.close()
+        await other.close()
 
         # ---- Patients > Recordings
         lst = await ctx.new_page()
@@ -539,6 +547,12 @@ async def main():
         n = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => r.length)")
         check('recordings older than 14 days leave this PC', n == 0, n)
 
+        # A tab running an older version leaves the work to the newer one.
+        await pg.evaluate("new BroadcastChannel('upc-recorder').postMessage({ t: 'ver', v: '9.9.9' })")
+        await until(pg, "upcAppointmentRecorder.outdated()")
+        n = len(S['uploads'])
+        await pg.evaluate("upcAppointmentRecorder.uploads()")
+        check('a tab that hears of a newer version leaves uploads and Heidi to it', await pg.evaluate("upcAppointmentRecorder.outdated()") and len(S['uploads']) == n)
         check('no page errors', not errors and not pop_errors, errors + pop_errors)
         await browser.close()
     print('\n' + ('All passed' if not FAILS else '%d failed' % len(FAILS)))
