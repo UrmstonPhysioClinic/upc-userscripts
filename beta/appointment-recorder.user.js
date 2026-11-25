@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Appointment recorder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.0
+// @version      0.3.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/appointment-recorder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/appointment-recorder.user.js
@@ -44,7 +44,7 @@
   if (window.__hxAppointmentRecorder) return;
   window.__hxAppointmentRecorder = true;
 
-  const VERSION = '0.3.0';
+  const VERSION = '0.3.1';
   const ORG = '78972';                          // "UPC scripts (recordings)" (CH, 25 Nov 2026)
   const KEEP_LOCAL_MS = 14 * 86400e3;           // on this PC (CH, 25 Nov 2026)
   const KEEP_HALAXY_MS = 2 * 86400e3;           // the copy in Halaxy (CH, 25 Nov 2026)
@@ -172,7 +172,7 @@
         if (job.over) throw new Error('Stopped.');
         const v = test();
         if (v) return v;
-        if (now() - t0 > ms) throw new Error('Heidi\'s page has changed or is slow: ' + what + ' did not appear.');
+        if (now() - t0 > ms) throw new Error('Heidi\'s page has changed or is slow: ' + (typeof what === 'function' ? what() : what) + ' did not appear.');
         await sleep(250);
       }
     }
@@ -192,12 +192,43 @@
       return eds.length && (eds[0].innerText || '').trim().length > 5 ? eds[0].innerHTML : '';
     }
 
+    // A session with nothing recorded yet: Transcribe and its menu, no Resume.
+    const fresh = () => !!(sessionOf() && q('[data-testid="start-recording-button"]') && q('[data-testid="start-recording-dropdown"]') && !q('[data-testid="resume-recording-button"]'));
+    // When it was started, from its date button ("Today 07:54 PM"); null if not shown.
+    function startedAgo() {
+      const b = [...document.querySelectorAll('button')].find((x) => /^Today \d\d?:\d\d [AP]M$/.test(x.textContent.trim()));
+      if (!b) return null;
+      const m = b.textContent.trim().match(/(\d\d?):(\d\d) ([AP])M/);
+      const d = new Date(now());
+      d.setHours((+m[1] % 12) + (m[3] === 'P' ? 12 : 0), +m[2], 0, 0);
+      return now() - d.getTime();
+    }
+    const missing = (before) => 'the new session (' + [location.pathname === before ? 'address unchanged' : '', !sessionOf() ? 'not a session' : '',
+      !q('[data-testid="start-recording-button"]') ? 'no Transcribe' : '', !q('[data-testid="start-recording-dropdown"]') ? 'no menu' : '',
+      q('[data-testid="resume-recording-button"]') ? 'Resume shown' : ''].filter(Boolean).join(', ') + ')';
+    // Heidi's own moves on opening (it often goes straight to a new, empty session): wait until its address stays put.
+    async function settle() {
+      let p = location.pathname;
+      let t = now();
+      const end = now() + 10e3;
+      while (now() < end && !job.over) {
+        await sleep(250);
+        if (location.pathname !== p) { p = location.pathname; t = now(); } else if (now() - t >= 2000) return;
+      }
+    }
+
     async function run() {
       say('Starting a new Heidi session');
-      const before = location.pathname;
-      const btn = await waitFor(() => q('[data-testid="session-toolbar-cta-main"]'), 90e3, 'the New session button');
-      press(btn);
-      await waitFor(() => location.pathname !== before && sessionOf() && q('[data-testid="start-recording-button"]') && q('[data-testid="start-recording-dropdown"]'), 45e3, 'the new session');
+      await waitFor(() => q('[data-testid="session-toolbar-cta-main"]'), 90e3, 'the New session button');
+      await settle();
+      // Heidi opened a new, empty session itself (New session does nothing there): use it if it was started just now.
+      const ago = fresh() ? startedAgo() : null;
+      if (!(fresh() && (ago === null || (ago > -60e3 && ago < 5 * 60e3)))) {
+        const before = location.pathname;
+        press(q('[data-testid="session-toolbar-cta-main"]'));
+        const t1 = now();
+        await waitFor(() => fresh() && (location.pathname !== before || now() - t1 > 8e3), 45e3, () => missing(before));
+      }
       const session = sessionOf();
       say('Uploading the recording');
       press(q('[data-testid="start-recording-dropdown"]'));

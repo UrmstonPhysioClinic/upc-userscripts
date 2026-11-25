@@ -24,7 +24,7 @@
     {
       "file": "appointment-recorder.user.js",
       "name": "UPC Patients: Appointment recorder (beta)",
-      "version": "0.3.0"
+      "version": "0.3.1"
     },
     {
       "file": "appointment-reminders.user.js",

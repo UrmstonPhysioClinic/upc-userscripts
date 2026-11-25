@@ -1,5 +1,8 @@
 # Changelog
 
+## Appointment recorder 0.3.1, 25 Nov 2026 (beta)
+- Heidi step: Heidi opens on a new, empty session of its own, where New session does nothing, so the step waited for a new session that never came (CH, 25 Nov 2026: "the new session did not appear"). It now uses that session when it was started in the last few minutes, and presses New session otherwise. If a session still doesn't appear, the message says what was missing.
+
 ## Appointment recorder 0.3.0, Loader 1.5.0, Starter 1.0.1, Health check 1.1.66, 25 Nov 2026 (beta)
 - The Heidi step (CH, 25 Nov 2026; plan in the project doc heidi-recorder.md). After Finish Appointment the recorder window goes to scribe.heidihealth.com, starts a new session and gives Heidi the recording as one Ogg file through Upload session audio, then waits for Heidi's completed note and puts it into the Halaxy note (Halaxy's editor, with Undo). A note with text asks: Cancel, Add Below or Replace. The Heidi window closes itself. Heidi's note is kept on the PC only until it is in the Halaxy note.
 - The note's editor is covered from Finish until Heidi's note is in, with Cancel; Heidi's page is covered too, with Stop. Nothing is covered while recording.
