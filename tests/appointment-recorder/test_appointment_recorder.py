@@ -129,15 +129,16 @@ HEIDI_PAGE = r"""<!doctype html><html><head><title>Heidi</title></head><body><di
 const app = document.getElementById('app');
 let n = 0;
 function topBar() { return "<button data-testid='session-toolbar-cta-main'>New session</button>"; }
-let empty = false;   // as on Heidi: New session does nothing on a session with nothing recorded
+let empty = false;
+let plain = false;   // the menu without its test label (found by its name)   // as on Heidi: New session does nothing on a session with nothing recorded
 function bindNew() { app.querySelector('[data-testid=session-toolbar-cta-main]').onclick = () => { if (empty) return; n++; history.pushState(null, '', '/en/scribe/sessions/1234567890123456789012345' + n); session(); }; }
 function today() { const d = new Date(); const h = d.getHours(); return 'Today ' + String(h % 12 || 12).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + (h < 12 ? ' AM' : ' PM'); }
 function home() { app.innerHTML = topBar() + "<button data-testid='resume-recording-button'>Resume</button><button data-testid='start-recording-dropdown'>v</button><div class='tiptap ProseMirror'><p>Someone else's old session</p></div>"; bindNew(); }
 function session() {
   empty = true;
-  app.innerHTML = topBar() + "<button type='button'>" + today() + "</button><button data-testid='start-recording-button'>Transcribe</button><button data-testid='start-recording-dropdown'>v</button><div id='menu'></div><div id='dlg'></div><div class='tiptap ProseMirror' id='ed'></div>";
+  app.innerHTML = topBar() + "<button type='button'>" + today() + "</button><button data-testid='start-recording-button'>Transcribe</button><button " + (plain ? "" : "data-testid='start-recording-dropdown' ") + "aria-label='Open transcription mode menu'>v</button><div id='menu'></div><div id='dlg'></div><div class='tiptap ProseMirror' id='ed'></div>";
   bindNew();
-  app.querySelector('[data-testid=start-recording-dropdown]').addEventListener('pointerdown', () => {
+  app.querySelector('[aria-label="Open transcription mode menu"]').addEventListener('pointerdown', () => {
     const m = document.getElementById('menu');
     m.innerHTML = "<div role='menuitem' data-testid='start-recording-dropdown-upload'>Upload session audio</div>";
     m.firstChild.addEventListener('click', () => { m.innerHTML = ''; const d = document.getElementById('dlg'); d.innerHTML = "<input type='file' data-testid='upload-audio-file-input-input' accept='.ogg,audio/ogg'>"; d.firstChild.addEventListener('change', upload); });
@@ -165,7 +166,7 @@ function poll(sid) {
 // Heidi often opens on a new, empty session of its own (after a moment); the test says which.
 const lx = new XMLHttpRequest();
 lx.open('GET', 'https://uk.api.heidihealth.com/api/test/landing');
-lx.onload = () => { if (lx.responseText === 'fresh') setTimeout(() => { n++; history.replaceState(null, '', '/en/scribe/sessions/1234567890123456789012345' + n); session(); }, 700); };
+lx.onload = () => { plain = /plain/.test(lx.responseText); if (/fresh/.test(lx.responseText)) setTimeout(() => { n++; history.replaceState(null, '', '/en/scribe/sessions/1234567890123456789012345' + n); session(); }, 700); };
 lx.send();
 home();
 </script></body></html>"""
@@ -462,6 +463,7 @@ async def main():
         await idle(pg, 122000)
         check('a session left running: "Still recording after 2 minutes" (75 on the PCs) on the note', await pg.evaluate("/Still recording after 2 minutes/.test(document.querySelector('.upc-rec-strip').textContent)"))
         S['slow'] = True   # Heidi takes its time, and the clinician moves on in Halaxy meanwhile
+        S['landing'] = 'fresh-plain'   # and its menu has no test label this time
         await idle(pg, 60000)
         rid4 = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => r.find((x) => x.noteId === '7004').id)")
         await until_py(pg, lambda: _text_has(pg, rid4, 'Waiting for Heidi'), what='Heidi working')
