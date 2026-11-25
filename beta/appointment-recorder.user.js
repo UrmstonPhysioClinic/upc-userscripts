@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Appointment recorder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.1
+// @version      0.3.2
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/appointment-recorder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/appointment-recorder.user.js
@@ -44,7 +44,7 @@
   if (window.__hxAppointmentRecorder) return;
   window.__hxAppointmentRecorder = true;
 
-  const VERSION = '0.3.1';
+  const VERSION = '0.3.2';
   const ORG = '78972';                          // "UPC scripts (recordings)" (CH, 25 Nov 2026)
   const KEEP_LOCAL_MS = 14 * 86400e3;           // on this PC (CH, 25 Nov 2026)
   const KEEP_HALAXY_MS = 2 * 86400e3;           // the copy in Halaxy (CH, 25 Nov 2026)
@@ -193,7 +193,9 @@
     }
 
     // A session with nothing recorded yet: Transcribe and its menu, no Resume.
-    const fresh = () => !!(sessionOf() && q('[data-testid="start-recording-button"]') && q('[data-testid="start-recording-dropdown"]') && !q('[data-testid="resume-recording-button"]'));
+    // Transcribe's menu: by its test label, else by its accessible name (as Heidi labels it).
+    const menu = () => q('[data-testid="start-recording-dropdown"]') || q('button[aria-label="Open transcription mode menu"]');
+    const fresh = () => !!(sessionOf() && q('[data-testid="start-recording-button"]') && menu() && !q('[data-testid="resume-recording-button"]'));
     // When it was started, from its date button ("Today 07:54 PM"); null if not shown.
     function startedAgo() {
       const b = [...document.querySelectorAll('button')].find((x) => /^Today \d\d?:\d\d [AP]M$/.test(x.textContent.trim()));
@@ -204,7 +206,7 @@
       return now() - d.getTime();
     }
     const missing = (before) => 'the new session (' + [location.pathname === before ? 'address unchanged' : '', !sessionOf() ? 'not a session' : '',
-      !q('[data-testid="start-recording-button"]') ? 'no Transcribe' : '', !q('[data-testid="start-recording-dropdown"]') ? 'no menu' : '',
+      !q('[data-testid="start-recording-button"]') ? 'no Transcribe' : '', !menu() ? 'no menu (window ' + window.innerWidth + ' wide)' : '',
       q('[data-testid="resume-recording-button"]') ? 'Resume shown' : ''].filter(Boolean).join(', ') + ')';
     // Heidi's own moves on opening (it often goes straight to a new, empty session): wait until its address stays put.
     async function settle() {
@@ -231,7 +233,7 @@
       }
       const session = sessionOf();
       say('Uploading the recording');
-      press(q('[data-testid="start-recording-dropdown"]'));
+      press(menu());
       press(await waitFor(() => q('[data-testid="start-recording-dropdown-upload"]'), 15e3, 'Upload session audio'));
       const input = await waitFor(() => q('input[type=file][data-testid="upload-audio-file-input-input"]'), 15e3, 'the upload box');
       const t0 = now();
@@ -259,6 +261,8 @@
       if (!d || typeof d !== 'object' || typeof d.upc !== 'string' || d.upc.indexOf('heidi-') !== 0) return;
       if (d.upc === 'heidi-offer' && !job) {
         job = { id: d.id, src: e.source, origin: e.origin, over: false };
+        // Full size, as Heidi draws a narrow window without the upload menu (allowed: a window a script opened).
+        try { if (window.outerWidth < 1100 || window.outerHeight < 820) window.resizeTo(Math.max(window.outerWidth, 1100), Math.max(window.outerHeight, 820)); } catch (x) { /* as it is */ }
         show('Getting the recording from Halaxy');
         e.source.postMessage({ upc: 'heidi-want', id: d.id }, e.origin);
       }
@@ -1098,6 +1102,15 @@
   const hereFor = (r) => { const ids = noteIds(); return !!ids && ids.noteId === r.noteId && !!editor(); };
 
   // w: a window already opened on Heidi by a click (Send to Heidi); otherwise the recorder window is sent there.
+  // The Heidi window, at Heidi's full size: resized while it is still the recorder's page (Firefox stops Halaxy resizing it
+  // once it is on Heidi's site), then sent to Heidi. Heidi draws a narrow window differently, without the upload menu.
+  function heidiWindow() {
+    const w = window.open('', WIN, HEIDI_WIN);
+    if (!w) return null;
+    try { if (w.outerWidth < 1100 || w.outerHeight < 820) w.resizeTo(Math.max(w.outerWidth, 1100), Math.max(w.outerHeight, 820)); } catch (e) { /* Heidi's side tries too */ }
+    w.location.href = HEIDI_URL;
+    return w;
+  }
   async function sendToHeidi(r, w) {
     if (jobs.has(r.id) || !lockTake('heidi:' + r.id, 30e3)) return false;
     const job = { id: r.id, w: w || null, started: Date.now(), wanted: false, timer: null, signIn: false };
@@ -1108,10 +1121,8 @@
       job.name = fileName(r, null);
     } catch (e) { endJob(job); return heidiFailed(r.id, 'The recording could not be prepared for Heidi: ' + (e.message || e)); }
     if (!job.w || job.w.closed) {
-      job.w = window.open('', WIN, HEIDI_WIN);
+      try { job.w = heidiWindow(); } catch (e) { endJob(job); return heidiFailed(r.id, 'The Heidi window could not be opened: ' + (e.message || e)); }
       if (!job.w) { endJob(job); return heidiFailed(r.id, 'Firefox blocked the Heidi window. Allow pop-ups for Halaxy, then press Send to Heidi.'); }
-      try { job.w.location.href = HEIDI_URL; } catch (e) { endJob(job); return heidiFailed(r.id, 'The Heidi window could not be opened: ' + (e.message || e)); }
-      try { job.w.resizeTo(1100, 820); } catch (e) { /* stays as it is */ }
     }
     job.timer = setInterval(() => tickJob(job), 2000);
     tickJob(job);
@@ -1309,7 +1320,8 @@
   }
   function heidiClick(a, r) {
     if (a.dataset.a === 'heidi') {
-      const w = window.open(HEIDI_URL, WIN, HEIDI_WIN);   // from the click itself, so Firefox allows it
+      let w = null;
+      try { w = heidiWindow(); } catch (e) { /* said below */ }   // from the click itself, so Firefox allows it
       if (!w) { U().ui.toast('Firefox blocked the Heidi window. Allow pop-ups for Halaxy, then press Send to Heidi again.', { kind: 'danger', ms: 0 }); return true; }
       store.del('heidi:' + r.id);
       sendToHeidi(r, w);

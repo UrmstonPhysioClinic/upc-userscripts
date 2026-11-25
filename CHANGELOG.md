@@ -1,5 +1,8 @@
 # Changelog
 
+## Appointment recorder 0.3.2, 25 Nov 2026 (beta)
+- Heidi step: the window is made Heidi's full size (1100 by 820) before it leaves Halaxy, and again by Heidi's side if still narrow (CH, 25 Nov 2026: after Finish the small recorder window went to Heidi, which draws a narrow window without the Transcribe menu, so "the new session (no menu) did not appear"; Firefox stops Halaxy resizing a window once it is on another site). Transcribe's menu is also found by its name, and the message gives the window's width if it is still missing.
+
 ## Appointment recorder 0.3.1, 25 Nov 2026 (beta)
 - Heidi step: Heidi opens on a new, empty session of its own, where New session does nothing, so the step waited for a new session that never came (CH, 25 Nov 2026: "the new session did not appear"). It now uses that session when it was started in the last few minutes, and presses New session otherwise. If a session still doesn't appear, the message says what was missing.
 
