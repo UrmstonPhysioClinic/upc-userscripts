@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         UPC scripts
 // @namespace    upc-starter
-// @version      1.0.0
+// @version      1.0.1
 // @description  Starts the clinic's scripts. Install once per PC, then add the access key from its menu.
 // @match        https://*.halaxy.com/*
 // @match        https://provider.axahealth.co.uk/*
 // @match        https://providersonline.bupa.co.uk/*
+// @match        https://scribe.heidihealth.com/*
 // @run-at       document-start
 // @grant        GM_getValue
 // @grant        GM_setValue

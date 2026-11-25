@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         UPC Halaxy scripts
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.4.0
-// @description  Runs all of the clinic's Halaxy scripts from GitHub (and the insurer portal fill on the Bupa and AXA provider sites). Install once per PC: new and updated scripts arrive by themselves.
+// @version      1.5.0
+// @description  Runs all of the clinic's Halaxy scripts from GitHub (and the insurer portal fill on the Bupa and AXA provider sites, and the Appointment recorder's Heidi step on Heidi). Install once per PC: new and updated scripts arrive by themselves.
 // @match        https://*.halaxy.com/*
 // @match        https://provider.axahealth.co.uk/*
 // @match        https://providersonline.bupa.co.uk/*
+// @match        https://scribe.heidihealth.com/*
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/loader/upc-loader.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/loader/upc-loader.user.js
@@ -57,12 +58,15 @@
  * copy the loader keeps whenever Halaxy is open, and it doesn't check for updates. Scripts pass a claim from
  * Halaxy to the portal through window.__upcLoader.shared(op, key, value) (op 'get', 'set' or 'del'), kept in
  * the loader's own storage on this PC: a value set with forHost is only given back on Halaxy and that site.
+ *
+ * Heidi (1.5.0): the loader also runs on scribe.heidihealth.com in the same way, for the Appointment recorder's Heidi
+ * step (the recording sent to Heidi and Heidi's note brought back; CH, 25 Nov 2026).
  */
 
 (function () {
   'use strict';
 
-  const VERSION = '1.4.0';
+  const VERSION = '1.5.0';
   const RAW = 'https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/';
   const CHECK_EVERY_MINUTES = 10;
   const RETRY_STALE_MINUTES = 2;   // GitHub can serve an old file for a few minutes after a change

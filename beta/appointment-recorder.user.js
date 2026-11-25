@@ -1,13 +1,14 @@
 // ==UserScript==
 // @name         UPC Patients: Appointment recorder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.2.1
+// @version      0.3.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/appointment-recorder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/appointment-recorder.user.js
 // @description  Start Appointment on a clinical note: records the session in a small window, saved on this PC every few seconds, with a sound level and a microphone choice. A copy goes to Halaxy for 2 days; Patients > Recordings lists this PC's recordings.
 // @match        https://*.halaxy.com/a/pr/*
-// @run-at       document-idle
+// @match        https://scribe.heidihealth.com/*
+// @run-at       document-start
 // @grant        none
 // @noframes
 // ==/UserScript==
@@ -43,7 +44,7 @@
   if (window.__hxAppointmentRecorder) return;
   window.__hxAppointmentRecorder = true;
 
-  const VERSION = '0.2.1';
+  const VERSION = '0.3.0';
   const ORG = '78972';                          // "UPC scripts (recordings)" (CH, 25 Nov 2026)
   const KEEP_LOCAL_MS = 14 * 86400e3;           // on this PC (CH, 25 Nov 2026)
   const KEEP_HALAXY_MS = 2 * 86400e3;           // the copy in Halaxy (CH, 25 Nov 2026)
@@ -63,9 +64,11 @@
   const ENCODER_URL = 'https://cdn.jsdelivr.net/npm/opus-recorder@8.0.5/dist/encoderWorker.min.js';   // MIT; Ogg Opus encoder (WebAssembly inside)
   const JOIN_MAX_MS = 150 * 60e3;   // joining decodes the whole recording into memory
   const REC = {   // passed to the recorder window
-    channel: CHANNEL, bars: BARS, chunkMs: 5000, bitrate: 16000, warnMs: 75 * 60e3, maxMs: 2 * 3600e3,
+    channel: CHANNEL, bars: BARS, chunkMs: 5000, bitrate: 16000, warnMs: 75 * 60e3, maxMs: 2 * 3600e3, heidi: true,
     lowHz: 110, highHz: 4200, quietRms: 0.004, quietMs: 30e3, version: VERSION,
   };
+
+  if (location.hostname === 'scribe.heidihealth.com') { heidiSide(); return; }
 
   const U = () => window.UPC;
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -76,6 +79,170 @@
   const clock = (ms) => { const s = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(s / 3600); return (h ? h + ':' + pad(Math.floor(s / 60) % 60) : pad(Math.floor(s / 60))) + ':' + pad(s % 60); };
   const day = (ms) => (U() ? U().dayLabel(ms) : ymd(ms));
   const TAB = Math.random().toString(36).slice(2, 8);
+
+  // ------------------------------------------------------------------ on Heidi (scribe.heidihealth.com)
+
+  // Runs in every Heidi page (loader 1.5.0) but acts only in the window Halaxy sends a recording to: Halaxy offers it
+  // (heidi-offer, every 2 seconds, to that window only), this page asks for it (heidi-want) and gets the file
+  // (heidi-audio). Then, as a person would: New session, Upload session audio, the file chosen; Heidi transcribes and
+  // writes the note by itself. Heidi's own answers are watched (its upload, then its consult note with status
+  // COMPLETED), never asked for. The note (Heidi's markdown and its editor's HTML) goes back to Halaxy (heidi-note),
+  // and the window closes once Halaxy has it (heidi-done). Anything unexpected stops with a message (heidi-failed).
+  // Elements found by Heidi's own test labels (recon 25 Nov 2026; project doc heidi-recorder.md).
+  function heidiSide() {
+    const HALAXY = /^https:\/\/([a-z0-9-]+\.)*halaxy\.com$/;
+    const seen = { uploads: [], notes: [] };   // Heidi's own answers: { at, url, status } and { at, url, note }
+    let job = null;
+    const now = () => Date.now();
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const q = (s) => document.querySelector(s);
+
+    // Heidi's requests, watched only (XHR and fetch), from the page's start.
+    const noted = (url, method, status, text) => {
+      url = String(url || '');
+      if (/\/ml-scribe\/sessions\/[^/]+\/upload-audio\b/.test(url) && /post/i.test(method)) seen.uploads.push({ at: now(), url, status });
+      if (/\/ml-scribe\/sessions\/[^/]+\/consult-note\/?(\?|$)/.test(url) && status === 200 && text) {
+        try {
+          const j = JSON.parse(text);
+          const c = j && Array.isArray(j.consult_notes) ? j.consult_notes[0] : null;
+          if (c && c.status === 'COMPLETED' && c.note) seen.notes.push({ at: now(), url, note: String(c.note) });
+        } catch (e) { /* not JSON */ }
+      }
+    };
+    try {
+      const XO = XMLHttpRequest.prototype.open, XS = XMLHttpRequest.prototype.send;
+      XMLHttpRequest.prototype.open = function (m, u) { this.__upcRec = [m, u]; return XO.apply(this, arguments); };
+      XMLHttpRequest.prototype.send = function () {
+        const x = this, i = x.__upcRec || [];
+        x.addEventListener('loadend', () => { let t = ''; try { t = x.responseType === '' || x.responseType === 'text' ? x.responseText : x.responseType === 'json' ? JSON.stringify(x.response) : ''; } catch (e) { /* none */ } noted(i[1], i[0], x.status, t); });
+        return XS.apply(this, arguments);
+      };
+      const F = window.fetch;
+      window.fetch = function (input, init) {
+        const url = typeof input === 'string' ? input : (input && input.url) || '';
+        const method = (init && init.method) || (input && input.method) || 'GET';
+        const p = F.apply(this, arguments);
+        if (/\/ml-scribe\/sessions\//.test(url)) p.then((r) => { const ct = r.headers.get('content-type') || ''; if (/json/.test(ct)) r.clone().text().then((t) => noted(url, method, r.status, t)).catch(() => {}); else noted(url, method, r.status, ''); }, () => {});
+        return p;
+      };
+    } catch (e) { /* watched by the page instead */ }
+
+    // ---- the cover over Heidi's page while the step runs (as Portal fill does on the portals)
+    let cover = null;
+    function show(text, kind, closeable) {
+      if (!document.body) { document.addEventListener('DOMContentLoaded', () => show(text, kind, closeable), { once: true }); return; }
+      if (!cover) {
+        cover = document.createElement('div');
+        cover.setAttribute('data-upc-heidi-cover', '');
+        cover.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:rgba(255,255,255,.88);display:flex;align-items:center;justify-content:center;font:15px/1.5 system-ui,sans-serif;color:#2d2d35';
+        cover.addEventListener('click', (e) => {
+          const b = e.target.closest('button[data-a]');
+          if (!b) return;
+          if (b.dataset.a === 'stop') fail(new Error('Stopped in the Heidi window.'));
+          if (b.dataset.a === 'close') window.close();
+        });
+        document.body.appendChild(cover);
+      }
+      const colour = kind === 'err' ? '#a32d2d' : '#5c2899';
+      cover.innerHTML = '<div style="background:#fff;border:1px solid #dcdce4;border-radius:8px;padding:24px 28px;max-width:440px;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.12)">' +
+        '<div style="font-weight:700;font-size:17px;margin-bottom:8px;color:' + colour + '">' + (kind === 'err' ? 'Not Done' : 'Sending to Heidi') + '</div>' +
+        '<div data-upc-heidi-step style="margin-bottom:16px"></div>' +
+        '<button type="button" data-a="' + (closeable ? 'close' : 'stop') + '" style="padding:6px 16px;border-radius:4px;border:1px solid #5c2899;background:#fff;color:#5c2899;font-weight:700;cursor:pointer">' + (closeable ? 'Close' : 'Stop') + '</button></div>';
+      cover.querySelector('[data-upc-heidi-step]').textContent = text;
+    }
+    // To the Halaxy tab that sent the recording and to the tab that opened this window: after Finish the clinician may
+    // move on in Halaxy (that tab's page changes, and its new page takes over).
+    function post(msg) {
+      const to = [job.src];
+      try { if (window.opener && window.opener !== job.src) to.push(window.opener); } catch (e) { /* none */ }
+      to.forEach((w) => { try { w.postMessage(msg, job.origin); } catch (e) { /* closed */ } });
+    }
+    let lastSaid = '';
+    const say = (text) => { lastSaid = text; show(text); post({ upc: 'heidi-status', id: job.id, text }); };
+    function fail(e) {
+      if (!job || job.over) return;
+      job.over = true;
+      const error = (e && e.message) || String(e);
+      show(error, 'err', true);
+      post({ upc: 'heidi-failed', id: job.id, error });
+    }
+    async function waitFor(test, ms, what) {
+      const t0 = now();
+      for (;;) {
+        if (job.over) throw new Error('Stopped.');
+        const v = test();
+        if (v) return v;
+        if (now() - t0 > ms) throw new Error('Heidi\'s page has changed or is slow: ' + what + ' did not appear.');
+        await sleep(250);
+      }
+    }
+    // A press as a person's mouse makes it (Heidi's menus open on pointer down, their items act on click).
+    function press(el) {
+      const o = { bubbles: true, cancelable: true, button: 0, buttons: 1, pointerType: 'mouse', isPrimary: true, view: window };
+      try { el.dispatchEvent(new PointerEvent('pointerdown', o)); } catch (e) { /* older */ }
+      el.dispatchEvent(new MouseEvent('mousedown', o));
+      try { el.dispatchEvent(new PointerEvent('pointerup', Object.assign({}, o, { buttons: 0 }))); } catch (e) { /* older */ }
+      el.dispatchEvent(new MouseEvent('mouseup', Object.assign({}, o, { buttons: 0 })));
+      el.click();
+    }
+    const sessionOf = () => (location.pathname.match(/\/sessions\/([^/?#]+)/) || [])[1] || null;
+    function editorHtml() {
+      const eds = [...document.querySelectorAll('.tiptap.ProseMirror, .ProseMirror')].filter((el) => !cover || !cover.contains(el))
+        .sort((a, b) => (b.innerText || '').length - (a.innerText || '').length);
+      return eds.length && (eds[0].innerText || '').trim().length > 5 ? eds[0].innerHTML : '';
+    }
+
+    async function run() {
+      say('Starting a new Heidi session');
+      const before = location.pathname;
+      const btn = await waitFor(() => q('[data-testid="session-toolbar-cta-main"]'), 90e3, 'the New session button');
+      press(btn);
+      await waitFor(() => location.pathname !== before && sessionOf() && q('[data-testid="start-recording-button"]') && q('[data-testid="start-recording-dropdown"]'), 45e3, 'the new session');
+      const session = sessionOf();
+      say('Uploading the recording');
+      press(q('[data-testid="start-recording-dropdown"]'));
+      press(await waitFor(() => q('[data-testid="start-recording-dropdown-upload"]'), 15e3, 'Upload session audio'));
+      const input = await waitFor(() => q('input[type=file][data-testid="upload-audio-file-input-input"]'), 15e3, 'the upload box');
+      const t0 = now();
+      const dt = new DataTransfer();
+      dt.items.add(new File([job.blob], job.name || 'recording.ogg', { type: 'audio/ogg' }));
+      input.files = dt.files;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      input.dispatchEvent(new Event('change', { bubbles: true }));
+      const up = await waitFor(() => {
+        if (/unsupported file type/i.test((document.body && document.body.innerText) || '')) throw new Error('Heidi refused the recording: "Unsupported file type".');
+        return seen.uploads.find((u) => u.at >= t0);
+      }, 15 * 60e3, 'the upload');
+      if (up.status !== 200) throw new Error('Heidi refused the recording (' + up.status + ').');
+      say('Waiting for Heidi\'s note');
+      const n = await waitFor(() => seen.notes.find((x) => x.at >= t0 && (!session || x.url.includes(session))) || seen.notes.find((x) => x.at >= t0), 20 * 60e3, 'Heidi\'s note');
+      await sleep(1500);   // Heidi draws the note in its editor
+      say('Sending Heidi\'s note to Halaxy');
+      post({ upc: 'heidi-note', id: job.id, markdown: n.note, html: editorHtml(), session: session || '' });
+      setTimeout(() => { if (!job.over) fail(new Error('Halaxy did not confirm it has Heidi\'s note. Check the note in Halaxy.')); }, 60e3);
+    }
+
+    window.addEventListener('message', (e) => {
+      if (!HALAXY.test(e.origin)) return;
+      const d = e.data;
+      if (!d || typeof d !== 'object' || typeof d.upc !== 'string' || d.upc.indexOf('heidi-') !== 0) return;
+      if (d.upc === 'heidi-offer' && !job) {
+        job = { id: d.id, src: e.source, origin: e.origin, over: false };
+        show('Getting the recording from Halaxy');
+        e.source.postMessage({ upc: 'heidi-want', id: d.id }, e.origin);
+      }
+      if (!job || d.id !== job.id) return;
+      if (d.upc === 'heidi-audio' && !job.blob && d.blob instanceof Blob && e.source === job.src) {
+        job.blob = d.blob;
+        job.name = d.name;
+        const beat = setInterval(() => { if (job.over) clearInterval(beat); else if (lastSaid) post({ upc: 'heidi-status', id: job.id, text: lastSaid }); }, 15e3);   // still working
+        run().catch(fail);
+      }
+      if (d.upc === 'heidi-done') { job.over = true; show('Heidi\'s note is in Halaxy.'); setTimeout(() => window.close(), 800); }
+      if (d.upc === 'heidi-cancel') { job.over = true; window.close(); }
+    });
+    window.upcHeidiStep = { version: VERSION, seen, job: () => job };
+  }
 
   // ------------------------------------------------------------------ storage on this PC (shared with the window)
 
@@ -154,7 +321,7 @@
         (state === 'finished' ? '' : '<button type="button" class="btn btn-primary" data-a="finish"' + (recording ? '' : ' disabled') + '><i class="icon icon-stop-circle"></i> ' + (state === 'finishing' ? 'Finishing...' : 'Finish Appointment') + '</button>') +
         '</div></div><div class="upc-page-sub"><span class="text-muted">' + esc([cfg.patient, cfg.practitioner].filter(Boolean).join(', ')) + (cfg.patient || cfg.practitioner ? ', started ' : 'Started ') + esc(new Date(rec ? rec.startedAt : now()).toTimeString().slice(0, 5)) + '</span></div>';
       if (error) h += '<div class="alert alert-danger upc-err">' + esc(error) + '</div>';
-      if (state === 'finished') h += '<div class="alert alert-success upc-ok">' + esc(rec && rec.stopped ? rec.stopped + ' ' : '') + 'Recording saved on this PC.</div>';
+      if (state === 'finished') h += '<div class="alert alert-success upc-ok">' + esc(rec && rec.stopped ? rec.stopped + ' ' : '') + 'Recording saved on this PC.' + (cfg.heidi ? ' Sending to Heidi...' : '') + '</div>';
       if (long && state === 'recording') h += '<div class="alert alert-warning upc-warn">Still recording after ' + Math.round(cfg.warnMs / 60e3) + ' minutes. Finish Appointment when the session is over.</div>';
       h += '<div class="upc-rec-big"><div class="upc-rec-bars" aria-hidden="true">' + '<span></span>'.repeat(cfg.bars) + '</div>' +
         '<div class="upc-rec-time"></div></div>';
@@ -365,7 +532,7 @@
       tell();
       try { bc.postMessage({ t: 'finished', id: rec.id }); } catch (e) { /* closed */ }
       try { if (ctx) ctx.close(); } catch (e) { /* fine */ }
-      setTimeout(() => window.close(), 1500);
+      setTimeout(() => window.close(), cfg.heidi ? 180e3 : 1500);   // the Heidi step sends this window to Heidi
     }
     // A session left running (CH, 25 Nov 2026: a practitioner may forget to finish): a warning after 75 minutes (some
     // appointments are an hour), finished after two hours (about 14 MB at 16 kbit/s, under the 15.7 MB Halaxy is known to take).
@@ -667,6 +834,10 @@
     .upc-rec-big .upc-rec-time { font-size: 28px; }
     .upc-rec-window { padding: 16px 20px; }
     .upc-rec-body { background: var(--vs-body-bg, #fff); }
+    .upc-rec-covered { position: relative; }
+    .upc-rec-cover { position: absolute; inset: 0; z-index: 50; display: flex; align-items: flex-start; justify-content: center; padding-top: 48px;
+      background: rgba(255, 255, 255, .85); }
+    .upc-rec-cover .card-body { display: flex; align-items: center; gap: 16px; }
   `;
   let strip = null, stripKey = '', stripTimer = null;
 
@@ -703,7 +874,8 @@
     if (!st) return;
     const { mine, other, saved } = st;
     const key = JSON.stringify([mine ? [mine.id, mine.status, mine.micId, mine.devices, mine.quiet, mine.ok, mine.error, mine.long] : null, other ? other.id : null,
-      saved ? [saved.id, saved.status, (saved.parts || []).length, copyPill(saved)] : null]);
+      saved ? [saved.id, saved.status, (saved.parts || []).length, copyPill(saved), heidiOf(saved.id), !!saved.heidiNote] : null]);
+    coverEditor();
     if (!force && key === stripKey) { timeNow(); return; }
     stripKey = key;
     let h = '<div class="upc-rec-row">';
@@ -721,7 +893,7 @@
         '<button type="button" class="btn btn-primary" data-a="start"><i class="icon icon-mic"></i> ' + (saved && Date.now() - saved.startedAt < CONTINUE_MS ? 'Continue Recording' : 'Start Appointment') + '</button>';
       if (saved) {
         h += '<span class="text-muted">Recorded ' + esc(clock(lengthOf(saved))) + (saved.status === 'stopped' ? ', stopped at ' + esc(hm(saved.endedAt)) : '') + '</span>' +
-          (saved.status === 'stopped' ? U().ui.page.pill('Window closed', 'warn') : '') + copyPill(saved) +
+          (saved.status === 'stopped' ? U().ui.page.pill('Window closed', 'warn') : '') + copyPill(saved) + heidiBits(saved, 'strip') +
           '<button type="button" class="btn btn-outline-primary-light" data-a="download">Download Recording</button>';
       }
     }
@@ -749,6 +921,12 @@
     [...el.children].forEach((s, i) => { if (s.className !== kind) s.className = kind; s.style.height = Math.round(4 + (m.lv[i] || 0) * 20) + 'px'; });
   }
 
+  function pendingHere() {
+    const ids = noteIds();
+    if (!ids || !editor()) return;
+    const r = recs.find((x) => x.noteId === ids.noteId && x.heidiNote);
+    if (r) insertHeidi(r);
+  }
   function ensureStrip() {
     const ids = noteIds();
     const host = ids && editorHost();
@@ -762,6 +940,7 @@
     if (strip.isConnected && strip.nextElementSibling === host) return;
     host.parentNode.insertBefore(strip, host);
     renderStrip(true);
+    pendingHere();
   }
 
   function onStripChange(e) {
@@ -780,6 +959,7 @@
     if (a.dataset.a === 'start') startRecording(st);
     if (a.dataset.a === 'finish' && st.mine) bc.postMessage({ t: 'cmd', id: st.mine.id, do: 'finish' });
     if (a.dataset.a === 'show') { const w = window.open('', WIN); if (w && !w.__upcRecorder) w.close(); else if (w) w.focus(); }
+    if (st.saved && heidiClick(a, st.saved)) return;
     if (a.dataset.a === 'download' && st.saved) download(st.saved).catch((x) => U().ui.toast('Not downloaded: ' + (x.message || x), { kind: 'danger' }));
   }
 
@@ -841,6 +1021,276 @@
     dlg.body.addEventListener('click', (e) => { if (e.target.closest('[data-a=close]')) { window.close(); dlg.close(); } });
   }
 
+  // ------------------------------------------------------------------ the Heidi step (stage 2; CH, 25 Nov 2026)
+
+  // After Finish, the recorder window becomes the Heidi window (no extra window) and Halaxy offers it the recording as
+  // one file. One tab runs the step (lock heidi:<id>, renewed every 2 seconds, so a closed tab's step shows as stopped).
+  // Heidi's note comes back and is kept on this PC (in the recording's record) only until it is in the note: by this
+  // tab if it has the note open, by another tab that has it open, or by a new tab opened on the note (CH: the script
+  // opens the note and finishes). A note with text asks first: Replace, Add Below or Cancel (CH). The editor is
+  // covered from Finish until the note is in, with Cancel. Heidi accounts are shared (CH): no check of who is signed in.
+  const HEIDI_ORIGIN = 'https://scribe.heidihealth.com';
+  const HEIDI_URL = HEIDI_ORIGIN + '/';
+  const HEIDI_WIN = 'popup=yes,width=1100,height=820';
+  const HEIDI_MAX_MS = 30 * 60e3;
+  const jobs = new Map();       // recording id -> the step this tab runs
+  const claims = new Set();     // recordings whose note another tab has open
+  const tried = new Set();      // recordings this page has tried to put in
+  const lockHeld = (name) => { const l = store.get('lock:' + name, null); return !!l && l.until > Date.now(); };
+  // A step under way is alive while its tab runs it or Heidi's window reports (every 15 seconds while it works).
+  function heidiOf(id) {
+    const h = store.get('heidi:' + id, null);
+    if (h && /^(sending|waiting)$/.test(h.state) && !jobs.has(id) && !lockHeld('heidi:' + id) && Date.now() - (h.beat || h.at || 0) > 60e3) {
+      return Object.assign({}, h, { state: 'failed', error: 'The Heidi step stopped before Heidi\'s note came back.' });
+    }
+    return h;
+  }
+  function setHeidi(id, v) {
+    const was = store.get('heidi:' + id, null);
+    const next = Object.assign({ at: Date.now(), beat: Date.now() }, v);
+    if (was && was.state === next.state && was.text === next.text && was.error === next.error) { store.set('heidi:' + id, Object.assign({}, was, { beat: Date.now() })); return; }
+    store.set('heidi:' + id, next);
+    paint();
+  }
+  function heidiFailed(id, error) {
+    setHeidi(id, { state: 'failed', error });
+    tellHealthCheck({ message: error });
+    return false;
+  }
+  function endJob(job) {
+    clearInterval(job.timer);
+    jobs.delete(job.id);
+    lockFree('heidi:' + job.id);
+  }
+  const noteUrl = (r) => U().base() + '/patient/' + r.patientId + '/clinical/category/note/id/' + r.noteId;
+  const editor = () => { const el = [...document.querySelectorAll('.ck-editor__editable')].find((x) => x.ckeditorInstance); return el ? el.ckeditorInstance : null; };
+  const hereFor = (r) => { const ids = noteIds(); return !!ids && ids.noteId === r.noteId && !!editor(); };
+
+  // w: a window already opened on Heidi by a click (Send to Heidi); otherwise the recorder window is sent there.
+  async function sendToHeidi(r, w) {
+    if (jobs.has(r.id) || !lockTake('heidi:' + r.id, 30e3)) return false;
+    const job = { id: r.id, w: w || null, started: Date.now(), wanted: false, timer: null, signIn: false };
+    jobs.set(r.id, job);
+    setHeidi(r.id, { state: 'sending', text: 'Sending to Heidi' });
+    try {
+      job.blob = await joined(r);
+      job.name = fileName(r, null);
+    } catch (e) { endJob(job); return heidiFailed(r.id, 'The recording could not be prepared for Heidi: ' + (e.message || e)); }
+    if (!job.w || job.w.closed) {
+      job.w = window.open('', WIN, HEIDI_WIN);
+      if (!job.w) { endJob(job); return heidiFailed(r.id, 'Firefox blocked the Heidi window. Allow pop-ups for Halaxy, then press Send to Heidi.'); }
+      try { job.w.location.href = HEIDI_URL; } catch (e) { endJob(job); return heidiFailed(r.id, 'The Heidi window could not be opened: ' + (e.message || e)); }
+      try { job.w.resizeTo(1100, 820); } catch (e) { /* stays as it is */ }
+    }
+    job.timer = setInterval(() => tickJob(job), 2000);
+    tickJob(job);
+    return true;
+  }
+  function tickJob(job) {
+    lockTake('heidi:' + job.id, 30e3);
+    if (!job.w || job.w.closed) { endJob(job); heidiFailed(job.id, 'The Heidi window was closed before Heidi\'s note came back.'); return; }
+    if (!job.wanted) {
+      try { job.w.postMessage({ upc: 'heidi-offer', id: job.id }, HEIDI_ORIGIN); } catch (e) { /* not on Heidi yet */ }
+      if (!job.signIn && Date.now() - job.started > 20e3) { job.signIn = true; setHeidi(job.id, { state: 'sending', text: 'Sign in to Heidi in the Heidi window' }); }
+    }
+    if (Date.now() - job.started > HEIDI_MAX_MS) {
+      endJob(job);
+      try { job.w.close(); } catch (e) { /* fine */ }
+      heidiFailed(job.id, 'Heidi didn\'t finish within ' + Math.round(HEIDI_MAX_MS / 60e3) + ' minutes.');
+    }
+  }
+  function cancelHeidi(id) {
+    const job = jobs.get(id);
+    if (job) {
+      try { job.w.postMessage({ upc: 'heidi-cancel', id }, HEIDI_ORIGIN); } catch (e) { /* closed */ }
+      endJob(job);
+      try { job.w.close(); } catch (e) { /* fine */ }
+    } else if (bc) bc.postMessage({ t: 'heidi-cancel', id });
+    setHeidi(id, { state: 'cancelled' });
+  }
+  // From Heidi's window: only the tab running the step hands over the recording; any tab of this PC takes Heidi's
+  // progress, a failure and the note (the clinician may have moved on in Halaxy since Finish).
+  const noted = new Set();
+  window.addEventListener('message', async (e) => {
+    if (e.origin !== HEIDI_ORIGIN) return;
+    const d = e.data;
+    if (!d || typeof d !== 'object' || typeof d.upc !== 'string' || !d.id) return;
+    const job = jobs.get(d.id);
+    if (d.upc === 'heidi-want') {
+      if (!job || e.source !== job.w || job.wanted) return;
+      job.wanted = true;
+      job.w.postMessage({ upc: 'heidi-audio', id: job.id, blob: job.blob, name: job.name }, HEIDI_ORIGIN);
+      setHeidi(job.id, { state: 'waiting', text: 'Sending to Heidi' });
+      return;
+    }
+    const h = store.get('heidi:' + d.id, null);
+    if (h && h.state === 'cancelled') { try { e.source.postMessage({ upc: 'heidi-cancel', id: d.id }, HEIDI_ORIGIN); } catch (x) { /* closed */ } return; }
+    if (!job && !(h && /^(sending|waiting|ready)$/.test(h.state))) return;   // only a step under way
+    if (d.upc === 'heidi-status') setHeidi(d.id, { state: 'waiting', text: String(d.text || '') });
+    if (d.upc === 'heidi-failed') { if (job) endJob(job); heidiFailed(d.id, String(d.error || 'Heidi stopped.')); }
+    if (d.upc === 'heidi-note') {
+      try { e.source.postMessage({ upc: 'heidi-done', id: d.id }, HEIDI_ORIGIN); } catch (x) { /* closed */ }
+      if (job) endJob(job);
+      if (noted.has(d.id)) return;
+      noted.add(d.id);
+      const r = await db.rec(d.id);
+      if (!r) return;
+      if (!r.heidiNote) {
+        r.heidiNote = { markdown: String(d.markdown || ''), html: String(d.html || ''), at: Date.now() };
+        r.heidiSession = String(d.session || '');
+        await db.putRec(r);
+      }
+      setHeidi(d.id, { state: 'ready', text: 'Heidi\'s note is ready' });
+      await loadRecs();
+      if (lockTake('deliver:' + d.id, 20e3)) deliver(d.id);
+    }
+  });
+  // Finished: the tab with the note open starts the step at once, any other a few seconds later if none has.
+  async function autoHeidi(id) {
+    await loadRecs();
+    const r = recs.find((x) => x.id === id);
+    if (!r || heidiOf(id)) return;
+    if (!(noteIds() && noteIds().noteId === r.noteId)) await U().sleep(3000);
+    if (heidiOf(id) || lockHeld('heidi:' + id)) return;
+    sendToHeidi(r, null);
+  }
+  async function deliver(id) {
+    const r = await db.rec(id);
+    if (!r || !r.heidiNote) return;
+    if (hereFor(r)) { insertHeidi(r); return; }
+    claims.delete(id);
+    if (bc) bc.postMessage({ t: 'heidi-ready', id, noteId: r.noteId });
+    await U().sleep(1500);
+    const h = heidiOf(id) || {};
+    if (claims.has(id) || h.state === 'done' || h.state === 'cancelled') return;
+    if (!window.open(noteUrl(r), '_blank')) setHeidi(id, { state: 'ready', text: 'Heidi\'s note is ready', error: 'Open the note to add Heidi\'s note (Firefox blocked a new tab).' });
+  }
+
+  // Heidi's note as HTML for Halaxy's editor: Heidi's own editor copy (its formatting, as a paste gives), tidied to plain
+  // text formatting; else its markdown, line by line.
+  function cleanHtml(html) {
+    const root = U().htmlDoc('<div>' + html + '</div>').body.firstElementChild;
+    const OK = /^(P|BR|STRONG|B|EM|I|U|UL|OL|LI|H1|H2|H3|H4|BLOCKQUOTE)$/;
+    const walk = (el) => [...el.children].forEach((c) => {
+      walk(c);
+      if (OK.test(c.tagName)) [...c.attributes].forEach((a) => c.removeAttribute(a.name)); else c.replaceWith(...c.childNodes);
+    });
+    walk(root);
+    return root.innerHTML.trim();
+  }
+  function mdHtml(md) {
+    const inline = (t) => esc(t).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/__(.+?)__/g, '<strong>$1</strong>');
+    return String(md || '').split(/\r?\n/).map((l) => l.replace(/\s+$/, '')).filter((l) => l.trim())
+      .map((l) => { const h = l.match(/^#{1,6}\s+(.*)$/); return '<p>' + (h ? '<strong>' + inline(h[1]) + '</strong>' : inline(l.replace(/^\s*[*•]\s+/, '- '))) + '</p>'; }).join('');
+  }
+  const noteHtml = (n) => (n.html && cleanHtml(n.html)) || mdHtml(n.markdown);
+  const hasText = (ed) => !!U().clean(U().htmlDoc('<div>' + ed.getData() + '</div>').body.textContent.replace(/ /g, ' '));
+  function askHow() {
+    return new Promise((ok) => {
+      let picked = null;
+      const dlg = U().ui.dialog({ title: 'Heidi\'s Note', small: true, key: 'upc-rec-heidi-how', onClose: () => ok(picked) });
+      if (!dlg) { ok(null); return; }
+      dlg.body.innerHTML = '<p>This note already has text.</p><div class="text-right">' +
+        '<button type="button" class="btn btn-outline-primary" data-how="">Cancel</button> ' +
+        '<button type="button" class="btn btn-outline-primary" data-how="end">Add Below</button> ' +
+        '<button type="button" class="btn btn-primary" data-how="replace">Replace</button></div>';
+      dlg.body.addEventListener('click', (e) => { const b = e.target.closest('[data-how]'); if (!b) return; picked = b.getAttribute('data-how') || null; dlg.close(); });
+    });
+  }
+  // Through the editor, as a paste is (so Halaxy saves it as usual): one change, which the editor's own Undo reverses.
+  function putIn(ed, html, how) {
+    const frag = ed.data.toModel(ed.data.processor.toView(html));
+    ed.model.change((w) => {
+      const root = ed.model.document.getRoot();
+      if (how === 'replace') w.setSelection(w.createRangeIn(root)); else w.setSelection(root, 'end');
+      ed.model.insertContent(frag);
+    });
+  }
+  async function dropNote(r, state, extra) {
+    delete r.heidiNote;
+    await db.putRec(r);
+    setHeidi(r.id, Object.assign({ state }, extra || {}));
+    await loadRecs();
+  }
+  async function insertHeidi(r) {
+    if (tried.has(r.id)) return;
+    tried.add(r.id);
+    if (!lockTake('insert:' + r.id, 60e3)) { tried.delete(r.id); return; }
+    try {
+      const ed = editor();
+      const cur = await db.rec(r.id);
+      if (!ed || !cur || !cur.heidiNote) return;
+      if (ed.isReadOnly) {
+        tried.delete(r.id);
+        setHeidi(r.id, { state: 'ready', text: 'Heidi\'s note is ready', error: 'The note is published, so Heidi\'s note can\'t go in. Revert it to draft, then press Add Heidi\'s Note.' });
+        return;
+      }
+      const html = noteHtml(cur.heidiNote);
+      if (!html) { await dropNote(cur, 'failed', { error: 'Heidi\'s note came back empty.' }); return; }
+      let how = 'end';
+      if (hasText(ed)) {
+        how = await askHow();
+        if (!how) { await dropNote(cur, 'cancelled'); return; }
+      }
+      putIn(ed, html, how);
+      await dropNote(cur, 'done');
+      U().ui.toast('Heidi\'s note added.', { ms: 30000, action: { label: 'Undo', fn: () => { try { ed.execute('undo'); } catch (e) { /* nothing to undo */ } } } });
+    } catch (e) {
+      tried.delete(r.id);
+      setHeidi(r.id, { state: 'ready', text: 'Heidi\'s note is ready', error: 'Heidi\'s note couldn\'t go in: ' + (e.message || e) });
+      tellHealthCheck(e);
+    } finally { lockFree('insert:' + r.id); }
+  }
+
+  // The editor covered from Finish until Heidi's note is in, with Cancel (as Portal fill covers the portals).
+  function coverEditor() {
+    const host = editorHost();
+    const st = stripState();
+    const r = st && !st.mine && st.saved;
+    const h = r && heidiOf(r.id);
+    const on = !!h && /^(sending|waiting)$/.test(h.state);
+    let c = host && host.querySelector(':scope > .upc-rec-cover');
+    if (!on) { if (c) c.remove(); if (host) host.classList.remove('upc-rec-covered'); return; }
+    if (!c) {
+      host.classList.add('upc-rec-covered');
+      c = document.createElement('div');
+      c.className = 'upc-native upc-rec-cover';
+      c.innerHTML = '<div class="card"><div class="card-body"><div class="upc-rec-cover-text"></div><button type="button" class="btn btn-outline-primary" data-a="heidi-cancel">Cancel</button></div></div>';
+      c.addEventListener('click', (e) => { if (e.target.closest('[data-a=heidi-cancel]')) cancelHeidi(r.id); });
+      host.appendChild(c);
+    }
+    const t = c.querySelector('.upc-rec-cover-text');
+    const text = h.text || 'Sending to Heidi';
+    if (t.textContent !== text) t.textContent = text;
+  }
+  // The Heidi step on the strip and Recordings.
+  function heidiBits(r, where) {
+    const h = heidiOf(r.id);
+    const P = U().ui.page.pill;
+    const send = '<button type="button" class="btn btn-outline-primary' + (where === 'page' ? '-light' : '') + '" data-a="heidi">Send to Heidi</button>';
+    if (r.status === 'recording' || !(r.parts || []).some((p) => p.chunks || p.bytes)) return '';
+    if (!h) return send;
+    if (/^(sending|waiting)$/.test(h.state)) return P(h.text || 'Sending to Heidi', 'wait');
+    if (h.state === 'ready') return '<button type="button" class="btn btn-primary" data-a="heidi-add">Add Heidi\'s Note</button>' + (h.error && where === 'strip' ? '<span class="text-muted">' + esc(h.error) + '</span>' : '');
+    if (h.state === 'done') return P('Heidi\'s note added', 'ok');
+    if (h.state === 'failed') return '<span title="' + esc(h.error || '') + '">' + P('Not sent to Heidi', 'err') + '</span>' + (where === 'strip' && h.error ? '<span class="text-muted">' + esc(h.error) + '</span>' : '') + send;
+    return send;
+  }
+  function heidiClick(a, r) {
+    if (a.dataset.a === 'heidi') {
+      const w = window.open(HEIDI_URL, WIN, HEIDI_WIN);   // from the click itself, so Firefox allows it
+      if (!w) { U().ui.toast('Firefox blocked the Heidi window. Allow pop-ups for Halaxy, then press Send to Heidi again.', { kind: 'danger', ms: 0 }); return true; }
+      store.del('heidi:' + r.id);
+      sendToHeidi(r, w);
+      return true;
+    }
+    if (a.dataset.a === 'heidi-add') {
+      if (hereFor(r)) { tried.delete(r.id); insertHeidi(r); } else window.open(noteUrl(r), '_blank');
+      return true;
+    }
+    return false;
+  }
+
   // ------------------------------------------------------------------ Patients > Recordings
 
   const page = { unmount: null, root: null };
@@ -851,11 +1301,11 @@
     const rows = recs.map((r) => '<tr data-upc-id="' + esc(r.id) + '"><td data-sort="' + r.startedAt + '">' + esc(day(r.startedAt) + ' ' + hm(r.startedAt)) + '</td>' +
       '<td>' + esc(clock(lengthOf(r))) + (r.status === 'stopped' ? ' ' + U().ui.page.pill('Window closed', 'warn') : '') + '</td><td>' + esc(r.patient || '') + '</td><td>' + esc(r.practitioner || r.who || '') + '</td>' +
       '<td><a href="' + esc(base + '/patient/' + r.patientId + '/clinical/category/note/id/' + r.noteId) + '">' + esc(r.noteDate ? r.noteDate.split(' ')[0] : 'Open Note') + '</a></td>' +
-      '<td>' + copyPill(r) + '</td><td data-sort="' + (r.startedAt + KEEP_LOCAL_MS) + '">' + esc(day((r.endedAt || r.startedAt) + KEEP_LOCAL_MS)) + '</td>' +
+      '<td>' + copyPill(r) + '</td><td>' + heidiBits(r, 'page') + '</td><td data-sort="' + (r.startedAt + KEEP_LOCAL_MS) + '">' + esc(day((r.endedAt || r.startedAt) + KEEP_LOCAL_MS)) + '</td>' +
       '<td class="text-nowrap">' + (r.status === 'recording' ? '' : '<button type="button" class="btn btn-outline-primary-light" data-a="download">Download</button> ' +
         '<button type="button" class="btn btn-outline-primary-light" data-a="delete">Delete</button>') + '</td></tr>').join('');
     root.innerHTML = '<div class="upc-rec">' + U().ui.page.bar('Recordings', '', '') +
-      U().ui.page.card('Recordings on This PC', recs.length, '', '<table class="table table-striped table-bordered w-100 m-0" data-upc-list="upc-recordings"><thead><tr><th>Recorded</th><th>Length</th><th>Patient</th><th>Practitioner</th><th>Note</th><th>Copy in Halaxy</th><th>Kept Until</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>') +
+      U().ui.page.card('Recordings on This PC', recs.length, '', '<table class="table table-striped table-bordered w-100 m-0" data-upc-list="upc-recordings"><thead><tr><th>Recorded</th><th>Length</th><th>Patient</th><th>Practitioner</th><th>Note</th><th>Copy in Halaxy</th><th>Heidi</th><th>Kept Until</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>') +
       '<p class="text-muted">Kept on this PC for 14 days; copies in Halaxy for 2 days.</p></div>';
     U().ui.list.enhance(root, { auto: true });
   }
@@ -864,6 +1314,7 @@
     const tr = a && a.closest('tr[data-upc-id]');
     const r = tr && recs.find((x) => x.id === tr.getAttribute('data-upc-id'));
     if (!r) return;
+    if (heidiClick(a, r)) return;
     if (a.dataset.a === 'download') download(r).catch((x) => U().ui.toast('Not downloaded: ' + (x.message || x), { kind: 'danger' }));
     if (a.dataset.a === 'delete') {
       const dlg = U().ui.dialog({ title: 'Delete Recording', small: true, key: 'upc-rec-delete' });
@@ -895,7 +1346,7 @@
   function unmountPage() { if (page.unmount) { page.unmount(); page.unmount = null; page.root = null; } }
   const route = () => (location.hash === '#' + ROUTE ? mountPage() : unmountPage());
 
-  function paint() { renderStrip(); renderPage(); }
+  function paint() { renderStrip(); renderPage(); pendingHere(); }
 
   // ------------------------------------------------------------------ start
 
@@ -928,6 +1379,10 @@
         }
         if (m.t === 'lv') { lastLv = m; drawBars(m); }
         if (m.t === 'part' || m.t === 'finished') loadRecs().then(() => uploads());
+        if (m.t === 'finished') autoHeidi(m.id);
+        if (m.t === 'heidi-cancel' && jobs.has(m.id)) cancelHeidi(m.id);
+        if (m.t === 'heidi-claim') claims.add(m.id);
+        if (m.t === 'heidi-ready') loadRecs().then(() => { const r = recs.find((x) => x.id === m.id); if (r && hereFor(r)) { bc.postMessage({ t: 'heidi-claim', id: m.id }); insertHeidi(r); } });
         if (m.t === 'gone') { const s = live.get(m.id); if (s) s.at = 0; setTimeout(() => housekeeping(), STALE_MS + 1000); loadRecs(); }
       };
       bc.postMessage({ t: 'ping' });
@@ -937,7 +1392,7 @@
       return (list ? list.getAttribute('href').split('#')[0] : U().base() + '/patient/') + '#' + ROUTE;
     }, MENU_CLS, /^patients?$/i);
     window.addEventListener('hashchange', route);
-    window.addEventListener('storage', (e) => { if (e.key && e.key.startsWith(KEY + 'up:')) paint(); });
+    window.addEventListener('storage', (e) => { if (e.key && (e.key.startsWith(KEY + 'up:') || e.key.startsWith(KEY + 'heidi:'))) paint(); });
     new MutationObserver(() => { if (!stripTimer) stripTimer = setTimeout(() => { stripTimer = null; ensureStrip(); }, 200); }).observe(document.body, { childList: true, subtree: true });
     setInterval(() => { timeNow(); if (strip) renderStrip(); }, 1000);
     setInterval(() => housekeeping().catch(() => {}), 15e3);
@@ -949,5 +1404,5 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
 
-  window.upcAppointmentRecorder = { version: VERSION, db, loadRecs, housekeeping, uploads, cleanHalaxy, cleanLocal, fileTitle, fileName, joined, live };
+  window.upcAppointmentRecorder = { version: VERSION, db, loadRecs, housekeeping, uploads, cleanHalaxy, cleanLocal, fileTitle, fileName, joined, live, heidiOf, sendToHeidi, mdHtml, cleanHtml };
 })();

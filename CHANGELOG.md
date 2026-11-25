@@ -1,5 +1,14 @@
 # Changelog
 
+## Appointment recorder 0.3.0, Loader 1.5.0, Starter 1.0.1, Health check 1.1.66, 25 Nov 2026 (beta)
+- The Heidi step (CH, 25 Nov 2026; plan in the project doc heidi-recorder.md). After Finish Appointment the recorder window goes to scribe.heidihealth.com, starts a new session and gives Heidi the recording as one Ogg file through Upload session audio, then waits for Heidi's completed note and puts it into the Halaxy note (Halaxy's editor, with Undo). A note with text asks: Cancel, Add Below or Replace. The Heidi window closes itself. Heidi's note is kept on the PC only until it is in the Halaxy note.
+- The note's editor is covered from Finish until Heidi's note is in, with Cancel; Heidi's page is covered too, with Stop. Nothing is covered while recording.
+- If the note page has been left, the note opens in a new tab and Heidi's note goes in there. If Heidi isn't signed in, the window says so; signing in there carries on.
+- Heidi refusing the file, or its page changing, is said on the note ("Not sent to Heidi" with why) with Send to Heidi to try again. A recording stopped by closing its window isn't sent by itself: Send to Heidi on the note. A published note isn't changed: the note says to revert it to draft, then Add Heidi's Note.
+- Patients > Recordings: a Heidi column.
+- Loader and Starter: also run on scribe.heidihealth.com, for scripts whose @match names it. The loader updates itself on the PCs. The Starter (not yet in use: it has no update address, for when the repository goes private) gets the new site only when installed afresh.
+- Health check: the editor check covers the parts of Halaxy's editor the recorder uses.
+
 ## Appointment recorder 0.2.1, 25 Nov 2026 (beta)
 - The "Still recording" warning comes after 75 minutes instead of an hour (CH, 25 Nov 2026: some appointments are an hour long). The two-hour stop is unchanged.
 
