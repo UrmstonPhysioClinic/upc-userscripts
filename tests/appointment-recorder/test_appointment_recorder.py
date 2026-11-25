@@ -356,7 +356,12 @@ async def main():
         await other.goto('https://eu.halaxy.com/a/pr/555/patient/9002/clinical/category/note/id/7002')
         await until(other, "!!document.querySelector('.upc-rec-strip') && /Another appointment/.test(document.querySelector('.upc-rec-strip').textContent)")
         check('another note\'s page: says another appointment is being recorded, with Show Recorder', await other.evaluate("!document.querySelector('.upc-rec-strip [data-a=start]') && !!document.querySelector('.upc-rec-strip [data-a=show]')"))
-        await other.close()
+        # Two more Halaxy tabs stay open, as on the PCs: every tab hears "finished" at once (CH, 25 Nov 2026: copies attached twice)
+        await other.goto('https://eu.halaxy.com/a/pr/555/patient/')
+        third = await ctx.new_page()
+        await third.goto('https://eu.halaxy.com/a/pr/555/patient/9002/clinical/category/note/id/7002')
+        await until(third, "!!document.querySelector('.upc-rec-strip')")
+        await pg.bring_to_front()
 
         # ---- change the microphone
         await pg.select_option('.upc-rec-strip select', 'mic-b')
@@ -380,15 +385,20 @@ async def main():
         # ---- Finish, then the Heidi step
         rid = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => r[0].id)")
         await pg.evaluate("window.coverSeen = []; new MutationObserver(() => { const c = document.querySelector('.ck-editor > .upc-rec-cover'); if (c) coverSeen.push(c.textContent); }).observe(document.body, { childList: true, subtree: true, characterData: true })")
+        await pg.evaluate("window.__opens = []; const o = window.open; window.open = function (u, n, f) { __opens.push([u, n, f]); return o.apply(this, arguments); }; 0")
         await pg.click('.upc-rec-strip [data-a=finish]')
+        opens = await pg.evaluate("__opens")
+        check('Finish opens Heidi in a full-size window of its own, from the press itself (Firefox may not resize the small one)',
+              opens[:1] == [['', 'upc-heidi', 'popup=yes,width=1100,height=820']], opens)
         await until(pg, "upcAppointmentRecorder.db.recs().then((r) => r[0].status === 'finished')")
+        await closed(pg, pop)
         await until_py(pg, lambda: heidi_state(pg, rid), what='the Heidi step starts')
         await until_py(pg, lambda: _state_is(pg, rid, 'done'), what='Heidi\'s note in')
-        await closed(pg, pop)
+        await until_py(pg, lambda: _true(not any('heidihealth' in x.url for x in ctx.pages)), what='the Heidi window closes')
         content = await pg.evaluate("document.querySelector('.ck-editor__editable').ckeditorInstance.getData()")
-        check('after Finish the recorder window goes to Heidi, which gets the recording as one Ogg file and uploads it in the new, empty session Heidi opens',
+        check('the recorder window closes; Heidi gets the recording as one Ogg file and uploads it in the new, empty session Heidi opens',
               len(S['heidi']) == 1 and S['heidi'][0]['sid'].endswith('51') and S['heidi'][0]['name'] == 'recording-25-Nov-2026-1000.ogg' and S['heidi'][0]['type'] == 'audio/ogg', S['heidi'])
-        check('Heidi\'s completed note goes into the empty note as Heidi drew it (tidied), and the window closes', content == NOTE_IN and pop.is_closed(), content)
+        check('Heidi\'s completed note goes into the empty note as Heidi drew it (tidied), and the Heidi window closes', content == NOTE_IN, content)
         seen = await pg.evaluate("[...new Set(coverSeen)]")
         check('the note was covered meanwhile, with Cancel, saying what is happening', any('Waiting for Heidi' in x or 'Sending to Heidi' in x for x in seen) and all('Cancel' in x for x in seen), seen)
         st = await pg.evaluate("(() => { const s = document.querySelector('.upc-rec-strip'); return [s.textContent, !!document.querySelector('.ck-editor > .upc-rec-cover'), [...document.querySelectorAll('.upc-toast')].map((x) => x.textContent)]; })()")
@@ -408,7 +418,10 @@ async def main():
         done = await pg.evaluate("(() => { const s = document.querySelector('.upc-rec-strip'); return [s.querySelector('[data-a=start]').textContent.trim(), !!s.querySelector('[data-a=download]'), s.textContent]; })()")
         check('afterwards the strip offers Continue Recording and Download Recording, with the copy in Halaxy', done[0] == 'Continue Recording' and done[1] and re.search(r'Recorded \d\d:\d\d', done[2]) is not None, done)
         await idle(pg, 20000)
-        check('nothing is attached twice', len(S['files']) == 1, S['files'])
+        check('nothing is attached twice, with three Halaxy tabs open', len(S['files']) == 1 and len(S['uploads']) == 1, S['files'])
+        check('nor sent to Heidi twice', len(S['heidi']) == 1, S['heidi'])
+        await third.close()
+        await other.close()
 
         # ---- Patients > Recordings
         lst = await ctx.new_page()
@@ -479,6 +492,7 @@ async def main():
         content = await nt.evaluate("document.querySelector('.ck-editor__editable').ckeditorInstance.getData()")
         check('moved on before Heidi finished: the note opens in a new tab and Heidi\'s note goes in there', content == NOTE_IN, content)
         await closed(pg, pop3)
+        await until_py(pg, lambda: _true(not any('heidihealth' in x.url for x in ctx.pages)), what='the Heidi window closes')
         await nt.close()
         auto = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => { const x = r.find((y) => y.noteId === '7004'); return [x.status, x.stopped]; })")
         check('and finished by itself after two hours', auto[0] == 'finished' and str(auto[1]).startswith('Stopped after'), auto)
@@ -539,6 +553,12 @@ async def main():
         n = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => r.length)")
         check('recordings older than 14 days leave this PC', n == 0, n)
 
+        # A tab running an older version leaves the work to the newer one.
+        await pg.evaluate("new BroadcastChannel('upc-recorder').postMessage({ t: 'ver', v: '9.9.9' })")
+        await until(pg, "upcAppointmentRecorder.outdated()")
+        n = len(S['uploads'])
+        await pg.evaluate("upcAppointmentRecorder.uploads()")
+        check('a tab that hears of a newer version leaves uploads and Heidi to it', await pg.evaluate("upcAppointmentRecorder.outdated()") and len(S['uploads']) == n)
         check('no page errors', not errors and not pop_errors, errors + pop_errors)
         await browser.close()
     print('\n' + ('All passed' if not FAILS else '%d failed' % len(FAILS)))
