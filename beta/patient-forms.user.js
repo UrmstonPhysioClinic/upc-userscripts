@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Patient forms (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.8
+// @version      0.1.9
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-forms.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-forms.user.js
@@ -51,7 +51,7 @@
   if (window.__hxPatientForms) return;
   window.__hxPatientForms = true;
 
-  const VERSION = '0.1.8';
+  const VERSION = '0.1.9';
   // Sending and reminders held (0.1.1): 0.1.0 read the form history as a table, but Halaxy lays it out in divs (live,
   // 17 Nov 2026), so it saw no forms and sent Progress Updates the campaign had already sent. 0.1.2 reads the divs and
   // stops if any sent form can't be read. While held, Check now works out what would happen (reads only).
@@ -87,7 +87,12 @@
   const sendTime = (start) => at(dayBefore(start), SEND_AT());
   const chaseTime = (start) => at(dayBefore(start), CHASE_AT());
   const parseWhen = (s) => { const m = /(\d{2}-[A-Za-z]{3}-\d{4})\s+(\d{1,2}):(\d{2})/.exec(s || ''); if (!m) return null; const d = U().parseDay(m[1]); return d === null ? null : at(d, m[2] + ':' + m[3]); };
+  // How long a recorded outcome waits before it is tried again: no fee yet 30 minutes, a temporary failure 15,
+  // anything else (a failure, no email address) an hour.
+  const retryAfter = (v) => (v.startsWith('wait') ? 30 : / t$/.test(v) ? 15 : 60) * MIN;
   const report = (msg) => { try { document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: 'patient-forms.user.js', message: String(msg) }) })); } catch (e) { /* ignore */ } };
+  // Takes back this script's earlier errors that start with `prefix` once that try has worked (health check 1.1.64).
+  const resolved = (prefix) => { try { document.dispatchEvent(new CustomEvent('upc-loader-error-clear', { detail: JSON.stringify({ file: 'patient-forms.user.js', prefix: String(prefix) }) })); } catch (e) { /* ignore */ } };
 
   const shared = () => U().shared('Patient forms', { keep: 14 * DAY, claimFor: 10 * MIN, file: 'patient-forms.user.js' });
   const store = () => U().storage('upc-patient-forms:');
@@ -109,7 +114,7 @@
   async function lookups() {
     if (cache && Date.now() - cache.at < 5 * MIN) return cache;
     const [pracs, fees] = await Promise.all([U().http.json('/lookup/practitioner?clinic=&include_id=&type='), U().http.json('/funder/fee/data')]);
-    cache = { at: Date.now(), pracs: new Map((Array.isArray(pracs) ? pracs : []).map((p) => [String(p.id), clean(p.name)])), fees: Array.isArray(fees) ? fees : [], templates: {} };
+    cache = { at: Date.now(), pracs: new Map((Array.isArray(pracs) ? pracs : []).map((p) => [String(p.id), clean(p.name)])), fees: Array.isArray(fees) ? fees : [] };
     return cache;
   }
 
@@ -137,15 +142,12 @@
   }
 
   // A communication template as saved, with its tags unfilled: { subject, body }.
+  // Core reads it (one retry, then the last good copy on this PC for a day; 25 Nov 2026). A copy used because the
+  // page really changed is reported, so it gets fixed, but the form or reminder still goes.
   async function template(id) {
-    const c = await lookups();
-    if (c.templates[id]) return c.templates[id];
-    const doc = await U().http.html('/communication/template/list/' + encodeURIComponent(id));
-    const body = doc.querySelector('textarea[name="form[contentForFormHandler]"]');
-    const subject = doc.querySelector('[name="form[subject]"]');
-    if (!body || !clean(body.value || body.textContent)) throw new (U().Error)('A communication template couldn\'t be read (its edit page has changed).');
-    c.templates[id] = { subject: clean(U().htmlDoc(subject ? (subject.value || subject.textContent) : '').body.textContent), body: body.value || body.textContent };
-    return c.templates[id];
+    const t = await U().templates.get(id);
+    if (t.stale && !t.stale.temporary) report('Communication template (using the copy read at ' + hhmm(t.at) + '): ' + t.stale.message);
+    return t;
   }
 
   // Fills the practitioner and appointment tags from the appointment; Halaxy fills the patient's and the form link.
@@ -303,6 +305,16 @@
       const list = await appointments(now, day0.getTime() + (mode === 'all' ? 3 : 2) * DAY);
       const recs = await sh.read(force ? 0 : 60e3);
       const val = (k) => (recs[k] && recs[k].value) || '';
+      // A failed try is recorded as 'fail <when> <first failure>[ t]'. A temporary one (Halaxy busy or updating
+      // itself, 25 Nov 2026) is tried again after 15 minutes and reported only once it has lasted 2 hours;
+      // anything else is reported at once and tried again after an hour.
+      const failed = (key, prefix, e) => {
+        const prev = /^fail (\d+)(?: (\d+))?/.exec(val(key));
+        const first = prev ? Number(prev[2] || prev[1]) : now;
+        const temp = !!(e && e.temporary);
+        if (!temp || now - first >= 2 * 3600e3) report(prefix + ': ' + (e && e.message || e));
+        return 'fail ' + now + ' ' + first + (temp ? ' t' : '');
+      };
       const outcomes = {};
       let done = 0;
 
@@ -329,12 +341,12 @@
         const due = list.filter((a) => {
           const v = val('a.' + a.id);
           if (/^(had|sent|sched|none|skip|check)/.test(v)) return false;
-          if (/^(wait|fail|noemail) (\d+)/.test(v) && now - Number(v.split(' ')[1]) < (v.startsWith('wait') ? 30 : 60) * MIN) return false;
+          if (/^(wait|fail|noemail) (\d+)/.test(v) && now - Number(v.split(' ')[1]) < retryAfter(v)) return false;
           return mode === 'all' || sendTime(a.start) <= now;
         });
         const mine = due.length ? await sh.claim(due.slice(0, PER_RUN).map((a) => 'a.' + a.id)) : [];
         for (const a of due.filter((x) => mine.includes('a.' + x.id))) {
-          try { outcomes['a.' + a.id] = await sendOne(a, now); } catch (e) { outcomes['a.' + a.id] = 'fail ' + now; report(a.name + ': ' + (e.message || e)); }
+          try { outcomes['a.' + a.id] = await sendOne(a, now); resolved(a.name + ': '); } catch (e) { outcomes['a.' + a.id] = failed('a.' + a.id, a.name, e); }
           done += 1;
         }
       }
@@ -345,12 +357,12 @@
         const toSchedule = tomorrow.filter((a) => {
           const v = val('r.' + a.id);
           if (/^(sched|done|nolink|late|cancelled|check)/.test(v)) return false;
-          if (/^(fail|noemail) (\d+)/.test(v) && now - Number(v.split(' ')[1]) < 60 * MIN) return false;
+          if (/^(fail|noemail) (\d+)/.test(v) && now - Number(v.split(' ')[1]) < retryAfter(v)) return false;
           return now >= sendTime(a.start) + 15 * MIN;   // the form has had time to go
         }).slice(0, Math.max(0, PER_RUN - done));
         const mineR = toSchedule.length ? await sh.claim(toSchedule.map((a) => 'r.' + a.id)) : [];
         for (const a of toSchedule.filter((x) => mineR.includes('r.' + x.id))) {
-          try { const r = await remindOne(a, now); if (r) outcomes['r.' + a.id] = r; } catch (e) { outcomes['r.' + a.id] = 'fail ' + now; report(a.name + ' (reminder): ' + (e.message || e)); }
+          try { const r = await remindOne(a, now); if (r) { outcomes['r.' + a.id] = r; resolved(a.name + ' (reminder): '); } } catch (e) { outcomes['r.' + a.id] = failed('r.' + a.id, a.name + ' (reminder)', e); }
         }
         // Filled in since? Checked once in the last 90 minutes before the reminder goes.
         const toCheck = tomorrow.filter((a) => /^sched \S+ (\d+)$/.test(val('r.' + a.id)) && now >= chaseTime(a.start) - 90 * MIN && Number(val('r.' + a.id).split(' ')[2]) < chaseTime(a.start) - 90 * MIN);
@@ -441,6 +453,7 @@
     if (/^check/.test(v)) return 'Check in Halaxy';
     if (v === 'would') return 'Would remind at ' + hhmm(chaseTime(a.start));
     if (/^error /.test(v)) return v.slice(6);
+    if (/^fail/.test(v)) return 'Not sent yet';
     return '';
   }
 
