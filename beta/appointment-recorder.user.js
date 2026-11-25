@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Appointment recorder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.3
+// @version      0.3.4
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/appointment-recorder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/appointment-recorder.user.js
@@ -44,7 +44,7 @@
   if (window.__hxAppointmentRecorder) return;
   window.__hxAppointmentRecorder = true;
 
-  const VERSION = '0.3.3';
+  const VERSION = '0.3.4';
   const ORG = '78972';                          // "UPC scripts (recordings)" (CH, 25 Nov 2026)
   const KEEP_LOCAL_MS = 14 * 86400e3;           // on this PC (CH, 25 Nov 2026)
   const KEEP_HALAXY_MS = 2 * 86400e3;           // the copy in Halaxy (CH, 25 Nov 2026)
@@ -1018,7 +1018,7 @@
       if (REC.heidi) { try { const w = heidiWindow(); if (w) preOpened = { w, id: st.mine.id, at: Date.now() }; } catch (x) { /* opened later */ } }
       bc.postMessage({ t: 'cmd', id: st.mine.id, do: 'finish' });
     }
-    if (a.dataset.a === 'show') { const w = window.open('', WIN); if (w && !w.__upcRecorder) w.close(); else if (w) w.focus(); }
+    if (a.dataset.a === 'show') { const w = window.open('', WIN); if (w && !(ours(w) && w.__upcRecorder)) w.close(); else if (w) w.focus(); }
     if (st.saved && heidiClick(a, st.saved)) return;
     if (a.dataset.a === 'download' && st.saved) download(st.saved).catch((x) => U().ui.toast('Not downloaded: ' + (x.message || x), { kind: 'danger' }));
   }
@@ -1036,10 +1036,30 @@
     } catch (e) { return {}; }
   }
   // Start Appointment: the window is opened straight away (Firefox only allows a pop-up from the click itself).
+  // A window of that name on another site (CH, 25 Nov 2026: up to 0.3.2 the recorder window itself went to Heidi, and one
+  // left open stopped Start, as a page can't be written into another site's window): brought back to a blank page of ours.
+  const ours = (w) => { try { return !!w.document; } catch (e) { return false; } };
+  async function reclaim(w) {
+    if (ours(w)) return true;
+    try { w.location.href = 'about:blank'; } catch (e) { return false; }
+    for (let i = 0; i < 40; i++) {
+      await U().sleep(100);
+      if (w.closed) return false;
+      if (ours(w) && w.document.readyState === 'complete') return true;
+    }
+    return false;
+  }
   async function startRecording(st) {
-    if (anyLive()) return;
+    try { await startRecordingNow(st); } catch (e) {
+      U().ui.toast('The recorder window could not start: ' + (e.message || e), { kind: 'danger', ms: 0 });
+      tellHealthCheck(e);
+    }
+  }
+  async function startRecordingNow(st) {
+    if (anyLive()) { U().ui.toast('Another appointment is being recorded on this PC.', { kind: 'warning' }); return; }
     const w = window.open('', WIN, 'popup=yes,width=540,height=460');
     if (!w) { U().ui.toast('Firefox blocked the recorder window. Allow pop-ups for Halaxy, then press Start Appointment again.', { kind: 'danger', ms: 0 }); return; }
+    if (!(await reclaim(w))) { try { w.close(); } catch (e) { /* fine */ } U().ui.toast('Close the other recorder or Heidi window, then press Start Appointment again.', { kind: 'danger', ms: 0 }); return; }
     if (w.__upcRecorder || w.__upcStarting) { w.focus(); return; }   // already recording (its report not seen yet)
     w.__upcStarting = true;
     const prev = st.saved && Date.now() - st.saved.startedAt < CONTINUE_MS && st.saved.status !== 'recording' ? st.saved : null;

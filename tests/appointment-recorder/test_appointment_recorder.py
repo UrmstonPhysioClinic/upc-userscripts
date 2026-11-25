@@ -331,9 +331,14 @@ async def main():
 
         # ---- Start
         await pg.evaluate("localStorage.setItem('upc-rec:mic', JSON.stringify({ id: 'mic-a', label: 'Desk Microphone' }))")
+        # A window of the recorder's name left on Heidi (up to 0.3.2 the recorder window went there; CH, 25 Nov 2026: Start then did nothing)
+        await pg.evaluate("window.open('https://scribe.heidihealth.com/', 'upc-recorder', 'popup=yes,width=540,height=460'); 0")
+        await until_py(pg, lambda: _true(any('heidihealth' in x.url for x in ctx.pages)), what='the old window on Heidi')
         await pg.click('.upc-rec-strip [data-a=start]')
         await idle(pg, 1000)
         pop = [x for x in ctx.pages if x is not pg][0]
+        await until(pg, "!!document.querySelector('.upc-rec-strip [data-a=finish]')", timeout=30)
+        check('Start works even with a window of the recorder\'s name left on Heidi: it is brought back and used', len(ctx.pages) == 2 and pop.url.startswith('https://eu.halaxy.com/'), [x.url for x in ctx.pages])
         pop_errors = []
         pop.on('pageerror', lambda e: pop_errors.append(str(e)))
         await until(pg, "!!document.querySelector('.upc-rec-strip [data-a=finish]')")
