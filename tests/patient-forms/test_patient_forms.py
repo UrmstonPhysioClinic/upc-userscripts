@@ -141,6 +141,11 @@ async def halaxy(route):
         return await route.fulfill(body=invoice_html(int(m.group(1))), content_type='text/html')
     m = re.match(r'^/a/pr/555/communication/template/list/(\d+)$', p)
     if m:
+        S['template_hits'] = S.get('template_hits', 0) + 1
+        if S.get('template_down') == 'changed':   # the edit page without its content box: a real change
+            return await route.fulfill(body=page_html("<form id='editCommunicationTemplateForm'><textarea name='form[subject]'>x</textarea></form>"), content_type='text/html')
+        if S.get('template_down'):                # Halaxy updating itself (25 Nov 2026): some other page comes back
+            return await route.fulfill(body=page_html(), content_type='text/html')
         subj, body = S['templates'][int(m.group(1))]
         return await route.fulfill(body=page_html("<form id='editCommunicationTemplateForm'><input name='form[title]' value='x'><textarea name='form[subject]'>%s</textarea>"
                                                   "<textarea name='form[contentForFormHandler]'>%s</textarea></form>" % (subj, body.replace('&', '&amp;').replace('<', '&lt;'))), content_type='text/html')
@@ -298,10 +303,12 @@ async def main():
         check('template with [Practitioner Title]: not sent, recorded to try again', not [x for x in S['posts'] if x[0] == 'form'] and note_values().get('a.9005', '').startswith('fail '), (S['posts'], note_values()))
         await ctx.close()
 
-        async def only(ids, script=SCRIPT, path='/a/pr/555/patient/'):
+        async def only(ids, script=SCRIPT, path='/a/pr/555/patient/', extra=''):
             ctx = await browser.new_context(timezone_id='Europe/London')
             await ctx.clock.install(time=NOW.isoformat())
             await ctx.route('https://eu.halaxy.com/**', halaxy)
+            if extra:
+                await ctx.add_init_script(extra)
             await ctx.add_init_script(CORE)
             await ctx.add_init_script("document.addEventListener('DOMContentLoaded', function () {\n" + script + "\n});")
             pg = await ctx.new_page()
@@ -346,6 +353,38 @@ async def main():
               and r.get('Patient Three', [''] * 5)[4] == 'Would remind at 18:00' and r.get('Patient Eight', [''] * 5)[4] == 'Filled in'
               and await pg.evaluate("!!document.querySelector('[data-upc-patient-forms] .alert-warning')"), rows)
         check('held: no "Don\'t send" where a form has gone', r.get('Patient Three', [''] * 6)[5] == '' and r.get('Patient One', [''] * 6)[5] == "Don't send", rows)
+        await ctx.close()
+
+        # Halaxy updating itself (25 Nov 2026): the template page comes back without its form for a while
+        LISTEN = ("window.__errs = []; window.__clears = [];"
+                  "document.addEventListener('upc-loader-error', (e) => window.__errs.push(JSON.parse(e.detail).message));"
+                  "document.addEventListener('upc-loader-error-clear', (e) => window.__clears.push(JSON.parse(e.detail).prefix));")
+        setup()
+        S['events'] = [e for e in S['events'] if e['id'] == 9003]
+        S['template_down'] = True
+        ctx, pg = await only(None, extra=LISTEN)
+        await run(pg, "window.upcPatientForms.run(true)")
+        v = note_values().get('r.9003', '')
+        errs = await pg.evaluate("window.__errs")
+        check('template page not returned: nothing sent, a temporary failure, not reported', not S['posts'] and v.startswith('fail ') and v.endswith(' t') and not errs, (S['posts'], v, errs))
+        await ctx.clock.set_system_time((NOW + datetime.timedelta(minutes=10)).isoformat())
+        hits = S.get('template_hits', 0)
+        await run(pg, "window.upcPatientForms.run(true)")
+        check('temporary failure: not tried again within 15 minutes', S.get('template_hits', 0) == hits and not S['posts'], (hits, S.get('template_hits')))
+        S['template_down'] = False
+        await ctx.clock.set_system_time((NOW + datetime.timedelta(minutes=26)).isoformat())
+        await run(pg, "window.upcPatientForms.run(true)")
+        r = dict((pid, f) for kind, pid, f in S['posts'] if kind == 'email')
+        clears = await pg.evaluate("window.__clears")
+        check('back after 15 minutes: reminder scheduled, earlier error taken back', 503 in r and note_values().get('r.9003', '').startswith('sched ') and 'Patient Three (reminder): ' in clears,
+              (sorted(r), note_values().get('r.9003'), clears))
+        S['template_down'] = True
+        await ctx.clock.set_system_time((NOW + datetime.timedelta(minutes=40)).isoformat())
+        t = await run(pg, "UPC.templates.get(26152).then((t) => ({ stale: t.stale || null, subject: t.subject }))")
+        check('a later blip: the copy kept on this PC is used', bool(t['stale']) and t['stale']['temporary'] is True and t['subject'] == 'Your progress update', t)
+        S['template_down'] = 'changed'
+        e = await run(pg, "(() => { localStorage.removeItem('upc-core:templates'); return UPC.templates.get(3752).then(() => 'read', (e) => [e.message, e.temporary]); })()")
+        check('edit page without its content box: a real change, not temporary', e == ['The communication template page has changed (no content box).', False], e)
         await ctx.close()
         await browser.close()
     print('\n' + ('All passed' if not FAILS else '%d failed' % len(FAILS)))

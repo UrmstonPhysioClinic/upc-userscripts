@@ -302,6 +302,16 @@ async def main():
         await pg.evaluate("document.querySelector('[data-hx-health]').querySelector('[data-act=clear]').click()")
         probs = await pg.evaluate('hxHealth.problems()')
         check('clear script errors', [x['title'] for x in probs] == ['Updates could not be fetched'], probs)
+        # A script takes back its own error once a later try works (Patient forms, 25 Nov 2026); other errors stay
+        ev = "document.dispatchEvent(new CustomEvent('%s', { detail: JSON.stringify(%s) }))"
+        await pg.evaluate(ev % ('upc-loader-error', "{ file: 'patient-forms.user.js', message: 'Patient A (reminder): Halaxy didn\\'t return the template page.' }"))
+        await pg.evaluate(ev % ('upc-loader-error', "{ file: 'patient-forms.user.js', message: 'Patient B (reminder): something else' }"))
+        await pg.evaluate(ev % ('upc-loader-error-clear', "{ file: 'calendar-controls.user.js', prefix: 'Patient A (reminder): ' }"))
+        n = len(await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:errors') || '[]')"))
+        await pg.evaluate(ev % ('upc-loader-error-clear', "{ file: 'patient-forms.user.js', prefix: 'Patient A (reminder): ' }"))
+        left = [x['message'] for x in await pg.evaluate("JSON.parse(localStorage.getItem('upc-health:errors') || '[]')")]
+        check('an error taken back by its own script only, by its start', n == 2 and left == ['Patient B (reminder): something else'], (n, left))
+        await pg.evaluate("localStorage.setItem('upc-health:errors', '[]')")
 
         # 6. Two tabs checking at once keep each other's results
         await pg.evaluate("Object.keys(localStorage).filter(k => k.startsWith('upc-health:')).forEach(k => localStorage.removeItem(k))")

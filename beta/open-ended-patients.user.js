@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Open-ended recalls (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.4.9
+// @version      0.4.10
 // @upc-was      check-ins.user.js
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/open-ended-patients.user.js
@@ -41,7 +41,7 @@
   if (window.__hxCheckIns) return;
   window.__hxCheckIns = true;
 
-  const VERSION = '0.4.9';
+  const VERSION = '0.4.10';
   const ROUTE = 'upc-check-ins';
   const MENU_CLS = 'upc-ci-menu';
   const ALLOWED = () => rule('openEnded.people', ['Carl Healy']);
@@ -356,12 +356,14 @@
     if (!U().clean((form.querySelector('[name="form[toEmail]"]') || {}).value)) throw new (U().Error)(x.name + ' has no email address. Nothing was sent.');
     const opt = [...form.querySelectorAll('select[name="form[template]"] option')].find((o) => U().clean(o.textContent).toLowerCase() === TEMPLATE.toLowerCase());
     if (!opt) throw new (U().Error)('There is no "' + TEMPLATE + '" template in Halaxy. Nothing was sent.');
-    const page = await U().http.html('/communication/template/list/' + encodeURIComponent(opt.value));
-    const bodyEl = page.querySelector('textarea[name="form[contentForFormHandler]"]'), subjEl = page.querySelector('[name="form[subject]"]');
-    if (!bodyEl || !U().clean(bodyEl.value || bodyEl.textContent)) throw new (U().Error)('The ' + TEMPLATE + ' template couldn\'t be read (its edit page has changed). Nothing was sent.');
-    const subject = U().clean(U().htmlDoc(subjEl ? (subjEl.value || subjEl.textContent) : '').body.textContent);
+    // Core reads the template: one retry, then the last good copy on this PC for a day (25 Nov 2026).
+    let t;
+    try { t = await U().templates.get(opt.value); } catch (e) {
+      throw new (U().Error)(e.temporary ? 'Halaxy didn\'t return the ' + TEMPLATE + ' template. Nothing was sent; try again in a few minutes.' : 'The ' + TEMPLATE + ' template couldn\'t be read (its page has changed). Nothing was sent.');
+    }
+    const subject = t.subject;
     if (!subject) throw new (U().Error)('The ' + TEMPLATE + ' template has no subject. Nothing was sent.');
-    const body = fill(bodyEl.value || bodyEl.textContent, x.prac);
+    const body = fill(t.body, x.prac);
     fill(subject, x.prac);
     const before = new Set((await scheduledEmails(x.id)).map((m) => m.id));
     const set = { 'form[subject]': subject, 'form[body]': body, 'form[template]': '', 'form[scheduleDetails][scheduleDate]': label(due),

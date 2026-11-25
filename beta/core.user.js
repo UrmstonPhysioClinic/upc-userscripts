@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.85
+// @version      0.1.86
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.85';
+  const VERSION = '0.1.86';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -1542,6 +1542,62 @@
   };
 
   // ------------------------------------------------------------------ follow-ups
+
+  // ------------------------------------------------------------------ communication templates
+  //
+  // A template as saved, its tags unfilled, from its edit page GET /communication/template/list/{id}
+  // (form#editCommunicationTemplateForm: form[title], form[subject] plain text, form[contentForFormHandler] HTML;
+  // confirmed live 25 Nov 2026). While Halaxy updates itself the page can come back for a few minutes without the
+  // form (25 Nov 2026, 07:27 to about 08:00: eight reminders failed, then worked on their next try). So: one retry,
+  // then the last good copy kept on this PC (up to a day old). An error carries `temporary`: true when Halaxy
+  // didn't return the edit page at all (busy, updating, signed out), false when it did but without the content box
+  // (a real change). A copy used in place of a fresh read is marked `stale` with the reason.
+  const TEMPLATE_KEY = 'upc-core:templates';
+  const TEMPLATE_COPY_MS = 24 * 3600e3;
+  const templates = {
+    saved() { try { return JSON.parse(localStorage.getItem(TEMPLATE_KEY) || '{}') || {}; } catch (e) { return {}; } },
+    // Template ids read successfully on this PC, newest first (the health check reads one of them).
+    known() { const all = templates.saved(); return Object.keys(all).sort((a, b) => (all[b].at || 0) - (all[a].at || 0)); },
+    keep(id, t) {
+      const all = templates.saved();
+      all[id] = { subject: t.subject, body: t.body, title: t.title, at: t.at };
+      Object.keys(all).forEach((k) => { if (Date.now() - (all[k].at || 0) > 7 * TEMPLATE_COPY_MS) delete all[k]; });
+      try { localStorage.setItem(TEMPLATE_KEY, JSON.stringify(all)); } catch (e) { /* storage blocked: the copy is only a fallback */ }
+    },
+    // One edit page: { title, subject, body }, or throws a UPCError with `temporary`.
+    parse(doc) {
+      const box = doc.querySelector('textarea[name="form[contentForFormHandler]"]');
+      const subj = doc.querySelector('[name="form[subject]"]');
+      const body = box ? (box.value || box.textContent || '') : '';
+      if (clean(body)) {
+        return { title: clean((doc.querySelector('[name="form[title]"]') || {}).value), subject: clean(htmlDoc(subj ? (subj.value || subj.textContent) : '').body.textContent), body };
+      }
+      const isEdit = !!doc.querySelector('form#editCommunicationTemplateForm') || /Edit Email Communication Template/i.test(doc.title || '');
+      const err = new UPCError(isEdit ? 'The communication template page has changed (no content box).' : 'Halaxy didn\'t return the template page.');
+      err.temporary = !isEdit;
+      throw err;
+    },
+    async get(id) {
+      id = String(id);   // always read afresh, so a template edited in Halaxy is used at once
+      let err = null;
+      for (let i = 0; i < 2; i++) {
+        try {
+          const t = templates.parse(await http.html('/communication/template/list/' + encodeURIComponent(id)));
+          t.at = Date.now();
+          templates.keep(id, t);
+          return t;
+        } catch (e) {
+          err = e instanceof UPCError ? e : new UPCError('Halaxy didn\'t return the template page (' + (e.message || e) + ').');
+          if (err.temporary === undefined) err.temporary = !/returned 4\d\d/.test(err.message);   // 404: no such template
+          if (!err.temporary) break;
+          if (i === 0) await sleep(3000);
+        }
+      }
+      const copy = templates.saved()[id];
+      if (copy && copy.body && Date.now() - (copy.at || 0) < TEMPLATE_COPY_MS) return Object.assign({}, copy, { stale: { message: err.message, temporary: err.temporary } });
+      throw err;
+    },
+  };
 
   // Halaxy's Tasks & Follow-Ups (confirmed live 10 Nov 2026).
   //  - List: GET /task/task-followup/list/data, an array of { id, title, status ('Sent', 'Scheduled'),
@@ -3288,7 +3344,7 @@
   setInterval(paintCounts, 15000);
 
   window.UPC = Object.freeze({
-    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, todo, invoice, appointment, forms, notes, followUps, patient, tasks, surveys, reports, dayLabel, parseDay, rebate, files, deposits, orgFiles, adminNotes, shared, sharedResult, settings, load, ui,
+    version: VERSION, Error: UPCError, pg, base, sleep, clean, esc, htmlDoc, money, http, todo, invoice, appointment, forms, notes, templates, followUps, patient, tasks, surveys, reports, dayLabel, parseDay, rebate, files, deposits, orgFiles, adminNotes, shared, sharedResult, settings, load, ui,
     user, storage, calendar, wording, background,
   });
 })();

@@ -1,5 +1,11 @@
 # Changelog
 
+## Patient forms 0.1.9, Open-ended recalls 0.4.10, core 0.1.86, Health check 1.1.64, 25 Nov 2026 (beta)
+- Riding out a Halaxy update (CH, 25 Nov 2026: Halaxy 127.26 went live at 07:27; for about half an hour the template page came back without its form, so 8 of tomorrow's reminders failed with "its edit page has changed", then 4 of them worked on their next try). Templates are read by core (UPC.templates): one retry, then the last good copy kept on the PC for up to a day. A reply that isn't the template page at all counts as temporary; the page without its content box counts as a real change.
+- Patient forms: a temporary failure is tried again after 15 minutes (was an hour) and reported only if it lasts 2 hours. When a later try works, its earlier error is taken back from the health check. A reminder not yet sent shows "Not sent yet" instead of a blank.
+- Open-ended recalls: Send recall reads the template the same way; a temporary failure says "try again in a few minutes".
+- Health check: scripts can take back their own errors (upc-loader-error-clear); the daily data check reads the template page with a template the PC has read before.
+
 ## Tests, 24 Nov 2026 (fake clock, part 2)
 - The next three slowest test folders wait on the fake clock too: Health check 67 to about 27 seconds, Patient forms 62 to 5, the loader 53 to about 35. Groups rebalanced: about 2.7 minutes of tests each, so a pull request's checks take about 3 minutes instead of 4.
 - Health check: its two 20-second cases each run in a fresh browser context with the same storage, as Playwright replays a context's clock moves on every page loaded after them (a later page would look 20 seconds old at once).

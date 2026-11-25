@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.63
+// @version      1.1.64
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.63';
+  const VERSION = '1.1.64';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -125,6 +125,18 @@
   }, true);
   document.addEventListener('upc-loader-error', (e) => {
     try { const d = JSON.parse(e.detail); recordError(d.file, d.message); } catch (x) { /* ignore */ }
+  });
+  // A script takes back its own earlier errors once a later try has worked (Patient forms, 25 Nov 2026: a reminder
+  // that failed while Halaxy updated itself, then went on its next try, left its error showing all day).
+  document.addEventListener('upc-loader-error-clear', (e) => {
+    try {
+      const d = JSON.parse(e.detail);
+      const prefix = String(d.prefix || '');
+      if (!d.file || !prefix) return;
+      const list = store.get('errors', []);
+      const left = list.filter((x) => !(x.file === d.file && String(x.message).startsWith(prefix)));
+      if (left.length !== list.length) { store.set('errors', left); render(); }
+    } catch (x) { /* ignore */ }
   });
 
   // ------------------------------------------------------------------ helpers for checks
@@ -479,6 +491,27 @@
       const cards = doc.querySelectorAll('.attachment-file-card').length, edits = doc.querySelectorAll('[data-modal-href*="/file/edit/"]').length;
       put('data-org-files', 'Funder profile files', ['Bank statement', 'Remittances'], (add ? [] : ['Add Files link missing']).concat(cards && edits < cards ? ['file Edit links missing'] : []));
     } catch (e) { put('data-org-files', 'Funder profile files', ['Bank statement', 'Remittances'], [e.message]); }
+
+    // Communication template edit page: Patient forms and Open-ended recalls read templates from it (core
+    // UPC.templates, 25 Nov 2026). Checked with a template this PC has read before; none yet, nothing to check. A
+    // reply that isn't the edit page at all (Halaxy busy or updating itself) leaves the last result standing.
+    try {
+      let saved = {};
+      try { saved = JSON.parse(localStorage.getItem('upc-core:templates') || '{}') || {}; } catch (x) { saved = {}; }
+      const id = Object.keys(saved).sort((a, b) => (saved[b].at || 0) - (saved[a].at || 0))[0];
+      if (id) {
+        const res = await hfetch('/a/pr/' + group() + '/communication/template/list/' + encodeURIComponent(id), { credentials: 'same-origin' });
+        if (res.ok) {
+          const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+          const box = doc.querySelector('textarea[name="form[contentForFormHandler]"]'), subj = doc.querySelector('[name="form[subject]"]');
+          const isEdit = !!doc.querySelector('form#editCommunicationTemplateForm') || /Edit Email Communication Template/i.test(doc.title || '');
+          if (box || isEdit) {
+            put('data-templates', 'Communication template page', ['Patient forms', 'Open-ended recalls'],
+              [box && String(box.value || box.textContent || '').trim() ? '' : 'content box missing (form[contentForFormHandler])', subj ? '' : 'subject missing (form[subject])'].filter(Boolean));
+          }
+        } else if (res.status !== 404 && res.status < 500) throw new Error('Halaxy returned ' + res.status + ' for /communication/template/list');
+      }
+    } catch (e) { put('data-templates', 'Communication template page', ['Patient forms', 'Open-ended recalls'], [e.message]); }
 
     // Appointment types (Patient statuses tells funded bookings by them; capture 11 Nov 2026).
     try {
