@@ -22,7 +22,7 @@ jobs:
       matrix:
         group:
           - patient-statuses ready-to-bill missing-details charge-excess to-do alerts task-stamps email-html branding
-          - forecourt-lights clinic-settings health-check calendar-controls insurer-payments-due old-balances cards-on-file block-reporting mobile-layout
+          - forecourt-lights clinic-settings health-check calendar-controls insurer-payments-due old-balances cards-on-file block-reporting mobile-layout appointment-recorder
           - portal-fill loader appointment-reminders remittances bank-statement core patient-forms arrived-button
           - feedback-alerts review-requests rebate-sync outstanding-actions script-settings invoice-funder record-retention open-ended-patients
     name: tests (${{ matrix.group }})

@@ -1,5 +1,12 @@
 # Changelog
 
+## Appointment recorder 0.1.0, Health check 1.1.65, 25 Nov 2026 (beta)
+- New script, Patients group (CH, 25 Nov 2026; plan in the project doc heidi-recorder.md). Start Appointment on a clinical note opens a small recorder window (a blank page the note writes, so Halaxy's own code, including its inactivity log-out, doesn't run there) and records the session as Opus in Ogg, mono, about 24 kbit/s (Heidi refuses webm). Saved on this PC (IndexedDB) every 5 seconds; a new part at a change of microphone and every 60 minutes.
+- On the note: the time, a microphone list (Monitor devices left out; each PC remembers its choice), a sound level as bars from a centre line, one per band of pitch, "No sound" after 30 seconds of silence, and Finish Appointment. Another note's page says a recording is under way. Start on the same note within 12 hours continues the same recording.
+- Finished parts go to the "UPC scripts (recordings)" organisation (78972), titled "Recording yyyy-mm-dd hh:mm <initials>" (" part n"), with an "Appointment recorder" comment, one tab at a time; those copies are deleted after 2 days (CH agreed), only the recorder's own files. Recordings leave the PC after 14 days. A window closed mid-recording is marked stopped where its last chunk was saved.
+- Patients > Recordings: this PC's recordings with their copy in Halaxy; Download and Delete.
+- Health check: knows the new script's name.
+
 ## Portal fill 0.1.25, 25 Nov 2026 (beta)
 - Bupa, Provider Details: chooses Urmston Physio Clinic as the lead provider when Bupa has another one chosen (CH, 25 Nov 2026: it stopped instead, with a hospital chosen). Stops only if the clinic isn't in Bupa's list. The other providers are left as they are.
 
