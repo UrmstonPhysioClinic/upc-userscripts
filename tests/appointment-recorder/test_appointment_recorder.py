@@ -40,7 +40,7 @@ assert 'warnMs: 75 * 60e3, maxMs: 2 * 3600e3' in SCRIPT
 SCRIPT = SCRIPT.replace('warnMs: 75 * 60e3, maxMs: 2 * 3600e3', 'warnMs: 120e3, maxMs: 180e3')
 NOW = datetime.datetime(2026, 11, 25, 10, 0, tzinfo=datetime.timezone.utc)
 FAILS = []
-S = {'files': [], 'uploads': [], 'deleted': [], 'heidi': [], 'refuse': False, 'slow': False, 'landing': 'fresh'}
+S = {'files': [], 'uploads': [], 'deleted': [], 'heidi': [], 'refuse': False, 'slow': False, 'landing': 'fresh', 'heidi_loads': 0}
 
 
 def check(name, ok, detail=''):
@@ -319,7 +319,10 @@ async def main():
         await ctx.clock.install(time=NOW.isoformat())
         await ctx.route('https://eu.halaxy.com/**', halaxy)
         await ctx.route('https://cdn.jsdelivr.net/npm/opus-recorder@8.0.5/dist/encoderWorker.min.js', lambda r: r.fulfill(body=ENCODER, content_type='application/javascript'))
-        await ctx.route('https://scribe.heidihealth.com/**', lambda r: r.fulfill(body=HEIDI_PAGE, content_type='text/html'))
+        async def heidi_page(r):
+            S['heidi_loads'] += 1
+            await r.fulfill(body=HEIDI_PAGE, content_type='text/html')
+        await ctx.route('https://scribe.heidihealth.com/**', heidi_page)
         await ctx.route('https://uk.api.heidihealth.com/**', heidi_api)
         await ctx.add_init_script(FAKE_MIC)
         # Halaxy pages only (the recorder window is a blank page the scripts don't run in, as on the PCs).
@@ -341,9 +344,13 @@ async def main():
         await until_py(pg, lambda: _true(any('heidihealth' in x.url for x in ctx.pages)), what='the old window on Heidi')
         await pg.click('.upc-rec-strip [data-a=start]')
         await idle(pg, 1000)
-        pop = [x for x in ctx.pages if x is not pg][0]
+        pop = [x for x in ctx.pages if x is not pg and 'heidihealth' not in x.url][0]
         await until(pg, "!!document.querySelector('.upc-rec-strip [data-a=finish]')", timeout=30)
-        check('Start works even with a window of the recorder\'s name left on Heidi: it is brought back and used', len(ctx.pages) == 2 and pop.url.startswith('https://eu.halaxy.com/'), [x.url for x in ctx.pages])
+        await until_py(pg, lambda: _true(any('heidihealth' in x.url for x in ctx.pages)), what='Heidi\'s window')
+        hw = [x for x in ctx.pages if 'heidihealth' in x.url][0]
+        loads = S['heidi_loads']
+        check('Start works even with a window of the recorder\'s name left on Heidi: it is brought back and used', len(ctx.pages) == 3 and pop.url.startswith('https://eu.halaxy.com/'), [x.url for x in ctx.pages])
+        check('Start also opens Heidi\'s window, so Heidi loads during the appointment', len([x for x in ctx.pages if 'heidihealth' in x.url]) == 1)
         pop_errors = []
         pop.on('pageerror', lambda e: pop_errors.append(str(e)))
         await until(pg, "!!document.querySelector('.upc-rec-strip [data-a=finish]')")
@@ -399,16 +406,17 @@ async def main():
         await pg.click('.upc-rec-strip [data-a=finish]')
         opens = await pg.evaluate("__opens")
         check('Finish opens Heidi in a full-size window of its own, from the press itself (Firefox may not resize the small one)',
-              len(opens) == 1 and opens[0][0] == '' and re.match(r'^upc-heidi-r\w+$', opens[0][1]) and opens[0][2] == 'popup=yes,width=1100,height=820', opens)
+              opens == [['', 'upc-heidi', 'popup=yes,width=1100,height=820']], opens)
         await until(pg, "upcAppointmentRecorder.db.recs().then((r) => r[0].status === 'finished')")
         await closed(pg, pop)
         await until_py(pg, lambda: heidi_state(pg, rid), what='the Heidi step starts')
         await until_py(pg, lambda: _state_is(pg, rid, 'done'), what='Heidi\'s note in')
-        await until_py(pg, lambda: _true(not any('heidihealth' in x.url for x in ctx.pages)), what='the Heidi window closes')
+        await until_py(pg, lambda: hw.evaluate("!document.querySelector('[data-upc-heidi-cover]')"), what='the Heidi window waits')
         content = await pg.evaluate("document.querySelector('.ck-editor__editable').ckeditorInstance.getData()")
         check('the recorder window closes; Heidi gets the recording as one Ogg file and uploads it in the new, empty session Heidi opens',
               len(S['heidi']) == 1 and S['heidi'][0]['sid'].endswith('51') and S['heidi'][0]['name'] == 'recording-25-Nov-2026-1000.ogg' and S['heidi'][0]['type'] == 'audio/ogg', S['heidi'])
-        check('Heidi\'s completed note goes into the empty note as Heidi drew it (tidied), and the Heidi window closes', content == NOTE_IN, content)
+        check('Heidi\'s completed note goes into the empty note as Heidi drew it (tidied)', content == NOTE_IN, content)
+        check('the Heidi window stays open, uncovered and loaded, for the next recording (the one Start opened)', not hw.is_closed() and S['heidi_loads'] == loads, [S['heidi_loads'], loads])
         seen = await pg.evaluate("[...new Set(coverSeen)]")
         check('the note was covered meanwhile, with Cancel, saying what is happening', any('Waiting for Heidi' in x or 'Sending to Heidi' in x for x in seen) and all('Cancel' in x for x in seen), seen)
         st = await pg.evaluate("(() => { const s = document.querySelector('.upc-rec-strip'); return [s.textContent, !!document.querySelector('.ck-editor > .upc-rec-cover'), [...document.querySelectorAll('.upc-toast')].map((x) => x.textContent)]; })()")
@@ -447,9 +455,16 @@ async def main():
         await until(pg, "!!document.querySelector('.upc-rec-strip [data-a=start]')")
         await pg.click('.upc-rec-strip [data-a=start]')
         await until(pg, "!!document.querySelector('.upc-rec-strip [data-a=finish]')")
-        pop2 = [x for x in ctx.pages if x is not pg][0]
+        pop2 = [x for x in ctx.pages if x is not pg and 'heidihealth' not in x.url][0]
         await idle(pg, 11000)
         await pop2.close(run_before_unload=False)
+        # Said at once in Halaxy, with Continue Recording (CH, 26 Nov 2026: closed by mistake, Firefox didn't ask)
+        await until(pg, "!!document.querySelector('.upc-dialog[data-upc-dialog=upc-rec-gone]')", timeout=30)
+        gone = await pg.evaluate("(() => { const d = document.querySelector('.upc-dialog[data-upc-dialog=upc-rec-gone]'); return [d.textContent, [...d.querySelectorAll('[data-g]')].map((x) => x.textContent)]; })()")
+        check('the recorder window closed mid-recording: a pop-up says so at once, with Continue Recording', 'Recording stopped: Patient 9003.' in gone[0] and gone[1] == ['Leave Stopped', 'Continue Recording'], gone)
+        st_now = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => r.find((x) => x.noteId === '7003').status)")
+        check('and the recording is marked stopped straight away (not after a minute)', st_now == 'stopped', st_now)
+        await pg.click('.upc-dialog[data-upc-dialog=upc-rec-gone] [data-g=""]')
         await idle(pg, 80000)
         await until(pg, "upcAppointmentRecorder.db.recs().then((r) => r.find((x) => x.noteId === '7003').status === 'stopped')")
         await until(pg, "/Window closed/.test(document.querySelector('.upc-rec-strip').textContent) && !!document.querySelector('.upc-rec-strip [data-a=start]')")
@@ -462,7 +477,6 @@ async def main():
         S['landing'] = 'home'
         await pg.click('.upc-rec-strip [data-a=heidi]')
         await until_py(pg, lambda: _state_is(pg, rid3, 'failed'), what='Heidi refuses')
-        hw = [x for x in ctx.pages if x is not pg][0]
         st = await pg.evaluate("document.querySelector('.upc-rec-strip').textContent")
         check('Heidi refusing the file: "Not sent to Heidi" on the note with why, and Send to Heidi again', 'Not sent to Heidi' in st and 'Unsupported file type' in st and await pg.evaluate("!!document.querySelector('.upc-rec-strip [data-a=heidi]')"), st)
         S['refuse'] = False
@@ -475,14 +489,14 @@ async def main():
         await until_py(pg, lambda: _state_is(pg, rid3, 'done'), what='added below')
         content = await pg.evaluate("document.querySelector('.ck-editor__editable').ckeditorInstance.getData()")
         check('Add Below puts Heidi\'s note after the text already there', content == '<p>Existing text</p>' + NOTE_IN, content)
-        await closed(pg, hw)
+        check('both sent in the same Heidi window, not loaded again', not hw.is_closed() and S['heidi_loads'] == loads, [S['heidi_loads'], loads])
 
         # ---- a session left running: a warning after 75 minutes, finished after two hours (2 and 3 minutes here)
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/9004/clinical/category/note/id/7004')
         await until(pg, "!!document.querySelector('.upc-rec-strip [data-a=start]')")
         await pg.click('.upc-rec-strip [data-a=start]')
         await until(pg, "!!document.querySelector('.upc-rec-strip [data-a=finish]')")
-        pop3 = [x for x in ctx.pages if x is not pg][0]
+        pop3 = [x for x in ctx.pages if x is not pg and 'heidihealth' not in x.url][0]
         await idle(pg, 122000)
         check('a session left running: "Still recording after 2 minutes" (75 on the PCs) on the note', await pg.evaluate("/Still recording after 2 minutes/.test(document.querySelector('.upc-rec-strip').textContent)"))
         S['slow'] = True   # Heidi takes its time, and the clinician moves on in Halaxy meanwhile
@@ -490,6 +504,10 @@ async def main():
         await idle(pg, 60000)
         rid4 = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => r.find((x) => x.noteId === '7004').id)")
         await until_py(pg, lambda: _text_has(pg, rid4, 'Waiting for Heidi'), what='Heidi working')
+        # Another recording offered meanwhile waits its turn (Heidi's window answers "busy"; Halaxy offers again).
+        await pg.evaluate("window.__busy = null; addEventListener('message', (e) => { if (e.data && e.data.upc === 'heidi-busy') __busy = e.data.id; }); window.open('', 'upc-heidi').postMessage({ upc: 'heidi-offer', id: 'other' }, 'https://scribe.heidihealth.com'); 0")
+        await until(pg, "__busy === 'other'")
+        check('one recording at a time in Heidi\'s window: another offered meanwhile is told it is busy (queued)', True)
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/')
         await idle(pg, 20000)
         S['slow'] = False
@@ -502,7 +520,7 @@ async def main():
         content = await nt.evaluate("document.querySelector('.ck-editor__editable').ckeditorInstance.getData()")
         check('moved on before Heidi finished: the note opens in a new tab and Heidi\'s note goes in there', content == NOTE_IN, content)
         await closed(pg, pop3)
-        await until_py(pg, lambda: _true(not any('heidihealth' in x.url for x in ctx.pages)), what='the Heidi window closes')
+        check('a third recording, the same Heidi window: Heidi loaded once all day', not hw.is_closed() and S['heidi_loads'] == loads and len(S['heidi']) == 3, [S['heidi_loads'], loads, len(S['heidi'])])
         await nt.close()
         auto = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => { const x = r.find((y) => y.noteId === '7004'); return [x.status, x.stopped]; })")
         check('and finished by itself after two hours', auto[0] == 'finished' and str(auto[1]).startswith('Stopped after'), auto)
