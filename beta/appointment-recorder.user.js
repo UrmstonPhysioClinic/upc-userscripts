@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Appointment recorder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.6
+// @version      0.3.7
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/appointment-recorder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/appointment-recorder.user.js
@@ -44,7 +44,7 @@
   if (window.__hxAppointmentRecorder) return;
   window.__hxAppointmentRecorder = true;
 
-  const VERSION = '0.3.6';
+  const VERSION = '0.3.7';
   const ORG = '78972';                          // "UPC scripts (recordings)" (CH, 25 Nov 2026)
   const KEEP_LOCAL_MS = 14 * 86400e3;           // on this PC (CH, 25 Nov 2026)
   const KEEP_HALAXY_MS = 2 * 86400e3;           // the copy in Halaxy (CH, 25 Nov 2026)
@@ -96,8 +96,11 @@
   // Elements found by Heidi's own test labels (recon 25 Nov 2026; project doc heidi-recorder.md).
   function heidiSide() {
     const HALAXY = /^https:\/\/([a-z0-9-]+\.)*halaxy\.com$/;
-    const seen = { uploads: [], notes: [] };   // Heidi's own answers: { at, url, status } and { at, url, note }
+    const seen = { uploads: [], notes: [], failed: [] };   // Heidi's own answers: { at, url, status } and { at, url, note }
     let job = null;
+    let active = null;     // what a wait belongs to (a recording's step, or getting ready): stopped with it
+    let prepared = null;   // { session, input }: a new session with its upload box open, ready for the next recording
+    let prepping = null;   // getting ready, under way
     const used = new Set();   // sessions this window has used: never reused for another recording
     const now = () => Date.now();
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -112,6 +115,7 @@
           const j = JSON.parse(text);
           const c = j && Array.isArray(j.consult_notes) ? j.consult_notes[0] : null;
           if (c && c.status === 'COMPLETED' && c.note) seen.notes.push({ at: now(), url, note: String(c.note) });
+          if (c && /FAIL|ERROR/i.test(String(c.status || ''))) seen.failed.push({ at: now(), url, status: String(c.status) });
         } catch (e) { /* not JSON */ }
       }
     };
@@ -145,13 +149,13 @@
           const b = e.target.closest('button[data-a]');
           if (!b) return;
           if (b.dataset.a === 'stop') fail(new Error('Stopped in the Heidi window.'));
-          if (b.dataset.a === 'close') hide();
+          if (b.dataset.a === 'close') { hide(); if (!job || job.over) prepareSoon(1000); }
         });
         document.body.appendChild(cover);
       }
       const colour = kind === 'err' ? '#a32d2d' : '#5c2899';
       cover.innerHTML = '<div style="background:#fff;border:1px solid #dcdce4;border-radius:8px;padding:24px 28px;max-width:440px;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.12)">' +
-        '<div style="font-weight:700;font-size:17px;margin-bottom:8px;color:' + colour + '">' + (kind === 'err' ? 'Not Done' : 'Sending to Heidi') + '</div>' +
+        '<div style="font-weight:700;font-size:17px;margin-bottom:8px;color:' + colour + '">' + ({ err: 'Not Done', ready: 'Ready', prep: 'Getting Heidi Ready' }[kind] || 'Sending to Heidi') + '</div>' +
         '<div data-upc-heidi-step style="margin-bottom:16px"></div>' +
         '<button type="button" data-a="' + (closeable ? 'close' : 'stop') + '" style="padding:6px 16px;border-radius:4px;border:1px solid #5c2899;background:#fff;color:#5c2899;font-weight:700;cursor:pointer">' + (closeable ? 'Close' : 'Stop') + '</button></div>';
       cover.querySelector('[data-upc-heidi-step]').textContent = text;
@@ -172,11 +176,13 @@
       const error = (e && e.message) || String(e);
       show(error, 'err', true);
       post({ upc: 'heidi-failed', id: job.id, error });
+      const j = job;
+      setTimeout(() => { if (job === j && cover) prepareSoon(0); }, 20e3);   // the message is on the note too
     }
     async function waitFor(test, ms, what) {
       const t0 = now();
       for (;;) {
-        if (job.over) throw new Error('Stopped.');
+        if (active && active.over) throw new Error('Stopped.');
         const v = test();
         if (v) return v;
         if (now() - t0 > ms) throw new Error('Heidi\'s page has changed or is slow: ' + (typeof what === 'function' ? what() : what) + ' did not appear.');
@@ -220,7 +226,7 @@
       let p = location.pathname;
       let t = now();
       const end = now() + 10e3;
-      while (now() < end && !job.over) {
+      while (now() < end && !(active && active.over)) {
         await sleep(250);
         if (location.pathname !== p) { p = location.pathname; t = now(); } else if (now() - t >= 2000) return;
       }
@@ -236,7 +242,7 @@
       let tries = 0;
       let last = 0;
       for (;;) {
-        if (job.over) throw new Error('Stopped.');
+        if (active && active.over) throw new Error('Stopped.');
         const item = uploadItem();
         if (item) return item;
         const m = menu();
@@ -257,8 +263,9 @@
       }
     }
 
-    async function run() {
-      say('Starting a new Heidi session');
+    // A new session with its upload box open (the steps a person takes), for a recording now or the next one.
+    async function readyUpload(report) {
+      report('Starting a new Heidi session');
       await waitFor(() => q('[data-testid="session-toolbar-cta-main"]'), 90e3, 'the New session button');
       await settle();
       // Heidi opened a new, empty session itself (New session does nothing there): use it if it was started just now.
@@ -271,9 +278,41 @@
       }
       const session = sessionOf();
       used.add(session);
-      say('Uploading the recording');
+      report('Opening Upload session audio');
       press(await openUpload());
       const input = await waitFor(() => q('input[type=file][data-testid="upload-audio-file-input-input"]'), 15e3, 'the upload box');
+      return { session, input };
+    }
+    // Getting ready before the recording comes (CH, 26 Nov 2026): when the window opens (at Start) and after each
+    // recording, so at Finish the recording only goes into the upload box. Only in the window Halaxy opened for this.
+    let prepTries = 0;
+    function prepareSoon(ms) { setTimeout(() => { prepare().catch(() => {}); }, ms); }
+    async function prepare() {
+      if (window.name !== 'upc-heidi' || prepping || (job && !(job.over && job.settled))) return;
+      if (prepared && prepared.input.isConnected && sessionOf() === prepared.session) return;
+      const ctl = { over: false };
+      active = ctl;
+      show('Getting Heidi ready for the recording', 'prep', true);
+      prepping = readyUpload(() => {}).then((r) => {
+        prepared = r;
+        prepTries = 0;
+        if (!job || job.over) show('Ready for the recording from Halaxy.', 'ready', true);
+      }, () => {
+        prepared = null;
+        if (!job || job.over) hide();
+        if (++prepTries < 5) prepareSoon(60e3);   // signed out or slow: tried again later
+      }).finally(() => { prepping = null; if (active === ctl) active = null; });
+      return prepping;
+    }
+
+    async function run() {
+      active = job;
+      if (prepping) { say('Getting Heidi ready'); await prepping; active = job; }
+      let session, input;
+      if (prepared && prepared.input.isConnected && sessionOf() === prepared.session) ({ session, input } = prepared);
+      else ({ session, input } = await readyUpload(say));
+      prepared = null;
+      say('Uploading the recording');
       const t0 = now();
       const dt = new DataTransfer();
       dt.items.add(new File([job.blob], job.name || 'recording.ogg', { type: 'audio/ogg' }));
@@ -286,7 +325,14 @@
       }, 15 * 60e3, 'the upload');
       if (up.status !== 200) throw new Error('Heidi refused the recording (' + up.status + ').');
       say('Waiting for Heidi\'s note');
-      const n = await waitFor(() => seen.notes.find((x) => x.at >= t0 && (!session || x.url.includes(session))) || seen.notes.find((x) => x.at >= t0), 20 * 60e3, 'Heidi\'s note');
+      const n = await waitFor(() => {
+        // Heidi writes no note from a recording with too little speech (CH, 26 Nov 2026: "The transcript was too short to
+        // create a note"): said at once rather than waiting.
+        if (/transcript was too short/i.test((document.body && document.body.innerText) || '')) throw new Error('Heidi made no note: the recording was too short. Check the microphone and its sound level.');
+        const bad = seen.failed.find((x) => x.at >= t0);
+        if (bad) throw new Error('Heidi couldn\'t write a note (' + bad.status.toLowerCase() + ').');
+        return seen.notes.find((x) => x.at >= t0 && (!session || x.url.includes(session))) || seen.notes.find((x) => x.at >= t0);
+      }, 20 * 60e3, 'Heidi\'s note');
       await sleep(1500);   // Heidi draws the note in its editor
       say('Sending Heidi\'s note to Halaxy');
       post({ upc: 'heidi-note', id: job.id, markdown: n.note, html: editorHtml(), session: session || '' });
@@ -315,17 +361,22 @@
       if (d.upc === 'heidi-audio' && !job.blob && d.blob instanceof Blob && e.source === job.src) {
         job.blob = d.blob;
         job.name = d.name;
-        const beat = setInterval(() => { if (job.over) clearInterval(beat); else if (lastSaid) post({ upc: 'heidi-status', id: job.id, text: lastSaid }); }, 15e3);   // still working
+        const jb = job;
+        const beat = setInterval(() => { if (jb.over || job !== jb) clearInterval(beat); else if (lastSaid) post({ upc: 'heidi-status', id: jb.id, text: lastSaid }); }, 15e3);   // still working
         const j = job;
         run().catch(fail).finally(() => { j.settled = true; });
       }
-      if (d.upc === 'heidi-done') { const j = job; j.over = true; show('Heidi\'s note is in Halaxy.'); setTimeout(() => { if (job === j) hide(); }, 1500); }
-      if (d.upc === 'heidi-cancel') { job.over = true; if (!job.blob) job.settled = true; hide(); }
+      if (d.upc === 'heidi-done') { const j = job; j.over = true; show('Heidi\'s note is in Halaxy.'); setTimeout(() => { if (job === j) { hide(); prepareSoon(0); } }, 1500); }
+      if (d.upc === 'heidi-cancel') { job.over = true; if (!job.blob) job.settled = true; hide(); prepareSoon(3000); }
     });
     // Closing or reloading the window mid-step asks first (CH, 26 Nov 2026), as the recorder window does while recording.
     // Firefox asks only once the window has had a real click (sign-in, a press on the cover).
     window.addEventListener('beforeunload', (e) => { if (job && !job.over) { e.preventDefault(); e.returnValue = ''; } });
-    window.upcHeidiStep = { version: VERSION, seen, job: () => job };
+    if (window.name === 'upc-heidi') {
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => prepareSoon(0), { once: true });
+      else prepareSoon(0);
+    }
+    window.upcHeidiStep = { version: VERSION, seen, job: () => job, prepared: () => prepared };
   }
 
   // ------------------------------------------------------------------ storage on this PC (shared with the window)
@@ -1484,7 +1535,7 @@
     if (/^(sending|waiting)$/.test(h.state)) return P(h.text || 'Sending to Heidi', 'wait');
     if (h.state === 'ready') return '<button type="button" class="btn btn-primary" data-a="heidi-add">Add Heidi\'s Note</button>' + (h.error && where === 'strip' ? '<span class="text-muted">' + esc(h.error) + '</span>' : '');
     if (h.state === 'done') return P('Heidi\'s note added', 'ok');
-    if (h.state === 'failed') return '<span title="' + esc(h.error || '') + '">' + P('Not sent to Heidi', 'err') + '</span>' + (where === 'strip' && h.error ? '<span class="text-muted">' + esc(h.error) + '</span>' : '') + send;
+    if (h.state === 'failed') return '<span title="' + esc(h.error || '') + '">' + P('No Note from Heidi', 'err') + '</span>' + (where === 'strip' && h.error ? '<span class="text-muted">' + esc(h.error) + '</span>' : '') + send;
     return send;
   }
   function heidiClick(a, r) {
