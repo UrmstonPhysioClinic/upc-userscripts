@@ -165,7 +165,7 @@ function upload(e) {
 function poll(sid) {
   const x = new XMLHttpRequest();
   x.open('GET', 'https://uk.api.heidihealth.com/api/v2/ml-scribe/sessions/' + sid + '/consult-note');
-  x.onload = () => { const c = JSON.parse(x.responseText).consult_notes[0]; if (c.status === 'COMPLETED') document.getElementById('ed').innerHTML = "<p data-x='1'><strong><u>Subjective:</u></strong></p><p class='y'>- Knee pain</p>"; else setTimeout(() => poll(sid), 1000); };
+  x.onload = () => { const c = JSON.parse(x.responseText).consult_notes[0]; if (c.status === 'SHORT') { document.getElementById('ed').innerHTML = '<p>The transcript was too short to create a note</p>'; return; } if (c.status === 'COMPLETED') document.getElementById('ed').innerHTML = "<p data-x='1'><strong><u>Subjective:</u></strong></p><p class='y'>- Knee pain</p>"; else setTimeout(() => poll(sid), 1000); };
   x.send();
 }
 // Heidi often opens on a new, empty session of its own (after a moment); the test says which.
@@ -246,6 +246,8 @@ async def heidi_api(route):
         return await route.fulfill(body='true', content_type='application/json', headers=cors)
     if path.endswith('/consult-note'):
         done = not S['slow']
+        if S.get('short'):
+            return await route.fulfill(body=json.dumps({'consult_notes': [{'id': 'c1', 'status': 'SHORT', 'note': '', 'content_type': 'MARKDOWN'}]}), content_type='application/json', headers=cors)
         c = {'id': 'c1', 'status': 'COMPLETED' if done else 'CREATED', 'note': '**Subjective:**\n- Knee pain' if done else '', 'content_type': 'MARKDOWN'}
         return await route.fulfill(body=json.dumps({'consult_notes': [c]}), content_type='application/json', headers=cors)
     await route.fulfill(status=404, body='', headers=cors)
@@ -258,6 +260,11 @@ async def _true(v):
 async def _state_is(pg, rid, state):
     h = await heidi_state(pg, rid)
     return bool(h) and h.get('state') == state
+
+
+async def _err_has(pg, rid, text):
+    h = await heidi_state(pg, rid)
+    return bool(h) and h.get('state') == 'failed' and text in (h.get('error') or '')
 
 
 async def _text_has(pg, rid, text):
@@ -482,8 +489,14 @@ async def main():
         await pg.click('.upc-rec-strip [data-a=heidi]')
         await until_py(pg, lambda: _state_is(pg, rid3, 'failed'), what='Heidi refuses')
         st = await pg.evaluate("document.querySelector('.upc-rec-strip').textContent")
-        check('Heidi refusing the file: "Not sent to Heidi" on the note with why, and Send to Heidi again', 'Not sent to Heidi' in st and 'Unsupported file type' in st and await pg.evaluate("!!document.querySelector('.upc-rec-strip [data-a=heidi]')"), st)
+        check('Heidi refusing the file: "No Note from Heidi" on the note with why, and Send to Heidi again', 'No Note from Heidi' in st and 'Unsupported file type' in st and await pg.evaluate("!!document.querySelector('.upc-rec-strip [data-a=heidi]')"), st)
         S['refuse'] = False
+        S['short'] = True   # Heidi: "The transcript was too short to create a note"
+        await pg.click('.upc-rec-strip [data-a=heidi]')
+        await until_py(pg, lambda: _err_has(pg, rid3, 'too short'), what='too short')
+        st = await pg.evaluate("document.querySelector('.upc-rec-strip').textContent")
+        check('Heidi making no note from too little speech: said at once on the note, not after 20 minutes', 'recording was too short' in st and len(S['heidi']) == 2, st)
+        S['short'] = False
         S['landing'] = 'fresh'
         await pg.click('.upc-rec-strip [data-a=heidi]')
         await until(pg, "!!document.querySelector('.upc-dialog[data-upc-dialog=upc-rec-heidi-how]')", timeout=60)
@@ -524,7 +537,7 @@ async def main():
         content = await nt.evaluate("document.querySelector('.ck-editor__editable').ckeditorInstance.getData()")
         check('moved on before Heidi finished: the note opens in a new tab and Heidi\'s note goes in there', content == NOTE_IN, content)
         await closed(pg, pop3)
-        check('a third recording, the same Heidi window: Heidi loaded once all day', not hw.is_closed() and S['heidi_loads'] == loads and len(S['heidi']) == 3, [S['heidi_loads'], loads, len(S['heidi'])])
+        check('a third recording, the same Heidi window: Heidi loaded once all day', not hw.is_closed() and S['heidi_loads'] == loads and len(S['heidi']) == 4, [S['heidi_loads'], loads, len(S['heidi'])])
         await nt.close()
         auto = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => { const x = r.find((y) => y.noteId === '7004'); return [x.status, x.stopped]; })")
         check('and finished by itself after two hours', auto[0] == 'finished' and str(auto[1]).startswith('Stopped after'), auto)

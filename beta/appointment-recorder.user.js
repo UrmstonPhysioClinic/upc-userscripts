@@ -96,7 +96,7 @@
   // Elements found by Heidi's own test labels (recon 25 Nov 2026; project doc heidi-recorder.md).
   function heidiSide() {
     const HALAXY = /^https:\/\/([a-z0-9-]+\.)*halaxy\.com$/;
-    const seen = { uploads: [], notes: [] };   // Heidi's own answers: { at, url, status } and { at, url, note }
+    const seen = { uploads: [], notes: [], failed: [] };   // Heidi's own answers: { at, url, status } and { at, url, note }
     let job = null;
     let active = null;     // what a wait belongs to (a recording's step, or getting ready): stopped with it
     let prepared = null;   // { session, input }: a new session with its upload box open, ready for the next recording
@@ -115,6 +115,7 @@
           const j = JSON.parse(text);
           const c = j && Array.isArray(j.consult_notes) ? j.consult_notes[0] : null;
           if (c && c.status === 'COMPLETED' && c.note) seen.notes.push({ at: now(), url, note: String(c.note) });
+          if (c && /FAIL|ERROR/i.test(String(c.status || ''))) seen.failed.push({ at: now(), url, status: String(c.status) });
         } catch (e) { /* not JSON */ }
       }
     };
@@ -175,6 +176,8 @@
       const error = (e && e.message) || String(e);
       show(error, 'err', true);
       post({ upc: 'heidi-failed', id: job.id, error });
+      const j = job;
+      setTimeout(() => { if (job === j && cover) prepareSoon(0); }, 20e3);   // the message is on the note too
     }
     async function waitFor(test, ms, what) {
       const t0 = now();
@@ -322,7 +325,14 @@
       }, 15 * 60e3, 'the upload');
       if (up.status !== 200) throw new Error('Heidi refused the recording (' + up.status + ').');
       say('Waiting for Heidi\'s note');
-      const n = await waitFor(() => seen.notes.find((x) => x.at >= t0 && (!session || x.url.includes(session))) || seen.notes.find((x) => x.at >= t0), 20 * 60e3, 'Heidi\'s note');
+      const n = await waitFor(() => {
+        // Heidi writes no note from a recording with too little speech (CH, 26 Nov 2026: "The transcript was too short to
+        // create a note"): said at once rather than waiting.
+        if (/transcript was too short/i.test((document.body && document.body.innerText) || '')) throw new Error('Heidi made no note: the recording was too short. Check the microphone and its sound level.');
+        const bad = seen.failed.find((x) => x.at >= t0);
+        if (bad) throw new Error('Heidi couldn\'t write a note (' + bad.status.toLowerCase() + ').');
+        return seen.notes.find((x) => x.at >= t0 && (!session || x.url.includes(session))) || seen.notes.find((x) => x.at >= t0);
+      }, 20 * 60e3, 'Heidi\'s note');
       await sleep(1500);   // Heidi draws the note in its editor
       say('Sending Heidi\'s note to Halaxy');
       post({ upc: 'heidi-note', id: job.id, markdown: n.note, html: editorHtml(), session: session || '' });
@@ -1525,7 +1535,7 @@
     if (/^(sending|waiting)$/.test(h.state)) return P(h.text || 'Sending to Heidi', 'wait');
     if (h.state === 'ready') return '<button type="button" class="btn btn-primary" data-a="heidi-add">Add Heidi\'s Note</button>' + (h.error && where === 'strip' ? '<span class="text-muted">' + esc(h.error) + '</span>' : '');
     if (h.state === 'done') return P('Heidi\'s note added', 'ok');
-    if (h.state === 'failed') return '<span title="' + esc(h.error || '') + '">' + P('Not sent to Heidi', 'err') + '</span>' + (where === 'strip' && h.error ? '<span class="text-muted">' + esc(h.error) + '</span>' : '') + send;
+    if (h.state === 'failed') return '<span title="' + esc(h.error || '') + '">' + P('No Note from Heidi', 'err') + '</span>' + (where === 'strip' && h.error ? '<span class="text-muted">' + esc(h.error) + '</span>' : '') + send;
     return send;
   }
   function heidiClick(a, r) {
