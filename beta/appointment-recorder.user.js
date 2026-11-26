@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Appointment recorder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.5
+// @version      0.3.6
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/appointment-recorder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/appointment-recorder.user.js
@@ -44,7 +44,7 @@
   if (window.__hxAppointmentRecorder) return;
   window.__hxAppointmentRecorder = true;
 
-  const VERSION = '0.3.5';
+  const VERSION = '0.3.6';
   const ORG = '78972';                          // "UPC scripts (recordings)" (CH, 25 Nov 2026)
   const KEEP_LOCAL_MS = 14 * 86400e3;           // on this PC (CH, 25 Nov 2026)
   const KEEP_HALAXY_MS = 2 * 86400e3;           // the copy in Halaxy (CH, 25 Nov 2026)
@@ -90,12 +90,15 @@
   // (heidi-audio). Then, as a person would: New session, Upload session audio, the file chosen; Heidi transcribes and
   // writes the note by itself. Heidi's own answers are watched (its upload, then its consult note with status
   // COMPLETED), never asked for. The note (Heidi's markdown and its editor's HTML) goes back to Halaxy (heidi-note),
-  // and the window closes once Halaxy has it (heidi-done). Anything unexpected stops with a message (heidi-failed).
+  // and once Halaxy has it (heidi-done) the window waits, loaded, for the next recording (CH, 26 Nov 2026: Heidi is slow to
+  // load; one window kept open and reused, opened at Start). One recording at a time: an offer while busy is answered
+  // heidi-busy, and Halaxy offers again (queued). Anything unexpected stops with a message (heidi-failed).
   // Elements found by Heidi's own test labels (recon 25 Nov 2026; project doc heidi-recorder.md).
   function heidiSide() {
     const HALAXY = /^https:\/\/([a-z0-9-]+\.)*halaxy\.com$/;
     const seen = { uploads: [], notes: [] };   // Heidi's own answers: { at, url, status } and { at, url, note }
     let job = null;
+    const used = new Set();   // sessions this window has used: never reused for another recording
     const now = () => Date.now();
     const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const q = (s) => document.querySelector(s);
@@ -142,7 +145,7 @@
           const b = e.target.closest('button[data-a]');
           if (!b) return;
           if (b.dataset.a === 'stop') fail(new Error('Stopped in the Heidi window.'));
-          if (b.dataset.a === 'close') window.close();
+          if (b.dataset.a === 'close') hide();
         });
         document.body.appendChild(cover);
       }
@@ -153,6 +156,7 @@
         '<button type="button" data-a="' + (closeable ? 'close' : 'stop') + '" style="padding:6px 16px;border-radius:4px;border:1px solid #5c2899;background:#fff;color:#5c2899;font-weight:700;cursor:pointer">' + (closeable ? 'Close' : 'Stop') + '</button></div>';
       cover.querySelector('[data-upc-heidi-step]').textContent = text;
     }
+    function hide() { if (cover) { cover.remove(); cover = null; } }
     // To the Halaxy tab that sent the recording and to the tab that opened this window: after Finish the clinician may
     // move on in Halaxy (that tab's page changes, and its new page takes over).
     function post(msg) {
@@ -198,7 +202,7 @@
     // A session with nothing recorded yet: Transcribe and its menu, no Resume.
     // Transcribe's menu: by its test label, else by its accessible name (as Heidi labels it).
     const menu = () => q('[data-testid="start-recording-dropdown"]') || q('button[aria-label="Open transcription mode menu"]');
-    const fresh = () => !!(sessionOf() && q('[data-testid="start-recording-button"]') && menu() && !q('[data-testid="resume-recording-button"]'));
+    const fresh = () => !!(sessionOf() && !used.has(sessionOf()) && q('[data-testid="start-recording-button"]') && menu() && !q('[data-testid="resume-recording-button"]'));
     // When it was started, from its date button ("Today 07:54 PM"); null if not shown.
     function startedAgo() {
       const b = [...document.querySelectorAll('button')].find((x) => /^Today \d\d?:\d\d [AP]M$/.test(x.textContent.trim()));
@@ -266,6 +270,7 @@
         await waitFor(() => fresh() && (location.pathname !== before || now() - t1 > 8e3), 45e3, () => missing(before));
       }
       const session = sessionOf();
+      used.add(session);
       say('Uploading the recording');
       press(await openUpload());
       const input = await waitFor(() => q('input[type=file][data-testid="upload-audio-file-input-input"]'), 15e3, 'the upload box');
@@ -285,15 +290,22 @@
       await sleep(1500);   // Heidi draws the note in its editor
       say('Sending Heidi\'s note to Halaxy');
       post({ upc: 'heidi-note', id: job.id, markdown: n.note, html: editorHtml(), session: session || '' });
-      setTimeout(() => { if (!job.over) fail(new Error('Halaxy did not confirm it has Heidi\'s note. Check the note in Halaxy.')); }, 60e3);
+      const j = job;
+      setTimeout(() => { if (job === j && !j.over) fail(new Error('Halaxy did not confirm it has Heidi\'s note. Check the note in Halaxy.')); }, 60e3);
     }
 
     window.addEventListener('message', (e) => {
       if (!HALAXY.test(e.origin)) return;
       const d = e.data;
       if (!d || typeof d !== 'object' || typeof d.upc !== 'string' || d.upc.indexOf('heidi-') !== 0) return;
-      if (d.upc === 'heidi-offer' && !job) {
-        job = { id: d.id, src: e.source, origin: e.origin, over: false };
+      // A recording offered but never sent (its Halaxy tab gone) doesn't hold the window.
+      if (job && !job.blob && !job.over && now() - job.at > 30e3) { job.over = true; job.settled = true; }
+      if (d.upc === 'heidi-offer' && job && !(job.over && job.settled) && d.id !== job.id) {
+        try { e.source.postMessage({ upc: 'heidi-busy', id: d.id }, e.origin); } catch (x) { /* closed */ }
+        return;
+      }
+      if (d.upc === 'heidi-offer' && (!job || (job.over && job.settled))) {
+        job = { id: d.id, src: e.source, origin: e.origin, over: false, settled: false, at: now() };
         // Full size, as Heidi draws a narrow window without the upload menu (allowed: a window a script opened).
         try { if (window.outerWidth < 1100 || window.outerHeight < 820) window.resizeTo(Math.max(window.outerWidth, 1100), Math.max(window.outerHeight, 820)); } catch (x) { /* as it is */ }
         show('Getting the recording from Halaxy');
@@ -304,11 +316,15 @@
         job.blob = d.blob;
         job.name = d.name;
         const beat = setInterval(() => { if (job.over) clearInterval(beat); else if (lastSaid) post({ upc: 'heidi-status', id: job.id, text: lastSaid }); }, 15e3);   // still working
-        run().catch(fail);
+        const j = job;
+        run().catch(fail).finally(() => { j.settled = true; });
       }
-      if (d.upc === 'heidi-done') { job.over = true; show('Heidi\'s note is in Halaxy.'); setTimeout(() => window.close(), 800); }
-      if (d.upc === 'heidi-cancel') { job.over = true; window.close(); }
+      if (d.upc === 'heidi-done') { const j = job; j.over = true; show('Heidi\'s note is in Halaxy.'); setTimeout(() => { if (job === j) hide(); }, 1500); }
+      if (d.upc === 'heidi-cancel') { job.over = true; if (!job.blob) job.settled = true; hide(); }
     });
+    // Closing or reloading the window mid-step asks first (CH, 26 Nov 2026), as the recorder window does while recording.
+    // Firefox asks only once the window has had a real click (sign-in, a press on the cover).
+    window.addEventListener('beforeunload', (e) => { if (job && !job.over) { e.preventDefault(); e.returnValue = ''; } });
     window.upcHeidiStep = { version: VERSION, seen, job: () => job };
   }
 
@@ -622,7 +638,12 @@
       const a = e.target.closest('[data-a]');
       if (!a) return;
       if (a.dataset.a === 'finish') {
-        if (cfg.heidi) { try { window.open(cfg.heidiUrl, cfg.heidiName + '-' + cfg.id, cfg.heidiWin); } catch (x) { /* the note page opens it */ } }
+        if (cfg.heidi) {
+          try {
+            const h = window.open('', cfg.heidiName, cfg.heidiWin);   // the Heidi window kept open, or a new one
+            if (h && h.location.href === 'about:blank') h.location.href = cfg.heidiUrl;
+          } catch (x) { /* already on Heidi (another site): left as it is */ }
+        }
         finish().catch(fail);
       }
       if (a.dataset.a === 'level' && ctx) ctx.resume().then(() => draw()).catch(() => {});
@@ -715,6 +736,45 @@
   }
 
   // A recording whose window has gone quiet (closed, reloaded, crashed): marked stopped where its last chunk was saved.
+  // The recorder window closed while recording (CH, 26 Nov 2026: closed by mistake; Firefox asks first only in a window
+  // that has had a click): said at once in Halaxy, with Continue Recording (the same recording, a new part).
+  async function stopNow(id) {
+    const cur = await db.rec(id);
+    if (!cur || cur.status !== 'recording') return cur;
+    cur.status = 'stopped';
+    cur.endedAt = cur.beat || cur.startedAt;
+    (cur.parts || []).forEach((p) => { if (!p.endedAt) p.endedAt = cur.endedAt; });
+    await db.putRec(cur);
+    return cur;
+  }
+  async function askContinue(id) {
+    if (outdated || document.visibilityState !== 'visible') return;
+    await U().sleep(1500);   // the window's last chunk, saved as it closed
+    if (live.has(id) && fresh(live.get(id))) return;   // it carries on after all
+    await exclusive('gone-ask:' + id, () => new Promise((done) => {
+      (async () => {
+        if (store.get('goneAsked:' + id, 0)) return done();
+        store.set('goneAsked:' + id, Date.now());
+        const r = await stopNow(id);
+        await loadRecs();
+        if (!r) return done();
+        const here = !!(noteIds() && noteIds().noteId === r.noteId);
+        const dlg = U().ui.dialog({ title: 'Recorder Window Closed', small: true, key: 'upc-rec-gone', onClose: done });
+        if (!dlg) return done();
+        dlg.body.innerHTML = '<p>' + esc('Recording stopped' + (r.patient ? ': ' + r.patient : '') + '.') + '</p><div class="text-right">' +
+          '<button type="button" class="btn btn-outline-primary" data-g="">Leave Stopped</button> ' +
+          '<button type="button" class="btn btn-primary" data-g="go">' + (here ? 'Continue Recording' : 'Open Note') + '</button></div>';
+        dlg.body.addEventListener('click', (e) => {
+          const b = e.target.closest('[data-g]');
+          if (!b) return;
+          const go = b.getAttribute('data-g') === 'go';
+          dlg.close();
+          if (!go) return;
+          if (here) { const st = stripState(); if (st) startRecording(st); } else location.href = noteUrl(r);
+        });
+      })().catch((e) => { done(); tellHealthCheck(e); });
+    }));
+  }
   async function markStopped() {
     for (const r of recs) {
       if (r.status !== 'recording' || live.has(r.id) && fresh(live.get(r.id))) continue;
@@ -1045,7 +1105,7 @@
     if (!st) return;
     if (a.dataset.a === 'start') startRecording(st);
     if (a.dataset.a === 'finish' && st.mine) {
-      if (REC.heidi) { try { const w = heidiWindow(st.mine.id); if (w) preOpened = { w, id: st.mine.id, at: Date.now() }; } catch (x) { /* opened later */ } }
+      if (REC.heidi) { try { const w = heidiWindow(); if (w) preOpened = { w, id: st.mine.id, at: Date.now() }; } catch (x) { /* opened later */ } }
       bc.postMessage({ t: 'cmd', id: st.mine.id, do: 'finish' });
     }
     if (a.dataset.a === 'show') { const w = window.open('', WIN); if (w && !(ours(w) && w.__upcRecorder)) w.close(); else if (w) w.focus(); }
@@ -1089,6 +1149,9 @@
     if (anyLive()) { U().ui.toast('Another appointment is being recorded on this PC.', { kind: 'warning' }); return; }
     const w = window.open('', WIN, 'popup=yes,width=540,height=460');
     if (!w) { U().ui.toast('Firefox blocked the recorder window. Allow pop-ups for Halaxy, then press Start Appointment again.', { kind: 'danger', ms: 0 }); return; }
+    // Heidi's window opened now, so Heidi loads during the appointment (CH, 26 Nov 2026); an open one is left as it is.
+    // Firefox may allow only one window per press unless pop-ups are allowed for Halaxy: then Finish opens it.
+    if (REC.heidi) { try { heidiWindow(); w.focus(); } catch (e) { /* at Finish */ } }
     if (!(await reclaim(w))) { try { w.close(); } catch (e) { /* fine */ } U().ui.toast('Close the other recorder or Heidi window, then press Start Appointment again.', { kind: 'danger', ms: 0 }); return; }
     if (w.__upcRecorder || w.__upcStarting) { w.focus(); return; }   // already recording (its report not seen yet)
     w.__upcStarting = true;
@@ -1181,11 +1244,14 @@
   // w: a window already opened on Heidi by a click (Send to Heidi); otherwise the recorder window is sent there.
   // The Heidi window: a window of its own, opened at Heidi's full size (Firefox keeps a new window's size but may ignore
   // resizing; Heidi draws a narrow window without Upload session audio). An open one (from the Finish press) is reused.
-  // One per recording (back-to-back appointments: the next Finish mustn't take the window Heidi is still writing in).
-  function heidiWindow(id) {
-    const w = window.open('', HEIDI_NAME + '-' + id, HEIDI_WIN);
+  // One Heidi window, kept open and reused (CH, 26 Nov 2026): a new one only if there isn't one, and one already on Heidi is
+  // left as it is (it may be writing another recording's note; recordings queue for it).
+  function heidiWindow() {
+    const w = window.open('', HEIDI_NAME, HEIDI_WIN);
     if (!w) return null;
-    w.location.href = HEIDI_URL;
+    let blank = false;
+    try { blank = w.location.href === 'about:blank'; } catch (e) { /* on Heidi */ }
+    if (blank) w.location.href = HEIDI_URL;
     return w;
   }
   async function sendToHeidi(r, w) {
@@ -1200,7 +1266,7 @@
       job.name = fileName(r, null);
     } catch (e) { endJob(job); return heidiFailed(r.id, 'The recording could not be prepared for Heidi: ' + (e.message || e)); }
     if (!job.w || job.w.closed) {
-      try { job.w = heidiWindow(r.id); } catch (e) { endJob(job); return heidiFailed(r.id, 'The Heidi window could not be opened: ' + (e.message || e)); }
+      try { job.w = heidiWindow(); } catch (e) { endJob(job); return heidiFailed(r.id, 'The Heidi window could not be opened: ' + (e.message || e)); }
       if (!job.w) { endJob(job); return heidiFailed(r.id, 'Firefox blocked the Heidi window. Allow pop-ups for Halaxy, then press Send to Heidi.'); }
     }
     job.timer = setInterval(() => tickJob(job), 2000);
@@ -1212,7 +1278,7 @@
     if (!job.w || job.w.closed) { endJob(job); heidiFailed(job.id, 'The Heidi window was closed before Heidi\'s note came back.'); return; }
     if (!job.wanted) {
       try { job.w.postMessage({ upc: 'heidi-offer', id: job.id }, HEIDI_ORIGIN); } catch (e) { /* not on Heidi yet */ }
-      if (!job.signIn && Date.now() - job.started > 20e3) {
+      if (!job.signIn && Date.now() - job.started > 20e3 && Date.now() - (job.busyAt || 0) > 8e3) {
         job.signIn = true;
         loaderVersion().then((v) => {
           if (job.wanted || !jobs.has(job.id)) return;
@@ -1224,7 +1290,8 @@
     }
     if (Date.now() - job.started > HEIDI_MAX_MS) {
       endJob(job);
-      try { job.w.close(); } catch (e) { /* fine */ }
+      try { job.w.postMessage({ upc: 'heidi-cancel', id: job.id }, HEIDI_ORIGIN); } catch (e) { /* closed */ }
+      setTimeout(() => { try { job.w.close(); } catch (e) { /* fine */ } }, 500);   // stuck for half an hour: a fresh window next time
       heidiFailed(job.id, 'Heidi didn\'t finish within ' + Math.round(HEIDI_MAX_MS / 60e3) + ' minutes.');
     }
   }
@@ -1241,8 +1308,7 @@
     const job = jobs.get(id);
     if (job) {
       try { job.w.postMessage({ upc: 'heidi-cancel', id }, HEIDI_ORIGIN); } catch (e) { /* closed */ }
-      endJob(job);
-      try { job.w.close(); } catch (e) { /* fine */ }
+      endJob(job);   // the Heidi window stays open for the next recording
     } else if (bc) bc.postMessage({ t: 'heidi-cancel', id });
     setHeidi(id, { state: 'cancelled' });
   }
@@ -1254,6 +1320,10 @@
     const d = e.data;
     if (!d || typeof d !== 'object' || typeof d.upc !== 'string' || !d.id) return;
     const job = jobs.get(d.id);
+    if (d.upc === 'heidi-busy') {   // Heidi's window is on another recording: offered again until it is free
+      if (job && e.source === job.w && !job.wanted) { job.busyAt = Date.now(); if (!job.queued) { job.queued = true; setHeidi(job.id, { state: 'sending', text: 'Queued for Heidi' }); } }
+      return;
+    }
     if (d.upc === 'heidi-want') {
       if (!job || e.source !== job.w || job.wanted) return;
       job.wanted = true;
@@ -1420,7 +1490,7 @@
   function heidiClick(a, r) {
     if (a.dataset.a === 'heidi') {
       let w = null;
-      try { w = heidiWindow(r.id); } catch (e) { /* said below */ }   // from the click itself, so Firefox allows it
+      try { w = heidiWindow(); } catch (e) { /* said below */ }   // from the click itself, so Firefox allows it
       if (!w) { U().ui.toast('Firefox blocked the Heidi window. Allow pop-ups for Halaxy, then press Send to Heidi again.', { kind: 'danger', ms: 0 }); return true; }
       store.del('heidi:' + r.id);
       sendToHeidi(r, w);
@@ -1526,7 +1596,14 @@
         if (m.t === 'heidi-cancel' && jobs.has(m.id)) cancelHeidi(m.id);
         if (m.t === 'heidi-claim') claims.add(m.id);
         if (m.t === 'heidi-ready') loadRecs().then(() => { const r = recs.find((x) => x.id === m.id); if (r && hereFor(r)) { bc.postMessage({ t: 'heidi-claim', id: m.id }); insertHeidi(r); } });
-        if (m.t === 'gone') { const s = live.get(m.id); if (s) s.at = 0; setTimeout(() => housekeeping(), STALE_MS + 1000); loadRecs(); }
+        if (m.t === 'gone') {
+          const s = live.get(m.id);
+          const was = !!(s && s.status === 'recording' && fresh(s));
+          if (s) s.at = 0;
+          setTimeout(() => housekeeping(), STALE_MS + 1000);
+          loadRecs();
+          if (was) askContinue(m.id);
+        }
       };
       bc.postMessage({ t: 'ping' });
       bc.postMessage({ t: 'ver', v: VERSION });

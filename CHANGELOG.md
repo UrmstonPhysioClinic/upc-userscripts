@@ -1,5 +1,11 @@
 # Changelog
 
+## Appointment recorder 0.3.6, 26 Nov 2026 (beta)
+- One Heidi window, kept open and reused (CH, 26 Nov 2026: Heidi is slow to load). Start opens it as well as the recorder, so Heidi loads during the appointment (Firefox may allow only one window per press unless pop-ups are allowed for Halaxy; then Finish opens it). After a note is in, the window stays on Heidi, uncovered, and the next recording only presses New session there. A window already on Heidi is never reloaded.
+- One recording at a time in it: another sent meanwhile waits ("Queued for Heidi") and goes when the window is free. A session the window has used is never used again. Stuck for half an hour, the window is closed and the next recording opens a fresh one.
+- Closing or reloading the Heidi window mid-step asks first (Firefox asks only in a window that has had a click).
+- The recorder window closed while recording (Firefox doesn't ask in a window that hasn't been clicked): a pop-up in Halaxy says so at once, with Continue Recording (the same recording, on the note) or Open Note, and Leave Stopped. The recording is marked stopped straight away rather than after a minute.
+
 ## Appointment recorder 0.3.5, 26 Nov 2026 (beta)
 - Heidi step: Transcribe's menu is pressed only once it is active, and again if it didn't open (CH, 26 Nov 2026: "Upload session audio did not appear"; using the empty session Heidi opens, the step reached the menu while Heidi was still loading and the press was lost). If it still doesn't appear, the message says how the menu was (missing, not active, not opening) and how often it was pressed. The item is also found by its words.
 - A PC whose loader is older than 1.5.0 (which doesn't run on Heidi) now says so on the note, with how to update it, instead of asking to sign in to Heidi (CH, 26 Nov 2026: Tampermonkey had not yet fetched the new loader on a PC). Otherwise the note says "Waiting for the Heidi window (sign in there if Heidi asks)".
