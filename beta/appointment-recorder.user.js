@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Appointment recorder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.7
+// @version      0.3.8
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/appointment-recorder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/appointment-recorder.user.js
@@ -44,7 +44,7 @@
   if (window.__hxAppointmentRecorder) return;
   window.__hxAppointmentRecorder = true;
 
-  const VERSION = '0.3.7';
+  const VERSION = '0.3.8';
   const ORG = '78972';                          // "UPC scripts (recordings)" (CH, 25 Nov 2026)
   const KEEP_LOCAL_MS = 14 * 86400e3;           // on this PC (CH, 25 Nov 2026)
   const KEEP_HALAXY_MS = 2 * 86400e3;           // the copy in Halaxy (CH, 25 Nov 2026)
@@ -144,20 +144,20 @@
       if (!cover) {
         cover = document.createElement('div');
         cover.setAttribute('data-upc-heidi-cover', '');
-        cover.style.cssText = 'position:fixed;inset:0;z-index:2147483646;background:rgba(255,255,255,.88);display:flex;align-items:center;justify-content:center;font:15px/1.5 system-ui,sans-serif;color:#2d2d35';
+        cover.style.cssText = 'position:fixed;inset:0;z-index:2147483646;pointer-events:auto;background:rgba(255,255,255,.88);display:flex;align-items:center;justify-content:center;font:15px/1.5 system-ui,sans-serif;color:#2d2d35';
         cover.addEventListener('click', (e) => {
           const b = e.target.closest('button[data-a]');
           if (!b) return;
           if (b.dataset.a === 'stop') fail(new Error('Stopped in the Heidi window.'));
-          if (b.dataset.a === 'close') { hide(); if (!job || job.over) prepareSoon(1000); }
         });
         document.body.appendChild(cover);
       }
       const colour = kind === 'err' ? '#a32d2d' : '#5c2899';
       cover.innerHTML = '<div style="background:#fff;border:1px solid #dcdce4;border-radius:8px;padding:24px 28px;max-width:440px;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.12)">' +
         '<div style="font-weight:700;font-size:17px;margin-bottom:8px;color:' + colour + '">' + ({ err: 'Not Done', ready: 'Ready', prep: 'Getting Heidi Ready' }[kind] || 'Sending to Heidi') + '</div>' +
-        '<div data-upc-heidi-step style="margin-bottom:16px"></div>' +
-        '<button type="button" data-a="' + (closeable ? 'close' : 'stop') + '" style="padding:6px 16px;border-radius:4px;border:1px solid #5c2899;background:#fff;color:#5c2899;font-weight:700;cursor:pointer">' + (closeable ? 'Close' : 'Stop') + '</button></div>';
+        '<div data-upc-heidi-step' + (kind ? '' : ' style="margin-bottom:16px"') + '></div>' +
+        // Stop only while a recording is being sent; the window stays open and gets ready again by itself (CH, 26 Nov 2026)
+        (kind ? '' : '<button type="button" data-a="stop" style="padding:6px 16px;border-radius:4px;border:1px solid #5c2899;background:#fff;color:#5c2899;font-weight:700;cursor:pointer">Stop</button>') + '</div>';
       cover.querySelector('[data-upc-heidi-step]').textContent = text;
     }
     function hide() { if (cover) { cover.remove(); cover = null; } }
@@ -292,11 +292,11 @@
       if (prepared && prepared.input.isConnected && sessionOf() === prepared.session) return;
       const ctl = { over: false };
       active = ctl;
-      show('Getting Heidi ready for the recording', 'prep', true);
+      show('Getting Heidi ready for the next recording', 'prep');
       prepping = readyUpload(() => {}).then((r) => {
         prepared = r;
         prepTries = 0;
-        if (!job || job.over) show('Ready for the recording from Halaxy.', 'ready', true);
+        if (!job || job.over) show('Ready for the next recording. Keep this window open.', 'ready');
       }, () => {
         prepared = null;
         if (!job || job.over) hide();
@@ -1442,7 +1442,31 @@
     return String(md || '').split(/\r?\n/).map((l) => l.replace(/\s+$/, '')).filter((l) => l.trim())
       .map((l) => { const h = l.match(/^#{1,6}\s+(.*)$/); return '<p>' + (h ? '<strong>' + inline(h[1]) + '</strong>' : inline(l.replace(/^\s*[*•]\s+/, '- '))) + '</p>'; }).join('');
   }
-  const noteHtml = (n) => (n.html && cleanHtml(n.html)) || mdHtml(n.markdown);
+  // Single-spaced, as typed with Shift+Enter (CH, 26 Nov 2026: each line its own paragraph showed double-spaced in Halaxy):
+  // a section's lines go in one paragraph with line breaks; an empty line or a heading ("Plan:", or bold on its own)
+  // starts the next section's paragraph. Lists and headings of other kinds stay as they are.
+  function singleSpaced(html) {
+    const root = U().htmlDoc('<div>' + html + '</div>').body.firstElementChild;
+    const out = [];
+    let lines = [];
+    const flush = () => { if (lines.length) out.push('<p>' + lines.join('<br>') + '</p>'); lines = []; };
+    const heading = (el) => { const tx = U().clean(el.textContent); return (tx.length < 60 && /:$/.test(tx)) || (!!tx && [...el.childNodes].every((c) => c.nodeType === 1 && /^(STRONG|B|U)$/.test(c.tagName))); };
+    [...root.childNodes].forEach((n) => {
+      if (n.nodeType === 3) { if (n.textContent.trim()) lines.push(esc(n.textContent.trim())); return; }
+      if (n.nodeType !== 1) return;
+      if (n.tagName === 'P') {
+        if (!U().clean(n.textContent)) { flush(); return; }
+        if (heading(n)) flush();
+        lines.push(n.innerHTML.trim());
+        return;
+      }
+      flush();
+      out.push(n.outerHTML);
+    });
+    flush();
+    return out.join('');
+  }
+  const noteHtml = (n) => singleSpaced((n.html && cleanHtml(n.html)) || mdHtml(n.markdown));
   const hasText = (ed) => !!U().clean(U().htmlDoc('<div>' + ed.getData() + '</div>').body.textContent.replace(/ /g, ' '));
   function askHow() {
     return new Promise((ok) => {
@@ -1489,7 +1513,7 @@
       }
       const html = noteHtml(cur.heidiNote);
       if (!html) { await dropNote(cur, 'failed', { error: 'Heidi\'s note came back empty.' }); return; }
-      let how = 'end';
+      let how = 'replace';   // an empty note: nothing above Heidi's note
       if (hasText(ed)) {
         how = await askHow();
         if (!how) { await dropNote(cur, 'cancelled'); return; }

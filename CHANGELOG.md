@@ -1,5 +1,9 @@
 # Changelog
 
+## Appointment recorder 0.3.8, 26 Nov 2026 (beta)
+- Heidi's note goes into Halaxy single-spaced (CH, 26 Nov 2026: each line was its own paragraph, which Halaxy shows double-spaced): a section's lines go in one paragraph with line breaks, as Shift+Enter types them, and each section ("Subjective:", "Plan:", or a bold heading) starts a new paragraph. An empty note is replaced, so no empty line is left above.
+- The cover over Heidi's window takes clicks again (CH: the upload box behind it could be clicked, and Close did nothing; Heidi's dialogs turn clicks off for the rest of the page, the cover included). It has no Close while waiting or after an error: the window stays open and gets ready again by itself. Stop stays while a recording is being sent. "Ready for the next recording. Keep this window open."
+
 ## Appointment recorder 0.3.7, 26 Nov 2026 (beta)
 - Heidi gets ready before the recording comes (CH, 26 Nov 2026): when its window opens at Start, and again after each recording, it starts a new session and opens Upload session audio, then waits ("Ready for the recording from Halaxy"). At Finish the recording only goes into the upload box. If the box has gone meanwhile (the window was used, or Heidi signed out), the steps are done then as before. Getting ready is tried again a minute later if Heidi isn't ready (up to 5 times).
 - Heidi making no note from a recording with too little speech ("The transcript was too short to create a note"; CH, 26 Nov 2026) is said on the note at once ("Heidi made no note: the recording was too short. Check the microphone and its sound level."), instead of waiting up to 20 minutes. A consult note Heidi marks as failed is said too. The pill for any step without a note reads "No Note from Heidi" (was "Not sent to Heidi"). After an error the Heidi window gets ready again by itself after 20 seconds.
