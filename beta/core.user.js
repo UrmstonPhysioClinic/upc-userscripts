@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.87
+// @version      0.1.88
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.87';
+  const VERSION = '0.1.88';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -1279,6 +1279,16 @@
       if (added.length !== 1) throw new UPCError('Halaxy accepted the file but the profile ' + (added.length ? 'shows ' + added.length + ' new files' : 'does not show it') + '. Check the profile.');
       return added[0].id;
     },
+    // Deletes one file from a profile, as its Delete item does (pop-up, then its Delete link), and checks it has gone.
+    async remove(orgId, fileId) {
+      const path = '/file/delete/' + encodeURIComponent(fileId);
+      const { doc } = await http.popup(path);
+      const link = [...doc.querySelectorAll('a[href]')].find((a) => a.getAttribute('href').split('?')[0].replace(/^.*\/a\/pr\/\d+/, '').startsWith(path + '/'));
+      if (!link) throw new UPCError('Halaxy\'s Delete file pop-up has changed, so the file was not deleted.');
+      await http.json(link.getAttribute('href').replace(/^.*\/a\/pr\/\d+/, ''));
+      if ((await orgFiles.list(orgId)).some((f) => f.id === String(fileId))) throw new UPCError('Halaxy still lists the file after deleting it.');
+      return true;
+    },
   };
 
   const reports = {
@@ -1560,15 +1570,23 @@
   // pr_email_patient_form -> payload { subject, body } (captures 26 Nov 2026, both logins). That comes back filled in
   // by Halaxy (`rendered`: true): the patient's and the Sender's names, and the appointment tags with the patient's
   // next appointment (blank when there is none), leaving [Action] and [Online Form Link]. The caller checks it.
+  // Clinic-wide copy (CH, 26 Nov 2026: only CH's login can open the templates, and he is away for two weeks in January):
+  // whenever a login that can read a template finds it changed since the last copy, it saves it as a file on "UPC
+  // scripts (settings)" (SHARED_ORG): title "Template copy <id>", the file JSON { id, title, subject, body, at }, the
+  // comment ending "#<hash>". A login that can't open the template page uses that copy (read at most hourly); an old
+  // copy of the same template is deleted once the new one is saved. The copy is only as current as the last read by a
+  // login with access, so after editing a template, CH's login needs to use it (Patient forms refreshes daily).
   const TEMPLATE_KEY = 'upc-core:templates';
   const TEMPLATE_COPY_MS = 24 * 3600e3;
+  const TEMPLATE_FILE = (id) => 'Template copy ' + id;
+  const hashOf = (t) => { let h = 5381; const x = String(t.subject) + '\n' + String(t.body); for (let i = 0; i < x.length; i++) h = ((h * 33) ^ x.charCodeAt(i)) >>> 0; return h.toString(16); };
   const templates = {
     saved() { try { return JSON.parse(localStorage.getItem(TEMPLATE_KEY) || '{}') || {}; } catch (e) { return {}; } },
     // Template ids read successfully on this PC, newest first (the health check reads one of them).
-    known() { const all = templates.saved(); return Object.keys(all).sort((a, b) => (all[b].at || 0) - (all[a].at || 0)); },
+    known() { const all = templates.saved(); return Object.keys(all).filter((k) => /^\d+$/.test(k)).sort((a, b) => (all[b].at || 0) - (all[a].at || 0)); },
     keep(id, t) {
       const all = templates.saved();
-      all[id] = { subject: t.subject, body: t.body, title: t.title, at: t.at };
+      all[id] = Object.assign({}, all[id] && all[id].pub ? { pub: all[id].pub } : {}, { subject: t.subject, body: t.body, title: t.title, at: t.at });
       Object.keys(all).forEach((k) => { if (Date.now() - (all[k].at || 0) > 7 * TEMPLATE_COPY_MS) delete all[k]; });
       try { localStorage.setItem(TEMPLATE_KEY, JSON.stringify(all)); } catch (e) { /* storage blocked: the copy is only a fallback */ }
     },
@@ -1584,6 +1602,58 @@
       const err = new UPCError(isEdit ? 'The communication template page has changed (no content box).' : 'Halaxy didn\'t return the template page.');
       err.temporary = !isEdit;
       throw err;
+    },
+    // The clinic-wide copies of template `id` on SHARED_ORG, newest first: [{ id, title, comments, fileUrl, hash }].
+    async clinicFiles(id) {
+      const name = TEMPLATE_FILE(id);
+      const found = await orgFiles.find(SHARED_ORG, (d) => d.title === name, name, 40);
+      return found.map((d) => Object.assign(d, { hash: (/#([0-9a-f]+)\s*$/.exec(d.comments) || [])[1] || '' })).sort((a, b) => Number(b.id) - Number(a.id));
+    },
+    // Saves `t` as the clinic-wide copy when it has changed (checked against this PC's note of what it last saved,
+    // then against the copy itself). Never throws: a copy that can't be saved is tried again next read.
+    async publish(id, t) {
+      const h = hashOf(t);
+      const mine = templates.saved()[id];
+      if (mine && mine.pub === h) return false;
+      try {
+        const have = await templates.clinicFiles(id);
+        if (!(have[0] && have[0].hash === h)) {
+          const data = JSON.stringify({ id: String(id), title: t.title || '', subject: t.subject, body: t.body, at: t.at });
+          const when = dayLabel(t.at) + ' ' + new Date(t.at).toTimeString().slice(0, 5);
+          await orgFiles.attach(SHARED_ORG, new File([data], 'template-' + id + '.txt', { type: 'text/plain' }),
+            { title: TEMPLATE_FILE(id), comments: 'Kept by UPC scripts: ' + (t.title || 'template ' + id) + ', read ' + when + '. #' + h });
+          for (const old of have) { try { await orgFiles.remove(SHARED_ORG, old.id); } catch (e) { /* removed next time */ } }
+        }
+        const all = templates.saved();
+        if (all[id]) { all[id].pub = h; try { localStorage.setItem(TEMPLATE_KEY, JSON.stringify(all)); } catch (e) { /* storage blocked */ } }
+        return true;
+      } catch (e) {
+        // Told to the health check once a day: without the copy, logins without Settings access can't send.
+        try {
+          const k = 'upc-core:templateCopyError';
+          if (Date.now() - (Number(localStorage.getItem(k)) || 0) > 20 * 3600e3) {
+            localStorage.setItem(k, String(Date.now()));
+            document.dispatchEvent(new CustomEvent('upc-loader-error', { detail: JSON.stringify({ file: 'core.user.js', message: 'The clinic-wide copy of template ' + id + ' couldn\'t be saved: ' + (e.message || e) }) }));
+          }
+        } catch (x) { /* ignore */ }
+        return false;
+      }
+    },
+    // The clinic-wide copy of template `id`, or null. Kept on this PC for an hour.
+    async clinic(id) {
+      const mem = templates.saved()['c' + id];
+      if (mem && mem.body && Date.now() - (mem.fetched || 0) < 3600e3) return Object.assign({}, mem, { clinic: true });
+      const f = (await templates.clinicFiles(id))[0];
+      if (!f || !f.fileUrl) return null;
+      const res = await http.fetch(url(f.fileUrl.replace(/^https?:\/\/[^/]+/, '')), { credentials: 'same-origin', cache: 'no-store' });
+      if (!res.ok) throw new UPCError('Halaxy returned ' + res.status + ' for the template copy');
+      const j = JSON.parse(await res.text());
+      if (!j || !clean(j.body)) return null;
+      const t = { title: j.title || '', subject: String(j.subject || ''), body: String(j.body), at: Number(j.at) || 0, fetched: Date.now() };
+      const all = templates.saved();
+      all['c' + id] = t;
+      try { localStorage.setItem(TEMPLATE_KEY, JSON.stringify(all)); } catch (e) { /* storage blocked */ }
+      return Object.assign({}, t, { clinic: true });
     },
     async rendered(id, ctx) {
       const q = 'linkPaG=' + encodeURIComponent(ctx.patient) + '&linkPrG=' + encodeURIComponent(ctx.prac || '') + '&toLinkPaGPaG=&email-form-route=pr_email_patient_form';
@@ -1610,6 +1680,7 @@
           const t = templates.parse(doc);
           t.at = Date.now();
           templates.keep(id, t);
+          await templates.publish(id, t);
           return t;
         } catch (e) {
           err = e instanceof UPCError ? e : new UPCError('Halaxy didn\'t return the template page (' + (e.message || e) + ').');
@@ -1618,9 +1689,14 @@
           if (i === 0) await sleep(3000);
         }
       }
+      const stale = { message: err.message, temporary: err.temporary, noAccess: !!err.noAccess };
       const copy = templates.saved()[id];
-      if (copy && copy.body && Date.now() - (copy.at || 0) < TEMPLATE_COPY_MS) return Object.assign({}, copy, { stale: { message: err.message, temporary: err.temporary, noAccess: !!err.noAccess } });
-      // No copy on this PC, and this login can't open the page: as Halaxy's own pop-up gets it.
+      if (copy && copy.body && Date.now() - (copy.at || 0) < TEMPLATE_COPY_MS) return Object.assign({}, copy, { stale });
+      // Then the clinic-wide copy, saved by a login that can open the page.
+      if (err.noAccess || err.temporary) {
+        try { const c = await templates.clinic(id); if (c) return Object.assign(c, { stale }); } catch (e) { /* none to be had */ }
+      }
+      // No copy at all, and this login can't open the page: as Halaxy's own pop-up gets it.
       if (err.noAccess && ctx && ctx.patient) {
         try { return await templates.rendered(id, ctx); } catch (e) { /* the no-access error stands */ }
       }

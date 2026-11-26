@@ -139,6 +139,39 @@ async def halaxy(route):
     m = re.match(r'^/a/pr/555/invoice/(\d+)$', p)
     if m:
         return await route.fulfill(body=invoice_html(int(m.group(1))), content_type='text/html')
+    # "UPC scripts (settings)": the clinic-wide template copies as attached files (core 0.1.88, 26 Nov 2026)
+    files = S.setdefault('files', [])
+    if re.match(r'^/a/pr/555/organisation/78842/?$', p):
+        cards = ''.join("<div class='card attachment-file-card' data-href='/a/file/get/t%d.txt'>%s</div><div class='dropdown-menu'><a data-modal-href='/a/pr/555/file/edit/%d'>Edit</a></div>"
+                        % (f['id'], f['title'], f['id']) for f in reversed(files))
+        return await route.fulfill(body="<html><body><div class='card'><div class='card-header'><h2>Attachments</h2></div>%s</div></body></html>" % cards, content_type='text/html')
+    if p == '/a/pr/555/file/upload/organisation/78842':
+        if req.method == 'GET':
+            return await js({'status': 'FORM', 'message': "<form id='fileupload' data-upload-url='/api/v2/practitioner/file/upload/files?_locale=555'><input type='hidden' name='form[_token]' value='tu'></form>"})
+        S['file_id'] = S.get('file_id', 700) + 1
+        files.append({'id': S['file_id'], 'title': form['form[files][1][title]'], 'comments': form['form[files][1][comments]'], 'data': S['blobs'][form['form[files][1][fileEntity]']]})
+        return await js({'status': 'REFRESH'})
+    if p == '/api/v2/practitioner/file/upload/files':
+        body = (req.post_data_buffer or b'').decode('utf-8')
+        m = re.search(r'filename="[^"]+"\r\nContent-Type: [^\r]+\r\n\r\n(.*?)\r\n--', body, re.S)
+        S.setdefault('blobs', {})
+        k = str(9000 + len(S['blobs']))
+        S['blobs'][k] = m.group(1) if m else ''
+        return await js({'files': [{'id': k}]})
+    m = re.match(r'^/a/pr/555/file/edit/(\d+)$', p)
+    if m:
+        f = next(f for f in files if f['id'] == int(m.group(1)))
+        return await js({'status': 'FORM', 'message': "<form id='fileupload'><div data-href='/a/file/get/t%d.txt'></div><input name='form[title]' value='%s'><textarea name='form[comments]'>%s</textarea>"
+                         "<input type='hidden' name='form[_token]' value='tf'></form>" % (f['id'], f['title'], f['comments'])})
+    m = re.match(r'^/a/pr/555/file/delete/(\d+)(/[a-z0-9]+)?$', p)
+    if m:
+        if not m.group(2):
+            return await js({'status': 'FORM', 'message': "<p>Delete this file?</p><a class='btn btn-outline-danger ajax' href='/a/pr/555/file/delete/%s/abc123'>Delete</a>" % m.group(1)})
+        S['files'] = [f for f in files if f['id'] != int(m.group(1))]
+        return await js({'status': 'REFRESH'})
+    m = re.match(r'^/a/file/get/t(\d+)\.txt$', p)
+    if m:
+        return await route.fulfill(body=next(f['data'] for f in files if f['id'] == int(m.group(1))), content_type='text/plain')
     if p == '/a/pr/555/profile/group/':
         return await route.fulfill(body=page_html('<h1>General Settings</h1>'), content_type='text/html')
     m = re.match(r'^/a/pr/555/communication/template/render/(\d+)$', p)
@@ -432,6 +465,32 @@ async def main():
         await run(pg, "window.upcPatientForms.run(true)")
         r = dict((pid, f) for kind, pid, f in S['posts'] if kind == 'email')
         check('a login that can: the reminder goes', 503 in r and note_values().get('r.9003', '').startswith('sched '), (sorted(r), note_values().get('r.9003')))
+        await ctx.close()
+
+        # The clinic-wide copy (26 Nov 2026): saved by a login that can read the template, used by one that can't
+        setup()
+        S['events'] = [e for e in S['events'] if e['id'] == 9003]
+        ctx, pg = await only(None, extra=LISTEN)
+        await run(pg, "window.upcPatientForms.run(true)")
+        copies = [f for f in S.get('files', []) if f['title'] == 'Template copy 26152']
+        check('a login with access saves the clinic-wide copy', len(copies) == 1 and re.search(r'#[0-9a-f]+$', copies[0]['comments']) and json.loads(copies[0]['data'])['subject'] == 'Your progress update',
+              [(f['title'], f['comments']) for f in S.get('files', [])])
+        await ctx.close()
+        S['notes'], S['posts'], S['renders'] = {}, [], []
+        S['template_down'], S['render_appt'] = 'settings', ''   # Halaxy's own wording wouldn't do either
+        ctx, pg = await only(None, extra=LISTEN)
+        await run(pg, "window.upcPatientForms.run(true)")
+        r = dict((pid, f) for kind, pid, f in S['posts'] if kind == 'email')
+        errs = await pg.evaluate("window.__errs")
+        check("a login without access, another PC: the reminder goes from the clinic-wide copy", 503 in r and 'Carl' in r[503]['form[body]'] and not S['renders'] and not errs,
+              (sorted(r), S['renders'], errs))
+        await ctx.close()
+        S['template_down'] = False
+        S['templates'][26152] = ('Your progress update, please', S['templates'][26152][1])
+        ctx, pg = await only(None, extra=LISTEN)
+        await run(pg, "UPC.templates.get(26152)")
+        copies = [f for f in S.get('files', []) if f['title'] == 'Template copy 26152']
+        check('template edited: the copy replaced, the old one deleted', len(copies) == 1 and json.loads(copies[0]['data'])['subject'] == 'Your progress update, please', [(f['id'], f['title']) for f in S.get('files', [])])
         S['template_down'] = 'changed'
         e = await run(pg, "(() => { localStorage.removeItem('upc-core:templates'); return UPC.templates.get(3752).then(() => 'read', (e) => [e.message, e.temporary]); })()")
         check('edit page without its content box: a real change, not temporary', e == ['The communication template page has changed (no content box).', False], e)
