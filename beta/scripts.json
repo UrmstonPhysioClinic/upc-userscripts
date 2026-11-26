@@ -14,7 +14,7 @@
     {
       "file": "core.user.js",
       "name": "UPC System: Core library (beta)",
-      "version": "0.1.86"
+      "version": "0.1.87"
     },
     {
       "file": "alerts.user.js",
@@ -121,7 +121,7 @@
     {
       "file": "patient-forms.user.js",
       "name": "UPC Patients: Patient forms (beta)",
-      "version": "0.1.9"
+      "version": "0.1.10"
     },
     {
       "file": "patient-statuses.user.js",

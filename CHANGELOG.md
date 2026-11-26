@@ -1,5 +1,10 @@
 # Changelog
 
+## Patient forms 0.1.10, core 0.1.87, 26 Nov 2026 (beta)
+- Logins without Settings access (CH, 26 Nov 2026: a late booking at 15:05 had no form by 16:25). The template page sends such a login on to General Settings, so every try failed, quietly, as "temporary", and kept resetting the retry time, so Check Now on CH's login didn't get a turn either. Core (UPC.templates) now says when a login can't open the page; Patient forms then uses Halaxy's own filled-in wording (/communication/template/render, as the Send Patient form pop-up gets it), but only when it has this appointment's date in it (Halaxy fills in the patient's next appointment). Otherwise that login leaves forms and reminders to a login that can, for an hour, and the page says so.
+- Check Now tries failed forms and reminders again at once.
+- A temporary failure is reported after 30 minutes (was 2 hours), and the page shows why a form or reminder isn't sent yet.
+
 ## Appointment recorder 0.3.8, 26 Nov 2026 (beta)
 - Heidi's note goes into Halaxy single-spaced (CH, 26 Nov 2026: each line was its own paragraph, which Halaxy shows double-spaced): a section's lines go in one paragraph with line breaks, as Shift+Enter types them, and each section ("Subjective:", "Plan:", or a bold heading) starts a new paragraph. An empty note is replaced, so no empty line is left above.
 - The cover over Heidi's window takes clicks again (CH: the upload box behind it could be clicked, and Close did nothing; Heidi's dialogs turn clicks off for the rest of the page, the cover included). It has no Close while waiting or after an error: the window stays open and gets ready again by itself. Stop stays while a recording is being sent. "Ready for the next recording. Keep this window open."
