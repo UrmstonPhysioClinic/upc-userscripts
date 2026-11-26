@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Appointment recorder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.4
+// @version      0.3.5
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/appointment-recorder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/appointment-recorder.user.js
@@ -44,7 +44,7 @@
   if (window.__hxAppointmentRecorder) return;
   window.__hxAppointmentRecorder = true;
 
-  const VERSION = '0.3.4';
+  const VERSION = '0.3.5';
   const ORG = '78972';                          // "UPC scripts (recordings)" (CH, 25 Nov 2026)
   const KEEP_LOCAL_MS = 14 * 86400e3;           // on this PC (CH, 25 Nov 2026)
   const KEEP_HALAXY_MS = 2 * 86400e3;           // the copy in Halaxy (CH, 25 Nov 2026)
@@ -222,6 +222,37 @@
       }
     }
 
+    // Transcribe's menu opened and its "Upload session audio" item (CH, 26 Nov 2026: pressed while Heidi was still
+    // loading, the menu stayed shut). Pressed only once it is active, and again if it didn't open.
+    const off = (el) => !!(el.disabled || el.getAttribute('aria-disabled') === 'true' || el.hasAttribute('data-disabled'));
+    const uploadItem = () => q('[data-testid="start-recording-dropdown-upload"]') ||
+      [...document.querySelectorAll('[role="menuitem"]')].find((el) => (!cover || !cover.contains(el)) && /upload session audio/i.test(el.textContent));
+    async function openUpload() {
+      const t0 = now();
+      let tries = 0;
+      let last = 0;
+      for (;;) {
+        if (job.over) throw new Error('Stopped.');
+        const item = uploadItem();
+        if (item) return item;
+        const m = menu();
+        if (now() - t0 > 40e3) {
+          const st = !m ? 'missing' : off(m) ? 'not active' : m.getAttribute('aria-expanded') === 'true' ? 'open, without the item' : 'not opening';
+          throw new Error('Heidi\'s page has changed or is slow: Upload session audio did not appear (menu ' + st + ', pressed ' + tries + ' times).');
+        }
+        if (m && !off(m) && now() - last > 2500) {
+          if (m.getAttribute('aria-expanded') === 'true') press(m);   // open without the item yet: shut, then open again
+          else {
+            tries++;
+            last = now();
+            press(m);
+            if (tries > 1) { m.focus(); m.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', bubbles: true, cancelable: true })); }
+          }
+        }
+        await sleep(250);
+      }
+    }
+
     async function run() {
       say('Starting a new Heidi session');
       await waitFor(() => q('[data-testid="session-toolbar-cta-main"]'), 90e3, 'the New session button');
@@ -236,8 +267,7 @@
       }
       const session = sessionOf();
       say('Uploading the recording');
-      press(menu());
-      press(await waitFor(() => q('[data-testid="start-recording-dropdown-upload"]'), 15e3, 'Upload session audio'));
+      press(await openUpload());
       const input = await waitFor(() => q('input[type=file][data-testid="upload-audio-file-input-input"]'), 15e3, 'the upload box');
       const t0 = now();
       const dt = new DataTransfer();
@@ -1182,13 +1212,30 @@
     if (!job.w || job.w.closed) { endJob(job); heidiFailed(job.id, 'The Heidi window was closed before Heidi\'s note came back.'); return; }
     if (!job.wanted) {
       try { job.w.postMessage({ upc: 'heidi-offer', id: job.id }, HEIDI_ORIGIN); } catch (e) { /* not on Heidi yet */ }
-      if (!job.signIn && Date.now() - job.started > 20e3) { job.signIn = true; setHeidi(job.id, { state: 'sending', text: 'Sign in to Heidi in the Heidi window' }); }
+      if (!job.signIn && Date.now() - job.started > 20e3) {
+        job.signIn = true;
+        loaderVersion().then((v) => {
+          if (job.wanted || !jobs.has(job.id)) return;
+          // The loader runs on Heidi's site from 1.5.0; Tampermonkey checks for its updates about once a day (CH, 26 Nov 2026).
+          if (v && newer('1.5.0', v)) { cancelHeidi(job.id); heidiFailed(job.id, 'This PC\'s loader (' + v + ') doesn\'t run on Heidi yet. In Tampermonkey choose Utilities, then Check for userscript updates, reload Halaxy, then press Send to Heidi.'); return; }
+          setHeidi(job.id, { state: 'sending', text: 'Waiting for the Heidi window (sign in there if Heidi asks)' });
+        });
+      }
     }
     if (Date.now() - job.started > HEIDI_MAX_MS) {
       endJob(job);
       try { job.w.close(); } catch (e) { /* fine */ }
       heidiFailed(job.id, 'Heidi didn\'t finish within ' + Math.round(HEIDI_MAX_MS / 60e3) + ' minutes.');
     }
+  }
+  // The loader's version, from its state answer (as Script settings reads it); null if it doesn't answer.
+  function loaderVersion() {
+    return new Promise((resolve) => {
+      const h = (e) => { document.removeEventListener('upc-loader-state', h); try { resolve(JSON.parse(e.detail).version || null); } catch (x) { resolve(null); } };
+      document.addEventListener('upc-loader-state', h);
+      document.dispatchEvent(new CustomEvent('upc-loader-get'));
+      setTimeout(() => { document.removeEventListener('upc-loader-state', h); resolve(null); }, 1500);
+    });
   }
   function cancelHeidi(id) {
     const job = jobs.get(id);

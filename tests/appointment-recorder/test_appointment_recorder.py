@@ -136,9 +136,14 @@ function today() { const d = new Date(); const h = d.getHours(); return 'Today '
 function home() { app.innerHTML = topBar() + "<button data-testid='resume-recording-button'>Resume</button><button data-testid='start-recording-dropdown'>v</button><div class='tiptap ProseMirror'><p>Someone else's old session</p></div>"; bindNew(); }
 function session() {
   empty = true;
-  app.innerHTML = topBar() + "<button type='button'>" + today() + "</button><button data-testid='start-recording-button'>Transcribe</button><button " + (plain ? "" : "data-testid='start-recording-dropdown' ") + "aria-label='Open transcription mode menu'>v</button><div id='menu'></div><div id='dlg'></div><div class='tiptap ProseMirror' id='ed'></div>";
+  app.innerHTML = topBar() + "<button type='button'>" + today() + "</button><button data-testid='start-recording-button'>Transcribe</button><button " + (plain ? "" : "data-testid='start-recording-dropdown' ") + "aria-label='Open transcription mode menu' aria-expanded='false' disabled data-disabled=''>v</button><div id='menu'></div><div id='dlg'></div><div class='tiptap ProseMirror' id='ed'></div>";
   bindNew();
-  app.querySelector('[aria-label="Open transcription mode menu"]').addEventListener('pointerdown', () => {
+  // As on Heidi: the menu is inactive while the session is still loading (CH, 26 Nov 2026: pressed then, it stayed shut).
+  const trig = app.querySelector('[aria-label="Open transcription mode menu"]');
+  setTimeout(() => { trig.disabled = false; trig.removeAttribute('data-disabled'); }, 3000);
+  trig.addEventListener('pointerdown', () => {
+    if (trig.disabled) return;
+    trig.setAttribute('aria-expanded', 'true');
     const m = document.getElementById('menu');
     m.innerHTML = "<div role='menuitem' data-testid='start-recording-dropdown-upload'>Upload session audio</div>";
     m.firstChild.addEventListener('click', () => { m.innerHTML = ''; const d = document.getElementById('dlg'); d.innerHTML = "<input type='file' data-testid='upload-audio-file-input-input' accept='.ogg,audio/ogg'>"; d.firstChild.addEventListener('change', upload); });

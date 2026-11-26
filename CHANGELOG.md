@@ -1,5 +1,9 @@
 # Changelog
 
+## Appointment recorder 0.3.5, 26 Nov 2026 (beta)
+- Heidi step: Transcribe's menu is pressed only once it is active, and again if it didn't open (CH, 26 Nov 2026: "Upload session audio did not appear"; using the empty session Heidi opens, the step reached the menu while Heidi was still loading and the press was lost). If it still doesn't appear, the message says how the menu was (missing, not active, not opening) and how often it was pressed. The item is also found by its words.
+- A PC whose loader is older than 1.5.0 (which doesn't run on Heidi) now says so on the note, with how to update it, instead of asking to sign in to Heidi (CH, 26 Nov 2026: Tampermonkey had not yet fetched the new loader on a PC). Otherwise the note says "Waiting for the Heidi window (sign in there if Heidi asks)".
+
 ## Appointment recorder 0.3.4, 25 Nov 2026 (beta)
 - Start Appointment did nothing when a window of the recorder's name was still open on Heidi (CH, 25 Nov 2026: up to 0.3.2 the recorder window itself went to Heidi; a page can't write into another site's window, and the error was swallowed). That window is now brought back to a blank page and used. If it can't be, Start says to close it, and any other failure to start is said and passed to the health check. Another appointment recording on this PC is said too.
 - Each recording has its own Heidi window, so finishing the next appointment while Heidi is still writing the last one's note doesn't take over its window.
