@@ -351,6 +351,9 @@ async def main():
         loads = S['heidi_loads']
         check('Start works even with a window of the recorder\'s name left on Heidi: it is brought back and used', len(ctx.pages) == 3 and pop.url.startswith('https://eu.halaxy.com/'), [x.url for x in ctx.pages])
         check('Start also opens Heidi\'s window, so Heidi loads during the appointment', len([x for x in ctx.pages if 'heidihealth' in x.url]) == 1)
+        READY = "(() => { const c = document.querySelector('[data-upc-heidi-cover]'); return !!document.querySelector('input[type=file][data-testid=upload-audio-file-input-input]') && !!c && /Ready for the recording/.test(c.textContent); })()"
+        await until_py(pg, lambda: hw.evaluate(READY), what='Heidi ready')
+        check('and gets Heidi ready meanwhile: a new session with Upload session audio open, waiting for the recording', True)
         pop_errors = []
         pop.on('pageerror', lambda e: pop_errors.append(str(e)))
         await until(pg, "!!document.querySelector('.upc-rec-strip [data-a=finish]')")
@@ -411,12 +414,13 @@ async def main():
         await closed(pg, pop)
         await until_py(pg, lambda: heidi_state(pg, rid), what='the Heidi step starts')
         await until_py(pg, lambda: _state_is(pg, rid, 'done'), what='Heidi\'s note in')
-        await until_py(pg, lambda: hw.evaluate("!document.querySelector('[data-upc-heidi-cover]')"), what='the Heidi window waits')
+        await until_py(pg, lambda: hw.evaluate(READY), what='Heidi ready again')
         content = await pg.evaluate("document.querySelector('.ck-editor__editable').ckeditorInstance.getData()")
         check('the recorder window closes; Heidi gets the recording as one Ogg file and uploads it in the new, empty session Heidi opens',
               len(S['heidi']) == 1 and S['heidi'][0]['sid'].endswith('51') and S['heidi'][0]['name'] == 'recording-25-Nov-2026-1000.ogg' and S['heidi'][0]['type'] == 'audio/ogg', S['heidi'])
         check('Heidi\'s completed note goes into the empty note as Heidi drew it (tidied)', content == NOTE_IN, content)
-        check('the Heidi window stays open, uncovered and loaded, for the next recording (the one Start opened)', not hw.is_closed() and S['heidi_loads'] == loads, [S['heidi_loads'], loads])
+        sid2 = await hw.evaluate("location.pathname.split('/').pop()")
+        check('the Heidi window stays open and loaded (the one Start opened), and gets ready again in a new session for the next recording', not hw.is_closed() and S['heidi_loads'] == loads and sid2.endswith('52'), [S['heidi_loads'], loads, sid2])
         seen = await pg.evaluate("[...new Set(coverSeen)]")
         check('the note was covered meanwhile, with Cancel, saying what is happening', any('Waiting for Heidi' in x or 'Sending to Heidi' in x for x in seen) and all('Cancel' in x for x in seen), seen)
         st = await pg.evaluate("(() => { const s = document.querySelector('.upc-rec-strip'); return [s.textContent, !!document.querySelector('.ck-editor > .upc-rec-cover'), [...document.querySelectorAll('.upc-toast')].map((x) => x.textContent)]; })()")

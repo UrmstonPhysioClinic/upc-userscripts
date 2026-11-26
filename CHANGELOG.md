@@ -1,5 +1,8 @@
 # Changelog
 
+## Appointment recorder 0.3.7, 26 Nov 2026 (beta)
+- Heidi gets ready before the recording comes (CH, 26 Nov 2026): when its window opens at Start, and again after each recording, it starts a new session and opens Upload session audio, then waits ("Ready for the recording from Halaxy"). At Finish the recording only goes into the upload box. If the box has gone meanwhile (the window was used, or Heidi signed out), the steps are done then as before. Getting ready is tried again a minute later if Heidi isn't ready (up to 5 times).
+
 ## Appointment recorder 0.3.6, 26 Nov 2026 (beta)
 - One Heidi window, kept open and reused (CH, 26 Nov 2026: Heidi is slow to load). Start opens it as well as the recorder, so Heidi loads during the appointment (Firefox may allow only one window per press unless pop-ups are allowed for Halaxy; then Finish opens it). After a note is in, the window stays on Heidi, uncovered, and the next recording only presses New session there. A window already on Heidi is never reloaded.
 - One recording at a time in it: another sent meanwhile waits ("Queued for Heidi") and goes when the window is free. A session the window has used is never used again. Stuck for half an hour, the window is closed and the next recording opens a fresh one.
