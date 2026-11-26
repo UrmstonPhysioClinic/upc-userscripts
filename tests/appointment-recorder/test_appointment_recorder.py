@@ -165,7 +165,7 @@ function upload(e) {
 function poll(sid) {
   const x = new XMLHttpRequest();
   x.open('GET', 'https://uk.api.heidihealth.com/api/v2/ml-scribe/sessions/' + sid + '/consult-note');
-  x.onload = () => { const c = JSON.parse(x.responseText).consult_notes[0]; if (c.status === 'SHORT') { document.getElementById('ed').innerHTML = '<p>The transcript was too short to create a note</p>'; return; } if (c.status === 'COMPLETED') document.getElementById('ed').innerHTML = "<p data-x='1'><strong><u>Subjective:</u></strong></p><p class='y'>- Knee pain</p>"; else setTimeout(() => poll(sid), 1000); };
+  x.onload = () => { const c = JSON.parse(x.responseText).consult_notes[0]; if (c.status === 'SHORT') { document.getElementById('ed').innerHTML = '<p>The transcript was too short to create a note</p>'; return; } if (c.status === 'COMPLETED') document.getElementById('ed').innerHTML = "<p data-x='1'><strong><u>Subjective:</u></strong></p><p class='y'>- Knee pain</p><p>- Better on stairs</p><p></p><p>Plan:</p><p>- Squats</p>"; else setTimeout(() => poll(sid), 1000); };
   x.send();
 }
 // Heidi often opens on a new, empty session of its own (after a moment); the test says which.
@@ -175,7 +175,7 @@ lx.onload = () => { plain = /plain/.test(lx.responseText); if (/fresh/.test(lx.r
 lx.send();
 home();
 </script></body></html>"""
-NOTE_IN = '<p><strong><u>Subjective:</u></strong></p><p>- Knee pain</p>'
+NOTE_IN = '<p><strong><u>Subjective:</u></strong><br>- Knee pain<br>- Better on stairs</p><p>Plan:<br>- Squats</p>'   # single-spaced (CH, 26 Nov 2026)
 LIST_PAGE = ("<!doctype html><html><head><title>Patients | Halaxy</title></head><body>" + MENU +
              "<div id='headerWrapper'></div><div id='content'>Patient list</div><script>window.HkUser = { pracName: 'Cara Hale' }; window.Hk = { jwt: 'jwt-test' };</script></body></html>")
 ATTACH_POPUP = ("<form name='form' method='post' id='fileupload' class='js-file-edit-form' data-upload-url='/api/v2/practitioner/file/upload/files?_locale=1'>"
@@ -358,9 +358,12 @@ async def main():
         loads = S['heidi_loads']
         check('Start works even with a window of the recorder\'s name left on Heidi: it is brought back and used', len(ctx.pages) == 3 and pop.url.startswith('https://eu.halaxy.com/'), [x.url for x in ctx.pages])
         check('Start also opens Heidi\'s window, so Heidi loads during the appointment', len([x for x in ctx.pages if 'heidihealth' in x.url]) == 1)
-        READY = "(() => { const c = document.querySelector('[data-upc-heidi-cover]'); return !!document.querySelector('input[type=file][data-testid=upload-audio-file-input-input]') && !!c && /Ready for the recording/.test(c.textContent); })()"
+        READY = "(() => { const c = document.querySelector('[data-upc-heidi-cover]'); return !!document.querySelector('input[type=file][data-testid=upload-audio-file-input-input]') && !!c && /Ready for the next recording/.test(c.textContent); })()"
         await until_py(pg, lambda: hw.evaluate(READY), what='Heidi ready')
         check('and gets Heidi ready meanwhile: a new session with Upload session audio open, waiting for the recording', True)
+        # Heidi's dialogs turn clicks off for the rest of the page (pointer-events: none on the body): the cover still takes them
+        cov = await hw.evaluate("(() => { document.body.style.pointerEvents = 'none'; const c = document.querySelector('[data-upc-heidi-cover]'); const r = [getComputedStyle(c).pointerEvents, c.querySelectorAll('button').length]; document.body.style.pointerEvents = ''; return r; })()")
+        check('the cover over Heidi takes clicks even under Heidi\'s dialog (the upload box can\'t be clicked), with no Close while waiting', cov == ['auto', 0], cov)
         pop_errors = []
         pop.on('pageerror', lambda e: pop_errors.append(str(e)))
         await until(pg, "!!document.querySelector('.upc-rec-strip [data-a=finish]')")
@@ -425,7 +428,7 @@ async def main():
         content = await pg.evaluate("document.querySelector('.ck-editor__editable').ckeditorInstance.getData()")
         check('the recorder window closes; Heidi gets the recording as one Ogg file and uploads it in the new, empty session Heidi opens',
               len(S['heidi']) == 1 and S['heidi'][0]['sid'].endswith('51') and S['heidi'][0]['name'] == 'recording-25-Nov-2026-1000.ogg' and S['heidi'][0]['type'] == 'audio/ogg', S['heidi'])
-        check('Heidi\'s completed note goes into the empty note as Heidi drew it (tidied)', content == NOTE_IN, content)
+        check('Heidi\'s completed note goes into the empty note, single-spaced: a section\'s lines in one paragraph, a new paragraph per section, nothing above it', content == NOTE_IN, content)
         sid2 = await hw.evaluate("location.pathname.split('/').pop()")
         check('the Heidi window stays open and loaded (the one Start opened), and gets ready again in a new session for the next recording', not hw.is_closed() and S['heidi_loads'] == loads and sid2.endswith('52'), [S['heidi_loads'], loads, sid2])
         seen = await pg.evaluate("[...new Set(coverSeen)]")
