@@ -139,8 +139,25 @@ async def halaxy(route):
     m = re.match(r'^/a/pr/555/invoice/(\d+)$', p)
     if m:
         return await route.fulfill(body=invoice_html(int(m.group(1))), content_type='text/html')
+    if p == '/a/pr/555/profile/group/':
+        return await route.fulfill(body=page_html('<h1>General Settings</h1>'), content_type='text/html')
+    m = re.match(r'^/a/pr/555/communication/template/render/(\d+)$', p)
+    if m:   # as Halaxy's Send Patient form pop-up asks for it (26 Nov 2026): works for every login
+        q = urllib.parse.parse_qs(u.query)
+        S.setdefault('renders', []).append((int(m.group(1)), q.get('linkPaG', [''])[0], q.get('linkPrG', [''])[0]))
+        if S.get('template_down') is True:   # Halaxy busy or updating: no wording either
+            return await js({'status': 'OK', 'payload': {'subject': '', 'body': ''}})
+        subj, body = S['templates'][int(m.group(1))]
+        # As live: every tag filled but [Action] and [Online Form Link]; the appointment is the patient's next one
+        sender = dict(SENDERS).get(int(q.get('linkPrG', ['0'])[0] or 0), '')
+        f = lambda x: (x.replace('[Patient First Name]', 'Pat').replace('[Practitioner First Name]', sender.split(' ')[0] if sender else '')
+                       .replace('[Appointment Day / Date / Time]', S.get('render_appt', 'Wednesday 18-Nov-2026 12:00')))
+        return await js({'status': 'OK', 'payload': {'subject': f(subj), 'body': f(body)}})
     m = re.match(r'^/a/pr/555/communication/template/list/(\d+)$', p)
     if m:
+        if S.get('template_down') == 'settings':  # a login without Settings access: sent on to General Settings (live, 26 Nov 2026)
+            # (the mock can't redirect a fetch, so the General Settings page comes back at the template's address)
+            return await route.fulfill(body="<!doctype html><html><head><title>Halaxy - General Settings : Clinic</title></head><body><h1>General Settings</h1></body></html>", content_type='text/html')
         S['template_hits'] = S.get('template_hits', 0) + 1
         if S.get('template_down') == 'changed':   # the edit page without its content box: a real change
             return await route.fulfill(body=page_html("<form id='editCommunicationTemplateForm'><textarea name='form[subject]'>x</textarea></form>"), content_type='text/html')
@@ -366,7 +383,7 @@ async def main():
         await run(pg, "window.upcPatientForms.run(true)")
         v = note_values().get('r.9003', '')
         errs = await pg.evaluate("window.__errs")
-        check('template page not returned: nothing sent, a temporary failure, not reported', not S['posts'] and v.startswith('fail ') and v.endswith(' t') and not errs, (S['posts'], v, errs))
+        check('template page not returned: nothing sent, a temporary failure, not reported', not S['posts'] and re.match(r'^fail \d+ \d+ t Halaxy', v) is not None and not errs, (S['posts'], v, errs))
         await ctx.clock.set_system_time((NOW + datetime.timedelta(minutes=10)).isoformat())
         hits = S.get('template_hits', 0)
         await run(pg, "window.upcPatientForms.run(true)")
@@ -382,6 +399,39 @@ async def main():
         await ctx.clock.set_system_time((NOW + datetime.timedelta(minutes=40)).isoformat())
         t = await run(pg, "UPC.templates.get(26152).then((t) => ({ stale: t.stale || null, subject: t.subject }))")
         check('a later blip: the copy kept on this PC is used', bool(t['stale']) and t['stale']['temporary'] is True and t['subject'] == 'Your progress update', t)
+        await ctx.close()
+
+        # A login that can't open Settings pages (26 Nov 2026): the template comes the way the pop-up gets it
+        setup()
+        S['events'] = [e for e in S['events'] if e['id'] == 9003]
+        S['template_down'] = 'settings'
+        ctx, pg = await only(None, extra=LISTEN)
+        await run(pg, "window.upcPatientForms.run(true)")
+        r = dict((pid, f) for kind, pid, f in S['posts'] if kind == 'email')
+        renders = S.get('renders', [])
+        errs = await pg.evaluate("window.__errs")
+        check('no Settings access: the reminder still goes, its template read for that patient and Sender', 503 in r and note_values().get('r.9003', '').startswith('sched ')
+              and renders and renders[0][1] == '503' and renders[0][2] == '313949' and not errs, (sorted(r), note_values().get('r.9003'), renders, errs))
+        # ...but not when the appointment Halaxy filled in isn't this one: left to a login that can open the template
+        setup()
+        S['events'] = [e for e in S['events'] if e['id'] == 9003]
+        S['template_down'] = 'settings'
+        S['render_appt'] = ''
+        await ctx.close()
+        ctx, pg = await only(None, extra=LISTEN)
+        await run(pg, "window.upcPatientForms.run(true)")
+        v = note_values().get('r.9003', '')
+        errs = await pg.evaluate("window.__errs")
+        check("no Settings access, Halaxy's wording without this appointment: not sent, nothing recorded or reported", not S['posts'] and v == '' and not errs, (S['posts'], v, errs))
+        n = len(S.get('renders', []))
+        await run(pg, "window.upcPatientForms.run(true)")
+        check('that login then leaves it alone (claims nothing)', len(S.get('renders', [])) == n and not S['posts'], (n, S.get('renders')))
+        await ctx.close()
+        S['template_down'] = False   # a login that can open the template, on another PC
+        ctx, pg = await only(None, extra=LISTEN)
+        await run(pg, "window.upcPatientForms.run(true)")
+        r = dict((pid, f) for kind, pid, f in S['posts'] if kind == 'email')
+        check('a login that can: the reminder goes', 503 in r and note_values().get('r.9003', '').startswith('sched '), (sorted(r), note_values().get('r.9003')))
         S['template_down'] = 'changed'
         e = await run(pg, "(() => { localStorage.removeItem('upc-core:templates'); return UPC.templates.get(3752).then(() => 'read', (e) => [e.message, e.temporary]); })()")
         check('edit page without its content box: a real change, not temporary', e == ['The communication template page has changed (no content box).', False], e)

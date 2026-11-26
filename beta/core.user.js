@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.86
+// @version      0.1.87
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.86';
+  const VERSION = '0.1.87';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -1552,6 +1552,14 @@
   // then the last good copy kept on this PC (up to a day old). An error carries `temporary`: true when Halaxy
   // didn't return the edit page at all (busy, updating, signed out), false when it did but without the content box
   // (a real change). A copy used in place of a fresh read is marked `stale` with the reason.
+  // Not every login can open that page: one without Settings access is sent to General Settings instead (Roxanna's
+  // login, 26 Nov 2026: a late booking's form failed for over an hour). That error carries `noAccess`, so a script
+  // can leave the work to a login that can. Given ctx { patient: linkPaG, prac: linkPrG (the Sender) }, get() then
+  // asks for the template the way Halaxy's own Send Patient form pop-up does when a template is chosen, which works for
+  // every login: GET /communication/template/render/:id?linkPaG=&linkPrG=&toLinkPaGPaG=&email-form-route=
+  // pr_email_patient_form -> payload { subject, body } (captures 26 Nov 2026, both logins). That comes back filled in
+  // by Halaxy (`rendered`: true): the patient's and the Sender's names, and the appointment tags with the patient's
+  // next appointment (blank when there is none), leaving [Action] and [Online Form Link]. The caller checks it.
   const TEMPLATE_KEY = 'upc-core:templates';
   const TEMPLATE_COPY_MS = 24 * 3600e3;
   const templates = {
@@ -1577,12 +1585,29 @@
       err.temporary = !isEdit;
       throw err;
     },
-    async get(id) {
+    async rendered(id, ctx) {
+      const q = 'linkPaG=' + encodeURIComponent(ctx.patient) + '&linkPrG=' + encodeURIComponent(ctx.prac || '') + '&toLinkPaGPaG=&email-form-route=pr_email_patient_form';
+      const j = await http.json('/communication/template/render/' + encodeURIComponent(id) + '?' + q);
+      const p = (j && j.payload) || {};
+      if (!clean(p.body)) { const e = new UPCError('Halaxy didn\'t return the template\'s wording.'); e.temporary = true; throw e; }
+      return { title: '', subject: clean(htmlDoc(String(p.subject || '')).body.textContent), body: String(p.body), at: Date.now(), rendered: true };
+    },
+    async get(id, ctx) {
       id = String(id);   // always read afresh, so a template edited in Halaxy is used at once
+      const path = '/communication/template/list/' + encodeURIComponent(id);
       let err = null;
       for (let i = 0; i < 2; i++) {
         try {
-          const t = templates.parse(await http.html('/communication/template/list/' + encodeURIComponent(id)));
+          const res = await http.fetch(url(path), { credentials: 'same-origin' });
+          if (!res.ok) throw new UPCError('Halaxy returned ' + res.status + ' for /communication/template/list');
+          const doc = htmlDoc(await res.text());
+          const elsewhere = res.redirected && res.url && !/\/communication\/template\/list\//.test(res.url);
+          if (elsewhere || (!doc.querySelector('textarea[name="form[contentForFormHandler]"]') && /Settings/i.test(doc.title || ''))) {
+            const e = new UPCError('This login can\'t open the email templates (Settings).');
+            e.noAccess = true; e.temporary = false;
+            throw e;
+          }
+          const t = templates.parse(doc);
           t.at = Date.now();
           templates.keep(id, t);
           return t;
@@ -1594,7 +1619,11 @@
         }
       }
       const copy = templates.saved()[id];
-      if (copy && copy.body && Date.now() - (copy.at || 0) < TEMPLATE_COPY_MS) return Object.assign({}, copy, { stale: { message: err.message, temporary: err.temporary } });
+      if (copy && copy.body && Date.now() - (copy.at || 0) < TEMPLATE_COPY_MS) return Object.assign({}, copy, { stale: { message: err.message, temporary: err.temporary, noAccess: !!err.noAccess } });
+      // No copy on this PC, and this login can't open the page: as Halaxy's own pop-up gets it.
+      if (err.noAccess && ctx && ctx.patient) {
+        try { return await templates.rendered(id, ctx); } catch (e) { /* the no-access error stands */ }
+      }
       throw err;
     },
   };
