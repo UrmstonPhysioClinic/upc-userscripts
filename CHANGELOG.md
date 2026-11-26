@@ -1,5 +1,9 @@
 # Changelog
 
+## Patient forms 0.1.11, core 0.1.88, Health check 1.1.67, 26 Nov 2026 (beta)
+- Clinic-wide template copies (CH, 26 Nov 2026: only CH's login can open the email templates, and he is away for two weeks in January; Halaxy's filled-in wording uses the signed-in user's own appointments, so other logins rarely get the right date). Whenever a login that can read a template finds it changed, core saves it as a file on "UPC scripts (settings)" ("Template copy <id>", the old copy deleted). A login that can't open the template page uses that copy, so other logins send forms, reminders and recalls from the exact template. Patient forms refreshes the copies of its three templates and the recall template once a day on a login that can. A copy that can't be saved is reported once a day.
+- Health check: the template page check skips the copies' entries.
+
 ## Patient forms 0.1.10, core 0.1.87, 26 Nov 2026 (beta)
 - Logins without Settings access (CH, 26 Nov 2026: a late booking at 15:05 had no form by 16:25). The template page sends such a login on to General Settings, so every try failed, quietly, as "temporary", and kept resetting the retry time, so Check Now on CH's login didn't get a turn either. Core (UPC.templates) now says when a login can't open the page; Patient forms then uses Halaxy's own filled-in wording (/communication/template/render, as the Send Patient form pop-up gets it), but only when it has this appointment's date in it (Halaxy fills in the patient's next appointment). Otherwise that login leaves forms and reminders to a login that can, for an hour, and the page says so.
 - Check Now tries failed forms and reminders again at once.

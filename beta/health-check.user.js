@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.66
+// @version      1.1.67
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.66';
+  const VERSION = '1.1.67';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -501,7 +501,7 @@
     try {
       let saved = {};
       try { saved = JSON.parse(localStorage.getItem('upc-core:templates') || '{}') || {}; } catch (x) { saved = {}; }
-      const id = Object.keys(saved).sort((a, b) => (saved[b].at || 0) - (saved[a].at || 0))[0];
+      const id = Object.keys(saved).filter((k) => /^\d+$/.test(k)).sort((a, b) => (saved[b].at || 0) - (saved[a].at || 0))[0];   // not the clinic-wide copies ('c<id>')
       if (id) {
         const res = await hfetch('/a/pr/' + group() + '/communication/template/list/' + encodeURIComponent(id), { credentials: 'same-origin' });
         if (res.ok) {

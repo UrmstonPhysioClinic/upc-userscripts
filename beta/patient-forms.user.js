@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Patient forms (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.10
+// @version      0.1.11
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-forms.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/patient-forms.user.js
@@ -51,7 +51,7 @@
   if (window.__hxPatientForms) return;
   window.__hxPatientForms = true;
 
-  const VERSION = '0.1.10';
+  const VERSION = '0.1.11';
   // Sending and reminders held (0.1.1): 0.1.0 read the form history as a table, but Halaxy lays it out in divs (live,
   // 17 Nov 2026), so it saw no forms and sent Progress Updates the campaign had already sent. 0.1.2 reads the divs and
   // stops if any sent form can't be read. While held, Check now works out what would happen (reads only).
@@ -418,6 +418,7 @@
       store().set('patients', pats);
 
       if (Object.keys(outcomes).length || released) await sh.write(outcomes);   // writing also lets go of this PC's claims
+      try { await refreshCopies(list); } catch (e) { /* tried again tomorrow */ }
       const pr = (await lookups().catch(() => null)) || { pracs: new Map() };
       store().set('last', { at: now, list: list.map((a) => ({ id: a.id, start: a.start, name: a.name, patient: a.patient, prac: pr.pracs.get(a.pracId) || '' })) });
       return outcomes;
@@ -452,6 +453,21 @@
   const who = () => clean((window.HkUser && window.HkUser.pracName) || '');
   const noAccess = () => { const m = store().get('noAccess', {}) || {}; return Date.now() - (m[who()] || 0) < 3600e3; };
   const setNoAccess = () => { const m = store().get('noAccess', {}) || {}; m[who()] = Date.now(); store().set('noAccess', m); };
+  // Once a day a login that can open the templates refreshes their clinic-wide copies (core UPC.templates), so the
+  // other logins have them even when CH's login isn't used for a while (CH away two weeks in January, 26 Nov 2026).
+  // Includes Open-ended recalls' template, which other logins may send by hand.
+  const COPY_TEMPLATES = [IA_TEMPLATE, PU_TEMPLATE, FU_TEMPLATE, 'Recall - Open-ended'];
+  async function refreshCopies(list) {
+    if (HOLD || noAccess() || !list.length || !U().templates.publish) return;
+    if (Date.now() - (store().get('copiesAt', 0) || 0) < 20 * 3600e3) return;
+    store().set('copiesAt', Date.now());
+    const sf = await sendForm(list[0].patient);
+    for (const name of COPY_TEMPLATES) {
+      const id = pick(sf.templates, name);
+      if (!id) continue;
+      try { await U().templates.get(id); } catch (e) { if (e && e.noAccess) { setNoAccess(); return; } }
+    }
+  }
   const failReason = (v) => { const m = /^fail \d+ \d+ [tx] (.+)$/.exec(v); return m ? ': ' + m[1] : ''; };
   function statusOf(a, recs) {
     const v = formRec(a, recs);

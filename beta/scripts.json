@@ -3,7 +3,7 @@
     {
       "file": "health-check.user.js",
       "name": "UPC System: Health check (beta)",
-      "version": "1.1.66"
+      "version": "1.1.67"
     },
     {
       "file": "block-reporting.user.js",
@@ -14,7 +14,7 @@
     {
       "file": "core.user.js",
       "name": "UPC System: Core library (beta)",
-      "version": "0.1.87"
+      "version": "0.1.88"
     },
     {
       "file": "alerts.user.js",
@@ -121,7 +121,7 @@
     {
       "file": "patient-forms.user.js",
       "name": "UPC Patients: Patient forms (beta)",
-      "version": "0.1.10"
+      "version": "0.1.11"
     },
     {
       "file": "patient-statuses.user.js",
