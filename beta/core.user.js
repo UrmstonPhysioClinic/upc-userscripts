@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Core library (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.1.88
+// @version      0.1.89
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/core.user.js
@@ -32,7 +32,7 @@
   'use strict';
   if (window.UPC) return;
 
-  const VERSION = '0.1.88';
+  const VERSION = '0.1.89';
   const JSON_HEADERS = { Accept: 'application/json, text/javascript, */*; q=0.01', 'X-Requested-With': 'XMLHttpRequest' };
 
   class UPCError extends Error {}
@@ -2166,8 +2166,8 @@
       border-bottom-color: var(--vs-nav-tabs-nav-link-hover-bottom-border-color, #c9a6f0) !important; }
     .upc-native.upc-native .nav-tabs a.nav-link.active { font-weight: 700 !important; color: var(--vs-nav-tabs-nav-link-active-color, #5c2899) !important;
       border-bottom-color: var(--vs-nav-tabs-nav-link-active-bottom-border-color, #994de6) !important; box-shadow: none !important; }
-    .upc-native .upc-pill { font-size: .8em; font-weight: 600; padding: .35em .75em; vertical-align: middle; white-space: nowrap; }
-    .upc-native .upc-pill.badge-light { border: 1px solid var(--vs-card-border-color, #dee2e6); }
+    .upc-native .status-badge.upc-pill { display: inline-block; vertical-align: middle; white-space: nowrap; text-transform: none !important; letter-spacing: normal !important; }
+    .upc-native .status-badge.upc-amber { color: #6B3E00; background: #FBE1AE; border: 1px solid #FBE1AE; }
     .upc-native .upc-divider { display: flex; align-items: center; gap: 12px; margin: 32px 0 20px; font-weight: 600; color: var(--vs-text-muted-color, #6c757d); }
     .upc-native .upc-divider::before, .upc-native .upc-divider::after { content: ''; flex: 1; border-top: 2px solid #DCC5F9; }
     .upc-native .upc-page-bar .upc-page-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -2412,10 +2412,16 @@
     // (CH, 24 Nov 2026), e.g. divider('Done').
     divider(text) { return '<div class="upc-divider"><span>' + esc(titleCase(text)) + '</span></div>'; },
     // A row's outcome as a pill (CH, 24 Nov 2026: "Moved" in green text looked out of place): kind ok (done), err
-    // (not changed), wait (queued), info, warn (needs a person: amber, CH, 24 Nov 2026).
+    // (not changed), wait (queued), info, warn (needs a person: amber, CH, 24 Nov 2026). Built as Halaxy's own status
+    // tag (span.status-badge, as on "Draft" or "Paid in full"), so it matches Halaxy's and the branding script's look
+    // (CH, 27 Nov 2026): ok green (positive), err rose (negative), wait and info purple (neutral); Halaxy has no amber,
+    // so warn is ours (upc-amber). Sentence case, not Halaxy's capitals (CH, 27 Nov 2026). upc-pill-<kind> names the
+    // kind for code and tests, whatever it looks like.
     pill(text, kind) {
-      const k = { ok: 'success', err: 'danger', wait: 'light', info: 'info', warn: 'warning' }[kind || 'ok'] || 'success';
-      return '<span class="badge badge-pill badge-' + k + ' upc-pill">' + esc(text) + '</span>';
+      kind = { ok: 1, err: 1, wait: 1, info: 1, warn: 1 }[kind] ? kind : 'ok';
+      nativeStyles();   // sentence case and amber come from our stylesheet, wherever the pill is used
+      const k = { ok: 'positive', err: 'negative', wait: 'neutral', info: 'neutral', warn: 'upc-amber' }[kind];
+      return '<span class="status-badge ' + k + ' upc-pill upc-pill-' + kind + '">' + esc(text) + '</span>';
     },
     card(title_, n, extra, body) {
       return '<div class="card"><div class="card-header"><h2>' + esc(titleCase(title_)) + ' (' + n + (extra ? ', ' + esc(extra) : '') + ')</h2></div><div class="card-body p-0">' +

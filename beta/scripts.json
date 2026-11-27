@@ -14,7 +14,7 @@
     {
       "file": "core.user.js",
       "name": "UPC System: Core library (beta)",
-      "version": "0.1.88"
+      "version": "0.1.89"
     },
     {
       "file": "alerts.user.js",
@@ -44,7 +44,7 @@
     {
       "file": "branding.user.js",
       "name": "UPC Look: Branding (beta)",
-      "version": "2.10.0"
+      "version": "2.10.1"
     },
     {
       "file": "calendar-controls.user.js",
