@@ -1,5 +1,9 @@
 # Changelog
 
+## Appointment recorder 0.3.9, 27 Nov 2026 (beta)
+- The Heidi window closes once its note is in Halaxy, after an error (20 seconds; the message is on the note) or on Cancel (CH, 27 Nov 2026: a new window opened with each recording, as notes are opened in new tabs and a tab can't find a window another tab opened). Each recording has its own window: opened and made ready at Start, used at Finish, then closed. One made ready but never used closes after two and a half hours.
+- In a narrow window Heidi shows a "Session type" sheet (Transcribe, Dictate, Upload file) instead of its menu; Upload file is now found there by its words, and the upload box by what it accepts (CH, 27 Nov 2026: the step stopped there). The window is no longer resized from Heidi's side (on the PCs it left the page drawn in part of the window).
+
 ## Patient forms 0.1.11, core 0.1.88, Health check 1.1.67, 26 Nov 2026 (beta)
 - Clinic-wide template copies (CH, 26 Nov 2026: only CH's login can open the email templates, and he is away for two weeks in January; Halaxy's filled-in wording uses the signed-in user's own appointments, so other logins rarely get the right date). Whenever a login that can read a template finds it changed, core saves it as a file on "UPC scripts (settings)" ("Template copy <id>", the old copy deleted). A login that can't open the template page uses that copy, so other logins send forms, reminders and recalls from the exact template. Patient forms refreshes the copies of its three templates and the recall template once a day on a login that can. A copy that can't be saved is reported once a day.
 - Health check: the template page check skips the copies' entries.
