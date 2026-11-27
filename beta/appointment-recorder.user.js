@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Appointment recorder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.8
+// @version      0.3.9
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/appointment-recorder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/appointment-recorder.user.js
@@ -44,7 +44,7 @@
   if (window.__hxAppointmentRecorder) return;
   window.__hxAppointmentRecorder = true;
 
-  const VERSION = '0.3.8';
+  const VERSION = '0.3.9';
   const ORG = '78972';                          // "UPC scripts (recordings)" (CH, 25 Nov 2026)
   const KEEP_LOCAL_MS = 14 * 86400e3;           // on this PC (CH, 25 Nov 2026)
   const KEEP_HALAXY_MS = 2 * 86400e3;           // the copy in Halaxy (CH, 25 Nov 2026)
@@ -90,9 +90,10 @@
   // (heidi-audio). Then, as a person would: New session, Upload session audio, the file chosen; Heidi transcribes and
   // writes the note by itself. Heidi's own answers are watched (its upload, then its consult note with status
   // COMPLETED), never asked for. The note (Heidi's markdown and its editor's HTML) goes back to Halaxy (heidi-note),
-  // and once Halaxy has it (heidi-done) the window waits, loaded, for the next recording (CH, 26 Nov 2026: Heidi is slow to
-  // load; one window kept open and reused, opened at Start). One recording at a time: an offer while busy is answered
-  // heidi-busy, and Halaxy offers again (queued). Anything unexpected stops with a message (heidi-failed).
+  // and once Halaxy has it (heidi-done) the window closes. Each recording has its window, opened at Start and made ready
+  // then (CH, 26-27 Nov 2026: Heidi is slow to load; notes are opened in new tabs, which can't find a window another tab
+  // opened). One recording at a time: an offer while busy is answered heidi-busy, and Halaxy offers again (queued).
+  // Anything unexpected stops with a message (heidi-failed).
   // Elements found by Heidi's own test labels (recon 25 Nov 2026; project doc heidi-recorder.md).
   function heidiSide() {
     const HALAXY = /^https:\/\/([a-z0-9-]+\.)*halaxy\.com$/;
@@ -177,7 +178,7 @@
       show(error, 'err', true);
       post({ upc: 'heidi-failed', id: job.id, error });
       const j = job;
-      setTimeout(() => { if (job === j && cover) prepareSoon(0); }, 20e3);   // the message is on the note too
+      setTimeout(() => { if (job === j) window.close(); }, 20e3);   // the message is on the note too; Send to Heidi opens a new window
     }
     async function waitFor(test, ms, what) {
       const t0 = now();
@@ -235,8 +236,13 @@
     // Transcribe's menu opened and its "Upload session audio" item (CH, 26 Nov 2026: pressed while Heidi was still
     // loading, the menu stayed shut). Pressed only once it is active, and again if it didn't open.
     const off = (el) => !!(el.disabled || el.getAttribute('aria-disabled') === 'true' || el.hasAttribute('data-disabled'));
+    // In a narrow window Heidi shows a "Session type" sheet instead (Transcribe, Dictate, Upload file; CH, 27 Nov 2026):
+    // its item is found by its words, the innermost element that has them.
     const uploadItem = () => q('[data-testid="start-recording-dropdown-upload"]') ||
-      [...document.querySelectorAll('[role="menuitem"]')].find((el) => (!cover || !cover.contains(el)) && /upload session audio/i.test(el.textContent));
+      [...document.querySelectorAll('[role="menuitem"],[role="option"],[role="button"],button,a,li,[tabindex]')]
+        .filter((el) => (!cover || !cover.contains(el)) && /^\s*upload (session audio|file)\s*$/i.test(el.textContent)).pop();
+    const fileInput = () => q('input[type=file][data-testid="upload-audio-file-input-input"]') ||
+      [...document.querySelectorAll('input[type=file]')].find((el) => /ogg|audio/i.test(el.accept || ''));
     async function openUpload() {
       const t0 = now();
       let tries = 0;
@@ -248,7 +254,7 @@
         const m = menu();
         if (now() - t0 > 40e3) {
           const st = !m ? 'missing' : off(m) ? 'not active' : m.getAttribute('aria-expanded') === 'true' ? 'open, without the item' : 'not opening';
-          throw new Error('Heidi\'s page has changed or is slow: Upload session audio did not appear (menu ' + st + ', pressed ' + tries + ' times).');
+          throw new Error('Heidi\'s page has changed or is slow: Upload session audio did not appear (menu ' + st + ', pressed ' + tries + ' times, window ' + window.innerWidth + ' wide).');
         }
         if (m && !off(m) && now() - last > 2500) {
           if (m.getAttribute('aria-expanded') === 'true') press(m);   // open without the item yet: shut, then open again
@@ -280,7 +286,7 @@
       used.add(session);
       report('Opening Upload session audio');
       press(await openUpload());
-      const input = await waitFor(() => q('input[type=file][data-testid="upload-audio-file-input-input"]'), 15e3, 'the upload box');
+      const input = await waitFor(fileInput, 15e3, 'the upload box');
       return { session, input };
     }
     // Getting ready before the recording comes (CH, 26 Nov 2026): when the window opens (at Start) and after each
@@ -296,7 +302,7 @@
       prepping = readyUpload(() => {}).then((r) => {
         prepared = r;
         prepTries = 0;
-        if (!job || job.over) show('Ready for the next recording. Keep this window open.', 'ready');
+        if (!job || job.over) show('Ready for the recording. Keep this window open.', 'ready');
       }, () => {
         prepared = null;
         if (!job || job.over) hide();
@@ -352,8 +358,6 @@
       }
       if (d.upc === 'heidi-offer' && (!job || (job.over && job.settled))) {
         job = { id: d.id, src: e.source, origin: e.origin, over: false, settled: false, at: now() };
-        // Full size, as Heidi draws a narrow window without the upload menu (allowed: a window a script opened).
-        try { if (window.outerWidth < 1100 || window.outerHeight < 820) window.resizeTo(Math.max(window.outerWidth, 1100), Math.max(window.outerHeight, 820)); } catch (x) { /* as it is */ }
         show('Getting the recording from Halaxy');
         e.source.postMessage({ upc: 'heidi-want', id: d.id }, e.origin);
       }
@@ -366,13 +370,17 @@
         const j = job;
         run().catch(fail).finally(() => { j.settled = true; });
       }
-      if (d.upc === 'heidi-done') { const j = job; j.over = true; show('Heidi\'s note is in Halaxy.'); setTimeout(() => { if (job === j) { hide(); prepareSoon(0); } }, 1500); }
-      if (d.upc === 'heidi-cancel') { job.over = true; if (!job.blob) job.settled = true; hide(); prepareSoon(3000); }
+      // Done: the window closes (CH, 27 Nov 2026: notes are opened in new tabs, and a tab can't find a window another tab
+      // opened, so each recording gets its own window: opened and readied at Start, closed once its note is in).
+      if (d.upc === 'heidi-done') { const j = job; j.over = true; show('Heidi\'s note is in Halaxy.'); setTimeout(() => { if (job === j) window.close(); }, 1500); }
+      if (d.upc === 'heidi-cancel') { job.over = true; if (!job.blob) job.settled = true; hide(); setTimeout(() => { if (job && job.over) window.close(); }, 1000); }
     });
     // Closing or reloading the window mid-step asks first (CH, 26 Nov 2026), as the recorder window does while recording.
     // Firefox asks only once the window has had a real click (sign-in, a press on the cover).
     window.addEventListener('beforeunload', (e) => { if (job && !job.over) { e.preventDefault(); e.returnValue = ''; } });
     if (window.name === 'upc-heidi') {
+      // Ready but never sent (the recording finished elsewhere, or not at all): closed after the longest recording.
+      setTimeout(function idle() { if (!job || (job.over && job.settled)) window.close(); else setTimeout(idle, 10 * 60e3); }, 150 * 60e3);
       if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => prepareSoon(0), { once: true });
       else prepareSoon(0);
     }
@@ -1295,8 +1303,8 @@
   // w: a window already opened on Heidi by a click (Send to Heidi); otherwise the recorder window is sent there.
   // The Heidi window: a window of its own, opened at Heidi's full size (Firefox keeps a new window's size but may ignore
   // resizing; Heidi draws a narrow window without Upload session audio). An open one (from the Finish press) is reused.
-  // One Heidi window, kept open and reused (CH, 26 Nov 2026): a new one only if there isn't one, and one already on Heidi is
-  // left as it is (it may be writing another recording's note; recordings queue for it).
+  // The Heidi window this tab opened (at Start), or a new one; one already on Heidi is left as it is (it may be writing
+  // another recording's note; recordings queue for it).
   function heidiWindow() {
     const w = window.open('', HEIDI_NAME, HEIDI_WIN);
     if (!w) return null;

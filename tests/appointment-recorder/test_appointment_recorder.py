@@ -130,7 +130,8 @@ const app = document.getElementById('app');
 let n = 0;
 function topBar() { return "<button data-testid='session-toolbar-cta-main'>New session</button>"; }
 let empty = false;
-let plain = false;   // the menu without its test label (found by its name)   // as on Heidi: New session does nothing on a session with nothing recorded
+let plain = false;
+let sheet = false;   // the menu without its test label (found by its name)   // as on Heidi: New session does nothing on a session with nothing recorded
 function bindNew() { app.querySelector('[data-testid=session-toolbar-cta-main]').onclick = () => { if (empty) return; n++; history.pushState(null, '', '/en/scribe/sessions/1234567890123456789012345' + n); session(); }; }
 function today() { const d = new Date(); const h = d.getHours(); return 'Today ' + String(h % 12 || 12).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0') + (h < 12 ? ' AM' : ' PM'); }
 function home() { app.innerHTML = topBar() + "<button data-testid='resume-recording-button'>Resume</button><button data-testid='start-recording-dropdown'>v</button><div class='tiptap ProseMirror'><p>Someone else's old session</p></div>"; bindNew(); }
@@ -145,6 +146,11 @@ function session() {
     if (trig.disabled) return;
     trig.setAttribute('aria-expanded', 'true');
     const m = document.getElementById('menu');
+    if (sheet) {   // a narrow window: a "Session type" sheet, items without test labels (CH, 27 Nov 2026)
+      m.innerHTML = "<div role='dialog'><h2>Session type</h2><div tabindex='0'><span>Transcribe</span></div><div tabindex='0'><span>Dictate</span></div><div tabindex='0' id='upf'><span>Upload file</span></div></div>";
+      m.querySelector('#upf').addEventListener('click', () => { m.innerHTML = ''; const d = document.getElementById('dlg'); d.innerHTML = "<input type='file' accept='.mp3,.wav,.ogg,audio/ogg'>"; d.firstChild.addEventListener('change', upload); });
+      return;
+    }
     m.innerHTML = "<div role='menuitem' data-testid='start-recording-dropdown-upload'>Upload session audio</div>";
     m.firstChild.addEventListener('click', () => { m.innerHTML = ''; const d = document.getElementById('dlg'); d.innerHTML = "<input type='file' data-testid='upload-audio-file-input-input' accept='.ogg,audio/ogg'>"; d.firstChild.addEventListener('change', upload); });
   });
@@ -171,7 +177,7 @@ function poll(sid) {
 // Heidi often opens on a new, empty session of its own (after a moment); the test says which.
 const lx = new XMLHttpRequest();
 lx.open('GET', 'https://uk.api.heidihealth.com/api/test/landing');
-lx.onload = () => { plain = /plain/.test(lx.responseText); if (/fresh/.test(lx.responseText)) setTimeout(() => { n++; history.replaceState(null, '', '/en/scribe/sessions/1234567890123456789012345' + n); session(); }, 700); };
+lx.onload = () => { plain = /plain/.test(lx.responseText); sheet = /sheet/.test(lx.responseText); if (/fresh/.test(lx.responseText)) setTimeout(() => { n++; history.replaceState(null, '', '/en/scribe/sessions/1234567890123456789012345' + n); session(); }, 700); };
 lx.send();
 home();
 </script></body></html>"""
@@ -358,7 +364,7 @@ async def main():
         loads = S['heidi_loads']
         check('Start works even with a window of the recorder\'s name left on Heidi: it is brought back and used', len(ctx.pages) == 3 and pop.url.startswith('https://eu.halaxy.com/'), [x.url for x in ctx.pages])
         check('Start also opens Heidi\'s window, so Heidi loads during the appointment', len([x for x in ctx.pages if 'heidihealth' in x.url]) == 1)
-        READY = "(() => { const c = document.querySelector('[data-upc-heidi-cover]'); return !!document.querySelector('input[type=file][data-testid=upload-audio-file-input-input]') && !!c && /Ready for the next recording/.test(c.textContent); })()"
+        READY = "(() => { const c = document.querySelector('[data-upc-heidi-cover]'); return !!document.querySelector('input[type=file][data-testid=upload-audio-file-input-input]') && !!c && /Ready for the recording/.test(c.textContent); })()"
         await until_py(pg, lambda: hw.evaluate(READY), what='Heidi ready')
         check('and gets Heidi ready meanwhile: a new session with Upload session audio open, waiting for the recording', True)
         # Heidi's dialogs turn clicks off for the rest of the page (pointer-events: none on the body): the cover still takes them
@@ -424,13 +430,12 @@ async def main():
         await closed(pg, pop)
         await until_py(pg, lambda: heidi_state(pg, rid), what='the Heidi step starts')
         await until_py(pg, lambda: _state_is(pg, rid, 'done'), what='Heidi\'s note in')
-        await until_py(pg, lambda: hw.evaluate(READY), what='Heidi ready again')
+        await until_py(pg, lambda: _true(hw.is_closed()), what='the Heidi window closes')
         content = await pg.evaluate("document.querySelector('.ck-editor__editable').ckeditorInstance.getData()")
         check('the recorder window closes; Heidi gets the recording as one Ogg file and uploads it in the new, empty session Heidi opens',
               len(S['heidi']) == 1 and S['heidi'][0]['sid'].endswith('51') and S['heidi'][0]['name'] == 'recording-25-Nov-2026-1000.ogg' and S['heidi'][0]['type'] == 'audio/ogg', S['heidi'])
         check('Heidi\'s completed note goes into the empty note, single-spaced: a section\'s lines in one paragraph, a new paragraph per section, nothing above it', content == NOTE_IN, content)
-        sid2 = await hw.evaluate("location.pathname.split('/').pop()")
-        check('the Heidi window stays open and loaded (the one Start opened), and gets ready again in a new session for the next recording', not hw.is_closed() and S['heidi_loads'] == loads and sid2.endswith('52'), [S['heidi_loads'], loads, sid2])
+        check('the Heidi window closes once the note is in (CH, 27 Nov 2026: notes open in new tabs, so each recording has its own)', hw.is_closed())
         seen = await pg.evaluate("[...new Set(coverSeen)]")
         check('the note was covered meanwhile, with Cancel, saying what is happening', any('Waiting for Heidi' in x or 'Sending to Heidi' in x for x in seen) and all('Cancel' in x for x in seen), seen)
         st = await pg.evaluate("(() => { const s = document.querySelector('.upc-rec-strip'); return [s.textContent, !!document.querySelector('.ck-editor > .upc-rec-cover'), [...document.querySelectorAll('.upc-toast')].map((x) => x.textContent)]; })()")
@@ -470,6 +475,10 @@ async def main():
         await pg.click('.upc-rec-strip [data-a=start]')
         await until(pg, "!!document.querySelector('.upc-rec-strip [data-a=finish]')")
         pop2 = [x for x in ctx.pages if x is not pg and 'heidihealth' not in x.url][0]
+        await until_py(pg, lambda: _true(any('heidihealth' in x.url for x in ctx.pages)), what='the next Heidi window')
+        hw = [x for x in ctx.pages if 'heidihealth' in x.url][0]
+        await until_py(pg, lambda: hw.evaluate(READY), what='Heidi ready for 7003')
+        check('the next Start opens a new Heidi window and gets it ready', True)
         await idle(pg, 11000)
         await pop2.close(run_before_unload=False)
         # Said at once in Halaxy, with Continue Recording (CH, 26 Nov 2026: closed by mistake, Firefox didn't ask)
@@ -509,18 +518,19 @@ async def main():
         await until_py(pg, lambda: _state_is(pg, rid3, 'done'), what='added below')
         content = await pg.evaluate("document.querySelector('.ck-editor__editable').ckeditorInstance.getData()")
         check('Add Below puts Heidi\'s note after the text already there', content == '<p>Existing text</p>' + NOTE_IN, content)
-        check('both sent in the same Heidi window, not loaded again', not hw.is_closed() and S['heidi_loads'] == loads, [S['heidi_loads'], loads])
+        await until_py(pg, lambda: _true(hw.is_closed()), what='the Heidi window closes')
+        check('tried again in the window Start opened, which closes once the note is in', len(S['heidi']) == 3)
 
         # ---- a session left running: a warning after 75 minutes, finished after two hours (2 and 3 minutes here)
         await pg.goto('https://eu.halaxy.com/a/pr/555/patient/9004/clinical/category/note/id/7004')
         await until(pg, "!!document.querySelector('.upc-rec-strip [data-a=start]')")
+        S['landing'] = 'fresh-sheet'   # a narrow window: Heidi's "Session type" sheet
         await pg.click('.upc-rec-strip [data-a=start]')
         await until(pg, "!!document.querySelector('.upc-rec-strip [data-a=finish]')")
         pop3 = [x for x in ctx.pages if x is not pg and 'heidihealth' not in x.url][0]
         await idle(pg, 122000)
         check('a session left running: "Still recording after 2 minutes" (75 on the PCs) on the note', await pg.evaluate("/Still recording after 2 minutes/.test(document.querySelector('.upc-rec-strip').textContent)"))
         S['slow'] = True   # Heidi takes its time, and the clinician moves on in Halaxy meanwhile
-        S['landing'] = 'fresh-plain'   # and its menu has no test label this time
         await idle(pg, 60000)
         rid4 = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => r.find((x) => x.noteId === '7004').id)")
         await until_py(pg, lambda: _text_has(pg, rid4, 'Waiting for Heidi'), what='Heidi working')
@@ -540,7 +550,8 @@ async def main():
         content = await nt.evaluate("document.querySelector('.ck-editor__editable').ckeditorInstance.getData()")
         check('moved on before Heidi finished: the note opens in a new tab and Heidi\'s note goes in there', content == NOTE_IN, content)
         await closed(pg, pop3)
-        check('a third recording, the same Heidi window: Heidi loaded once all day', not hw.is_closed() and S['heidi_loads'] == loads and len(S['heidi']) == 4, [S['heidi_loads'], loads, len(S['heidi'])])
+        await until_py(pg, lambda: _true(not any('heidihealth' in x.url for x in ctx.pages)), what='its Heidi window closes')
+        check('in a narrow window, Heidi\'s "Session type" sheet: Upload file found by its words, and the window closes once the note is in', len(S['heidi']) == 4, len(S['heidi']))
         await nt.close()
         auto = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => { const x = r.find((y) => y.noteId === '7004'); return [x.status, x.stopped]; })")
         check('and finished by itself after two hours', auto[0] == 'finished' and str(auto[1]).startswith('Stopped after'), auto)
