@@ -7,6 +7,7 @@
   - Any of these first copies the recording from Halaxy onto this PC, then goes on as for one made here. Continue Recording carries on the same recording as its next part (", part 2" in Halaxy), and Heidi gets the parts joined as one file.
   - Lengths come from each copy's comment, which has given each part's length since 0.2.0.
 - Health check: the recordings organisation's file cards still show the recorder's comments.
+
 ## Core 0.1.89, Branding 2.10.1, 27 Nov 2026 (pills match Halaxy's status tags)
 - Our pills (`UPC.ui.page.pill`: "In Halaxy", "Waiting for Heidi's note", row results on the list pages) are built as Halaxy's own status tag (`span.status-badge`, as on "Draft" or "Paid in full"), so they share its shape, size and colours: done green, not changed rose, queued and info purple. Amber (needs a person) is ours, in the same style, in Branding's palette. Ours stay in sentence case, not Halaxy's capitals (CH, 27 Nov 2026).
 - Each pill also carries `upc-pill-<kind>` (ok, err, wait, info, warn) for code and tests, whatever it looks like.
