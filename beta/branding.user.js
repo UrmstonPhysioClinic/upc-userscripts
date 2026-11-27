@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Look: Branding (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      2.10.0
+// @version      2.10.1
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/branding.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/branding.user.js
@@ -69,6 +69,7 @@
     statusPositive: ['#14532D', '#B9E6C6', '#B9E6C6'],   // e.g. Paid in full (green)
     statusNegative: ['#7A1229', '#F7C3CE', '#F7C3CE'],   // e.g. Not yet paid, Draft, Discharged (rose)
     statusNeutral:  ['#4A1F7D', '#DCC5F9', '#DCC5F9'],   // e.g. Pending (clinic purple)
+    statusWarn:     ['#6B3E00', '#FBE1AE', '#FBE1AE'],   // our scripts' amber pills (needs a person); Halaxy has none
     danger:     '#B3261E',               // replaces Halaxy's coral #EC6B65, which fails contrast as text
     dangerDark: '#8C1D18',
   };
@@ -317,6 +318,7 @@ ${S} .status-badge.status-badge-small { font-size: .72rem !important; }
 ${S} .status-badge.positive { color: ${B.statusPositive[0]} !important; background: ${B.statusPositive[1]} !important; border-color: ${B.statusPositive[2]} !important; }
 ${S} .status-badge.negative { color: ${B.statusNegative[0]} !important; background: ${B.statusNegative[1]} !important; border-color: ${B.statusNegative[2]} !important; }
 ${S} .status-badge.neutral  { color: ${B.statusNeutral[0]} !important;  background: ${B.statusNeutral[1]} !important;  border-color: ${B.statusNeutral[2]} !important; }
+${S} .status-badge.upc-amber { color: ${B.statusWarn[0]} !important;   background: ${B.statusWarn[1]} !important;   border-color: ${B.statusWarn[2]} !important; }
 
 ${OPTIONS.panelAccent ? `/* Panel headers: thin purple bar on the left (grey background kept) */
 ${S} .card > .card-header { box-shadow: inset 4px 0 0 ${B.purple}; }

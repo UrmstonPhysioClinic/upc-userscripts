@@ -1,5 +1,9 @@
 # Changelog
 
+## Core 0.1.89, Branding 2.10.1, 27 Nov 2026 (pills match Halaxy's status tags)
+- Our pills (`UPC.ui.page.pill`: "In Halaxy", "Waiting for Heidi's note", row results on the list pages) are built as Halaxy's own status tag (`span.status-badge`, as on "Draft" or "Paid in full"), so they share its shape, size and colours: done green, not changed rose, queued and info purple. Amber (needs a person) is ours, in the same style, in Branding's palette. Ours stay in sentence case, not Halaxy's capitals (CH, 27 Nov 2026).
+- Each pill also carries `upc-pill-<kind>` (ok, err, wait, info, warn) for code and tests, whatever it looks like.
+
 ## Appointment recorder 0.3.9, 27 Nov 2026 (beta)
 - The Heidi window closes once its note is in Halaxy, after an error (20 seconds; the message is on the note) or on Cancel (CH, 27 Nov 2026: a new window opened with each recording, as notes are opened in new tabs and a tab can't find a window another tab opened). Each recording has its own window: opened and made ready at Start, used at Finish, then closed. One made ready but never used closes after two and a half hours.
 - In a narrow window Heidi shows a "Session type" sheet (Transcribe, Dictate, Upload file) instead of its menu; Upload file is now found there by its words, and the upload box by what it accepts (CH, 27 Nov 2026: the step stopped there). The window is no longer resized from Heidi's side (on the PCs it left the page drawn in part of the window).
