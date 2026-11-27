@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC System: Health check (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      1.1.67
+// @version      1.1.68
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/health-check.user.js
@@ -31,7 +31,7 @@
   if (window.__hxHealth) return;
   window.__hxHealth = true;
 
-  const VERSION = '1.1.67';
+  const VERSION = '1.1.68';
   const KEY = 'upc-health:';
   const DATA_EVERY_HOURS = 24;
   const ERRORS_KEEP_HOURS = 24;
@@ -494,6 +494,17 @@
       const cards = doc.querySelectorAll('.attachment-file-card').length, edits = doc.querySelectorAll('[data-modal-href*="/file/edit/"]').length;
       put('data-org-files', 'Funder profile files', ['Bank statement', 'Remittances'], (add ? [] : ['Add Files link missing']).concat(cards && edits < cards ? ['file Edit links missing'] : []));
     } catch (e) { put('data-org-files', 'Funder profile files', ['Bank statement', 'Remittances'], [e.message]); }
+    // Recordings organisation (78972): Appointment recorder finds recordings made on other PCs from each file's card,
+    // which shows its title and comments (27 Nov 2026). Checked only when it holds a recording.
+    try {
+      const res = await hfetch('/a/pr/' + group() + '/organisation/78972', { credentials: 'same-origin' });
+      if (!res.ok) throw new Error('Halaxy returned ' + res.status + ' for the recordings organisation');
+      const doc = new DOMParser().parseFromString(await res.text(), 'text/html');
+      const cards = [...doc.querySelectorAll('.attachment-file-card')].map((c) => c.textContent);
+      const recs = cards.filter((x) => /Recording \d{2}-[A-Z][a-z]{2}-\d{4} \d{2}:\d{2}, /.test(x));
+      put('data-recordings-files', 'Recordings organisation files', ['Appointment recorder'],
+        recs.length && !recs.some((x) => /Appointment recorder; note \d+; patient \d+; /.test(x)) ? ['file comments not shown on the cards'] : [], recs.length ? recs.length + (recs.length === 1 ? ' recording.' : ' recordings.') : 'No recordings.');
+    } catch (e) { put('data-recordings-files', 'Recordings organisation files', ['Appointment recorder'], [e.message]); }
 
     // Communication template edit page: Patient forms and Open-ended recalls read templates from it (core
     // UPC.templates, 25 Nov 2026). Checked with a template this PC has read before; none yet, nothing to check. A

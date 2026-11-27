@@ -40,7 +40,7 @@ assert 'warnMs: 75 * 60e3, maxMs: 2 * 3600e3' in SCRIPT
 SCRIPT = SCRIPT.replace('warnMs: 75 * 60e3, maxMs: 2 * 3600e3', 'warnMs: 120e3, maxMs: 180e3')
 NOW = datetime.datetime(2026, 11, 25, 10, 0, tzinfo=datetime.timezone.utc)
 FAILS = []
-S = {'files': [], 'uploads': [], 'deleted': [], 'heidi': [], 'refuse': False, 'slow': False, 'landing': 'fresh', 'heidi_loads': 0}
+S = {'files': [], 'uploads': [], 'deleted': [], 'blobs': {}, 'heidi': [], 'refuse': False, 'slow': False, 'landing': 'fresh', 'heidi_loads': 0}
 
 
 def check(name, ok, detail=''):
@@ -198,20 +198,27 @@ async def halaxy(route):
         await route.fulfill(body=json.dumps(o), content_type='application/json')
 
     if re.search(r'^/a/pr/555/organisation/78972/?$', path):
-        cards = ''.join("<div class='card attachment-file-card' data-href='/a/file/get/f%d.ogg'>%s</div><div class='dropdown-menu'><a data-modal-href='/a/pr/555/file/edit/%d'>Edit</a>"
-                        "<a class='dropdown-item ajax text-danger' href='/a/pr/555/file/delete/%d' title='Delete this file'>Delete</a></div>" % (f['id'], f['title'], f['id'], f['id']) for f in reversed(S['files']))
+        cards = ''.join("<div class='card attachment-file-card' data-href='/a/file/get/f%d.ogg'><h6>%s</h6><div>25-Nov-2026</div><div class='text-truncate'>%s</div></div><div class='dropdown-menu'><a data-modal-href='/a/pr/555/file/edit/%d'>Edit</a>"
+                        "<a class='dropdown-item ajax text-danger' href='/a/pr/555/file/delete/%d' title='Delete this file'>Delete</a></div>" % (f['id'], f['title'], f['comments'], f['id'], f['id']) for f in reversed(S['files']))
         return await route.fulfill(body="<html><body><div class='card'><div class='card-header'><h2>Attachments</h2></div>%s</div></body></html>" % cards, content_type='text/html')
     if path.endswith('/file/upload/organisation/78972'):
         if req.method == 'GET':
             return await js({'status': 'FORM', 'message': ATTACH_POPUP})
         fid = 800 + len(S['files']) + len(S['deleted'])
-        S['files'].append({'id': fid, 'title': form['form[files][1][title]'], 'comments': form['form[files][1][comments]']})
+        S['files'].append({'id': fid, 'title': form['form[files][1][title]'], 'comments': form['form[files][1][comments]'], 'blob': S['blobs'].get(form.get('form[files][1][fileEntity]'))})
         return await js({'status': 'REFRESH'})
     if path.endswith('/practitioner/file/upload/files'):
         body = (req.post_data_buffer or b'').decode('latin-1')
         m = re.search(r'filename="([^"]+)"\r\nContent-Type: ([^\r]+)', body)
         S['uploads'].append({'name': m.group(1) if m else None, 'type': m.group(2) if m else None, 'auth': req.headers.get('authorization'), 'size': len(body)})
+        raw = req.post_data_buffer or b''
+        i = raw.find(b'\r\n\r\n', raw.find(b'filename=')) + 4
+        S['blobs']['9%03d' % len(S['uploads'])] = raw[i:raw.find(b'\r\n--', i)]   # the file itself, served back from /a/file/get/
         return await js({'files': [{'id': '9%03d' % len(S['uploads'])}]})
+    m = re.search(r'^/a/file/get/f(\d+)\.ogg$', path)
+    if m:
+        f = next((f for f in S['files'] if f['id'] == int(m.group(1))), None)
+        return await route.fulfill(status=200 if f else 404, body=(f and f.get('blob')) or b'', content_type='video/ogg')
     m = re.search(r'/file/edit/(\d+)$', path)
     if m:
         f = next(f for f in S['files'] if f['id'] == int(m.group(1)))
@@ -266,6 +273,10 @@ async def _true(v):
 async def _state_is(pg, rid, state):
     h = await heidi_state(pg, rid)
     return bool(h) and h.get('state') == state
+
+
+async def _note_is(pg, html):
+    return await pg.evaluate("document.querySelector('.ck-editor__editable').ckeditorInstance.getData()") == html
 
 
 async def _err_has(pg, rid, text):
@@ -325,23 +336,29 @@ async def files_until(pg, n, timeout=60):
         await idle(pg, 1000)
 
 
+async def setup(ctx):
+    """A browser context set up as one of the clinic's PCs (its own storage)."""
+    await ctx.route('https://eu.halaxy.com/**', halaxy)
+    await ctx.route('https://cdn.jsdelivr.net/npm/opus-recorder@8.0.5/dist/encoderWorker.min.js', lambda r: r.fulfill(body=ENCODER, content_type='application/javascript'))
+
+    async def heidi_page(r):
+        S['heidi_loads'] += 1
+        await r.fulfill(body=HEIDI_PAGE, content_type='text/html')
+    await ctx.route('https://scribe.heidihealth.com/**', heidi_page)
+    await ctx.route('https://uk.api.heidihealth.com/**', heidi_api)
+    await ctx.add_init_script(FAKE_MIC)
+    # Halaxy pages only (the recorder window is a blank page the scripts don't run in, as on the PCs).
+    await ctx.add_init_script("if (location.href.indexOf('https://eu.halaxy.com/a/pr/') === 0) {\n" + CORE + "\n}")
+    await ctx.add_init_script("if (location.href.indexOf('https://eu.halaxy.com/a/pr/') === 0) document.addEventListener('DOMContentLoaded', function () {\n" + SCRIPT + "\n});")
+    await ctx.add_init_script("if (location.hostname === 'scribe.heidihealth.com') {\n" + SCRIPT + "\n}")   # at the page's start, as the loader runs it
+
+
 async def main():
     async with async_playwright() as p:
         browser = await p.chromium.launch()
         ctx = await browser.new_context(viewport={'width': 1300, 'height': 900}, timezone_id='Europe/London')
         await ctx.clock.install(time=NOW.isoformat())
-        await ctx.route('https://eu.halaxy.com/**', halaxy)
-        await ctx.route('https://cdn.jsdelivr.net/npm/opus-recorder@8.0.5/dist/encoderWorker.min.js', lambda r: r.fulfill(body=ENCODER, content_type='application/javascript'))
-        async def heidi_page(r):
-            S['heidi_loads'] += 1
-            await r.fulfill(body=HEIDI_PAGE, content_type='text/html')
-        await ctx.route('https://scribe.heidihealth.com/**', heidi_page)
-        await ctx.route('https://uk.api.heidihealth.com/**', heidi_api)
-        await ctx.add_init_script(FAKE_MIC)
-        # Halaxy pages only (the recorder window is a blank page the scripts don't run in, as on the PCs).
-        await ctx.add_init_script("if (location.href.indexOf('https://eu.halaxy.com/a/pr/') === 0) {\n" + CORE + "\n}")
-        await ctx.add_init_script("if (location.href.indexOf('https://eu.halaxy.com/a/pr/') === 0) document.addEventListener('DOMContentLoaded', function () {\n" + SCRIPT + "\n});")
-        await ctx.add_init_script("if (location.hostname === 'scribe.heidihealth.com') {\n" + SCRIPT + "\n}")   # at the page's start, as the loader runs it
+        await setup(ctx)
         pg = await ctx.new_page()
         errors = []
         pg.on('pageerror', lambda e: errors.append(str(e)))
@@ -556,6 +573,48 @@ async def main():
         auto = await pg.evaluate("upcAppointmentRecorder.db.recs().then((r) => { const x = r.find((y) => y.noteId === '7004'); return [x.status, x.stopped]; })")
         check('and finished by itself after two hours', auto[0] == 'finished' and str(auto[1]).startswith('Stopped after'), auto)
         await files_until(pg, 3)
+
+        # ---- another PC: recordings made on the first, from their copies in Halaxy (CH, 27 Nov 2026)
+        now_ms = await pg.evaluate("Date.now()")
+        ctx2 = await browser.new_context(viewport={'width': 1300, 'height': 900}, timezone_id='Europe/London')
+        await ctx2.clock.install(time=datetime.datetime.fromtimestamp(now_ms / 1000, datetime.timezone.utc))
+        await setup(ctx2)
+        pc2 = await ctx2.new_page()
+        errors2 = []
+        pc2.on('pageerror', lambda e: errors2.append(str(e)))
+        await pc2.goto('https://eu.halaxy.com/a/pr/555/patient/9004/clinical/category/note/id/7004')
+        await until(pc2, "!!document.querySelector('.upc-rec-strip') && /on another PC/.test(document.querySelector('.upc-rec-strip').textContent)", timeout=30)
+        st2 = await pc2.evaluate("(() => { const s = document.querySelector('.upc-rec-strip'); return [s.textContent, [...s.querySelectorAll('button')].map((b) => b.textContent.trim())]; })()")
+        check('another PC: the note shows the recording made on the first, from its copy in Halaxy, with its length', re.search(r'Recorded 0[23]:\d\d on another PC', st2[0]) is not None and 'In Halaxy' in st2[0], st2[0])
+        check('with Continue Recording, Send to Heidi and Download Recording', st2[1] == ['Continue Recording', 'Send to Heidi', 'Download Recording'], st2[1])
+        lst2 = await ctx2.new_page()
+        await lst2.goto('https://eu.halaxy.com/a/pr/555/patient/#upc-recordings')
+        await until(lst2, "!!document.querySelector('table[data-upc-list=upc-recordings-hx] tbody tr')", timeout=30)
+        hx = await lst2.evaluate("[...document.querySelectorAll('table[data-upc-list=upc-recordings-hx] tbody tr')].map((tr) => [...tr.cells].slice(2, 5).map((c) => c.textContent.trim()))")
+        check('Patients > Recordings on another PC: "In Halaxy From Other PCs", with patient, practitioner and the note', [x[0] for x in hx] == ['Patient 9004', 'Patient 9003', 'Patient 9001'] and all(x[1] == 'Practitioner One' and x[2] == '25-Nov-2026' for x in hx), hx)
+        await lst2.close()
+        n_heidi = len(S['heidi'])
+        S['landing'] = 'fresh'
+        await pc2.click('.upc-rec-strip [data-a=heidi]')
+        await until_py(pc2, lambda: _note_is(pc2, NOTE_IN), what='note in on PC 2')
+        sent = S['heidi'][-1]
+        check('Send to Heidi there: the recording is copied from Halaxy, sent as one Ogg file, and Heidi\'s note goes into the note', len(S['heidi']) == n_heidi + 1 and sent['type'] == 'audio/ogg' and sent['size'] > 2000, sent)
+        await until(pc2, "/Heidi's note added/.test(document.querySelector('.upc-rec-strip').textContent)")
+        check('and that PC then has it: "Heidi\'s note added"', True)
+        # Continue Recording on another PC: copied from Halaxy, carried on as part 2
+        await pc2.goto('https://eu.halaxy.com/a/pr/555/patient/9003/clinical/category/note/id/7003')
+        await until(pc2, "!!document.querySelector('.upc-rec-strip') && /on another PC/.test(document.querySelector('.upc-rec-strip').textContent)", timeout=30)
+        nf = len(S['files'])
+        await pc2.click('.upc-rec-strip [data-a=start]')
+        await until(pc2, "!!document.querySelector('.upc-rec-strip [data-a=finish]')", timeout=30)
+        await idle(pc2, 20000)
+        await pc2.click('.upc-rec-strip [data-a=finish]')
+        await files_until(pc2, nf + 1)
+        check('Continue Recording on another PC carries on the same recording: its new part goes to Halaxy as part 2', S['files'][-1]['title'].endswith('note 7003, part 2'), S['files'][-1]['title'])
+        parts = await pc2.evaluate("upcAppointmentRecorder.db.recs().then((r) => r.find((x) => x.noteId === '7003').parts.map((p) => p.n))")
+        check('and on that PC the recording has both parts, so Heidi gets one file', parts == [1, 2], parts)
+        check('no page errors on the other PC', not errors2, errors2)
+        await ctx2.close()
 
 
         # ---- a recording in two parts: Download gives one file

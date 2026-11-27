@@ -103,6 +103,9 @@ async def halaxy(route):
         return await j({'status': 'FORM', 'message': "<form id='adminNoteForm'><input name='form[_token]'><input name='form[communicationDateTime][date]'><textarea name='form[logContent]'></textarea></form>"})
     if p.endswith('/organisation/78812/balance/data'):
         return await j({'data': [{'id': 1, 'type': 'Direct Deposit', 'date': '2026-10-05T00:00:00', 'amount': 120, 'balance': 0}]})
+    if p.endswith('/organisation/78972'):   # the recordings organisation: a card with its title and comments
+        return await route.fulfill(body="<html><body><div class='card attachment-file-card' data-href='/a/file/get/r.ogg'><h6>Recording 25-Nov-2026 10:00, Patient 01, Practitioner One, note 7001</h6>"
+                                   "<div>25-Nov-2026</div><div>Appointment recorder; note 7001; patient 9001; 03:00, 10:00 to 10:03</div></div><a data-modal-href='/a/pr/555/file/edit/6'>Edit</a></body></html>", content_type='text/html')
     if p.endswith('/organisation/78812'):
         return await route.fulfill(body="<html><body><a data-modal-href='/a/pr/555/file/upload/organisation/78812'>Add Files</a>"
                                    "<div class='card attachment-file-card' data-href='/a/file/get/x.pdf'>Starling statement</div><a data-modal-href='/a/pr/555/file/edit/5'>Edit</a></body></html>", content_type='text/html')
@@ -223,6 +226,7 @@ async def main():
         check('data checks ran', all(k in results for k in ('data-calendar', 'data-fees', 'data-practitioners', 'data-invoices', 'data-org-deposits', 'data-org-deposit-add', 'data-org-files', 'data-org-notes', 'data-org-note-add', 'data-shared-notes')), list(results))
         sh = results.get('data-shared-notes') or {}
         check('shared notes: read, and two notes for one script mentioned (not a problem)', sh.get('problems') == [] and sh.get('info') == '2 shared notes. Two are called "UPC shared checks: Missing details": the scripts merge them on their next check.', sh)
+        check('recordings organisation: its file cards show the recorder\'s comments (other PCs find recordings by them)', 'data-recordings-files' in results and not results['data-recordings-files']['problems'] and results['data-recordings-files']['info'] == '1 recording.', results.get('data-recordings-files'))
         check('funder profile checks pass', all(not results[k]['problems'] for k in ('data-org-deposits', 'data-org-deposit-add', 'data-org-files', 'data-org-notes', 'data-org-note-add')), {k: results.get(k) for k in ('data-org-deposits', 'data-org-deposit-add', 'data-org-files')})
         check('add deposit pop-up only read', set(STATE.get('payReads', [])) == {'GET'}, STATE.get('payReads'))
         await pg.evaluate("window.__menu.find(m => m[0] === 'Health check: show results')[1]()")

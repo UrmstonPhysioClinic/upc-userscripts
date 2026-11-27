@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         UPC Patients: Appointment recorder (beta)
 // @namespace    https://github.com/UrmstonPhysioClinic/upc-userscripts
-// @version      0.3.9
+// @version      0.4.0
 // @homepageURL  https://github.com/UrmstonPhysioClinic/upc-userscripts
 // @updateURL    https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/appointment-recorder.user.js
 // @downloadURL  https://raw.githubusercontent.com/UrmstonPhysioClinic/upc-userscripts/main/beta/appointment-recorder.user.js
@@ -44,7 +44,7 @@
   if (window.__hxAppointmentRecorder) return;
   window.__hxAppointmentRecorder = true;
 
-  const VERSION = '0.3.9';
+  const VERSION = '0.4.0';
   const ORG = '78972';                          // "UPC scripts (recordings)" (CH, 25 Nov 2026)
   const KEEP_LOCAL_MS = 14 * 86400e3;           // on this PC (CH, 25 Nov 2026)
   const KEEP_HALAXY_MS = 2 * 86400e3;           // the copy in Halaxy (CH, 25 Nov 2026)
@@ -953,6 +953,79 @@
     await loadRecs();
   }
 
+  // ------------------------------------------------------------------ recordings in Halaxy from other PCs
+  // (CH, 27 Nov 2026: a recording made on one PC wasn't seen on another.) The copies on the recordings organisation,
+  // read from its page in one request (each file's card shows its title and comments) and kept for two minutes for every
+  // tab on this PC. Only those this PC doesn't have are shown. Send to Heidi, Download and Continue Recording first copy
+  // one from Halaxy onto this PC (its parts, as files), then go on as for a recording made here.
+  const HX_KEY = 'hxRecs';
+  // The card's text runs the title into its date ("note 7004" then "25-Nov-2026"): numbers stop before a date.
+  const HX_RX = /Recording (\d{2})-([A-Z][a-z]{2})-(\d{4}) (\d{2}):(\d{2}), (.+?), note (\d+?)(?=\d{2}-[A-Z][a-z]{2}-\d{4}|\D|$)(?:, part (\d+?)(?=\d{2}-[A-Z][a-z]{2}-\d{4}|\D|$))?/;
+  const HX_COMMENT_RX = /; note (\d+); patient (\d+); ((?:\d+:)?\d{2}:\d{2}), \d{2}:\d{2} to \d{2}:\d{2}/;
+  let hxList = null;
+  let hxBusy = null;
+  function parseHx(f) {
+    const text = String(f.text || '');
+    const m = HX_RX.exec(text);
+    if (!m || text.indexOf(COMMENT) < 0 || !f.fileUrl) return null;
+    const c = HX_COMMENT_RX.exec(text);
+    const names = m[6];
+    const cut = names.lastIndexOf(', ');
+    return { fileId: f.id, fileUrl: f.fileUrl, noteId: c ? c[1] : m[7], n: +(m[8] || 1),
+      startedAt: new Date(+m[3], MONTHS.indexOf(m[2]), +m[1], +m[4], +m[5]).getTime(),
+      patient: cut > 0 ? names.slice(0, cut) : names, practitioner: cut > 0 ? names.slice(cut + 2) : '',
+      patientId: c ? c[2] : '', length: c ? c[3].split(':').map(Number).reduce((a, x) => a * 60 + x, 0) * 1000 : 0 };
+  }
+  async function halaxyRecs(fresh) {
+    const cached = store.get(HX_KEY, null);
+    if (!fresh && cached && Date.now() - cached.at < 2 * 60e3) { hxList = cached; return cached.items; }
+    if (!U() || U().http.pausedFor() > 0) return (hxList && hxList.items) || [];
+    if (hxBusy) return hxBusy;
+    hxBusy = U().orgFiles.list(ORG).then((files) => {
+      const groups = new Map();
+      files.map(parseHx).filter(Boolean).forEach((f) => {
+        const k = f.noteId + '|' + f.startedAt;
+        const g = groups.get(k) || { id: 'h' + f.noteId + '-' + f.startedAt.toString(36), remote: true, noteId: f.noteId, patientId: f.patientId,
+          patient: f.patient, practitioner: f.practitioner, startedAt: f.startedAt, parts: [] };
+        if (!g.patientId) g.patientId = f.patientId;
+        if (!g.parts.some((x) => x.n === f.n)) g.parts.push({ n: f.n, fileId: f.fileId, fileUrl: f.fileUrl, length: f.length });
+        groups.set(k, g);
+      });
+      const items = [...groups.values()].map((g) => { g.parts.sort((a, b) => a.n - b.n); g.length = g.parts.reduce((a, x) => a + x.length, 0); return g; });
+      hxList = { at: Date.now(), items };
+      store.set(HX_KEY, hxList);
+      return items;
+    }).catch((e) => { console.warn('[UPC appointment recorder] Halaxy copies', e); return (hxList && hxList.items) || []; })
+      .finally(() => { hxBusy = null; });
+    return hxBusy;
+  }
+  // The same recording: its note, started in the same minute (titles give the minute).
+  const sameRec = (r, g) => r.noteId === g.noteId && Math.floor(r.startedAt / 60e3) === Math.floor(g.startedAt / 60e3);
+  const remoteOnly = () => ((hxList && hxList.items) || []).filter((g) => !recs.some((r) => sameRec(r, g))).sort((a, b) => b.startedAt - a.startedAt);
+  async function importRemote(g) {
+    const have = recs.find((r) => sameRec(r, g));
+    if (have) return have;
+    const busy = U().ui.toast('Getting the recording from Halaxy...', { kind: 'info', ms: 0 });
+    try {
+      const parts = [];
+      let at = g.startedAt;
+      for (const p of g.parts) {
+        const res = await fetch(p.fileUrl, { credentials: 'same-origin' });
+        if (!res.ok) throw new (U().Error)('Halaxy didn\'t give the recording (' + res.status + '). It may have been removed after 2 days.');
+        const blob = new Blob([await res.blob()], { type: 'audio/ogg' });
+        await db.addChunk(g.id, p.n, 0, blob);
+        parts.push({ n: p.n, mime: 'audio/ogg', ext: 'ogg', mics: [], startedAt: at, endedAt: at + p.length, bytes: blob.size, chunks: 1 });
+        at += p.length;
+      }
+      const r = { id: g.id, noteId: g.noteId, patientId: g.patientId, patient: g.patient, practitioner: g.practitioner, noteDate: day(g.startedAt),
+        startedAt: g.startedAt, endedAt: at, beat: at, status: 'finished', parts, fromHalaxy: true };
+      await db.putRec(r);
+      parts.forEach((p, i) => store.set(upKey(r, p), { state: 'saved', fileId: String(g.parts[i].fileId), at: Date.now(), tries: 0 }));   // already in Halaxy
+      await loadRecs();
+      return recs.find((x) => x.id === r.id) || r;
+    } finally { busy.close(); }
+  }
+
   // ------------------------------------------------------------------ downloads
 
   // One file per recording (CH, 25 Nov 2026: Heidi takes one file per session). A recording in parts (its window was
@@ -1072,15 +1145,16 @@
     const mine = liveFor(ids.noteId);
     const other = !mine && anyLive();
     const saved = recs.find((r) => r.noteId === ids.noteId) || null;
-    return { ids, mine, other, saved };
+    const remote = saved ? null : remoteOnly().find((g) => g.noteId === ids.noteId) || null;
+    return { ids, mine, other, saved, remote };
   }
   function renderStrip(force) {
     if (!strip) return;
     const st = stripState();
     if (!st) return;
-    const { mine, other, saved } = st;
+    const { mine, other, saved, remote } = st;
     const key = JSON.stringify([mine ? [mine.id, mine.status, mine.micId, mine.devices, mine.quiet, mine.ok, mine.error, mine.long] : null, other ? other.id : null,
-      saved ? [saved.id, saved.status, (saved.parts || []).length, copyPill(saved), heidiOf(saved.id), !!saved.heidiNote] : null]);
+      saved ? [saved.id, saved.status, (saved.parts || []).length, copyPill(saved), heidiOf(saved.id), !!saved.heidiNote] : null, remote ? [remote.id, remote.length] : null]);
     coverEditor();
     if (!force && key === stripKey) { timeNow(); return; }
     stripKey = key;
@@ -1096,7 +1170,12 @@
       h += '<span class="text-muted">Another appointment is being recorded on this PC.</span><button type="button" class="btn btn-outline-primary" data-a="show">Show Recorder</button>';
     } else {
       h += micSelect(savedDevices(), savedMic()) +
-        '<button type="button" class="btn btn-primary" data-a="start"><i class="icon icon-mic"></i> ' + (saved && Date.now() - saved.startedAt < CONTINUE_MS ? 'Continue Recording' : 'Start Appointment') + '</button>';
+        '<button type="button" class="btn btn-primary" data-a="start"><i class="icon icon-mic"></i> ' + ((saved || remote) && Date.now() - (saved || remote).startedAt < CONTINUE_MS ? 'Continue Recording' : 'Start Appointment') + '</button>';
+      if (remote) {
+        h += '<span class="text-muted">Recorded ' + esc(clock(remote.length)) + ' on another PC</span>' + U().ui.page.pill('In Halaxy', 'ok') +
+          '<button type="button" class="btn btn-outline-primary" data-a="heidi">Send to Heidi</button>' +
+          '<button type="button" class="btn btn-outline-primary-light" data-a="download">Download Recording</button>';
+      }
       if (saved) {
         h += '<span class="text-muted">Recorded ' + esc(clock(lengthOf(saved))) + (saved.status === 'stopped' ? ', stopped at ' + esc(hm(saved.endedAt)) : '') + '</span>' +
           (saved.status === 'stopped' ? U().ui.page.pill('Window closed', 'warn') : '') + copyPill(saved) + heidiBits(saved, 'strip') +
@@ -1147,6 +1226,8 @@
     host.parentNode.insertBefore(strip, host);
     renderStrip(true);
     pendingHere();
+    // Nothing recorded for this note on this PC: a copy in Halaxy from another PC, if any (one look, shared for 2 minutes)
+    loadRecs().then(() => { if (!recs.some((r) => r.noteId === ids.noteId)) halaxyRecs().then(() => renderStrip()); });
   }
 
   function onStripChange(e) {
@@ -1169,7 +1250,10 @@
     }
     if (a.dataset.a === 'show') { const w = window.open('', WIN); if (w && !(ours(w) && w.__upcRecorder)) w.close(); else if (w) w.focus(); }
     if (st.saved && heidiClick(a, st.saved)) return;
-    if (a.dataset.a === 'download' && st.saved) download(st.saved).catch((x) => U().ui.toast('Not downloaded: ' + (x.message || x), { kind: 'danger' }));
+    if (!st.saved && st.remote && heidiClick(a, st.remote)) return;
+    if (a.dataset.a === 'download' && (st.saved || st.remote)) {
+      (st.saved ? Promise.resolve(st.saved) : importRemote(st.remote)).then(download).catch((x) => U().ui.toast('Not downloaded: ' + (x.message || x), { kind: 'danger' }));
+    }
   }
 
   // Start Appointment: the window is opened straight away (Firefox only allows a pop-up from the click itself).
@@ -1214,6 +1298,9 @@
     if (!(await reclaim(w))) { try { w.close(); } catch (e) { /* fine */ } U().ui.toast('Close the other recorder or Heidi window, then press Start Appointment again.', { kind: 'danger', ms: 0 }); return; }
     if (w.__upcRecorder || w.__upcStarting) { w.focus(); return; }   // already recording (its report not seen yet)
     w.__upcStarting = true;
+    if (!st.saved && st.remote) {   // made on another PC: copied here first, then carried on as a new part
+      try { st = Object.assign({}, st, { saved: await importRemote(st.remote) }); } catch (e) { w.__upcStarting = false; try { w.close(); } catch (x) { /* fine */ } throw e; }
+    }
     const prev = st.saved && Date.now() - st.saved.startedAt < CONTINUE_MS && st.saved.status !== 'recording' ? st.saved : null;
     const facts = prev && prev.patient ? prev : await noteFacts(st.ids.noteId);
     const cfg = Object.assign({}, REC, { id: prev ? prev.id : 'r' + Date.now().toString(36), noteId: st.ids.noteId, patientId: st.ids.patientId,
@@ -1575,6 +1662,11 @@
       let w = null;
       try { w = heidiWindow(); } catch (e) { /* said below */ }   // from the click itself, so Firefox allows it
       if (!w) { U().ui.toast('Firefox blocked the Heidi window. Allow pop-ups for Halaxy, then press Send to Heidi again.', { kind: 'danger', ms: 0 }); return true; }
+      if (r.remote) {   // in Halaxy from another PC: copied here first
+        importRemote(r).then((loc) => { store.del('heidi:' + loc.id); sendToHeidi(loc, w); })
+          .catch((x) => { try { w.close(); } catch (y) { /* fine */ } U().ui.toast('Not sent to Heidi: ' + (x.message || x), { kind: 'danger', ms: 0 }); });
+        return true;
+      }
       store.del('heidi:' + r.id);
       sendToHeidi(r, w);
       return true;
@@ -1599,13 +1691,29 @@
       '<td>' + copyPill(r) + '</td><td>' + heidiBits(r, 'page') + '</td><td data-sort="' + (r.startedAt + KEEP_LOCAL_MS) + '">' + esc(day((r.endedAt || r.startedAt) + KEEP_LOCAL_MS)) + '</td>' +
       '<td class="text-nowrap">' + (r.status === 'recording' ? '' : '<button type="button" class="btn btn-outline-primary-light" data-a="download">Download</button> ' +
         '<button type="button" class="btn btn-outline-primary-light" data-a="delete">Delete</button>') + '</td></tr>').join('');
+    const others = remoteOnly();
+    const orows = others.map((g) => '<tr data-upc-hx="' + esc(g.id) + '"><td data-sort="' + g.startedAt + '">' + esc(day(g.startedAt) + ' ' + hm(g.startedAt)) + '</td>' +
+      '<td>' + esc(clock(g.length)) + '</td><td>' + esc(g.patient) + '</td><td>' + esc(g.practitioner) + '</td>' +
+      '<td>' + (g.patientId ? '<a href="' + esc(base + '/patient/' + g.patientId + '/clinical/category/note/id/' + g.noteId) + '">' + esc(day(g.startedAt)) + '</a>' : esc(day(g.startedAt))) + '</td>' +
+      '<td data-sort="' + (g.startedAt + KEEP_HALAXY_MS) + '">' + esc(day(g.startedAt + KEEP_HALAXY_MS)) + '</td>' +
+      '<td class="text-nowrap"><button type="button" class="btn btn-outline-primary-light" data-a="download">Download</button> ' +
+      '<button type="button" class="btn btn-outline-primary-light" data-a="heidi">Send to Heidi</button></td></tr>').join('');
     root.innerHTML = '<div class="upc-rec">' + U().ui.page.bar('Recordings', '', '') +
       U().ui.page.card('Recordings on This PC', recs.length, '', '<table class="table table-striped table-bordered w-100 m-0" data-upc-list="upc-recordings"><thead><tr><th>Recorded</th><th>Length</th><th>Patient</th><th>Practitioner</th><th>Note</th><th>Copy in Halaxy</th><th>Heidi</th><th>Kept Until</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>') +
+      U().ui.page.card('In Halaxy From Other PCs', hxList ? others.length : '', '', !hxList ? '<p class="text-muted m-0">Checking...</p>' : !others.length ? '<p class="m-0">None.</p>' :
+        '<table class="table table-striped table-bordered w-100 m-0" data-upc-list="upc-recordings-hx"><thead><tr><th>Recorded</th><th>Length</th><th>Patient</th><th>Practitioner</th><th>Note</th><th>Kept Until</th><th></th></tr></thead><tbody>' + orows + '</tbody></table>') +
       '<p class="text-muted">Kept on this PC for 14 days; copies in Halaxy for 2 days.</p></div>';
     U().ui.list.enhance(root, { auto: true });
   }
   function onPageClick(e) {
     const a = e.target.closest('[data-a]');
+    const hx = a && a.closest('tr[data-upc-hx]');
+    const g = hx && remoteOnly().find((x) => x.id === hx.getAttribute('data-upc-hx'));
+    if (g) {
+      if (heidiClick(a, g)) return;
+      if (a.dataset.a === 'download') importRemote(g).then(download).catch((x) => U().ui.toast('Not downloaded: ' + (x.message || x), { kind: 'danger' }));
+      return;
+    }
     const tr = a && a.closest('tr[data-upc-id]');
     const r = tr && recs.find((x) => x.id === tr.getAttribute('data-upc-id'));
     if (!r) return;
@@ -1637,6 +1745,7 @@
     page.unmount = U().ui.mountPage('Recordings', page.root, MENU_CLS);
     renderPage();
     loadRecs().then(renderPage);
+    halaxyRecs(true).then(renderPage);
   }
   function unmountPage() { if (page.unmount) { page.unmount(); page.unmount = null; page.root = null; } }
   const route = () => (location.hash === '#' + ROUTE ? mountPage() : unmountPage());
@@ -1708,5 +1817,5 @@
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
   else start();
 
-  window.upcAppointmentRecorder = { version: VERSION, outdated: () => outdated, db, loadRecs, housekeeping, uploads, cleanHalaxy, cleanLocal, fileTitle, fileName, joined, live, heidiOf, sendToHeidi, mdHtml, cleanHtml };
+  window.upcAppointmentRecorder = { version: VERSION, outdated: () => outdated, halaxyRecs, remoteOnly, db, loadRecs, housekeeping, uploads, cleanHalaxy, cleanLocal, fileTitle, fileName, joined, live, heidiOf, sendToHeidi, mdHtml, cleanHtml };
 })();

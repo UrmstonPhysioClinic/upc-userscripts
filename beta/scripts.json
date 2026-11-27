@@ -3,7 +3,7 @@
     {
       "file": "health-check.user.js",
       "name": "UPC System: Health check (beta)",
-      "version": "1.1.67"
+      "version": "1.1.68"
     },
     {
       "file": "block-reporting.user.js",
@@ -24,7 +24,7 @@
     {
       "file": "appointment-recorder.user.js",
       "name": "UPC Patients: Appointment recorder (beta)",
-      "version": "0.3.9"
+      "version": "0.4.0"
     },
     {
       "file": "appointment-reminders.user.js",
